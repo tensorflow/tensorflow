@@ -145,6 +145,27 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
         ValueError, 'Unsupported input types for MirroredStrategy.'):
       strategy.run(replica_fn, args=(tensor_input,))
 
+  def test_run_with_graph_tensor_inputs(self):
+    # Note that this is potentially a sharp edge for the user, since the eager
+    # test case was raising an error, but the graph context will run, by treat
+    # the inputs as a global inputs.
+    # TODO(scottzhu): Mitigate this eager/graph behavior difference in future.
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+
+    @def_function.function
+    def replica_fn(inputs):
+      return inputs * 2.0
+
+    @def_function.function
+    def run_fn():
+      tensor_input = constant_op.constant(3.0)
+      return strategy.run(replica_fn, args=(tensor_input,))
+
+    # with strategy.scope():
+    with d_api.default_mesh(self.mesh):
+      result = run_fn()
+    self.assertEqual(result, constant_op.constant(6.0))
+
   def test_run_with_unsupported_input_types(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     random_inputs = [123, '456']

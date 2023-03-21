@@ -482,7 +482,7 @@ class EinsumToLinalgConverter : public OpConversionPattern<mhlo::EinsumOp> {
     // Create a 1:1 map from f:strDimension -> affineDimension.
     int64_t nloops = inputInd.size();
     DenseMap<StringRef, AffineExpr> strAffineDimUmap;
-    for (auto& it : llvm::enumerate(inputInd)) {
+    for (const auto& it : llvm::enumerate(inputInd)) {
       strAffineDimUmap[it.value()] = rewriter.getAffineDimExpr(it.index());
     }
 
@@ -774,7 +774,7 @@ Value collapseExpandingDims(PatternRewriter& rewriter, Location loc,
   SmallVector<int64_t> newOperandShape;
   SmallVector<int64_t> newDimensions;
 
-  for (auto& [idx, dim] : llvm::enumerate(dimensions)) {
+  for (const auto& [idx, dim] : llvm::enumerate(dimensions)) {
     currentIndices.push_back(idx);
 
     if (!isExpandingDim(idx)) {
@@ -1497,6 +1497,42 @@ class IotaConverter : public OpConversionPattern<OpTy> {
   }
 };
 
+template <typename OpTy>
+class IotaToMapConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy iotaOp, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    ShapedType resultTy = getHloOpResultType(iotaOp);
+    if (!resultTy) return failure();
+    resultTy = this->typeConverter->convertType(resultTy)
+                   .template dyn_cast<ShapedType>();
+
+    Location loc = iotaOp.getLoc();
+    Value empty = getEmptyTensorFor(rewriter, loc, resultTy, iotaOp,
+                                    adaptor.getOperands());
+
+    auto linalgOp = rewriter.create<linalg::MapOp>(
+        loc, ValueRange{empty}, empty,
+        [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange /*args*/) {
+          Value index = nestedBuilder.create<linalg::IndexOp>(
+              nestedLoc, iotaOp.getIotaDimension());
+          index = nestedBuilder.create<arith::IndexCastOp>(
+              nestedLoc, nestedBuilder.getI64Type(), index);
+          Value result =
+              mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ConvertOp>(
+                  nestedLoc, resultTy.getElementType(), index.getType(),
+                  {ValueRange{index}}, &nestedBuilder);
+          nestedBuilder.create<linalg::YieldOp>(nestedLoc, ValueRange{result});
+        },
+        linalg::getPrunedAttributeList(iotaOp));
+    rewriter.replaceOp(iotaOp, linalgOp.getResult());
+    return success();
+  }
+};
+
 /// Converts mhlo.concatenate operation to a linalg.generic op.
 struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
   using OpConversionPattern<mhlo::ConcatenateOp>::OpConversionPattern;
@@ -1543,7 +1579,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
           }
 
           Value indexOp = b.create<linalg::IndexOp>(loc, dim);
-          for (auto& it : llvm::enumerate(adaptor.getOperands())) {
+          for (const auto& it : llvm::enumerate(adaptor.getOperands())) {
             Value arg = it.value();
             Value newConcatDimSize;
             scf::IfOp ifOp;
@@ -1681,7 +1717,7 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
     SmallVector<OpFoldResult, 3> startIndices, sizes;
     Type originalStartIndexType =
         dynamicSliceOp.getStartIndices().front().getType();
-    for (auto& en : llvm::enumerate(
+    for (const auto& en : llvm::enumerate(
              llvm::zip(adaptor.getStartIndices(),
                        dynamicSliceOp.getSliceSizes().getValues<int64_t>()))) {
       int64_t size = std::get<1>(en.value());
@@ -1752,7 +1788,7 @@ class DynamicUpdateSliceConverter
 
     SmallVector<OpFoldResult, 3> startIndices;
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    for (auto& en : llvm::enumerate(adaptor.getStartIndices())) {
+    for (const auto& en : llvm::enumerate(adaptor.getStartIndices())) {
       // By mhlo.DynamicUpdateSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - update.dimension_size[i])`
@@ -3724,7 +3760,7 @@ struct ReduceWindowOpConversion
           loc, fakeWindowShapes, resultType.getElementType());
 
       SmallVector<Value> resultDynamicDims;
-      for (auto& en : llvm::enumerate(resultType.getShape())) {
+      for (const auto& en : llvm::enumerate(resultType.getShape())) {
         if (en.value() != ShapedType::kDynamic) continue;
         Value dimSize = rewriter.create<tensor::DimOp>(loc, input, en.index());
         if (en.index() == 0 || static_cast<int64_t>(en.index()) == rank - 1) {
@@ -4048,7 +4084,7 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
     // But then start indices are shuffled by the start index map. To make a
     // full index into the operand, all missing indices are zeroes.
     SmallVector<Value> remappedIndexFromIndices(operandRank, constants[0]);
-    for (auto& it : llvm::enumerate(startIndexMap))
+    for (const auto& it : llvm::enumerate(startIndexMap))
       remappedIndexFromIndices[it.value()] = indexFromStartIndices[it.index()];
 
     // Now we construct the index based on the offset. First we need to remap
@@ -4398,9 +4434,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       BitcastConvertConverter,
       ConcatenateConverter,
       ConstConverterTensor,
-      IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
-      IotaConverter<mhlo::DynamicIotaOp>,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
@@ -4424,6 +4458,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       BroadcastInDimOpToBroadcastConverter,
       BroadcastOpToBroadcastConverter,
       DynamicBroadcastInDimOpToBroadcastConverter,
+      IotaToMapConverter<mhlo::IotaOp>,
+      IotaToMapConverter<mhlo::DynamicIotaOp>,
       MapOpToMapConverter,
       PointwiseToLinalgMapConverter<mhlo::AbsOp>,
       PointwiseToLinalgMapConverter<mhlo::AddOp>,
@@ -4479,6 +4515,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   } else {
     patterns->add<
       BroadcastConverter<mhlo::BroadcastOp>,
+      IotaConverter<mhlo::IotaOp>,
+      IotaConverter<mhlo::DynamicIotaOp>,
       HloBroadcastInDimConverter,
       HloDynamicBroadcastInDimConverter,
       MapOpToGenericConverter,

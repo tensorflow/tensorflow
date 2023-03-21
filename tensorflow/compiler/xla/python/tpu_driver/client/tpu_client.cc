@@ -860,7 +860,7 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
         compiled_program->program_shape(&program_shape_proto);
 
     if (!fetch_metadata_status.ok()) {
-      return Status(static_cast<tsl::error::Code>(fetch_metadata_status.code()),
+      return Status(static_cast<absl::StatusCode>(fetch_metadata_status.code()),
                     fetch_metadata_status.error_message());
     }
     result_layout = ::xla::Shape(program_shape_proto.result());

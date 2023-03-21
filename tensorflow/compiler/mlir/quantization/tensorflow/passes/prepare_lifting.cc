@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -47,7 +49,11 @@ class PrepareLiftingPass
 
   PrepareLiftingPass() = default;
 
-  explicit PrepareLiftingPass(const OpSet op_set) : op_set_(op_set) {}
+  explicit PrepareLiftingPass(OpSet op_set) { op_set_ = op_set; }
+
+  PrepareLiftingPass(const PrepareLiftingPass& other) {
+    op_set_ = other.op_set_;
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -68,7 +74,15 @@ class PrepareLiftingPass
   void runOnOperation() override;
 
  private:
-  OpSet op_set_;
+  Option<OpSet> op_set_{
+      *this, "target-opset", llvm::cl::init(OpSet::TF),
+      llvm::cl::desc("Choose target opset."),
+      llvm::cl::values(
+          clEnumValN(OpSet::TF, "TF",
+                     "Uses TF ops that mimic quantization behavior"),
+          clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
+          clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
+                     "Uses TF Uniform Quantized ops"))};
 };
 
 // Check if given indices in `val1` has same number of elements as given
@@ -258,6 +272,107 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
   auto dequantize = builder.create<quantfork::DequantizeCastOp>(
       dq_op.getLoc(), new_value_type, quantize.getResult());
   return ConstantFoldOpIfPossible(dequantize).front();
+}
+
+// Generate an einsum equation from the given DotDimensionNumber.
+std::string CreateEinsumEquation(
+    const xla::DotDimensionNumbers& dot_dimension_numbers, const int lhs_rank,
+    const int rhs_rank) {
+  // Prepare necessary indices.
+  absl::flat_hash_set<int64_t> lhs_batch_idx, rhs_batch_idx;
+  absl::flat_hash_set<int64_t> lhs_contract_idx, rhs_contract_idx;
+  lhs_batch_idx.insert(dot_dimension_numbers.lhs_batch_dimensions().begin(),
+                       dot_dimension_numbers.lhs_batch_dimensions().end());
+  lhs_contract_idx.insert(
+      dot_dimension_numbers.lhs_contracting_dimensions().begin(),
+      dot_dimension_numbers.lhs_contracting_dimensions().end());
+  rhs_batch_idx.insert(dot_dimension_numbers.rhs_batch_dimensions().begin(),
+                       dot_dimension_numbers.rhs_batch_dimensions().end());
+  rhs_contract_idx.insert(
+      dot_dimension_numbers.rhs_contracting_dimensions().begin(),
+      dot_dimension_numbers.rhs_contracting_dimensions().end());
+
+  // Generate equation.
+  std::string lhs_eq = "";
+  std::string rhs_eq = "";
+  std::string out_eq = "";
+  char c = 'a';
+  std::vector<char> lhs_batch_dims;
+  std::vector<char> lhs_contract_dims;
+  for (int i = 0; i < lhs_rank; i++) {
+    absl::StrAppend(&lhs_eq, std::string(1, c));
+    if (lhs_batch_idx.contains(i)) {
+      lhs_batch_dims.push_back(c);
+    } else if (lhs_contract_idx.contains(i)) {
+      lhs_contract_dims.push_back(c);
+    }
+    c++;
+  }
+
+  int batch_trace_idx = 0;
+  int contract_trace_idx = 0;
+  const bool rhs_only_batch = lhs_batch_dims.empty();
+  for (int i = 0; i < rhs_rank; i++) {
+    if (rhs_batch_idx.contains(i)) {
+      if (rhs_only_batch) {
+        rhs_eq.push_back(c);
+        lhs_batch_dims.push_back(c);
+        c++;
+      } else {
+        rhs_eq.push_back(lhs_batch_dims[batch_trace_idx]);
+        batch_trace_idx++;
+      }
+    } else if (rhs_contract_idx.contains(i)) {
+      absl::StrAppend(&rhs_eq,
+                      std::string(1, lhs_contract_dims[contract_trace_idx]));
+      contract_trace_idx++;
+    } else {
+      rhs_eq += c;
+      c++;
+    }
+  }
+
+  // Create out_eq by merging lhs and rhs.
+  // In XlaDotv2 style - batch dim - leftover from lhs - leftover from rhs.
+  for (const char c : lhs_batch_dims) {
+    absl::StrAppend(&out_eq, std::string(1, c));
+  }
+  for (const char c : lhs_eq) {
+    if (!absl::StrContains(out_eq, c) && !absl::StrContains(rhs_eq, c)) {
+      absl::StrAppend(&out_eq, std::string(1, c));
+    }
+  }
+  for (const char c : rhs_eq) {
+    if (!absl::StrContains(out_eq, c) && !absl::StrContains(lhs_eq, c)) {
+      absl::StrAppend(&out_eq, std::string(1, c));
+    }
+  }
+
+  return absl::StrCat(lhs_eq, ",", rhs_eq, "->", out_eq);
+}
+
+Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
+                                   Value lhs, Value rhs, Value output,
+                                   StringAttr dot_dimension_numbers_str) {
+  xla::DotDimensionNumbers dot_dimension_numbers;
+  dot_dimension_numbers.ParseFromString(dot_dimension_numbers_str.str());
+  SmallVector<Value> input_arguments = {lhs, rhs};
+  const int lhs_rank =
+      lhs.getType().template cast<ShapedType>().getShape().size();
+  const int rhs_rank =
+      rhs.getType().template cast<ShapedType>().getShape().size();
+
+  const std::string einsum_equation =
+      CreateEinsumEquation(dot_dimension_numbers, lhs_rank, rhs_rank);
+
+  return builder.create<TF::EinsumOp>(loc, output.getType(), input_arguments,
+                                      builder.getStringAttr(einsum_equation));
+}
+
+bool IsPrecisionEmpty(StringAttr prec_str) {
+  xla::PrecisionConfig prec;
+  prec.ParseFromString(prec_str.str());
+  return !prec.operand_precision_size();
 }
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_lifting.inc"

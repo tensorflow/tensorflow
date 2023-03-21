@@ -166,6 +166,8 @@ struct GmlStCPUTilingOptions
     this->vectorSize = opts.vectorSize;
     this->enableFusionClusters = opts.enableFusionClusters;
     this->statsDetailLevel = opts.statsDetailLevel;
+    this->enableFusionClusterOutlining = opts.enableFusionClusterOutlining;
+    this->cpuName = opts.cpuName;
   }
 
   Option<int64_t> vectorSize{*this, "vector-size",

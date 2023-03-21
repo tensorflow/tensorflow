@@ -30,11 +30,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-Padding2D& Padding2D::operator=(const Padding2D& value) {
-  prepended = value.prepended;
-  appended = value.appended;
-  return *this;
-}
 
 bool Padding2D::operator==(const Padding2D& value) const {
   return this->prepended == value.prepended && this->appended == value.appended;
@@ -49,12 +44,6 @@ Padding2D& Padding2D::operator-(const Padding2D& value) {
   prepended.w -= value.prepended.w;
   appended.h -= value.appended.h;
   appended.w -= value.appended.w;
-  return *this;
-}
-
-Padding3D& Padding3D::operator=(const Padding3D& value) {
-  prepended = value.prepended;
-  appended = value.appended;
   return *this;
 }
 

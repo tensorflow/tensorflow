@@ -32,7 +32,10 @@ py_library(
     name = "async_checkpoint_helper",
     srcs = ["async_checkpoint_helper.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python/tpu:tpu_embedding_v2"],
+    deps = [
+        ":checkpoint_context",
+        "//tensorflow/python/tpu:tpu_embedding_v2",
+    ],
 )
 
 py_library(
@@ -294,7 +297,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/trackable:trackable_utils",
-        "//tensorflow/python/training:optimizer",
     ],
 )
 

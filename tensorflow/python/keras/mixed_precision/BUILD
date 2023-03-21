@@ -89,6 +89,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
@@ -117,6 +118,7 @@ py_library(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/trackable:base_delegate",
         "@absl_py//absl/testing:parameterized",
@@ -130,6 +132,7 @@ py_library(
     deps = [
         "//tensorflow/python:cond",
         "//tensorflow/python:framework",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras",
     ],
 )

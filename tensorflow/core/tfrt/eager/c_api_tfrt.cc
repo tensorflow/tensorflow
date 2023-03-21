@@ -539,7 +539,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Failed to build a RequestContext: ", req_ctx.takeError()));
     return nullptr;
   }
@@ -553,7 +553,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   }
   if (target_av->IsError()) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }
@@ -1974,19 +1974,6 @@ void OperationInterface::MaybeInferInputAttrs() {
     }
   }
 }
-
-tensorflow::ImmediateExecutionContext* CreateTfrtEagerContext(
-    const TFE_ContextOptions* opts) {
-  auto* tfrt_context = new tfrt::tf::ContextInterface(
-      opts->session_options.options,
-      static_cast<tensorflow::ContextDevicePlacementPolicy>(
-          opts->device_placement_policy),
-      opts->async);
-  return tfrt_context;
-}
-
-REGISTER_EAGER_CONTEXT_CREATOR(TfrtEagerContext, "tfrt",
-                               CreateTfrtEagerContext);
 
 }  // namespace tf
 }  // namespace tfrt

@@ -32,11 +32,11 @@ scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes);
 /// sizes are smaller then the iteration domain of the op, it will still create
 /// an `scf.forall` op. This is matches the behavior of tiling to `scf.for`
 /// upstream.
-struct TilingResult {
+struct GMLSTTilingResult {
   SmallVector<Operation *> tiledOps;
   scf::ForallOp loop = nullptr;
 };
-FailureOr<TilingResult> tileUsingSCFForallOp(
+FailureOr<GMLSTTilingResult> tileUsingSCFForallOp(
     PatternRewriter &rewriter, TilingInterface op,
     const scf::SCFTilingOptions &options);
 

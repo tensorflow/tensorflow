@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -65,8 +66,8 @@ class FunctionalHloRunner {
   enum class LogOutputMode { kLogOutput, kNotLogOutput };
 
   enum class HloPassesMode {
-    // Only call the XLA compiler's RunBackend to compile the module. This is
-    // used to run a post-optimization HLO module (dumped as
+    // Call only XLA's RunBackend during the compilation. This is used to run a
+    // post-optimization HLO module (dumped as
     // 'xxx.after_optimizations.hlo.xxx').
     kRunXLABackendOnly,
     // Calls Compile (i.e., both RunHloPasses and RunBackend) to compile the
@@ -242,6 +243,16 @@ class FunctionalHloRunner {
       absl::Span<const std::string> hlo_files, InputFormat input_format,
       const LiteralVec& argument_literals,
       const PerDeviceIndexVecType& per_device_index_vec);
+
+  // Loads and compiles an HLO for debugging purposes.
+  //
+  // This function allows compiling multi-device HLOs on machines with fewer
+  // devices.
+  static Status LoadAndCompile(PjRtClient& client,
+                               const PreprocessingOptions& preproc_options,
+                               const RawCompileOptions& raw_compile_options,
+                               std::string_view hlo_file,
+                               InputFormat input_format, int task_id = 0);
 
   // Compiles and runs the given HLO module with the given arguments for each
   // device. The given arguments is a map from device ID to a list of arguments.

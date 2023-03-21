@@ -26,6 +26,7 @@ visibility = [
     "//tensorflow_models/google:__subpackages__",
     "//learning/brain/google/data:__subpackages__",
     "//learning/brain/experimental/tfq:__subpackages__",
+    "//learning/brain/google/python/ops:__subpackages__",
 ]
 
 package(
@@ -225,6 +226,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":byte_swap_tensor",
         ":device",
         ":device_spec",
         ":dtypes",
@@ -248,6 +250,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":byte_swap_tensor",
         ":constant_op",
         ":device",
         ":device_spec",
@@ -334,6 +337,15 @@ py_library(
     ] + if_xla_available([
         "//tensorflow/python:_pywrap_tfcompile",
     ]),
+)
+
+py_library(
+    name = "byte_swap_tensor",
+    srcs = ["byte_swap_tensor.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":dtypes",
+    ],
 )
 
 py_library(
@@ -1183,6 +1195,7 @@ tf_py_test(
     deps = [
         ":auto_control_deps",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:sendrecv_ops_gen",
         "//tensorflow/python:while_loop",
@@ -1298,6 +1311,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":tensor_util",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:pywrap_tf_session",
@@ -1314,6 +1328,7 @@ tf_py_test(
         ":ops",
         ":smart_cond",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
     ],
@@ -1753,6 +1768,7 @@ tf_py_test(
         ":framework",
         ":subscribe",
         ":test_lib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:script_ops",
@@ -1790,8 +1806,10 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_ops_gen",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
@@ -1834,6 +1852,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
@@ -1869,6 +1888,7 @@ tf_py_test(
         ":framework",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:math_ops",
@@ -1979,6 +1999,7 @@ tf_py_test(
         ":test_ops_2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:gradients",
@@ -2056,6 +2077,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec_registry",
         ":type_utils",
+        "//tensorflow/python:cond",
         "//tensorflow/python:while_loop",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2388,6 +2410,7 @@ tf_py_test(
         ":convert_to_constants",
         ":test_lib",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",

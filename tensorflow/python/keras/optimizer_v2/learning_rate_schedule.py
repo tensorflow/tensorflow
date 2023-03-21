@@ -19,6 +19,7 @@ import math
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
@@ -176,8 +177,11 @@ class ExponentialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       decay_rate = math_ops.cast(self.decay_rate, dtype)
@@ -270,11 +274,15 @@ class PiecewiseConstantDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PiecewiseConstant"):
-      boundaries = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
-                                      nest.flatten(self.boundaries))
-      values = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
-                                  nest.flatten(self.values))
-      x_recomp = ops.convert_to_tensor_v2_with_dispatch(step)
+      boundaries = nest.map_structure(
+          tensor_conversion.convert_to_tensor_v2_with_dispatch,
+          nest.flatten(self.boundaries),
+      )
+      values = nest.map_structure(
+          tensor_conversion.convert_to_tensor_v2_with_dispatch,
+          nest.flatten(self.values),
+      )
+      x_recomp = tensor_conversion.convert_to_tensor_v2_with_dispatch(step)
       for i, b in enumerate(boundaries):
         if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
           # We cast the boundaries to have the same type as the step
@@ -407,8 +415,11 @@ class PolynomialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       end_learning_rate = math_ops.cast(self.end_learning_rate, dtype)
       power = math_ops.cast(self.power, dtype)
@@ -527,8 +538,11 @@ class InverseTimeDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       decay_rate = math_ops.cast(self.decay_rate, dtype)
@@ -622,8 +636,11 @@ class CosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "CosineDecay"):
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
 
@@ -722,8 +739,11 @@ class CosineDecayRestarts(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "SGDRDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       first_decay_steps = math_ops.cast(self.first_decay_steps, dtype)
       alpha = math_ops.cast(self.alpha, dtype)
@@ -859,8 +879,11 @@ class LinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       num_periods = math_ops.cast(self.num_periods, dtype)
@@ -985,8 +1008,11 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       initial_variance = math_ops.cast(self.initial_variance, dtype)

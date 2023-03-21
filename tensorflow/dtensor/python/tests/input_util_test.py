@@ -151,6 +151,41 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(output, images_layout, d_output)
 
   @parameterized.named_parameters(('Eager', False), ('Graph', True))
+  def testForInIteration(self, is_graph):
+    batch_size = 8
+    num_batches = 4
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(
+        self._images([batch_size * num_batches, 8, 8, 3]))
+    images_layout = Layout.batch_sharded(
+        self.mesh, batch_dim=MESH_DIM_BATCH, rank=4)
+
+    d_dataset = input_util.DTensorDataset(
+        dataset=dataset,
+        global_batch_size=batch_size,
+        mesh=self.mesh,
+        layouts=images_layout,
+        batch_dim=MESH_DIM_BATCH)
+
+    def train(iterator):
+      iters = 1
+      output = next(iterator)
+      for img in iterator:
+        output += img
+        iters += 1
+      return output, iters
+
+    train_fn = polymorphic_function.function(train) if is_graph else train
+
+    iterator = iter(dataset.batch(batch_size, drop_remainder=True))
+    output, iters = train_fn(iterator)
+
+    d_iterator = iter(d_dataset)
+    d_output, d_iters = train_fn(d_iterator)
+
+    self.assertEqual(iters, d_iters)
+    self.assertDTensorEqual(output, images_layout, d_output)
+
+  @parameterized.named_parameters(('Eager', False), ('Graph', True))
   def testIterSingleInput(self, is_graph):
     dataset = dataset_ops.DatasetV2.from_tensors(self.images).repeat()
     batch_size = 32

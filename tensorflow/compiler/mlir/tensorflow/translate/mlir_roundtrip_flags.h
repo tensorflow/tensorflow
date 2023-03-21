@@ -90,6 +90,9 @@ struct GraphImportConfig {
   // so make it opt-in to consider it unconditionally also when importing the
   // graph.
   bool unconditionally_use_set_output_shapes = false;
+  // If set, use the value as the device type and mark the function graph for
+  // XLA compilation.
+  string xla_compile_device_type;
 };
 
 struct GraphExportConfig {

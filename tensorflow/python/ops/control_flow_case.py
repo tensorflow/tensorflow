@@ -21,18 +21,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import dispatch
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(b/269483538): needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
 
 
 @tf_export("case", v1=[])
@@ -131,7 +125,7 @@ def case_v2(pred_fn_pairs,
                callable.
   """
   return _case_helper(
-      control_flow_ops.cond,
+      cond.cond,
       pred_fn_pairs,
       default,
       exclusive,
@@ -240,7 +234,7 @@ def case(pred_fn_pairs,
                callable.
   """
   return _case_helper(
-      control_flow_ops.cond,
+      cond.cond,
       pred_fn_pairs,
       default,
       exclusive,

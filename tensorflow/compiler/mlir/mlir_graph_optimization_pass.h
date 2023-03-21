@@ -118,8 +118,9 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
 
   // Executes all of the underlying registered MlirOptimizationPasses.
   Status Run(const std::string& function_name, const DeviceSet& device_set,
-             const ConfigProto& config_proto, std::unique_ptr<Graph>* graph,
-             FunctionLibraryDefinition* flib_def,
+             const ConfigProto& config_proto,
+             absl::string_view xla_compile_device_type,
+             std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated) override;
 

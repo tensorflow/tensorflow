@@ -48,6 +48,7 @@ def do_test(
     show_debug_info=False,
     use_lite=False,
     lift_variables=True,
+    include_variables_in_initializers=False,
 ):
   """Runs test.
 
@@ -70,6 +71,9 @@ def do_test(
     use_lite: If true, importer will not do any graph transformation such as
       lift variables.
     lift_variables: If false, no variable lifting will be done on the graph.
+    include_variables_in_initializers: If false, removes variables in
+      initializer functions before lifting variables or adding new variable
+      initialization patterns in the initializer function.
   """
 
   # Make LOG(ERROR) in C++ code show up on the console.
@@ -124,6 +128,7 @@ def do_test(
           exported_names,
           ','.join([tf.saved_model.tag_constants.SERVING]),
           lift_variables,
+          include_variables_in_initializers,
           upgrade_legacy,
           show_debug_info,
       )

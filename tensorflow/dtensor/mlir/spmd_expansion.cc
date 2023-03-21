@@ -291,14 +291,14 @@ mlir::LogicalResult UpdateReturnValueShapes(mlir::ModuleOp module,
       auto callsite_op = function_use.getUser();
       if (!callsite_op) continue;
 
-      for (auto& output_type_and_index : llvm::enumerate(output_types)) {
+      for (const auto& output_type_and_index : llvm::enumerate(output_types)) {
         int index = output_type_and_index.index();
         const auto& type = output_type_and_index.value();
         callsite_op->getResult(index).setType(type);
       }
     }
   } else {
-    for (auto& output_type_and_index : llvm::enumerate(output_types)) {
+    for (const auto& output_type_and_index : llvm::enumerate(output_types)) {
       int index = output_type_and_index.index();
       const auto& type = output_type_and_index.value();
       parent_op->getResult(index).setType(type);

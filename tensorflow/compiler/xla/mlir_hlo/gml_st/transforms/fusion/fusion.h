@@ -59,7 +59,7 @@ void fuseGreedily(PatternRewriter &rewriter, Block &block,
                   llvm::function_ref<bool(Operation *)> filterFn = nullptr);
 
 // Tiles the op to gml_st.parallel and fuses greedily according to the filter.
-FailureOr<gml_st::TilingResult> tileUsingSCFForallOpAndFuseGreedily(
+FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
     PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
     llvm::function_ref<bool(Operation *)> fuseFilterFn);
 

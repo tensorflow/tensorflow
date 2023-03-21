@@ -43,9 +43,7 @@ func.func @serving_default(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor
 // The contents of `@serving_default` should have been inlined to `@batch_func`.
 // CHECK: func.func @serving_default(%[[ARG0:.*]]: tensor<1xf32>, %[[ARG1:.*]]: tensor<1xf32>) -> tensor<1xf32>
 // CHECK-NOT: tf.BatchFunction
-// CHECK: %[[IDENTITY0:.*]] = "tf.Identity"(%[[ARG0]])
-// CHECK: %[[IDENTITY1:.*]] = "tf.Identity"(%[[ARG1]])
-// CHECK: %[[ADD0:.*]] = "tf.AddV2"(%[[IDENTITY0]], %[[IDENTITY1]])
+// CHECK: %[[ADD0:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]])
 // CHECK: return %[[ADD0]] : tensor<1xf32>
 
 func.func private @batched_func(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {

@@ -17,6 +17,7 @@
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
@@ -116,9 +117,11 @@ def remove_squeezable_dimensions(
   """
   with backend.name_scope(name or 'remove_squeezable_dimensions'):
     if not isinstance(predictions, ragged_tensor.RaggedTensor):
-      predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
+      predictions = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          predictions
+      )
     if not isinstance(labels, ragged_tensor.RaggedTensor):
-      labels = ops.convert_to_tensor_v2_with_dispatch(labels)
+      labels = tensor_conversion.convert_to_tensor_v2_with_dispatch(labels)
     predictions_shape = predictions.shape
     predictions_rank = predictions_shape.ndims
     labels_shape = labels.shape
@@ -310,11 +313,13 @@ def compute_weighted_loss(losses,
 
     if not isinstance(losses,
                       (keras_tensor.KerasTensor, ragged_tensor.RaggedTensor)):
-      losses = ops.convert_to_tensor_v2_with_dispatch(losses)
+      losses = tensor_conversion.convert_to_tensor_v2_with_dispatch(losses)
     input_dtype = losses.dtype
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
-      sample_weight = ops.convert_to_tensor_v2_with_dispatch(sample_weight)
+      sample_weight = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          sample_weight
+      )
 
     # TODO(psv): Handle casting here in a better way, eg. if losses is float64
     # we do not want to lose precision.

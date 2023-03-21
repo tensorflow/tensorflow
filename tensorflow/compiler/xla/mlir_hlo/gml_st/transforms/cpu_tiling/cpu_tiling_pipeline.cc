@@ -34,6 +34,8 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.reduction2DTileSizes = {4, 4};
   opts.matmulTileSizes = {};
   opts.lowerToMmt4d = false;
+  opts.enableFusionClusters = false;
+  opts.enableFusionClusterOutlining = false;
   opts.cpuName = cpuName;
   opts.statsDetailLevel = statsDetailLevel;
   return opts;

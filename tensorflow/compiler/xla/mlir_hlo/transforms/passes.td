@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
-#define TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
+#ifndef MLIR_HLO_TRANSFORMS_PASSES
+#define MLIR_HLO_TRANSFORMS_PASSES
 
 include "mlir/Pass/PassBase.td"
 
@@ -150,4 +150,4 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
-#endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
+#endif // MLIR_HLO_TRANSFORMS_PASSES

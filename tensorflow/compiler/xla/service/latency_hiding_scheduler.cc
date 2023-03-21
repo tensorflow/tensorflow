@@ -16,12 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
-#include <list>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -29,7 +27,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -48,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -654,6 +650,35 @@ class ReadySetLt {
             ShouldScheduleAsyncDone(*b.node), b, "kScheduleDone")) {
       return *value;
     }
+
+    if (sched_state_.config.enable_release_start_policy) {
+      // Prioritise scheduling ready "start" ops, to avoid useless extension of
+      // start-done latencies. This benefits future latency ops, as ops
+      // postponed here may be used to hide not-yet-scheduled latency ops.
+      const ApproximateLatencyEstimator::TimeCost a_ready_interval =
+          a.node->GetReadyTime() - sched_state_.current_time;
+      const ApproximateLatencyEstimator::TimeCost b_ready_interval =
+          b.node->GetReadyTime() - sched_state_.current_time;
+      bool a_ready_and_release =
+          a_ready_interval <= 0 &&
+          a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+      bool b_ready_and_release =
+          b_ready_interval <= 0 &&
+          b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_ready_and_release, a, b_ready_and_release, b,
+              "kScheduleStart")) {
+        return *value;
+      }
+      if (a_ready_and_release && b_ready_and_release) {
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a_ready_interval < b_ready_interval, a,
+                b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
+          return *value;
+        }
+      }
+    }
+
     const ApproximateLatencyEstimator::TimeCost a_ready_interval =
         std::max(a.node->GetReadyTime() - sched_state_.current_time, 0.0);
     const ApproximateLatencyEstimator::TimeCost b_ready_interval =

@@ -2295,36 +2295,36 @@ class StrategyExtendedV2(object):
     It can be used in `tf.distribute.ReplicaContext.merge_call` to write code
     that works for all `tf.distribute.Strategy`.
 
-    >>> @tf.function
-    ... def step_fn(var):
-    ...
-    ...   def merge_fn(strategy, value, var):
-    ...     # All-reduce the value. Note that `value` here is a
-    ...     # `tf.distribute.DistributedValues`.
-    ...     reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
-    ...         value, destinations=var)
-    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-    ...         args=(reduced,))
-    ...
-    ...   value = tf.identity(1.)
-    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
-    ...     args=(value, var))
-    >>>
-    >>> def run(strategy):
-    ...   with strategy.scope():
-    ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn, args=(v,))
-    ...     return v
-    >>>
-    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    @tf.function
+    def step_fn(var):
+
+      def merge_fn(strategy, value, var):
+        # All-reduce the value. Note that `value` here is a
+        # `tf.distribute.DistributedValues`.
+        reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
+            value, destinations=var)
+        strategy.extended.update(var, lambda var, value: var.assign(value),
+            args=(reduced,))
+
+      value = tf.identity(1.)
+      tf.distribute.get_replica_context().merge_call(merge_fn,
+        args=(value, var))
+
+    def run(strategy):
+      with strategy.scope():
+        v = tf.Variable(0.)
+        strategy.run(step_fn, args=(v,))
+        return v
+
+    run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
-    >>> run(tf.distribute.experimental.CentralStorageStrategy(
-    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    run(tf.distribute.experimental.CentralStorageStrategy(
+        compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
-    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    run(tf.distribute.OneDeviceStrategy("GPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
@@ -2378,36 +2378,36 @@ class StrategyExtendedV2(object):
 
     See `reduce_to` for more information.
 
-    >>> @tf.function
-    ... def step_fn(var):
-    ...
-    ...   def merge_fn(strategy, value, var):
-    ...     # All-reduce the value. Note that `value` here is a
-    ...     # `tf.distribute.DistributedValues`.
-    ...     reduced = strategy.extended.batch_reduce_to(
-    ...         tf.distribute.ReduceOp.SUM, [(value, var)])[0]
-    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-    ...         args=(reduced,))
-    ...
-    ...   value = tf.identity(1.)
-    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
-    ...     args=(value, var))
-    >>>
-    >>> def run(strategy):
-    ...   with strategy.scope():
-    ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn, args=(v,))
-    ...     return v
-    >>>
-    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    @tf.function
+    def step_fn(var):
+
+      def merge_fn(strategy, value, var):
+        # All-reduce the value. Note that `value` here is a
+        # `tf.distribute.DistributedValues`.
+        reduced = strategy.extended.batch_reduce_to(
+            tf.distribute.ReduceOp.SUM, [(value, var)])[0]
+        strategy.extended.update(var, lambda var, value: var.assign(value),
+            args=(reduced,))
+
+      value = tf.identity(1.)
+      tf.distribute.get_replica_context().merge_call(merge_fn,
+        args=(value, var))
+
+    def run(strategy):
+      with strategy.scope():
+        v = tf.Variable(0.)
+        strategy.run(step_fn, args=(v,))
+        return v
+
+    run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
-    >>> run(tf.distribute.experimental.CentralStorageStrategy(
-    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    run(tf.distribute.experimental.CentralStorageStrategy(
+        compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
-    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    run(tf.distribute.OneDeviceStrategy("GPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:

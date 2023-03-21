@@ -12,18 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/tsl/profiler/convert/trace_container.h"
 
-#include <string>
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_KERNEL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_KERNEL_H_
 
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "third_party/nccl/nccl.h"
 
-namespace tsl {
-namespace profiler {
+namespace xla::gpu {
 
-bool TraceContainer::ParseMetadataFromString(const std::string& description) {
-  return protobuf::TextFormat::ParseFromString(description, &trace_);
-}
+inline constexpr int kMaxBuffers = 32;
+inline constexpr int kMaxNumGpus = 16;
+inline constexpr int kLaunchBounds = 256;
 
-}  // namespace profiler
-}  // namespace tsl
+enum SyncFlag { SYNC_NONE = 0, SYNC_START = 1, SYNC_END = 2 };
+
+const void* GetSyncKernel();
+const void* GetAllReduceKernel(ncclDataType_t dtype, int64_t* num_elements,
+                               int cc_major);
+
+}  // namespace xla::gpu
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_KERNEL_H_

@@ -215,8 +215,8 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
   return failure();
 }
 
-FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
-                               tensor::ExtractSliceOp extractSliceOp) {
+FailureOr<TilingResult> createFusedOp(PatternRewriter& rewriter,
+                                      tensor::ExtractSliceOp extractSliceOp) {
   Value src = extractSliceOp.getSource();
   if (!src) return failure();
   auto tileableOp = src.getDefiningOp<TilingInterface>();
@@ -232,7 +232,7 @@ FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
   // Tile the producer.
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(extractSliceOp);
-  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
+  FailureOr<TilingResult> tiledProducer = tileableOp.generateResultTileValue(
       rewriter, /*resultNumber=*/0, offsets, sizes);
   if (failed(tiledProducer)) {
     return rewriter.notifyMatchFailure(tileableOp,
@@ -332,11 +332,11 @@ SmallVector<Value> getRootOpInitOperands(PatternRewriter& rewriter,
 FailureOr<Operation*> fuse(PatternRewriter& rewriter,
                            tensor::ExtractSliceOp extractSliceOp) {
   Location loc = extractSliceOp.getLoc();
-  FailureOr<Value> fusedOr = createFusedOp(rewriter, extractSliceOp);
+  FailureOr<TilingResult> fusedOr = createFusedOp(rewriter, extractSliceOp);
   if (failed(fusedOr)) return failure();  // Match failure already notified.
 
   // Insert cast if needed.
-  Value fused = *fusedOr;
+  Value fused = fusedOr->tiledOps.front()->getResult(0);
   if (fused.getType() != extractSliceOp.getType()) {
     // The result should be a tensor, cast it to the correct shape
     OpBuilder::InsertionGuard g(rewriter);
@@ -392,7 +392,7 @@ FusionCluster findMapFusionCluster(Operation* op) {
   return {resultOps, rootOp};
 }
 
-FailureOr<gml_st::TilingResult> tileUsingSCFForallOpAndFuseGreedily(
+FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
     PatternRewriter& rewriter, Operation* op, const scf::SCFTilingOptions& opts,
     llvm::function_ref<bool(Operation*)> fuseFilterFn) {
   auto tilingResult =

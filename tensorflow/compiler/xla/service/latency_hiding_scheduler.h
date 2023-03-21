@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
-#include <array>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -78,6 +77,7 @@ struct SchedulerConfig {
   bool force_send_recv_to_use_same_resource = false;
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
+  bool enable_release_start_policy = false;
   uint64_t memory_limit = UINT64_MAX;
 };
 
@@ -232,6 +232,12 @@ class HloGraphNode {
   bool DoesReleaseAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease;
+    });
+  }
+  bool DoesReleaseResource(ResourceType res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceRelease &&
+             resource.first == ResourceTypeToIndex(res);
     });
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
@@ -733,11 +739,6 @@ class LatencyHidingScheduler : public HloModulePass {
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
  private:
-  // Perform scheduling of the computation.
-  Status ScheduleAsyncComputation(HloComputation* comp,
-                                  const LatencyEstimator* latency_estimator,
-                                  HloAliasAnalysis* alias_analysis,
-                                  ModulePressureState* module_pressure_state);
   SchedulerConfig config_;
   std::unique_ptr<LatencyEstimator> latency_estimator_;
   std::unique_ptr<AsyncTracker> async_tracker_;

@@ -6,6 +6,7 @@ load(
     "ALL_BACKENDS",
     "GPU_2DEVS_BACKEND",
     "PATHWAYS",
+    "PATHWAYS_V3_DONUT_BACKEND",
     "TPU_V3_DONUT_BACKEND",
     "dtensor_test",
 )
@@ -85,8 +86,12 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
         PATHWAYS,
+        PATHWAYS_V3_DONUT_BACKEND,
     ],
-    disable = [PATHWAYS],
+    disable = [
+        PATHWAYS,
+        PATHWAYS_V3_DONUT_BACKEND,
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",

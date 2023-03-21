@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/common_runtime/eager/context_registry.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -605,9 +605,6 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
 
   int custom_device_tensor_handle_count_ = 0;
 };
-
-tensorflow::ImmediateExecutionContext* CreateTfrtEagerContext(
-    const TFE_ContextOptions* opts);
 
 }  // namespace tf
 }  // namespace tfrt

@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
@@ -697,6 +698,22 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
 
     return success();
+  }
+
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllReduceOp op,
+                                        func::CallOp call) {
+    auto attr = op->getAttrOfType<BoolAttr>("allow_all_reduce_kernel");
+    call->setAttr(b.getStringAttr("allow_all_reduce_kernel"),
+                  attr ? attr : b.getBoolAttr(false));
+    return SetSpecificAttrs<AllReduceOp>(b, op, call);
+  }
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        AllReduceStartOp op,
+                                        func::CallOp call) {
+    auto attr = op->getAttrOfType<BoolAttr>("allow_all_reduce_kernel");
+    call->setAttr(b.getStringAttr("allow_all_reduce_kernel"),
+                  attr ? attr : b.getBoolAttr(false));
+    return SetSpecificAttrs<AllReduceStartOp>(b, op, call);
   }
 
   template <typename OpT>

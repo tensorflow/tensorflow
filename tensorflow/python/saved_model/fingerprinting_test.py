@@ -22,6 +22,7 @@ import shutil
 
 from tensorflow.core.config import flags
 from tensorflow.core.protobuf import fingerprint_pb2
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -29,8 +30,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model.pywrap_saved_model import constants
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as fingerprinting_pywrap
 from tensorflow.python.trackable import autotrackable
 
 
@@ -178,6 +181,30 @@ class FingerprintingTest(test.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 "Encounted invalid fingerprint values"):
       fingerprint.singleprint()
+
+  def test_valid_from_proto(self):
+    save_dir = os.path.join(self.get_temp_dir(), "from_proto_model")
+    save.save(self._create_model_with_data(), save_dir)
+    fingerprint_def = fingerprint_pb2.FingerprintDef().FromString(
+        fingerprinting_pywrap.ReadSavedModelFingerprint(save_dir))
+    fingerprint = fingerprinting.Fingerprint.from_proto(fingerprint_def)
+    self.assertEqual(fingerprint, fingerprint_def)
+
+  def test_invalid_from_proto(self):
+    save_dir = os.path.join(self.get_temp_dir(), "from_proto_model")
+    save.save(self._create_model_with_data(), save_dir)
+    wrong_def = saved_model_pb2.SavedModel(
+        saved_model_schema_version=1)
+    with self.assertRaisesRegex(ValueError,
+                                "Given proto could not be deserialized as"):
+      fingerprinting.Fingerprint.from_proto(wrong_def)
+
+  def test_fingerprint_to_proto(self):
+    save_dir = os.path.join(self.get_temp_dir(), "from_proto_model")
+    save.save(self._create_model_with_data(), save_dir)
+    fingerprint = fingerprinting.read_fingerprint(save_dir)
+    fingerprint_def = fingerprinting_utils.to_proto(fingerprint)
+    self.assertEqual(fingerprint, fingerprint_def)
 
 
 if __name__ == "__main__":

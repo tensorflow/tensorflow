@@ -34,6 +34,7 @@ from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.platform import flags
@@ -131,6 +132,18 @@ def _get_tpu_strategy_creator(steps_per_run,
 
 
 def _mirrored_strategy_with_collective_key_base(devices):
+  required_cpus_nums = sum(
+      1
+      for d in devices
+      if tf_device.DeviceSpec.from_string(d).device_type == "CPU"
+  )
+
+  # If required virtual CPUs are not setup yet, config the logical devices.
+  if required_cpus_nums > len(context.context().list_logical_devices("CPU")):
+    context._reset_context()  # pylint: disable=protected-access
+    test_util.set_logical_devices_to_at_least("CPU", required_cpus_nums)
+
+  # Increase collective base key to avoid key collision across subtests.
   mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
   mirrored_lib.MirroredStrategy._collective_key_base += 100000
   return MirroredStrategy(devices)

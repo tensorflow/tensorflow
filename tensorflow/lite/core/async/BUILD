@@ -78,7 +78,7 @@ cc_test(
         "//tensorflow/lite/core/async/testing:mock_async_kernel",
         "//tensorflow/lite/core/async/testing:test_backend",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
     ],
 )

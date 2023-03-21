@@ -301,9 +301,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   const Shape& on_device_shape() const override;
 
-  StatusOr<Shape> logical_on_device_shape() override {
-    return Unimplemented("PJRT C API does not support logical_on_device_shape");
-  }
+  StatusOr<Shape> logical_on_device_shape() override;
 
   PjRtDevice* device() const override;
 

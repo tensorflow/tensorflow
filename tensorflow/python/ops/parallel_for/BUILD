@@ -26,6 +26,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
@@ -90,6 +91,7 @@ py_library(
     deps = [
         ":pfor_lib",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -131,6 +133,7 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:gradients",

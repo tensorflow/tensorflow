@@ -820,13 +820,26 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   lhs_layout.batch_size = batch_size;
   rhs_layout.batch_size = batch_size;
 
-  // cuBLASLt FP8 GEMM kernels require A (i.e. lhs) to be transposed and this
-  // equivalents to A being row major stored if no transpose is explicitly
-  // applied on A.
-  se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
-
   bool must_swap_operands =
       MakeOutputColumnMajor(lhs_layout, rhs_layout, c_layout, output_layout);
+
+  // Do not transopse either input. Note the cuBLASLt documentation somewhat
+  // incorrectly claims "A must be transposed and B non-transposed" when A and B
+  // are FP8 (https://docs.nvidia.com/cuda/cublas/#cublasltmatmul). In reality,
+  // this is only true if A and B are column-major. If A is row-major, A must
+  // *not* be transposed, and if B is row-major, B must be transposed. We never
+  // transpose A or B, and expect the caller to ensure A is row-major and B is
+  // column when A and B are FP8.
+  const se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
+  const se::blas::Transpose trans_b = se::blas::Transpose::kNoTranspose;
+  if (primitive_util::IsF8Type(lhs_layout.dtype) &&
+      lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
+    return InternalError("The F8 LHS must be column-major");
+  }
+  if (primitive_util::IsF8Type(rhs_layout.dtype) &&
+      rhs_layout.order == MatrixLayout::Order::kRowMajor) {
+    return InternalError("The F8 RHS must be row-major");
+  }
 
   TF_ASSIGN_OR_RETURN(se::blas::DataType output_dtype,
                       AsBlasDataType(output_layout.dtype));
@@ -839,7 +852,7 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       se::cuda::BlasLt::MatmulDesc op_desc,
       se::cuda::BlasLt::MatmulDesc::Create(
           computation_type, GetScaleType(output_dtype, computation_type),
-          trans_a, /*trans_b=*/se::blas::Transpose::kNoTranspose, epilogue));
+          trans_a, trans_b, epilogue));
 
   TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout a_desc,
                       AsBlasLtMatrixLayout(lhs_layout));

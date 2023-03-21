@@ -41,7 +41,7 @@ namespace {
 constexpr llvm::StringRef kReverseTransformedLabel =
     "__reverse_transformed_label__";
 
-FailureOr<TilingResult> tileReverseAndUpdateResultIfTiled(
+FailureOr<GMLSTTilingResult> tileReverseAndUpdateResultIfTiled(
     PatternRewriter &rewriter, thlo::ReverseOp &reverseOp,
     ArrayRef<int64_t> tileSizes) {
   auto opts = getSCFTilingOptions(tileSizes);

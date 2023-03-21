@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -511,6 +512,38 @@ FunctionalHloRunner::LoadAndRun(
                        running_options,
                        hlo_module_and_arguments.hlo_module.get(),
                        argument_literals, per_device_index_vec);
+}
+
+Status FunctionalHloRunner::LoadAndCompile(
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
+    const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
+    InputFormat input_format, int task_id) {
+  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
+                      FunctionalHloRunner::CreateCompileOptions(
+                          client, raw_compile_options, task_id));
+
+  int num_replicas = compile_options.executable_build_options.num_replicas();
+  int num_partitions =
+      compile_options.executable_build_options.num_partitions();
+  int needed_devices = num_replicas * num_partitions;
+  if (client.addressable_device_count() < needed_devices) {
+    LOG(INFO) << "Applying a workaround to allow compiling multi-device HLOs "
+                 "on machines with fewer devices.";
+    DeviceAssignment assignment(num_replicas, num_partitions);
+    assignment.Fill(0);
+    compile_options.executable_build_options.set_device_assignment(assignment);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments,
+      FunctionalHloRunner::LoadHloModuleAndArguments(hlo_file, input_format));
+
+  TF_RETURN_IF_ERROR(FunctionalHloRunner::Compile(
+                         client, hlo_module_and_arguments.hlo_module.get(),
+                         preproc_options, compile_options)
+                         .status());
+
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloModule>>

@@ -17,8 +17,12 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -31,6 +35,20 @@ int64_t EstimatedSizeBytes(const std::vector<Tensor>& tensors) {
     size_bytes += proto.ByteSizeLong();
   }
   return size_bytes;
+}
+
+Status StreamAssignmentChanged(absl::string_view worker_address,
+                               int64_t stream_index) {
+  return errors::FailedPrecondition(
+      "Worker ", worker_address,
+      " has an outdated stream assignment: ", stream_index,
+      ". It must heartbeat to the dispatcher to refresh its assigned stream.");
+}
+
+bool IsStreamAssignmentChanged(const Status& status) {
+  return errors::IsFailedPrecondition(status) &&
+         absl::StrContains(status.error_message(),
+                           "has an outdated stream assignment");
 }
 
 }  // namespace data

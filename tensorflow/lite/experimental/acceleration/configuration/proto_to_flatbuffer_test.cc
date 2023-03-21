@@ -49,5 +49,32 @@ TEST(ConversionTest, EdgeTpuSettings) {
   EXPECT_EQ(output_settings->public_model_id()->str(), kPublicModelId);
 }
 
+// Tests converting TFLiteSettings from proto to flatbuffer format.
+TEST(ConversionTest, TFLiteSettings) {
+  // Define the fields to be tested.
+  const std::vector<int32_t> kHardwareClusterIds{1};
+  const std::string kPublicModelId = "public_model_id";
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  input_settings.set_delegate(::tflite::proto::EDGETPU);
+  auto* edgetpu_settings = input_settings.mutable_edgetpu_settings();
+  edgetpu_settings->set_public_model_id(kPublicModelId);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+  *edgetpu_settings->mutable_hardware_cluster_ids() = {
+      kHardwareClusterIds.begin(), kHardwareClusterIds.end()};
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  EXPECT_EQ(output_settings->delegate(), ::tflite::Delegate_EDGETPU);
+  const auto* output_edgetpu_settings = output_settings->edgetpu_settings();
+  EXPECT_EQ(output_edgetpu_settings->hardware_cluster_ids()->size(), 1);
+  EXPECT_EQ(output_edgetpu_settings->hardware_cluster_ids()->Get(0),
+            kHardwareClusterIds[0]);
+  EXPECT_EQ(output_edgetpu_settings->public_model_id()->str(), kPublicModelId);
+}
+
 }  // namespace
 }  // namespace tflite

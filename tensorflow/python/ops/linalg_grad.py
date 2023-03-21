@@ -37,7 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -642,9 +642,9 @@ def _MatrixSolveLsGrad(op, grad):
     # We have to defer determining the shape to runtime and use
     # conditional execution of the appropriate graph.
     matrix_shape = array_ops.shape(op.inputs[0])[-2:]
-    return control_flow_ops.cond(matrix_shape[-2] >= matrix_shape[-1],
-                                 lambda: _Overdetermined(op, grad),
-                                 lambda: _Underdetermined(op, grad))
+    return cond.cond(matrix_shape[-2] >= matrix_shape[-1],
+                     lambda: _Overdetermined(op, grad),
+                     lambda: _Underdetermined(op, grad))
 
 
 @ops.RegisterGradient("BandedTriangularSolve")

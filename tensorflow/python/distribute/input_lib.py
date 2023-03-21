@@ -48,7 +48,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -295,7 +295,7 @@ class DistributedIteratorBase(collections_abc.Iterator,
     num_replicas_with_values = _calculate_replicas_with_values(
         self._strategy, self._input_workers, optional_list)
 
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         num_replicas_with_values > 0,
         _create_optional_with_dummy,
         _create_empty_optional,
@@ -330,7 +330,7 @@ class DistributedIteratorBase(collections_abc.Iterator,
       # so we need to call GetNext to raise EOFError.
       return self._get_next_no_partial_batch_handling()
 
-    return control_flow_ops.cond(
+    return tf_cond.cond(
         num_replicas_with_values > 0, _value_or_dummy, _eof, strict=True)
 
   def _get_next_no_partial_batch_handling(self, name=None):
@@ -902,7 +902,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
               dataset, num_replicas_in_sync).prefetch(num_replicas_per_worker)
 
         with ops.colocate_with(dataset._variant_tensor):
-          return control_flow_ops.cond(
+          return tf_cond.cond(
               math_ops.not_equal(batch_size, -1),
               true_fn=apply_rebatch,
               false_fn=apply_legacy_rebatch)
@@ -1281,7 +1281,7 @@ def _get_value_or_dummy(input_workers, optional_list, produce_dummy):
           if produce_dummy:
             # pylint: disable=cell-var-from-loop
             value_list.append(
-                control_flow_ops.cond(
+                tf_cond.cond(
                     optional_list[i][j].has_value(),
                     lambda: optional_list[i][j].get_value(),  # pylint: disable=unnecessary-lambda
                     lambda: _dummy_tensor_fn(optional_list[i][j].element_spec),

@@ -18,12 +18,23 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {
 
 int64_t EstimatedSizeBytes(const std::vector<Tensor>& tensors);
+
+// Returns a `Status` that indicates the snapshot stream assignment has changed
+// and the worker should retry unless it's cancelled.
+Status StreamAssignmentChanged(absl::string_view worker_address,
+                               int64_t stream_index);
+
+// Returns true if `status` indicates the snapshot stream assignment has changed
+// returned by `StreamAssignmentChanged`.
+bool IsStreamAssignmentChanged(const Status& status);
 
 }  // namespace data
 }  // namespace tensorflow

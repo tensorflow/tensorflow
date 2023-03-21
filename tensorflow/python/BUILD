@@ -1018,6 +1018,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":cond",
         ":control_flow_ops",
         ":control_flow_util",
         ":math_ops",
@@ -1165,6 +1166,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops",
         ":math_ops",
         "//tensorflow/python/framework:dtypes",
@@ -1218,6 +1220,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":clustering_ops_gen",
+        ":cond",
         ":ops",
         ":training",
         "//tensorflow/python/framework",
@@ -1339,6 +1342,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops_gen",
         ":logging_ops_gen",
         ":math_ops_gen",
@@ -1411,6 +1415,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_assert",
         ":math_ops",
         "//tensorflow/python/eager:context",
@@ -1625,6 +1630,7 @@ py_library(
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
@@ -1873,6 +1879,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops",
         ":control_flow_util",
         ":data_flow_ops_gen",
@@ -1939,6 +1946,7 @@ py_library(
         ":array_ops",
         ":check_ops",
         ":clip_ops",
+        ":cond",
         ":control_flow_case",
         ":control_flow_ops",
         ":gradients",
@@ -2032,6 +2040,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops",
         ":linalg_ops",
         ":math_ops",
@@ -2047,6 +2056,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":map_fn",
@@ -2259,6 +2269,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":handle_data_util",
         ":list_ops_gen",
         "//third_party/py/numpy",
@@ -2271,6 +2282,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":map_ops_gen",
     ],
 )
@@ -2285,6 +2297,7 @@ py_library(
     deps = [
         ":array_ops",
         ":candidate_sampling_ops",
+        ":cond",
         ":ctc_ops",
         ":embedding_ops",
         ":math_ops",
@@ -2475,6 +2488,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops",
         ":control_flow_util",
         ":control_flow_util_v2",
@@ -2677,6 +2691,7 @@ py_library(
     deps = [
         ":array_ops",
         ":check_ops",
+        ":cond",
         ":control_flow_ops",
         ":math_ops",
         ":sparse_ops",
@@ -2695,6 +2710,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops",
         ":math_ops",
         ":sets",
@@ -2714,6 +2730,7 @@ py_library(
     deps = [
         ":array_ops",
         ":check_ops",
+        ":cond",
         ":confusion_matrix",
         ":control_flow_ops",
         ":math_ops",
@@ -2818,6 +2835,7 @@ py_library(
         ":batch_ops",
         ":check_ops",
         ":clip_ops",
+        ":cond",
         ":confusion_matrix",
         ":control_flow_case",
         ":control_flow_ops",
@@ -3020,6 +3038,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":cond",
         ":control_flow_ops",
         ":math_ops",
         ":state_ops",
@@ -3099,6 +3118,7 @@ cuda_py_test(
     ],
     deps = [
         ":array_ops",
+        ":cond",
         ":cond_v2",
         ":control_flow_case",
         ":control_flow_ops",
@@ -3192,6 +3212,7 @@ cuda_py_test(
     deps = [
         ":array_grad",
         ":array_ops",
+        ":cond",
         ":control_flow_grad",
         ":control_flow_ops",
         ":data_flow_grad",
@@ -4285,6 +4306,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":client_testlib",
+        ":cond",
         ":control_flow_ops",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:constant_op",

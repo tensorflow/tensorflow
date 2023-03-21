@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
-#include <atomic>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -138,6 +137,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/layout_normalization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -263,6 +263,27 @@ bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
 
+// CollectivesScheduleLinearizer enforces a total ordering between collectives
+// to work around (1) divergence in initial HLOs across executables that are
+// communicating with each other using HLO collectives, and (2) divergence in
+// executables introduced due to auto tuning, specifically the use of extra
+// scratch space for convolutions.
+// We always apply this pass when not using SPMD (where initial HLO divergence
+// may be possible). This function decided whether to apply this pass when using
+// SPMD partitioning. When using SPMD, if convolutions are present in the code
+// and we are using "online" autotuning (i.e., not AOT) we need to use the pass,
+// else we do not need to enable the pass.
+bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
+  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
+        return true;
+      }
+    }
+  }
+  // No convolution auto-tuning candidates found in the module.
+  return false;
+}
 }  // end anonymous namespace
 
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
@@ -600,7 +621,8 @@ Status GpuCompiler::OptimizeHloModule(
     // annotations added by this pass may not be correct after the
     // modifications.
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
-    pipeline.AddPass<HloComputationDeduplicator>();
+    pipeline.AddPass<HloComputationDeduplicator>(
+        /*mark_fusion_duplications=*/false);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -751,11 +773,19 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
     }
 
-    pipeline.AddPass<CollectivesScheduleLinearizer>();
+    if (!hlo_module->config().use_spmd_partitioning()) {
+      pipeline.AddPass<CollectivesScheduleLinearizer>();
+    }
 
     AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
+
+    // This invocation is used to populate deduplicated_name for fusions that
+    // are considered duplicates according to the comparator in this pass.
+    // Currently, the pass doesn't actually deduplicate the fusions.
+    pipeline.AddPass<HloComputationDeduplicator>(
+        /*mark_fusion_duplications=*/true);
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -883,6 +913,27 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<SimplifyFPConversions>();
   }
 
+  // Linearize collective schedule under SPMD partitioning.
+  const bool enable_collecive_schedule_linearizer_for_spmd = [&]() {
+    if (!hlo_module->config().use_spmd_partitioning()) {
+      return false;
+    }
+    if (stream_exec == nullptr) {
+      // not doing online autotuning.
+      return false;
+    }
+    if (!GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
+      // conv auto-tuning is disabled.
+      return false;
+    }
+    return true;
+  }();
+
+  if (enable_collecive_schedule_linearizer_for_spmd) {
+    pipeline.AddPass<CollectivesScheduleLinearizer>(
+        RequiresCollectiveScheduleLinearizer);
+  }
+
   AutotuningConfig config =
       stream_exec
           ? AutotuningConfig{DeviceConfig{stream_exec, device_allocator}}
@@ -899,7 +950,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(TritonAutotuner::LoadAutotuneResults(*autotune_results));
 #endif  // GOOGLE_CUDA
   }
-  pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
+    pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  }
 #if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(config);
   pipeline.AddPass<TritonAutotuner>(
@@ -1186,6 +1239,24 @@ static Status CompileModuleToLlvmIrImpl(
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
     return GetSizeOfShape(buffer_value.shape(), pointer_size);
   };
+
+  HloRematerialization::RematerializationSizes sizes;
+  HloRematerialization remat(
+      [pointer_size](const Shape& shape) {
+        return GetSizeOfShape(shape, pointer_size);
+      },
+      // Assume 75% of the total device memory is available for XLA.
+      /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
+      /*sizes=*/&sizes,
+      HloRematerialization::RematerializationPass::kPostFusion,
+      /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+      /*compact_shape_function=*/nullptr,
+      HloRematerialization::RematerializationMode::kRecomputeAndCompress);
+  TF_ASSIGN_OR_RETURN(bool changed, remat.Run(hlo_module));
+  if (changed) {
+    VLOG(1) << "HloRematerialization saved "
+            << sizes.before_bytes - sizes.after_bytes << " bytes";
+  }
 
   TF_ASSIGN_OR_RETURN(
       results->buffer_assignment,

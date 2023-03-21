@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/lib/io/compression.h"
@@ -397,17 +398,10 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                                          GetSnapshotSplitResponse& response) {
   auto it = assignments_.find(request.worker_address());
   if (it == assignments_.end()) {
-    if (!stream_available(request.stream_index())) {
-      return errors::FailedPrecondition(
-          "worker ", request.worker_address(),
-          " has no known assignment and its desired stream, ",
-          request.stream_index(), ", is unavailable");
-    }
-    if (dead_workers_.contains(request.worker_address())) {
-      return errors::FailedPrecondition(
-          "worker ", request.worker_address(),
-          " is considered to have timed out and must heartbeat to retain its "
-          "stream assignment before requesting more splits");
+    if (!stream_available(request.stream_index()) ||
+        dead_workers_.contains(request.worker_address())) {
+      return StreamAssignmentChanged(request.worker_address(),
+                                     request.stream_index());
     }
     ReassignPreviouslyAssignedStream(request.stream_index(),
                                      request.worker_address());

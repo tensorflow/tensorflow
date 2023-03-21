@@ -50,7 +50,7 @@ Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
 
 LogicalResult tilePartialSoftmax(
     TilingInterface op, PatternRewriter &rewriter,
-    llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
+    llvm::function_ref<FailureOr<TilingResult>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
   // Match all operands to be derived from the same source value in one of two
@@ -94,10 +94,12 @@ LogicalResult tilePartialSoftmax(
     return rewriter.notifyMatchFailure(op, "no common dim/src");
 
   // Tile or fuse cwise root op.
-  FailureOr<Operation *> tiledOp = tileOperationFn(op, *commonReductionDim);
-  if (failed(tiledOp))
+  FailureOr<TilingResult> tilingResult =
+      tileOperationFn(op, *commonReductionDim);
+  if (failed(tilingResult))
     return rewriter.notifyMatchFailure(op, "call to tileOperationFn failed");
-  setLabel(*tiledOp, kTileSoftmaxAppliedLabel);
+  Operation *tiledOp = tilingResult->tiledOps[0];
+  setLabel(tiledOp, kTileSoftmaxAppliedLabel);
 
   // Fuse through the bcast reduction chains.
   Value commonTiledSource;
@@ -106,7 +108,7 @@ LogicalResult tilePartialSoftmax(
     if (!simpleBcastReductions[i]) continue;
 
     // Fuse.
-    Operation *tiledBcast = fuseIthOperandInPlace(rewriter, *tiledOp, i);
+    Operation *tiledBcast = fuseIthOperandInPlace(rewriter, tiledOp, i);
     Operation *tiledReduction =
         fuseIthOperandInPlace(rewriter, tiledBcast, /*i=*/0);
 
@@ -121,7 +123,7 @@ LogicalResult tilePartialSoftmax(
   // Also use the common tiled source value for the remaining operands.
   for (size_t i = 0; i < simpleBcastReductions.size(); i++) {
     if (simpleBcastReductions[i]) continue;
-    (*tiledOp)->setOperand(i, commonTiledSource);
+    tiledOp->setOperand(i, commonTiledSource);
   }
 
   return success();
@@ -151,7 +153,7 @@ struct TilePartialSoftmaxPattern
     return tilePartialSoftmax(
         op, rewriter,
         [&](Operation *op,
-            int64_t commonReductionDim) -> FailureOr<Operation *> {
+            int64_t commonReductionDim) -> FailureOr<TilingResult> {
           // Populate tiling options.
           scf::SCFTilingOptions tilingOptions;
           tilingOptions.setTileSizeComputationFunction(
@@ -170,13 +172,16 @@ struct TilePartialSoftmaxPattern
                 return tileSizeValues;
               });
           // Tile.
-          FailureOr<TilingResult> tilingResult =
+          FailureOr<GMLSTTilingResult> tilingResult =
               tileUsingSCFForallOp(rewriter, op, tilingOptions);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
           setLabel(tilingResult->tiledOps.front(), kTileSoftmaxAppliedLabel);
-          return tilingResult->tiledOps.front();
+          Operation *tiledOp = tilingResult->tiledOps.front();
+          return TilingResult{{tiledOp},
+                              SmallVector<Value>(tiledOp->result_begin(),
+                                                 tiledOp->result_end())};
         });
   }
 
@@ -199,7 +204,7 @@ struct FusePartialSoftmaxPattern
     return tilePartialSoftmax(
         def, rewriter,
         [&](Operation *cwiseOp,
-            int64_t /*commonReductionDim*/) -> FailureOr<Operation *> {
+            int64_t /*commonReductionDim*/) -> FailureOr<TilingResult> {
           auto iface = llvm::dyn_cast_or_null<TilingInterface>(cwiseOp);
           if (!iface) {
             return rewriter.notifyMatchFailure(
@@ -214,15 +219,15 @@ struct FusePartialSoftmaxPattern
           // Fuse.
           SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
           SmallVector<OpFoldResult> sizes = op.getMixedSizes();
-          FailureOr<Value> result =
+          FailureOr<TilingResult> tilingResult =
               iface.generateResultTileValue(rewriter, 0, offsets, sizes);
-          if (failed(result)) {
+          if (failed(tilingResult)) {
             return rewriter.notifyMatchFailure(
                 cwiseOp, "failed to generate result tile");
           }
 
-          rewriter.replaceOp(op, *result);
-          return result->getDefiningOp();
+          rewriter.replaceOp(op, tilingResult->tiledValues[0]);
+          return tilingResult;
         });
   }
 };

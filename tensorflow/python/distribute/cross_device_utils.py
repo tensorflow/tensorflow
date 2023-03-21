@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -558,7 +558,7 @@ class CollectiveReplicaLauncher(object):
                                                   all_lengths[i]])
         return array_ops.concat(split_tensors, 0)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),
               math_ops.reduce_min(all_lengths)),

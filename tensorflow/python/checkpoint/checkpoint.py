@@ -2336,20 +2336,21 @@ class Checkpoint(autotrackable.AutoTrackable):
 
     end_time = time.time()
 
-    # This records the time checkpoint._write() blocks on the main thread.
-    metrics.AddCheckpointWriteDuration(
-        api_label=_CHECKPOINT_V2,
-        microseconds=_get_duration_microseconds(start_time, end_time),
-    )
+    if not checkpoint_context.in_async_metrics_context():
+      # This records the time checkpoint._write() blocks on the main thread.
+      metrics.AddCheckpointWriteDuration(
+          api_label=_CHECKPOINT_V2,
+          microseconds=_get_duration_microseconds(start_time, end_time),
+      )
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      metrics.AddTrainingTimeSaved(
-          api_label=_CHECKPOINT_V2,
-          microseconds=_get_duration_microseconds(
-              _END_TIME_OF_LAST_WRITE, end_time
-          ),
-      )
+      if not checkpoint_context.in_async_metrics_context():
+        metrics.AddTrainingTimeSaved(
+            api_label=_CHECKPOINT_V2,
+            microseconds=_get_duration_microseconds(
+                _END_TIME_OF_LAST_WRITE, end_time)
+        )
       if checkpoint_context.in_preemption_save_context():
         _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
             _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
