@@ -114,6 +114,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
     "//tensorflow/python/autograph/pyct/testing",
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
+    "//tensorflow/python/autograph/pyct/static_analysis:type_inference",
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",

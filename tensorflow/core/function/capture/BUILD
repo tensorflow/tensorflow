@@ -16,7 +16,7 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
     ],
 )
 

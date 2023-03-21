@@ -33,7 +33,8 @@ py_strict_library(
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
     ],
 )
 
@@ -66,7 +67,8 @@ py_strict_library(
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
     ],
 )
 
@@ -101,7 +103,11 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "@gast_archive//:gast",
     ],
 )
@@ -138,7 +144,11 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
+        "//tensorflow/python/autograph/pyct/static_analysis:liveness",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "@gast_archive//:gast",
     ],
 )
@@ -150,7 +160,8 @@ py_strict_library(
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
         "@gast_archive//:gast",
     ],
 )
@@ -163,7 +174,8 @@ py_strict_library(
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
         "@gast_archive//:gast",
     ],
 )
@@ -175,7 +187,8 @@ py_strict_library(
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:annos",
         "@gast_archive//:gast",
     ],
 )
