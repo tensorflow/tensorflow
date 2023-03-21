@@ -1781,6 +1781,13 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
               /*prefer_to_retain_reference=*/false, &buffers_to_release);
   return std::unique_ptr<PjRtBuffer>(std::move(pjrt_buffer));
 }
+
+bool IsAllZeros(const DeviceAssignment& assignment) {
+  return std::all_of(
+      assignment.begin(), assignment.end(),
+      [](const DeviceAssignment::value_type& v) { return v == 0; });
+}
+
 }  // namespace
 
 PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
@@ -1824,8 +1831,23 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
     VLOG(3) << "PjRtStreamExecutorExecutable device_assignment:\n"
             << device_assignment_->ToString();
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
-    CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
-        << "Inconsistent local device count.";
+
+    if ((device_assignment_->replica_count() > 1 ||
+         device_assignment_->computation_count() > 1) &&
+        IsAllZeros(*device_assignment_)) {
+      // This code path should only be triggered when we intentionally compile
+      // an HLO without having enough devices to actually run it. See the
+      // "--run=false" option in
+      // tensorflow/compiler/xla/tools/multihost_hlo_runner/hlo_runner_main.cc.
+      // That will help us debug the XLA compiler locally.
+      LOG(INFO)
+          << "A workaround is in effect to allow compiling multi-device "
+             "HLOs on machines with fewer devices. Don't run this executable.";
+    } else {
+      CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
+          << "Inconsistent local device count.";
+    }
+
     num_partitions = device_assignment_->computation_count();
   }
 
