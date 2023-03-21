@@ -913,21 +913,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<SimplifyFPConversions>();
   }
 
-  // Linearize collective schedule under SPMD partitioning.
-  const bool enable_collecive_schedule_linearizer_for_spmd = [&]() {
-    if (!hlo_module->config().use_spmd_partitioning()) {
-      return false;
-    }
-    if (stream_exec == nullptr) {
-      // not doing online autotuning.
-      return false;
-    }
-    if (!GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-      // conv auto-tuning is disabled.
-      return false;
-    }
-    return true;
-  }();
+  // Linearize collective schedule under SPMD partitioning if online autotuning
+  // of convolutions is enabled.
+  const bool enable_collecive_schedule_linearizer_for_spmd =
+      hlo_module->config().use_spmd_partitioning() && stream_exec != nullptr &&
+      GpuConvAlgorithmPicker::IsEnabled(hlo_module);
 
   if (enable_collecive_schedule_linearizer_for_spmd) {
     pipeline.AddPass<CollectivesScheduleLinearizer>(
