@@ -54,6 +54,7 @@ Operation* GetOpOfValue(Value value) {
 
 void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
   getOperation().walk([&](tf_device::ClusterFuncOp cluster_func_op) {
+    Builder builder(cluster_func_op->getContext());
     // Skip non-tpu device cluster_func.
     auto cluster_id =
         cluster_func_op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
@@ -78,6 +79,9 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
         }
       }
     }
+
+    cluster_func_op->setAttr(TF::kDynamicArgIndexAttr,
+                             builder.getI32ArrayAttr(dynamic_shape_arg_index));
 
     FlatSymbolRefAttr func_attr = cluster_func_op.getFuncAttr();
     func::FuncOp func =

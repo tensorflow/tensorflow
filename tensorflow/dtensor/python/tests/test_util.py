@@ -260,6 +260,10 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       self._backend_configurator.tearDown()
     super().skipTest(reason)
 
+  def skipForPathways(self, reason: str):  # pylint: disable=invalid-name
+    if config.backend_is_pw():
+      self.skipTest(reason)
+
   def assertDTensorEqual(
       self,  # pylint: disable=invalid-name
       expected_result,

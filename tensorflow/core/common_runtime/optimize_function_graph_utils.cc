@@ -364,6 +364,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
+  DUMP_OP_CREATION_STACKTRACES(function_name, "op_stacktraces", graph.get());
+
   // Dump the initial graph.
   DUMP_GRAPH(function_name, "initial", graph.get());
 

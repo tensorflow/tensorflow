@@ -1707,13 +1707,14 @@ void DTensorDevice::ParallelExecuteRegularOperation(
     mlir::ModuleOp mlir_module, const DTensorOperation& doperation,
     const TFE_OpAttrs* attributes, int* num_outputs, TFE_TensorHandle** outputs,
     TF_Status* status) {
-  auto future_result =
+  ASSIGN_OR_RETURN_C_STATUS(
+      ParallelExecutor::ExecutionResult execution_result,
       parallel_executor_->Execute(context, inputs, mlir_module,
-                                  /*entry_function_name=*/"main", attributes);
-  auto result_with_status = future_result.Await();
+                                  /*entry_function_name=*/"main", attributes),
+      status);
+  RETURN_C_STATUS_IF_NOT_OK(execution_result.status.Await(), status);
 
-  std::vector<TensorWithLayout*> typed_outputs;
-  ASSIGN_OR_RETURN_C_STATUS(typed_outputs, result_with_status, status);
+  std::vector<TensorWithLayout*> typed_outputs = execution_result.outputs;
   // assign outputs and take outputs' ownership
   *num_outputs = typed_outputs.size();
   for (int i = 0; i < *num_outputs; ++i) {
@@ -2114,13 +2115,20 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   }
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
+
+  StackTracesMap stack_traces;
+  const StackTracesMap* op_stack_traces =
+      flib_def->GetStackTraces(operation_name);
+  if (op_stack_traces != nullptr) {
+    stack_traces = *op_stack_traces;
+  }
   DTensorOperation dtensor_operation{
       /*name*/ operation_name,
       /*function_def*/
       tensorflow::unwrap(context)->FindFunctionDef(operation_name),
       /*default_mesh*/ *default_mesh_,
       /*stack_traces*/
-      flib_def->GetStackTraces(operation_name),
+      stack_traces,
   };
 
   // First handle DTensor-specific virtual operations.
@@ -2263,9 +2271,11 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   }
   TensorWithLayout* typed_input = reinterpret_cast<TensorWithLayout*>(
       TFE_TensorHandleDevicePointer(tensor, status));
-  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
+  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsSingleDevice() &&
+      !tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 absl::StrCat("Trying to copy a non-replicated DTensor is not "
+                 absl::StrCat("Trying to copy a non-single-device and "
+                              "non-replicated DTensor is not "
                               "supported. Input tensor is: ",
                               typed_input->DebugString())
                      .c_str());

@@ -1515,7 +1515,7 @@ class IotaToMapConverter : public OpConversionPattern<OpTy> {
                                     adaptor.getOperands());
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
-        loc, ValueRange{empty}, empty,
+        loc, ValueRange{}, empty,
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange /*args*/) {
           Value index = nestedBuilder.create<linalg::IndexOp>(
               nestedLoc, iotaOp.getIotaDimension());

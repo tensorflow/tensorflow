@@ -21,18 +21,24 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/test_util.h"
+#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace {
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
-using XlaDeviceExecutablePersistor =
-    DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>;
+using PjRtDeviceCompiler =
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
 class XlaPlatformInfoTest : public ::testing::Test {
  protected:
@@ -43,6 +49,7 @@ class XlaPlatformInfoTest : public ::testing::Test {
   DeviceSetup device_setup_;
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceMetadata) {
   device_setup_.AddDevicesAndSetUp({DEVICE_XLA_GPU});
 
@@ -59,6 +66,58 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceMetadata) {
   EXPECT_EQ(xla_device_compiler->device_type(), metadata->jit_device_type());
   EXPECT_EQ(xla_device_compiler->client(), metadata->client());
 }
+
+TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNonXlaDevice) {
+  device_setup_.AddDevicesAndSetUp({DEVICE_GPU});
+  Device* device = device_setup_.GetDevice(DEVICE_GPU);
+
+  XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+
+  XlaDeviceCompiler* xla_device_compiler = nullptr;
+  TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
+                                      platform_info, &xla_device_compiler));
+  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+
+  EXPECT_EQ(xla_device_compiler->device_type(), DeviceType(DEVICE_GPU_XLA_JIT));
+  EXPECT_TRUE(xla_device_compiler->client() != nullptr);
+}
+
+TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestXlaDevice) {
+  DeviceType device_type = DeviceType(DEVICE_XLA_GPU);
+  device_setup_.AddDevicesAndSetUp({device_type.type()});
+
+  Device* device = device_setup_.GetDevice(device_type.type());
+  const XlaDevice::Metadata* metadata = nullptr;
+  TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
+  XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+
+  PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
+  TF_EXPECT_OK(BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
+                                       &pjrt_device_compiler));
+  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
+  EXPECT_EQ(pjrt_device_compiler->device_type(), metadata->jit_device_type());
+  EXPECT_EQ(pjrt_device_compiler->client(), pjrt_client);
+}
+
+TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerNonXlaDevice) {
+  device_setup_.AddDevicesAndSetUp({DEVICE_GPU});
+  Device* device = device_setup_.GetDevice(DEVICE_GPU);
+  XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+
+  // PjRtClient currently isn't supported on non-XLA devices.
+  PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
+  EXPECT_THAT(
+      BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
+                              &pjrt_device_compiler),
+      testing::StatusIs(error::Code::UNIMPLEMENTED,
+                        ::testing::ContainsRegex(
+                            "The PJRT client for GPU is not created explicitly "
+                            "before its first use and creating this PJRT "
+                            "client on the first use is not implemented")));
+}
+#endif
 
 TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerTpuDevice) {
   DeviceType compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
@@ -83,19 +142,31 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerTpuDevice) {
   EXPECT_EQ(xla_device_compiler->client(), nullptr);
 }
 
-TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerRegularDevice) {
-  device_setup_.AddDevicesAndSetUp({DEVICE_GPU});
-  Device* device = device_setup_.GetDevice(DEVICE_GPU);
+// TODO(b/255826209): Look into using an actual TPU device for the unit test,
+// and move this out of OSS.
+TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTpuDevice) {
+  DeviceType device_type = DeviceType(DEVICE_TPU);
+  DeviceType compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
+  // Use a CPU PjRtClient instead of a TPU one just for testing whether
+  // GetOrCreatePjRtClient() is being called with the correct arguments.
+  TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
+      device_type,
+      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
+          .value()));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
 
-  XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+  // Instead of creating/initializing a TPU device, create a dummy platform_info
+  // for testing purposes. Only XlaPlatformInfo::device_type() is needed to
+  // build the appropriate PjRtDeviceCompiler.
+  XlaPlatformInfo platform_info(device_type, nullptr, nullptr, nullptr);
 
-  XlaDeviceCompiler* xla_device_compiler = nullptr;
-  TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+  PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
+  TF_EXPECT_OK(
+      BuildPjRtDeviceCompiler(platform_info, nullptr, &pjrt_device_compiler));
+  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
 
-  EXPECT_EQ(xla_device_compiler->device_type(), DeviceType(DEVICE_GPU_XLA_JIT));
-  EXPECT_TRUE(xla_device_compiler->client() != nullptr);
+  EXPECT_EQ(pjrt_device_compiler->device_type(), compilation_device_type);
+  EXPECT_EQ(pjrt_device_compiler->client(), pjrt_client);
 }
 
 }  // namespace

@@ -28,7 +28,7 @@ py_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/converters:__init__",
         "//tensorflow/python/autograph/core:converter",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/autograph/operators",

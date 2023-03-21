@@ -1123,6 +1123,11 @@ const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(
   return GetEagerContext()->FindFunctionDef(name);
 }
 
+tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>
+ContextInterface::FindRecord(const std::string& name) const {
+  return GetEagerContext()->FindRecord(name);
+}
+
 const tensorflow::DeviceNameUtils::ParsedName&
 ContextInterface::HostCPUParsedName() const {
   return context_.HostCPUParsedName();

@@ -121,5 +121,24 @@ TEST(CompileMlirUtil, CanonicalizationIsExplicitDuringInlining) {
   EXPECT_THAT(pass_description, HasSubstr(kInlinePass));
 }
 
+TEST(LegalizeMlirTest, LegalizesModuleWithDynamicShape) {
+  constexpr char legalization[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @main(%arg0: tensor<?xi32, #mhlo.type_extensions<bounds = [1]>>) -> tensor<?xi32, #mhlo.type_extensions<bounds = [1]>> {
+      %0 = "tf.Identity"(%arg0) : (tensor<?xi32, #mhlo.type_extensions<bounds = [1]>>) -> tensor<?xi32, #mhlo.type_extensions<bounds = [1]>>
+      func.return %0 : tensor<?xi32, #mhlo.type_extensions<bounds = [1]>>
+    }
+  })";
+
+  std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
+  XlaCompilationResult compilation_result;
+  Status status = CompileSerializedMlirToXlaHlo(
+      legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
+      /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
+      /*shape_determination_fns=*/{}, &compilation_result);
+
+  EXPECT_TRUE(status.ok());
+}
+
 }  // namespace
 }  // namespace tensorflow

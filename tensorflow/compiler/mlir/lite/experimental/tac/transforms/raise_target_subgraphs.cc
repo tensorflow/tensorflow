@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/common/outline_operations.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/subgraph.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
@@ -65,7 +66,20 @@ class RaiseTargetSubgraphsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseTargetSubgraphsPass)
 
+  RaiseTargetSubgraphsPass() = default;
+  RaiseTargetSubgraphsPass(const RaiseTargetSubgraphsPass& other) {
+    this->skip_raise_cpu_ops_ = other.skip_raise_cpu_ops_;
+  }
+  explicit RaiseTargetSubgraphsPass(bool skip_raise_cpu_ops) {
+    skip_raise_cpu_ops_ = skip_raise_cpu_ops;
+  }
+
  private:
+  Option<bool> skip_raise_cpu_ops_{
+      *this, "skip-raise-cpu-ops",
+      llvm::cl::desc("Whether to cluster and raise CPU ops."),
+      llvm::cl::init(false)};
+
   llvm::StringRef getArgument() const final {
     return "tfl-raise-target-subgraphs";
   }
@@ -208,6 +222,20 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
       extract(cluster.ops);
     }
   }
+  if (skip_cpu) {
+    for (auto& op : block) {
+      auto op_device = GetInferenceDeviceTypeForOp(&op);
+      if (op_device_is(op, kCpuDeviceName))
+        // The recently raised func is device type cpu & `op` is a "CPU".
+        // Recursivley call again to raise any non-"CPU" subgraphs contained
+        // within nested region of `op`.
+        for (auto& region : op.getRegions())
+          for (auto& block : region.getBlocks())
+            RaiseTargetSubgraphsForBlock(block, builder, module,
+                                         /*skip_cpu=*/true, func_count,
+                                         side_effect_info);
+    }
+  }
 }
 
 void RaiseTargetSubgraphsPass::runOnOperation() {
@@ -220,15 +248,17 @@ void RaiseTargetSubgraphsPass::runOnOperation() {
     for (auto& block : func) {
       OpBuilder builder = OpBuilder::atBlockBegin(&block);
       RaiseTargetSubgraphsForBlock(block, builder, module,
-                                   /*skip_cpu=*/false, func_count, info);
+                                   /*skip_cpu=*/skip_raise_cpu_ops_, func_count,
+                                   info);
     }
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass() {
-  return std::make_unique<RaiseTargetSubgraphsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass(
+    bool skip_raise_cpu_ops) {
+  return std::make_unique<RaiseTargetSubgraphsPass>(skip_raise_cpu_ops);
 }
 
 static PassRegistration<RaiseTargetSubgraphsPass> pass;

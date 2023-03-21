@@ -932,9 +932,32 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  AnnotateEagerRuntimeConstructionContext(function->fdef);
+  auto fdef_or = function->record->mutable_fdef();
+  if (!fdef_or.ok()) {
+    status->status = fdef_or.status();
+    return;
+  }
+
+  AnnotateEagerRuntimeConstructionContext(*fdef_or.value());
   status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithStackTraces(
-      function->fdef, function->stack_traces);
+      *fdef_or.value(), function->record->stack_traces());
+}
+
+TF_Function* TFE_ContextGetFunction(TFE_Context* ctx, const char* name,
+                                    TF_Status* status) {
+  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> record =
+      tensorflow::unwrap(ctx)->FindRecord(name);
+
+  if (record == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find Function with name: ", name);
+    return nullptr;
+  }
+
+  TF_Function* result = new TF_Function();
+  record->Ref();
+  result->record = record.get();
+  return result;
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,

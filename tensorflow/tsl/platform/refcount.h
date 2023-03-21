@@ -65,6 +65,11 @@ class RefCounted {
   // reference implementation.
   bool TryRef() const;
 
+  // Notifies the instance is deleted. This function is used by WeakRefCounted
+  // for securely propagating the delete notification before the destruction
+  // sequence starts.
+  virtual void NotifyDeleted() const;
+
  private:
   mutable std::atomic_int_fast32_t ref_;
 
@@ -122,7 +127,7 @@ class WeakRefCounted : public RefCounted {
   }
 
  protected:
-  ~WeakRefCounted() override { data_->Notify(); }
+  void NotifyDeleted() const override { data_->Notify(); }
 
  private:
   struct WeakRefData : public RefCounted {
@@ -187,7 +192,7 @@ class WeakRefCounted : public RefCounted {
     }
   };
 
-  RefCountPtr<WeakRefData> data_{new WeakRefData(this)};
+  mutable RefCountPtr<WeakRefData> data_{new WeakRefData(this)};
 
   template <typename T>
   friend class WeakPtr;
@@ -304,6 +309,7 @@ inline bool RefCounted::Unref() const {
   // Using release alone is a bug on systems where acq_rel differs from release.
   // (e.g. arm), according to Herb Sutter's 2012 talk on "Atomic<> Weapons".
   if (ref_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+    NotifyDeleted();
     delete this;
     return true;
   }
@@ -313,6 +319,8 @@ inline bool RefCounted::Unref() const {
 inline int_fast32_t RefCounted::RefCount() const {
   return ref_.load(std::memory_order_acquire);
 }
+
+inline void RefCounted::NotifyDeleted() const {}
 
 inline bool RefCounted::RefCountIsOne() const {
   return (ref_.load(std::memory_order_acquire) == 1);

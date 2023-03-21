@@ -15,7 +15,7 @@ py_strict_library(
     deps = [
         ":config",
         ":converter",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
     ],

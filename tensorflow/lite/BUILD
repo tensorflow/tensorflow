@@ -324,29 +324,31 @@ cc_library(
     alwayslink = 1,
 )
 
-# Benchmarks should link this library to see the actual result.
-cc_library(
-    name = "tensorflow_profiler_logger",
-    srcs = ["tensorflow_profiler_logger.cc"],
-    hdrs = ["tensorflow_profiler_logger.h"],
-    copts = tflite_copts_warnings(),
-    deps = [
-        ":macros",
-        "//base:addressmap",
-        "//base:examine_stack",
-        "//base:low_level_alloc",
-        "//base:malloc_hook",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/debugging:stacktrace",
-        "@com_google_absl//absl/debugging:symbolize",
-        "@com_google_absl//absl/synchronization",
-    ],
-    alwayslink = 1,
-)
+# copybara:uncomment_begin(google-only)
+# # Benchmarks should link this library to see the actual result.
+# cc_library(
+#     name = "tensorflow_profiler_logger",
+#     srcs = ["tensorflow_profiler_logger.cc"],
+#     hdrs = ["tensorflow_profiler_logger.h"],
+#     copts = tflite_copts_warnings(),
+#     deps = [
+#         ":macros",
+#         "//base:addressmap",
+#         "//base:examine_stack",
+#         "//base:low_level_alloc",
+#         "//base:malloc_hook",
+#         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+#         "//tensorflow/core/profiler/lib:traceme",
+#         "//tensorflow/lite/core/c:common",
+#         "//tensorflow/lite/kernels:kernel_util",
+#         "@com_google_absl//absl/base",
+#         "@com_google_absl//absl/debugging:stacktrace",
+#         "@com_google_absl//absl/debugging:symbolize",
+#         "@com_google_absl//absl/synchronization",
+#     ],
+#     alwayslink = 1,
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "simple_memory_arena_debug_dump",

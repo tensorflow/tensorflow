@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:pjrt_device_context",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",

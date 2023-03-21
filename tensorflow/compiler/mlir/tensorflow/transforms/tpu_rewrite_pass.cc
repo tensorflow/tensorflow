@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -207,6 +209,15 @@ LogicalResult SetMetadataProtoArgs(
   // Set args metadata in proto.
   mlir::StringAttr replication_attr_name = mlir::StringAttr::get(
       op.getContext(), "mhlo.is_same_data_across_replicas");
+
+  auto dynamic_arg_idx = op->getAttrOfType<ArrayAttr>(TF::kDynamicArgIndexAttr);
+  llvm::SmallSet<int, 4> dynamic_arg_idx_set;
+  if (dynamic_arg_idx) {
+    for (auto idx : dynamic_arg_idx.getValue()) {
+      dynamic_arg_idx_set.insert(idx.dyn_cast<IntegerAttr>().getInt());
+    }
+  }
+
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();
@@ -247,6 +258,10 @@ LogicalResult SetMetadataProtoArgs(
     mlir::UnitAttr attr = op.getFuncOp().getArgAttrOfType<mlir::UnitAttr>(
         index, replication_attr_name);
     arg->set_is_same_data_across_replicas(attr != nullptr);
+
+    // Currently only support first dimension to be bounded dynamic.
+    arg->mutable_is_bounded_dynamic_dim()->Add(
+        dynamic_arg_idx_set.contains(index));
   }
 
   return success();

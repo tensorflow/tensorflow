@@ -136,5 +136,39 @@ TEST(DebugDataDumper, DumpMLIRModuleLongFileNameCrashTest) {
             Env::Default()->FileExists(dumpFilename).code());
 }
 
+TEST(DebugDataDumper, DumpOpCreationStacktracesTest) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
+  std::string dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  setenv("TF_DUMP_OP_CREATION_STACKTRACES", "1", 1);
+
+  DUMP_OP_CREATION_STACKTRACES("DumpOpCreationStacktracesTest", "test", &graph);
+
+  std::string dumpFilename =
+      io::JoinPath(dir, "DumpOpCreationStacktracesTest.0.test.csv");
+  EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
+}
+
+TEST(DebugDataDumper, NoDumpOpCreationStacktracesTest) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
+  std::string dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+
+  DUMP_OP_CREATION_STACKTRACES("DumpOpCreationStacktracesTest", "test", &graph);
+
+  std::string dumpFilename =
+      io::JoinPath(dir, "DumpOpCreationStacktracesTest.0.test.json");
+  EXPECT_EQ(absl::StatusCode::kNotFound,
+            Env::Default()->FileExists(dumpFilename).code());
+}
+
 }  // namespace
 }  // namespace tensorflow

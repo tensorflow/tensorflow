@@ -97,8 +97,6 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",

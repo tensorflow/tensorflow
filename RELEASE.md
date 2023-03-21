@@ -76,6 +76,11 @@
         `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these
         classes to do instance type checking and type annotations for
         layer/model inputs and outputs.
+    *   All the `tf.keras.dtensor.experimental.optimizers` classes have been 
+        merged with `tf.keras.optimizers`. You can migrate your code to use
+        `tf.keras.optimizers` directly. The API namespace for
+        `tf.keras.dtensor.experimental.optimizers` will be removed in future
+        releases.
 
 *   `tf.function`:
 
@@ -129,6 +134,11 @@
     *   List of members of dtensor.Layout and dtensor.Mesh have slightly changed
         as part of efforts to consolidate the C++ and Python source
         code with pybind11. Most notably, Layout.serialized_string is removed.
+
+*   `tf.experimental.ExtensionType`:
+
+    *   `tf.experimental.ExtensionType` now supports Python `tuple` as
+        the type annotation of its fields.
 
 ## Thanks to our Contributors
 
