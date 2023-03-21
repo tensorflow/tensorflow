@@ -284,7 +284,6 @@ cc_library(
         "py_client.cc",
         "py_executable.cc",
         "py_values.cc",
-        "sharded_device_array.cc",
         "sharding.cc",
     ] + if_cuda_or_rocm([
         "py_client_gpu.cc",
