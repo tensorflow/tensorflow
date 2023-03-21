@@ -839,13 +839,9 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
-<<<<<<< HEAD
-        "//tensorflow/tsl/lib/gtl:map_util",
 	"//tensorflow/tsl/platform:random",
-=======
         "//tensorflow/tsl/profiler/lib:scoped_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
->>>>>>> google_upstream/master
     ] + if_gpu_is_configured([
         ":cholesky_thunk",
         ":precompiled_kernels",

@@ -1107,14 +1107,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     pos = gcnArchName.find("gfx");
     if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
     VLOG(3) << "GCN arch name (stripped) " << gcnArchName;
-<<<<<<< HEAD
-    return ((gcnArchName == "908") ||
-            (gcnArchName == "90a") || (gcnArchName == "910"));
-
-=======
     return ((gcnArchName == "908") || (gcnArchName == "909") ||
             (gcnArchName == "90a") || (gcnArchName == "940"));
->>>>>>> google_upstream/master
   }
   return tsl::Status{
       tsl::error::INTERNAL,
@@ -1248,28 +1242,6 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return true;
 }
 
-<<<<<<< HEAD
-static uint64 GetReservedMemory() {
-  uint64 reserve = 0;
-  hipDeviceProp_t props;
-  hipDevice_t dev;
-  hipError_t res = wrap::hipGetDevice(&dev);
-  if(res == hipSuccess) {
-    res = wrap::hipGetDeviceProperties(&props, dev);
-    if (res == hipSuccess) {
-      std::string gcnArchName = props.gcnArchName;
-  // On gfx90a, we hide 1 GB of GPU memory from TF, to allow for late
-  // allocations by internal ROCm libraries (e.g. rocBLAS alone needs
-  // ~200 MB to put its kernels as of ROCm 4.1)
-      if (gcnArchName.substr(0,6)=="gfx908")
-        reserve = 1048576*512;
-      else if (gcnArchName.substr(0,6)=="gfx90a"
-          || gcnArchName.substr(0,6)=="gfx910")
-        reserve = 1048576*1024;
-    }
-  }
-  return reserve;
-=======
 /* static */ bool GetReservedMemory(uint64_t* reserve) {
   hipDeviceProp_t props;
   hipDevice_t dev;
@@ -1298,7 +1270,6 @@ static uint64 GetReservedMemory() {
     *reserve = RESERVED_GFX9_X;
   }
   return true;
->>>>>>> google_upstream/master
 }
 
 /* static */ bool GpuDriver::GetDeviceMemoryInfo(GpuContext* context,
@@ -1312,14 +1283,6 @@ static uint64 GetReservedMemory() {
     LOG(ERROR) << "failed to query device memory info: " << ToString(res);
     return false;
   }
-<<<<<<< HEAD
-  uint64 reserve = GetReservedMemory();
-  VLOG(1) << "Device memory: " << total/1048576 << " MB total, "
-          << free/1048576 << " MB free, reserving " 
-          << reserve/1048576 << " MB";
-  *free_out = free>=reserve ? free-reserve : 0;
-  *total_out = total-reserve;
-=======
 
   uint64_t reserve = 0;
   if (!GetReservedMemory(&reserve)) {
@@ -1339,7 +1302,6 @@ static uint64 GetReservedMemory() {
 
   *free_out = free >= reserve ? free - reserve : 0;
   *total_out = total - reserve;
->>>>>>> google_upstream/master
   return true;
 }
 
@@ -1351,17 +1313,12 @@ static uint64 GetReservedMemory() {
     LOG(ERROR) << "failed to query total available memory: " << ToString(res);
     return false;
   }
-<<<<<<< HEAD
-  uint64 reserve = GetReservedMemory();
-  *result = value-reserve;
-=======
   uint64_t reserve = 0;
   if (!GetReservedMemory(&reserve)) {
     LOG(ERROR) << "failed to reserved device memory for ROCm libraries";
     return false;
   }
   *result = value - reserve;
->>>>>>> google_upstream/master
   return true;
 }
 

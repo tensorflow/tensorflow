@@ -205,7 +205,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-<<<<<<< HEAD
   // Note: On ROCm side, we do bare minimal to make the test pass.
   // "atan2" function is in different code generation path from nvptx: on
   // ROCm platform, it get pulled in from ROCm-Device-Libs, whereas in
@@ -214,12 +213,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
 ; CHECK: tail call float @llvm.fmuladd.f32(float %{{.*}}, float 0x3F65A54B00000000, float 0xBF8F4B2180000000)
 )"
                                          : R"(
-=======
-  // There is only 1 load, because we pass the `p0` parameter to the kernel only
-  // once.
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
->>>>>>> google_upstream/master
 ; CHECK: load float
 ; CHECK-NOT: load float
 }
