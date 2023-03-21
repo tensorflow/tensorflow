@@ -162,7 +162,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK",
+        "@XNNPACK//:XNNPACK_test_mode",
     ],
 )
 
