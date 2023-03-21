@@ -5,6 +5,7 @@ load(
     "tflite_copts",
     "tflite_copts_warnings",
     "tflite_custom_c_library",
+    "tflite_linkopts_no_undefined",
     "tflite_self_contained_libs_test_suite",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -25,7 +26,7 @@ package(
 #   - Windows: `tensorflowlite_c.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite_c",
-    linkopts = select({
+    linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:ios": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
         ],
@@ -34,7 +35,6 @@ tflite_cc_shared_object(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
             "-Wl,--version-script,$(location //tensorflow/lite/c:version_script.lds)",
         ],
     }),
