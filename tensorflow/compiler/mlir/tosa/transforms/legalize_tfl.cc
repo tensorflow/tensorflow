@@ -1190,6 +1190,13 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
   auto average_etype = input_type.getElementType();
   auto average_type = output_type.clone(average_etype);
 
+  // Tosa supports FP16 and FP32 accumulator type for FP16 input. When the time
+  // FP16 is supported, the accumulator type can be selected based on trade-off
+  // between performance and accuracy. Set to FP32 by default.
+  TypeAttr acc_attr = average_etype.isa<FloatType>()
+                          ? mlir::TypeAttr::get(rewriter.getF32Type())
+                          : mlir::TypeAttr::get(rewriter.getIntegerType(32));
+
   Value result;
   if (average_etype.isa<quant::UniformQuantizedType>()) {
     // TensorFlow Lite doesn't use the zero point when calculating
@@ -1200,11 +1207,11 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
         /*input_zp=*/0, /*output_zp=*/0);
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
         rewriter, op->getLoc(), average_type, tfl_avgpool_op.getInput(),
-        kernel_size, stride, pad, quant_attr);
+        kernel_size, stride, pad, acc_attr, quant_attr);
   } else {
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
         rewriter, op->getLoc(), average_type, tfl_avgpool_op.getInput(),
-        kernel_size, stride, pad);
+        kernel_size, stride, pad, acc_attr);
   }
   if (average_type != output_type) {
     result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
