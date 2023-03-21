@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -185,9 +186,14 @@ mlir::LogicalResult HandleTileShardedInputs(
   // from which sharded data will be fed into TPUExcute ops -- sorted by
   // row major order.
   tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
-  for (auto split_op : split_ops_for_tiled_input)
-    tiled_inputs->append(split_op.getResults().begin(),
-                         split_op.getResults().end());
+  // No split happens. Insert the original value.
+  if (split_ops_for_tiled_input.empty()) {
+    tiled_inputs->push_back(original_source);
+  } else {
+    for (auto split_op : split_ops_for_tiled_input)
+      tiled_inputs->append(split_op.getResults().begin(),
+                           split_op.getResults().end());
+  }
 
   return mlir::success();
 }
