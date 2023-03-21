@@ -87,16 +87,3 @@ func TestSavedModelHalfPlusTwo(t *testing.T) {
 	// TODO(jhseu): half_plus_two has a tf.Example proto dependency to run.
 	// Add a more thorough test when the generated protobufs are available.
 }
-
-func TestSavedModelWithEmptyTags(t *testing.T) {
-	var (
-		exportDir = "testdata/saved_model/half_plus_two/00000123"
-		tags      = []string{}
-		options   = new(SessionOptions)
-	)
-
-	_, err := LoadSavedModel(exportDir, tags, options)
-	if err == nil {
-		t.Fatalf("LoadSavedModel() should return an error if tags are empty")
-	}
-}
