@@ -2271,9 +2271,11 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   }
   TensorWithLayout* typed_input = reinterpret_cast<TensorWithLayout*>(
       TFE_TensorHandleDevicePointer(tensor, status));
-  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
+  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsSingleDevice() &&
+      !tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 absl::StrCat("Trying to copy a non-replicated DTensor is not "
+                 absl::StrCat("Trying to copy a non-single-device and "
+                              "non-replicated DTensor is not "
                               "supported. Input tensor is: ",
                               typed_input->DebugString())
                      .c_str());
