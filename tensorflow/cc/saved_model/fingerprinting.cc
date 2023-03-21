@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/container/btree_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
@@ -160,6 +162,27 @@ StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     return result;
   }
   return found_pb;
+}
+
+std::string Singleprint(uint64 graph_def_program_hash,
+                        uint64 signature_def_hash,
+                        uint64 saved_object_graph_hash,
+                        uint64 checkpoint_hash) {
+  return std::to_string(graph_def_program_hash) + "/" +
+         std::to_string(signature_def_hash) + "/" +
+         std::to_string(saved_object_graph_hash) + "/" +
+         std::to_string(checkpoint_hash);
+}
+
+std::string Singleprint(const FingerprintDef& fingerprint) {
+  return Singleprint(
+      fingerprint.graph_def_program_hash(), fingerprint.signature_def_hash(),
+      fingerprint.saved_object_graph_hash(), fingerprint.checkpoint_hash());
+}
+
+std::string Singleprint(absl::string_view export_dir) {
+  FingerprintDef fingerprint = ReadSavedModelFingerprint(export_dir).value();
+  return Singleprint(fingerprint);
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

@@ -22,7 +22,6 @@ limitations under the License.
 #include <numeric>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -186,41 +185,45 @@ std::string& Mesh::tpu_host_mesh() {
 StatusOr<Mesh> Mesh::ParseFromProto(const MeshProto& proto) {
   Mesh mesh;
   mesh.name_ = proto.name();
-
-  for (const auto& device : proto.local_devices()) {
-    mesh.local_devices_.push_back(device);
-  }
-
-  // Define local device ids.
-  for (const auto& device_id : proto.local_device_ids()) {
-    mesh.local_device_ids_.push_back(device_id);
-  }
-
-  for (const auto& device_id : proto.global_device_ids()) {
-    mesh.global_device_ids_.push_back(device_id);
-  }
-
-  for (const auto& device : proto.global_devices()) {
-    mesh.global_devices_.push_back(device);
-  }
-
-  // Assign Mesh Dimensions.
-  mesh.mesh_dims_.resize(proto.mesh_dimensions_size());
-  for (int i = 0; i < proto.mesh_dimensions_size(); ++i) {
-    const MeshDimensionProto& dim = proto.mesh_dimensions(i);
-    mesh.mesh_dims_[i].name = dim.name();
-    mesh.mesh_dims_[i].size = dim.size();
-  }
-
   mesh.use_xla_spmd_ = proto.use_xla_spmd();
 
-  // Check invariants.
-  int64 mesh_size = mesh.size();
-  int num_devices = proto.global_device_ids_size();
-  if (mesh_size > 0 && mesh_size != num_devices) {
-    TF_RETURN_WITH_CONTEXT(
-        errors::InvalidArgument("Number of devices ", num_devices,
-                                " not matching mesh size ", mesh_size));
+  if (proto.single_device().empty()) {
+    mesh.mesh_type_ = MeshType::kTile;
+    for (const auto& device : proto.local_devices()) {
+      mesh.local_devices_.push_back(device);
+    }
+
+    // Define local device ids.
+    for (const auto& device_id : proto.local_device_ids()) {
+      mesh.local_device_ids_.push_back(device_id);
+    }
+
+    for (const auto& device_id : proto.global_device_ids()) {
+      mesh.global_device_ids_.push_back(device_id);
+    }
+
+    for (const auto& device : proto.global_devices()) {
+      mesh.global_devices_.push_back(device);
+    }
+
+    // Assign Mesh Dimensions.
+    mesh.mesh_dims_.resize(proto.mesh_dimensions_size());
+    for (int i = 0; i < proto.mesh_dimensions_size(); ++i) {
+      const MeshDimensionProto& dim = proto.mesh_dimensions(i);
+      mesh.mesh_dims_[i].name = dim.name();
+      mesh.mesh_dims_[i].size = dim.size();
+    }
+    // Check invariants.
+    int64 mesh_size = mesh.size();
+    int num_devices = proto.global_device_ids_size();
+    if (mesh_size > 0 && mesh_size != num_devices) {
+      TF_RETURN_WITH_CONTEXT(
+          errors::InvalidArgument("Number of devices ", num_devices,
+                                  " not matching mesh size ", mesh_size));
+    }
+  } else {
+    mesh.mesh_type_ = MeshType::kSingleDevice;
+    mesh.single_device_ = proto.single_device();
   }
   return mesh;
 }
@@ -229,6 +232,7 @@ StatusOr<Mesh> Mesh::ParseFromProto(const MeshProto& proto) {
 StatusOr<Mesh> Mesh::GetAbstractMesh(
     const std::string& name, const std::vector<MeshDimension>& mesh_dims) {
   Mesh mesh;
+  mesh.mesh_type_ = MeshType::kTile;
   mesh.name_ = name;
   mesh.mesh_dims_ = mesh_dims;
 
@@ -304,6 +308,17 @@ StatusOr<Mesh> Mesh::GetMesh(const std::string& name,
   return mesh;
 }
 
+// static
+StatusOr<Mesh> Mesh::GetSingleDeviceMesh(absl::string_view single_device) {
+  if (single_device.empty()) {
+    return errors::InvalidArgument("Single device is empty.");
+  }
+  Mesh mesh;
+  mesh.mesh_type_ = MeshType::kSingleDevice;
+  mesh.single_device_ = single_device;
+  return mesh;
+}
+
 StatusOr<int64_t> Mesh::dim_size(absl::string_view name) const {
   for (const auto& mesh_dim : dims()) {
     if (name == mesh_dim.name) {
@@ -327,10 +342,17 @@ std::vector<int64_t> Mesh::dim_sizes() const {
 }
 
 bool Mesh::operator==(const Mesh& b) const {
-  return protobuf::util::MessageDifferencer::Equals(ToProto(), b.ToProto());
+  StatusOr<MeshProto> this_proto = ToProto();
+  StatusOr<MeshProto> b_proto = b.ToProto();
+  if (!this_proto.ok() || !b_proto.ok()) {
+    return false;
+  }
+  return protobuf::util::MessageDifferencer::Equals(*this_proto, *b_proto);
 }
 
-bool Mesh::IsEmpty() const { return global_device_ids_.empty(); }
+bool Mesh::IsEmpty() const {
+  return mesh_type_ == MeshType::kTile && global_device_ids_.empty();
+}
 
 StatusOr<const std::vector<DeviceNameUtils::ParsedName>> Mesh::ParsedDevices()
     const {
@@ -428,43 +450,64 @@ int64 Mesh::size() const {
 
 Mesh Mesh::Empty() { return Mesh(); }
 
-MeshProto Mesh::ToProto() const {
+StatusOr<MeshProto> Mesh::ToProto() const {
   MeshProto mesh_proto;
   mesh_proto.set_name(name());
   mesh_proto.set_use_xla_spmd(use_xla_spmd());
 
-  for (const auto& d : local_devices_) {
-    mesh_proto.add_local_devices(d);
-  }
+  switch (mesh_type_) {
+    case MeshType::kTile: {
+      for (const auto& d : local_devices_) {
+        mesh_proto.add_local_devices(d);
+      }
 
-  for (const auto& i : local_device_ids_) {
-    mesh_proto.add_local_device_ids(i);
-  }
+      for (const auto& i : local_device_ids_) {
+        mesh_proto.add_local_device_ids(i);
+      }
 
-  for (const auto& i : global_device_ids_) {
-    mesh_proto.add_global_device_ids(i);
-  }
+      for (const auto& i : global_device_ids_) {
+        mesh_proto.add_global_device_ids(i);
+      }
 
-  for (const auto& dim : mesh_dims_) {
-    MeshDimensionProto* mesh_dim_proto = mesh_proto.add_mesh_dimensions();
-    mesh_dim_proto->set_name(dim.name);
-    mesh_dim_proto->set_size(dim.size);
-  }
+      auto& mesh_dimensions = *mesh_proto.mutable_mesh_dimensions();
+      mesh_dimensions.Reserve(mesh_dims_.size());
+      for (const auto& dim : mesh_dims_) {
+        MeshDimensionProto* mesh_dim_proto = mesh_dimensions.Add();
+        mesh_dim_proto->set_name(dim.name);
+        mesh_dim_proto->set_size(dim.size);
+      }
 
-  for (const auto& d : global_devices_) {
-    mesh_proto.add_global_devices(d);
+      for (const auto& d : global_devices_) {
+        mesh_proto.add_global_devices(d);
+      }
+      break;
+    }
+    case MeshType::kSingleDevice: {
+      *mesh_proto.mutable_single_device() = single_device_;
+      break;
+    }
+    default: {
+      return errors::InvalidArgument("Unsupported mesh type ",
+                                     static_cast<int>(mesh_type_));
+    }
   }
   return mesh_proto;
 }
 
 std::string Mesh::ToString() const {
-  if (Mesh::IsEmpty()) return kEmptyMeshString;
+  if (Mesh::IsEmpty()) {
+    return kEmptyMeshString;
+  }
+  if (mesh_type_ == MeshType::kSingleDevice) {
+    return single_device_;
+  }
 
   // We use "|" to separate name, mesh dimensions and devices.
   std::string mesh_str = absl::StrCat(Mesh::name(), "|");
 
   // Add mesh dimensions
   absl::InlinedVector<std::string, 4> mesh_dim_lst;
+  mesh_dim_lst.reserve(mesh_dims_.size());
   for (const auto& dim : mesh_dims_)
     mesh_dim_lst.push_back(absl::StrCat(dim.name, "=", dim.size));
   mesh_str += absl::StrJoin(mesh_dim_lst, ",") + "|";
@@ -567,10 +610,17 @@ StatusOr<Mesh> GenerateMeshDevicesForTests(
 }  // namespace
 
 // static
-StatusOr<Mesh> Mesh::FromString(std::string_view str) {
+StatusOr<Mesh> Mesh::FromString(absl::string_view str) {
   if (str == kEmptyMeshString) return Mesh::Empty();
 
   std::vector<std::string> mesh_parts = absl::StrSplit(str, '|');
+
+  if (mesh_parts.size() == 1 && !mesh_parts[0].empty()) {
+    Mesh mesh;
+    mesh.mesh_type_ = MeshType::kSingleDevice;
+    mesh.single_device_ = str;
+    return mesh;
+  }
 
   // Check formatting error.
   if (mesh_parts.size() != 3 && mesh_parts.size() != 5 &&
@@ -698,6 +748,7 @@ Mesh Mesh::CreateMesh(const std::string& mesh_name,
                       const std::vector<std::string>& local_devices_str,
                       const bool use_xla_spmd) {
   Mesh mesh;
+  mesh.mesh_type_ = MeshType::kTile;
   mesh.name_ = mesh_name;
   mesh.use_xla_spmd_ = use_xla_spmd;
   mesh.mesh_dims_.resize(dim_names.size());
@@ -781,6 +832,16 @@ StatusOr<Layout> Layout::GetLayout(
   }
   // After checking sharding_specs are legal, append and return layout.
   layout.sharding_specs_ = sharding_specs;
+  return layout;
+}
+
+StatusOr<Layout> Layout::GetSingleDeviceLayout(const Mesh& mesh) {
+  if (!mesh.IsSingleDevice()) {
+    return errors::InvalidArgument(
+        "The input mesh is not a single device mesh");
+  }
+  Layout layout;
+  layout.mesh_ = mesh;
   return layout;
 }
 
@@ -970,7 +1031,14 @@ size_t Layout::num_shards_for_dim(const ShardingSpec& dim) const {
   return mesh().dim_size(name).value();
 }
 
+size_t Layout::num_shards_for_dim(int dim) const {
+  return num_shards_for_dim(sharding_specs_[dim]);
+}
+
 bool Layout::IsFullyReplicated() const {
+  if (!mesh_.IsTile()) {
+    return false;
+  }
   for (const auto& sharding_spec : sharding_specs_) {
     if (num_shards_for_dim(sharding_spec) > 1) {
       return false;
@@ -980,11 +1048,15 @@ bool Layout::IsFullyReplicated() const {
 }
 
 bool Layout::IsLastDimReplicated() const {
-  return (sharding_specs_.empty()) ||
-         (num_shards_for_dim(sharding_specs_.back()) == 1);
+  return (mesh_.IsTile() &&
+          ((sharding_specs_.empty()) ||
+           (num_shards_for_dim(sharding_specs_.back()) == 1)));
 }
 
 bool Layout::IsBatchParallel() const {
+  if (!mesh_.IsTile()) {
+    return false;
+  }
   if (sharding_specs_.empty()) {
     return true;
   }
@@ -1000,6 +1072,9 @@ bool Layout::IsBatchParallel() const {
 
 // TODO(samuelslee) Replace this with the IsBatchParallel() everywhere
 bool Layout::IsBatchParallel(int non_batch_rank) const {
+  if (!mesh_.IsTile()) {
+    return false;
+  }
   if (sharding_specs_.empty()) return true;
   for (int i = rank() - non_batch_rank; i < rank(); ++i) {
     if (num_shards_for_dim(sharding_specs_[i]) != 1) return false;
@@ -1007,9 +1082,9 @@ bool Layout::IsBatchParallel(int non_batch_rank) const {
   return true;
 }
 
-LayoutProto Layout::ToProto() const {
+StatusOr<LayoutProto> Layout::ToProto() const {
   LayoutProto proto;
-  *proto.mutable_mesh_config() = mesh_.ToProto();
+  TF_ASSIGN_OR_RETURN(*proto.mutable_mesh_config(), mesh_.ToProto());
   for (const auto& dim : sharding_specs_) {
     *proto.add_sharding_specs() = dim;
   }
@@ -1031,7 +1106,12 @@ bool Layout::IsEquivalent(const Layout& b) const {
 }
 
 bool Layout::operator==(const Layout& b) const {
-  return protobuf::util::MessageDifferencer::Equals(ToProto(), b.ToProto());
+  StatusOr<LayoutProto> this_proto = ToProto();
+  StatusOr<LayoutProto> b_proto = b.ToProto();
+  if (!this_proto.ok() || !b_proto.ok()) {
+    return false;
+  }
+  return protobuf::util::MessageDifferencer::Equals(*this_proto, *b_proto);
 }
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
@@ -1087,13 +1167,17 @@ PartialTensorShape Layout::LocalShapeFromGlobalShape(
 
 StatusOr<Layout> Layout::FromProto(const LayoutProto& proto) {
   Layout layout;
-  for (const auto& spec : proto.sharding_specs())
-    layout.sharding_specs_.push_back(spec);
+  if (proto.mesh_config().single_device().empty()) {
+    for (const auto& spec : proto.sharding_specs())
+      layout.sharding_specs_.push_back(spec);
 
-  TF_ASSIGN_OR_RETURN(auto mesh, Mesh::ParseFromProto(proto.mesh_config()));
-  layout.mesh_ = std::move(mesh);
-
-  return GetLayout(layout.sharding_specs_, layout.mesh_);
+    TF_ASSIGN_OR_RETURN(auto mesh, Mesh::ParseFromProto(proto.mesh_config()));
+    layout.mesh_ = std::move(mesh);
+    return GetLayout(layout.sharding_specs_, layout.mesh_);
+  } else {
+    TF_ASSIGN_OR_RETURN(auto mesh, Mesh::ParseFromProto(proto.mesh_config()));
+    return GetSingleDeviceLayout(mesh);
+  }
 }
 
 Layout Layout::ReplicatedOnMesh(const Mesh& mesh, int rank) {
@@ -1135,7 +1219,7 @@ StatusOr<Layout> Layout::Transposed2D(const Layout& layout) {
 }
 
 // static
-StatusOr<Layout> Layout::FromString(std::string layout_str) {
+StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
   if (layout_str == kEmptyLayoutString) return Layout::Empty();
 
   // Print sharding specs.
@@ -1147,7 +1231,8 @@ StatusOr<Layout> Layout::FromString(std::string layout_str) {
   }
   // Substract prefixes.
   absl::string_view sharding_spec_str = layout_parts[0];
-  absl::ConsumePrefix(&sharding_spec_str, "sharding_specs:");
+  const bool is_tile =
+      absl::ConsumePrefix(&sharding_spec_str, "sharding_specs:");
 
   absl::string_view mesh_str = layout_parts[1];
   absl::ConsumePrefix(&mesh_str, "mesh:");
@@ -1158,10 +1243,14 @@ StatusOr<Layout> Layout::FromString(std::string layout_str) {
   sharding_spec_strs.pop_back();
 
   // Add mesh.
-  TF_ASSIGN_OR_RETURN(Mesh mesh, Mesh::FromString(string(mesh_str)));
+  TF_ASSIGN_OR_RETURN(Mesh mesh, Mesh::FromString(mesh_str));
   // Try to create layout.
-  TF_ASSIGN_OR_RETURN(Layout layout,
-                      Layout::GetLayout(sharding_spec_strs, mesh));
+  Layout layout;
+  if (is_tile) {
+    TF_ASSIGN_OR_RETURN(layout, Layout::GetLayout(sharding_spec_strs, mesh));
+  } else {
+    TF_ASSIGN_OR_RETURN(layout, Layout::GetSingleDeviceLayout(mesh));
+  }
   return layout;
 }
 
@@ -1173,7 +1262,12 @@ std::vector<std::string> Layout::sharding_spec_strs() const {
 }
 
 std::string Layout::ToString() const {
-  if (Layout::IsEmpty()) return kEmptyLayoutString;
+  if (Layout::IsEmpty()) {
+    return kEmptyLayoutString;
+  }
+  if (mesh_.IsSingleDevice()) {
+    return absl::StrCat("maximal:true, mesh:", mesh_.ToString());
+  }
 
   std::string layout_str = "sharding_specs:";
   // Print sharding specs.
@@ -1186,10 +1280,10 @@ std::string Layout::ToString() const {
   return layout_str;
 }
 
-Layout Layout::GetLayoutWithReducedDims(
+StatusOr<Layout> Layout::GetLayoutWithReducedDims(
     const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const {
   dtensor::LayoutProto output_layout;
-  *output_layout.mutable_mesh_config() = mesh().ToProto();
+  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
 
   for (int i = 0; i < rank(); ++i) {
     // reduced_dims may contain negative values.
@@ -1203,12 +1297,12 @@ Layout Layout::GetLayoutWithReducedDims(
   return Layout::FromProto(output_layout).value();
 }
 
-Layout Layout::Truncate(int64 split_point, bool end) const {
+StatusOr<Layout> Layout::Truncate(int64 split_point, bool end) const {
   if ((split_point == 0 && end) || (split_point == rank() && !end))
     return *this;
 
   dtensor::LayoutProto output_layout;
-  *output_layout.mutable_mesh_config() = mesh().ToProto();
+  TF_ASSIGN_OR_RETURN(*output_layout.mutable_mesh_config(), mesh().ToProto());
 
   if (end) {
     for (int i = split_point; i < rank(); ++i)
@@ -1266,8 +1360,8 @@ StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
           "dimension: ",
           layout_b.sharding_spec(i), " is used in both layouts.");
 
-  LayoutProto layout_proto_a = layout_a.ToProto();
-  LayoutProto layout_proto_b = layout_b.ToProto();
+  TF_ASSIGN_OR_RETURN(LayoutProto layout_proto_a, layout_a.ToProto());
+  TF_ASSIGN_OR_RETURN(LayoutProto layout_proto_b, layout_b.ToProto());
   LayoutProto output_layout_proto;
 
   *output_layout_proto.mutable_mesh_config() = layout_proto_a.mesh_config();

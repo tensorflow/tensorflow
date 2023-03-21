@@ -351,9 +351,6 @@ class TfrtCpuBuffer final : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
-      bool discard_cached_copy, std::optional<xla::Layout> layout);
-
   // Acquires the device buffer for shared read-only usages, and it also adds
   // the `usage_event` to it. Any donation event in the future is expected to be
   // serialized after all the usage events added through this method. Returns

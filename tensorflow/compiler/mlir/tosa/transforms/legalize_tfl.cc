@@ -104,6 +104,7 @@ DECL_CONVERT_OP(Sub);
 DECL_CONVERT_OP(Mul);
 DECL_CONVERT_OP(Square);
 DECL_CONVERT_OP(SquaredDifference);
+DECL_CONVERT_OP(Sign);
 DECL_CONVERT_OP(Round);
 DECL_CONVERT_OP(Div);
 DECL_CONVERT_OP(Maximum);
@@ -816,6 +817,21 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
   return success();
 }
 
+LogicalResult ConvertTFLSignOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_sign_op = cast<TFL::SignOp>(op);
+
+  RankedTensorType output_type =
+      tfl_sign_op.getResult().getType().cast<RankedTensorType>();
+
+  llvm::Optional<Value> result =
+      convertSignOp(rewriter, op, tfl_sign_op.getX(), output_type);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+  return success();
+}
+
 LogicalResult ConvertTFLAddOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   return matchAndRewriteAddSub<TFL::AddOp, tosa::AddOp>(op, op->getOperands(),
@@ -1279,6 +1295,14 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
         op,
         "input/filter/output tensor should "
         "be all quantized or all floating-point");
+  }
+
+  int64_t input_channels = input_type.getDimSize(3);
+  int64_t filter_channels = filter_type.getDimSize(3);
+  if (input_channels != filter_channels &&
+      input_channels % filter_channels == 0) {
+    return rewriter.notifyMatchFailure(
+        op, "grouped convolution is not supported at this time");
   }
 
   DenseI64ArrayAttr pad;
@@ -4241,6 +4265,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLMul);
   DEF_PATTERN_INSERT(TFLSquare);
   DEF_PATTERN_INSERT(TFLSquaredDifference);
+  DEF_PATTERN_INSERT(TFLSign);
   DEF_PATTERN_INSERT(TFLRound);
   DEF_PATTERN_INSERT(TFLDiv);
   DEF_PATTERN_INSERT(TFLMaximum);

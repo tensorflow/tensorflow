@@ -33,7 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import partitioned_variables
@@ -322,7 +322,7 @@ class LoadTest(test.TestCase):
       branch_selector = array_ops.placeholder(
           name="branch_selector", shape=[], dtype=dtypes.bool
       )
-      output = control_flow_ops.cond(
+      output = cond.cond(
           branch_selector,
           lambda: array_ops.ones([]),
           lambda: array_ops.zeros([]),

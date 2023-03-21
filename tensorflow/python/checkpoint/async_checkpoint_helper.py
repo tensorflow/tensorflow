@@ -23,6 +23,7 @@ import weakref
 
 from absl import logging
 
+from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.sharded_variable import ShardedVariable
 from tensorflow.python.eager import context
@@ -276,14 +277,15 @@ class AsyncCheckpointHelper:
         # placement, while the main thread's default placement would be the
         # master worker's CPU:0.
         with ops.device(self._default_device):
-          if self._use_checkpoint_save:
-            self._checkpoint.save(self._save_file_prefix,
-                                  self._checkpoint_options)
-          else:
-            self._checkpoint._write(  # pylint: disable=protected-access
-                self._save_file_prefix,
-                options=self._checkpoint_options,
-                write_done_callback=self._async_write_done_callback)
+          with checkpoint_context.async_metrics_context():
+            if self._use_checkpoint_save:
+              self._checkpoint.save(self._save_file_prefix,
+                                    self._checkpoint_options)
+            else:
+              self._checkpoint._write(  # pylint: disable=protected-access
+                  self._save_file_prefix,
+                  options=self._checkpoint_options,
+                  write_done_callback=self._async_write_done_callback)
         # Allow the next checkpoint event to overwrite the cpu-copied variables.
         self._writer_sem.release()
 

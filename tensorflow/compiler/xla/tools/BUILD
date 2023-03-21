@@ -414,11 +414,11 @@ xla_cc_binary(
     deps = [
         ":run_hlo_module_lib",
         "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:platform_port",

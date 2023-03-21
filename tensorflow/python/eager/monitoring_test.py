@@ -126,6 +126,26 @@ class MonitoringTest(test_util.TensorFlowTestCase):
     )
     self.assertGreater(counter2.get_cell().value(), 0)
 
+  def test_repetitive_monitored_timer(self):
+    counter = monitoring.Counter('test/ctxmgr', 'test context manager')
+    with monitoring.MonitoredTimer(
+        counter.get_cell(),
+        monitored_section_name='action1',
+        avoid_repetitive_counting=True,
+    ):
+      time.sleep(1)
+      with monitoring.MonitoredTimer(
+          counter.get_cell(),
+          monitored_section_name='action1',
+          avoid_repetitive_counting=True,
+      ):
+        time.sleep(1)
+
+      # The inner section is not timed.
+      self.assertEqual(counter.get_cell().value(), 0)
+
+    self.assertGreater(counter.get_cell().value(), 0)
+
   def test_function_decorator(self):
     counter = monitoring.Counter('test/funcdecorator', 'test func decorator')
 

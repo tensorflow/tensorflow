@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module as module_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -65,7 +66,7 @@ class CondV2Test(test.TestCase):
     with self.session(graph=ops.get_default_graph()) as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
 
-      expected = control_flow_ops.cond(
+      expected = tf_cond.cond(
           array_ops.squeeze_v2(pred), true_fn, false_fn, name="expected")
       actual = cond_v2.cond_v2(pred, true_fn, false_fn, name="actual")
 
@@ -1246,7 +1247,7 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return ((x,), y * 3.0)
 
-    output = control_flow_ops.cond(
+    output = tf_cond.cond(
         constant_op.constant(False), true_fn, false_fn)
     self.assertEqual(self.evaluate(output[0][0]), 1.)
     self.assertEqual(self.evaluate(output[1]), 9.)
@@ -1266,7 +1267,7 @@ class CondV2Test(test.TestCase):
     with self.assertRaisesRegex(
         TypeError, "true_fn and false_fn arguments to tf.cond must have the "
         "same number, type, and overall structure of return values."):
-      control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
+      tf_cond.cond(constant_op.constant(False), true_fn, false_fn)
 
   @test_util.enable_control_flow_v2
   def testCondAndTensorArray(self):
@@ -1281,7 +1282,7 @@ class CondV2Test(test.TestCase):
       def if_false():
         return output.write(i, x[i])
 
-      output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+      output = tf_cond.cond(x[i] > 0, if_true, if_false)
       return i + 1, output
 
     _, output = while_loop.while_loop(
@@ -1308,7 +1309,7 @@ class CondV2Test(test.TestCase):
         def if_false():
           return output.write(i, x[i])
 
-        output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+        output = tf_cond.cond(x[i] > 0, if_true, if_false)
         return i + 1, output
 
       _, output = while_loop.while_loop(
@@ -1829,7 +1830,7 @@ class CaseTest(test.TestCase):
 
 def _cond(pred, true_fn, false_fn, name):
   if _is_old_cond():
-    return control_flow_ops.cond(pred, true_fn, false_fn, name=name)
+    return tf_cond.cond(pred, true_fn, false_fn, name=name)
   else:
     return cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -31,6 +32,7 @@ limitations under the License.
 
 namespace tflite {
 namespace acceleration {
+namespace {
 
 using ::flatbuffers::FlatBufferBuilder;
 using ::flatbuffers::GetRoot;
@@ -39,10 +41,28 @@ using ::flatbuffers::GetRoot;
 // microseconds.
 constexpr absl::Duration kWaitBetweenRefresh = absl::Milliseconds(20);
 
+// Generate a string of 10 chars.
+std::string GenerateRandomString() {
+  static const char charset[] =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
+  const int size = 10;
+  std::string result;
+  result.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    result.data()[i] = charset[rand() % (sizeof(charset) - 1)];
+  }
+
+  return result;
+}
+
+}  // namespace
+
 BlockingValidatorRunner::BlockingValidatorRunner(
     const ValidatorRunnerOptions& options)
     : per_test_timeout_ms_(options.per_test_timeout_ms),
-      storage_path_(options.storage_path) {
+      storage_path_base_(options.storage_path) {
   validator_runner_impl_ = std::make_unique<ValidatorRunnerImpl>(
       CreateModelLoaderPath(options), options.storage_path,
       options.data_directory_path, options.per_test_timeout_ms,
@@ -65,9 +85,9 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
     return {};
   }
 
-  // Delete storage_file before running the tests, so that each run is
-  // independent from each other.
-  (void)unlink(storage_path_.c_str());
+  // Create a unique storage_path.
+  std::string storage_path =
+      absl::StrCat(storage_path_base_, ".", GenerateRandomString());
   auto to_be_run =
       std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>();
   std::vector<TFLiteSettingsT> for_settings_obj;
@@ -80,7 +100,8 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
     to_be_run->emplace_back(std::move(copy));
     for_settings_obj.emplace_back(tflite_settings);
   }
-  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run));
+  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run),
+                                                 storage_path);
 
   // The underlying process runner should ensure each test finishes on time or
   // timed out. deadline_us is added here as an extra safety guard.
@@ -138,6 +159,10 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
       results.emplace_back(std::move(fbb));
     }
   }
+  // Delete storage_file before returning. In case of test timeout, the child
+  // thread or process may create and continue to write to the storage_path. In
+  // this case we cannot delete the file.
+  (void)unlink(storage_path.c_str());
   return results;
 }
 

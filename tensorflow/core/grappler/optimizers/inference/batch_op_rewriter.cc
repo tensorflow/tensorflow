@@ -45,6 +45,7 @@ constexpr char kBatchTimeoutMicrosAttr[] = "batch_timeout_micros";
 constexpr char kAllowedBatchSizesAttr[] = "allowed_batch_sizes";
 constexpr char kMaxEnqueuedBatchesAttr[] = "max_enqueued_batches";
 constexpr char kEnableLargeBatchSplitting[] = "enable_large_batch_splitting";
+constexpr int64 kBoostMicrosNotSet = -1;
 
 using BatchOpRewriteFunction = std::function<void(NodeDef* batch_op)>;
 
@@ -62,6 +63,7 @@ struct AdaptiveBatchSchedulerParams {
   int32 min_inflight_batches;
   int32 max_inflight_batches;
   int32 batches_to_average_over;
+  int64_t full_batch_scheduling_boost_micros;
 };
 
 AdaptiveBatchSchedulerParams GetAdaptiveBatchSchedulerParams(
@@ -83,6 +85,10 @@ AdaptiveBatchSchedulerParams GetAdaptiveBatchSchedulerParams(
       option.has_batches_to_average_over()
           ? option.batches_to_average_over().value()
           : kBatchesToAverageOver;
+  params.full_batch_scheduling_boost_micros =
+      option.has_full_batch_scheduling_boost_micros()
+          ? option.full_batch_scheduling_boost_micros().value()
+          : kBoostMicrosNotSet;
   return params;
 }
 
@@ -97,6 +103,11 @@ void SetNodeAttrs(const AdaptiveBatchSchedulerParams& params, NodeDef* node) {
       kInitialInflightBatchesAttr, params.initial_inflight_batches, node);
   ::tensorflow::graph_transforms::SetNodeAttr(
       kBatchesToAverageOverAttr, params.batches_to_average_over, node);
+  if (params.full_batch_scheduling_boost_micros != -1) {
+    ::tensorflow::graph_transforms::SetNodeAttr(
+        kFullBatchSchedulingBoostMicros,
+        params.full_batch_scheduling_boost_micros, node);
+  }
 }
 
 void UpdateBatchOps(GraphDef* graph, BatchOpRewriteFunction rewrite_fn) {

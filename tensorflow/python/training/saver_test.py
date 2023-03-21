@@ -47,6 +47,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -1884,7 +1885,7 @@ class MetaGraphTest(test.TestCase):
     with self.cached_session():
       # Creates a graph.
       v0 = variables.VariableV1(1.0, name="v0")
-      control_flow_ops.cond(
+      cond.cond(
           math_ops.less(v0, 10), lambda: math_ops.add(v0, 1),
           lambda: math_ops.subtract(v0, 1))
       while_loop.while_loop(lambda i: math_ops.less(i, 10),
@@ -2162,12 +2163,12 @@ class MetaGraphTest(test.TestCase):
           random_ops.truncated_normal(
               [28, 128], stddev=1.0 / math.sqrt(float(28))),
           name="weights")
-      # The use of control_flow_ops.cond here is purely for adding test coverage
+      # The use of cond.cond here is purely for adding test coverage
       # the save and restore of control flow context (which doesn't make any
       # sense here from a machine learning perspective).  The typical biases is
       # a simple Variable without the conditions.
       biases = variables.VariableV1(
-          control_flow_ops.cond(
+          cond.cond(
               math_ops.less(random.random(), 0.5),
               lambda: array_ops.ones([128]), lambda: array_ops.zeros([128])),
           name="biases")
@@ -2179,7 +2180,7 @@ class MetaGraphTest(test.TestCase):
               [128, 32], stddev=1.0 / math.sqrt(float(128))),
           name="weights")
 
-      # The use of control_flow_ops.while_loop here is purely for adding test
+      # The use of while_loop.while_loop here is purely for adding test
       # coverage the save and restore of control flow context (which doesn't
       # make any sense here from a machine learning perspective).  The typical
       # biases is a simple Variable without the conditions.
@@ -2317,6 +2318,9 @@ class MetaGraphTest(test.TestCase):
         self.evaluate(init_op)
         expected_grad_value = self.evaluate(grad)
 
+    # To avoid graph name collisions between original and loaded code.
+    context._reset_context()   # pylint: disable=protected-access
+
     # Restore the MetaGraphDef into a new Graph.
     with ops_lib.Graph().as_default():
       with session.Session() as sess:
@@ -2357,7 +2361,7 @@ class MetaGraphTest(test.TestCase):
     # Test while loop in a cond in a while loop.
     # pylint: disable=g-long-lambda
     def body(i, x):
-      cond_result = control_flow_ops.cond(
+      cond_result = cond.cond(
           i > 0,
           lambda: while_loop.while_loop(
               lambda j, y: j < 3,
@@ -2371,14 +2375,14 @@ class MetaGraphTest(test.TestCase):
   def testNestedCondsSerDes(self):
     # Test conds in a cond.
     # pylint: disable=g-long-lambda
-    self._testGradientSerDes(lambda x: control_flow_ops.cond(
+    self._testGradientSerDes(lambda x: cond.cond(
         x > 0,
-        lambda: control_flow_ops.cond(x > 3,
-                                      lambda: array_ops.identity(x),
-                                      lambda: math_ops.multiply(x, 2.0)),
-        lambda: control_flow_ops.cond(x < -3,
-                                      lambda: constant_op.constant(1.0),
-                                      lambda: math_ops.multiply(x, -1.0))))
+        lambda: cond.cond(x > 3,
+                          lambda: array_ops.identity(x),
+                          lambda: math_ops.multiply(x, 2.0)),
+        lambda: cond.cond(x < -3,
+                          lambda: constant_op.constant(1.0),
+                          lambda: math_ops.multiply(x, -1.0))))
     # pylint: enable=g-long-lambda
 
   @test_util.run_v1_only("This exercises Tensor.op which is meaningless in V2.")
@@ -2754,12 +2758,12 @@ class ScopedGraphTest(test.TestCase):
             random_ops.truncated_normal(
                 [28, 128], stddev=1.0 / math.sqrt(float(28))),
             name="weights")
-        # The use of control_flow_ops.cond here is purely for adding test
+        # The use of cond.cond here is purely for adding test
         # coverage the save and restore of control flow context (which doesn't
         # make any sense here from a machine learning perspective).  The typical
         # biases is a simple Variable without the conditions.
         biases1 = variables.VariableV1(
-            control_flow_ops.cond(
+            cond.cond(
                 math_ops.less(random.random(), 0.5),
                 lambda: array_ops.ones([128]), lambda: array_ops.zeros([128])),
             name="biases")
@@ -2772,7 +2776,7 @@ class ScopedGraphTest(test.TestCase):
                 [128, 32], stddev=1.0 / math.sqrt(float(128))),
             name="weights")
 
-        # The use of control_flow_ops.while_loop here is purely for adding test
+        # The use of while_loop.while_loop here is purely for adding test
         # coverage the save and restore of control flow context (which doesn't
         # make any sense here from a machine learning perspective).  The typical
         # biases is a simple Variable without the conditions.
@@ -2845,7 +2849,7 @@ class ScopedGraphTest(test.TestCase):
                 [128, 32], stddev=1.0 / math.sqrt(float(128))),
             name="weights")
 
-        # The use of control_flow_ops.while_loop here is purely for adding test
+        # The use of while_loop.while_loop here is purely for adding test
         # coverage the save and restore of control flow context (which doesn't
         # make any sense here from a machine learning perspective).  The typical
         # biases is a simple Variable without the conditions.

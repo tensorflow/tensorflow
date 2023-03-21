@@ -36,8 +36,8 @@ from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
@@ -943,7 +943,7 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
       return output
 
     training = array_ops.placeholder_with_default(True, shape=())
-    output = control_flow_ops.cond(
+    output = cond.cond(
         training, TestFn, lambda: inputs)
 
     loss = output
@@ -1442,7 +1442,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           dtype="float32")
 
       conditional = array_ops.placeholder_with_default(True, shape=())
-      output = control_flow_ops.cond(
+      output = cond.cond(
           conditional, lambda: alpha * 2, lambda: alpha * 3)
 
       g, = gradients_impl.gradients(output, alpha)

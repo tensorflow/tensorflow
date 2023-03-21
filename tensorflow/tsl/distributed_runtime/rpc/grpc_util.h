@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/support/byte_buffer.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -89,9 +90,9 @@ inline Status FromGrpcStatus(const ::grpc::Status& s) {
     // Convert "UNKNOWN" stream removed errors into unavailable, to allow
     // for retry upstream.
     if (IsStreamRemovedError(s)) {
-      converted = Status(tensorflow::error::UNAVAILABLE, s.error_message());
+      converted = Status(absl::StatusCode::kUnavailable, s.error_message());
     }
-    converted = Status(static_cast<tensorflow::error::Code>(s.error_code()),
+    converted = Status(static_cast<absl::StatusCode>(s.error_code()),
                        s.error_message());
     InsertSerializedPayloads(converted, s.error_details());
     return converted;

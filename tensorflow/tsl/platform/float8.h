@@ -189,15 +189,16 @@ class float8_base {
   }
 
  private:
-  static std::pair<uint8_t, uint8_t> SignAndMagnitude(Derived x) {
+  static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC std::pair<uint8_t, uint8_t>
+  SignAndMagnitude(Derived x) {
     const uint8_t x_abs_bits =
         Eigen::numext::bit_cast<uint8_t>(Eigen::numext::abs(x));
     const uint8_t x_bits = Eigen::numext::bit_cast<uint8_t>(x);
     const uint8_t x_sign = x_bits ^ x_abs_bits;
     return {x_sign, x_abs_bits};
   }
-  static int8_t SignAndMagnitudeToTwosComplement(uint8_t sign,
-                                                 uint8_t magnitude) {
+  static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC int8_t
+  SignAndMagnitudeToTwosComplement(uint8_t sign, uint8_t magnitude) {
     return magnitude ^ (static_cast<int8_t>(sign) < 0 ? -1 : 0);
   }
   uint8_t rep_;
@@ -526,10 +527,16 @@ struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
   }
   static constexpr float8_e5m2 infinity() { return float8_e5m2::FromRep(0x7C); }
   static constexpr float8_e5m2 quiet_NaN() {
-    return float8_e5m2::FromRep(0x7F);
+    // IEEE 754-2019 6.2.1: "All binary NaN bit strings have the sign bit S set
+    // to 0 or 1 and all the bits of the biased exponent field E set to 1
+    // (see 3.4). A quiet NaN bit string should be encoded with the first bit
+    // (d1) of the trailing significand field T being 1."
+    return float8_e5m2::FromRep(0b0'11111'10);
   }
   static constexpr float8_e5m2 signaling_NaN() {
-    return float8_e5m2::FromRep(0x7D);
+    // IEEE 754-2019 6.2.1: "A signaling NaN bit string should be encoded with
+    // the first bit of the trailing significand field being 0."
+    return float8_e5m2::FromRep(0b0'11111'01);
   }
   static constexpr float8_e5m2 denorm_min() {
     return float8_e5m2::FromRep(0x01);
@@ -899,8 +906,8 @@ struct ConvertImpl<float8_e4m3fn, float8_e5m2, true, kTruncate> {
   }
 };
 
-template <bool kTruncate>
-struct ConvertImpl<Eigen::half, float8_e5m2, kTruncate, false> {
+template <bool kSaturate, bool kTruncate>
+struct ConvertImpl<Eigen::half, float8_e5m2, kSaturate, kTruncate> {
   static EIGEN_DEVICE_FUNC inline float8_e5m2 run(const Eigen::half& from) {
     uint16_t from_bits = Eigen::numext::bit_cast<uint16_t>(from);
 
@@ -909,31 +916,27 @@ struct ConvertImpl<Eigen::half, float8_e5m2, kTruncate, false> {
     if (abs_bits == 0x7C00) {
       return float8_e5m2::FromRep(from_bits >> 8);
     } else if (abs_bits > 0x7C00) {
-      return float8_e5m2::FromRep((from_bits >> 8) | 0x01);
+      // IEEE 754-2019 6.2.1: "A quiet NaN bit string should be encoded with the
+      // first bit (d1) of the trailing significand field T being 1."
+      // IEEE 754-2019 6.2.3: "Conversion of a quiet NaN to a floating-point
+      // format of the same or a different radix that does not allow the payload
+      // to be preserved, shall return a quiet NaN [...]"
+      return float8_e5m2::FromRep((from_bits >> 8) | 0b0'00000'10);
     }
 
     if constexpr (!kTruncate) {
       from_bits = RoundBitsToNearestEven(from_bits, 8);
+      // Rounding can cause an overflow to infinity. Clamp to the largest finite
+      // value if saturation is requested.
+      if constexpr (kSaturate) {
+        const float8_e5m2 kHighest = Eigen::NumTraits<float8_e5m2>::highest();
+        if ((from_bits & 0x7FFF) > static_cast<uint16_t>(kHighest.rep()) << 8) {
+          const bool from_sign_bit = from_bits >> 15;
+          return from_sign_bit ? -kHighest : kHighest;
+        }
+      }
     }
     return float8_e5m2::FromRep(from_bits >> 8);
-  }
-};
-
-// Saturation has no impact when casting Eigen::half to e5m2.
-template <bool kTruncate>
-struct ConvertImpl<Eigen::half, float8_e5m2, /*kSaturate=*/true, kTruncate> {
-  static EIGEN_DEVICE_FUNC inline float8_e5m2 run(const Eigen::half& from) {
-    return ConvertImpl<Eigen::half, float8_e5m2, /*kSaturate=*/false,
-                       kTruncate>::run(from);
-  }
-};
-
-template <>
-struct ConvertImpl<float8_e5m2, Eigen::half, /*kSaturate=*/false,
-                   /*kTruncate=*/false> {
-  static EIGEN_DEVICE_FUNC inline Eigen::half run(const float8_e5m2& from) {
-    return Eigen::numext::bit_cast<Eigen::half>(
-        static_cast<uint16_t>(static_cast<uint16_t>(from.rep()) << 8));
   }
 };
 
@@ -941,8 +944,8 @@ struct ConvertImpl<float8_e5m2, Eigen::half, /*kSaturate=*/false,
 template <bool kSaturate, bool kTruncate>
 struct ConvertImpl<float8_e5m2, Eigen::half, kSaturate, kTruncate> {
   static EIGEN_DEVICE_FUNC inline Eigen::half run(const float8_e5m2& from) {
-    return ConvertImpl<float8_e5m2, Eigen::half, /*kSaturate=*/false,
-                       /*kTruncate=*/false>::run(from);
+    return Eigen::numext::bit_cast<Eigen::half>(
+        static_cast<uint16_t>(static_cast<uint16_t>(from.rep()) << 8));
   }
 };
 

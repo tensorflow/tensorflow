@@ -428,7 +428,7 @@ static ClusteringState InitializeClusteringState(
   }
 
   // Initialize mapping from the member operation (block argument) to the id.
-  for (auto &tuple : llvm::enumerate(state.members)) {
+  for (const auto &tuple : llvm::enumerate(state.members)) {
     state.member_ids.try_emplace(tuple.value().source, tuple.index());
   }
 
@@ -471,7 +471,7 @@ static bool RunClusteringPass(ClusteringState &state,
                               const ClusteringPolicySet &policies) {
   bool clustered = false;
 
-  for (auto &tuple : llvm::enumerate(state.members)) {
+  for (const auto &tuple : llvm::enumerate(state.members)) {
     size_t member_id = tuple.index();
     Member &member = tuple.value();
 

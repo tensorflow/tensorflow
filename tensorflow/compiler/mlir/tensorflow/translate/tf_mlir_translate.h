@@ -41,6 +41,7 @@ using tsl::StatusOr;
 // Creates MLIR entities into the given MLIR `context`.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
+    absl::string_view xla_compile_device_type,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::optional<std::vector<int>>>& input_shapes,
@@ -59,10 +60,11 @@ ABSL_DEPRECATED(
 // Creates MLIR entities into the given MLIR `context`.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view control_output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    absl::string_view xla_compile_device_type, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view control_output_arrays,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, bool upgrade_legacy,
     // TODO(jpienaar): Remove these.
     bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
     mlir::MLIRContext* context);
@@ -72,6 +74,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
+    absl::string_view xla_compile_device_type,
     const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::vector<int>>& input_shapes,
@@ -91,10 +94,11 @@ ABSL_DEPRECATED(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view control_output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    absl::string_view xla_compile_device_type, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view control_output_arrays,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, bool upgrade_legacy,
     // TODO(jpienaar): Remove these.
     bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
     mlir::MLIRContext* context);

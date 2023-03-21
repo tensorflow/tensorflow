@@ -110,11 +110,11 @@ inline void AddTraceEvent(const TraceEvent& event, string* json) {
 
 }  // namespace
 
-std::string TraceEventsToJson(const TraceContainer& container) {
+std::string TraceEventsToJson(const Trace& trace) {
   std::string json =
       R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)"
       R"("traceEvents":[)";
-  for (const auto* id_and_device : SortByKey(container.trace().devices())) {
+  for (const auto* id_and_device : SortByKey(trace.devices())) {
     uint32 device_id = id_and_device->first;
     const Device& device = id_and_device->second;
     AddDeviceMetadata(device_id, device, &json);
@@ -124,8 +124,8 @@ std::string TraceEventsToJson(const TraceContainer& container) {
       AddResourceMetadata(device_id, resource_id, resource, &json);
     }
   }
-  for (const TraceEvent* const event : container.UnsortedEvents()) {
-    AddTraceEvent(*event, &json);
+  for (const TraceEvent& event : trace.trace_events()) {
+    AddTraceEvent(event, &json);
   }
   // Add one fake event to avoid dealing with no-trailing-comma rule.
   absl::StrAppend(&json, "{}]}");

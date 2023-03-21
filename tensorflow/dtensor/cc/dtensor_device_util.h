@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -176,16 +177,22 @@ class TensorWithLayoutTf
     : public llvm::RTTIExtends<TensorWithLayoutTf, TensorWithLayout> {
  public:
   // Broadcast a single non-parallel tensor onto `mesh` with a fully replicated
-  // sharding spec. Does not take ownership of `tensor`.
+  // sharding spec. Does not take ownership of `tensor`. The tensor must not
+  // already be on a DTensorDevice.
   static std::unique_ptr<TensorWithLayoutTf> Broadcast(
       TFE_Context* context, TFE_TensorHandle* tensor,
-      const MeshWithParallelDevice& mesh,
-      const std::string& dtensor_device_name, TF_Status* status);
+      const MeshWithParallelDevice& mesh, TF_Status* status);
 
   // Given an already-parallel tensor, wraps it with a mesh and a layout.
   static StatusOr<std::unique_ptr<TensorWithLayoutTf>> Wrap(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
+
+  // Given a single tensor, wraps it with a single device mesh and a single
+  // device layout.
+  static std::unique_ptr<TensorWithLayoutTf> Wrap(
+      parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
+      const Layout& layout, TF_Status* status);
 
   // Creates a dummy TensorWithLayoutTf without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayoutTf> Dummy(
@@ -246,7 +253,25 @@ class TensorWithLayoutTf
     const_value_node_ = std::make_unique<ConstValueNode>(const_value);
   }
 
+  TensorWithLayoutTf(parallel_device::TensorHandlePtr single_tensor,
+                     const Mesh& mesh, const Layout& layout,
+                     const std::vector<int64_t>& local_shape,
+                     std::optional<TF_DataType> dtype = std::nullopt,
+                     std::optional<NodeDef> const_value = std::nullopt)
+      : single_tensor_(std::move(single_tensor)),
+        layout_(layout),
+        mesh_(mesh),
+        local_shape_(local_shape),
+        dtype_(dtype) {
+    const_value_node_ = std::make_unique<ConstValueNode>(const_value);
+  }
+
   std::unique_ptr<parallel_device::ParallelTensor> tensor_;
+
+  // Holds the tensor but not the underlying device. This is only used when the
+  // `layout_` is a single device layout and the `mesh_` is a single device
+  // mesh.
+  parallel_device::TensorHandlePtr single_tensor_;
 
   Layout layout_;
 
@@ -438,7 +463,8 @@ class SparseTensorWithLayout
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : llvm::RTTIExtends<SparseTensorWithLayout, TensorWithLayoutTf>(
-            nullptr, mesh, layout, local_shape),
+            std::unique_ptr<parallel_device::ParallelTensor>(), mesh, layout,
+            local_shape),
         indices_(std::move(indices)),
         values_(std::move(values)),
         dense_shapes_(std::move(dense_shapes)) {}
@@ -542,6 +568,7 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
   // have ran this function at least twice and the small input value changed
   // across separate runs.
   StatusOr<bool> ShouldFoldInput(const DTensorOperation& doperation,
+                                 const std::vector<TensorWithLayout*>& inputs,
                                  int input_index) const;
 
   // Returns the current Stats of the execution manager.
@@ -597,6 +624,11 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
 std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
                                          TF_Status* status);
 
+Status InferOutputLayouts(const DTensorOperation& doperation,
+                          const NameAttrList& attributes,
+                          const std::optional<Layout>& default_layout,
+                          tensorflow::Graph* graph,
+                          std::vector<const Layout*>* output_layouts);
 // Creates a Graph with _Arg and _Retval nodes surrounding an
 // `operation_name`-type node.
 Status PrepareGraphForMlir(
@@ -604,10 +636,9 @@ Status PrepareGraphForMlir(
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
-    tensorflow::Graph* graph,
-    std::vector<PartialTensorShape>* global_output_shapes,
-    std::vector<const Layout*>* output_layouts);
+    const NameAttrList& attributes,
+    const std::vector<const Layout*>& output_layouts, tensorflow::Graph* graph,
+    std::vector<PartialTensorShape>* global_output_shapes);
 
 // Returns set of functions to run to execute DTensor computation.
 StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
@@ -664,8 +695,9 @@ StatusOr<tensorflow::Fprint128> ExecutableManager<T>::CacheKeyForGraph(
       tensorflow::Fingerprint128(doperation.default_mesh.ToString()));
   // Higher level cache based on operation name and input shapes.
   for (int i = 0; i < inputs.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(bool should_fold_input, ShouldFoldInput(doperation, i));
-    if (!should_fold_input && inputs[i]->const_value_node() != nullptr) {
+    TF_ASSIGN_OR_RETURN(bool should_fold_input,
+                        ShouldFoldInput(doperation, inputs, i));
+    if (!should_fold_input && inputs[i]->const_value_node()) {
       inputs[i]->const_value_node()->reset_const_value();
     }
     cache_key = FingerprintCat128(
@@ -704,12 +736,6 @@ ExecutableManager<T>::GetCachedExecutable(
       return {{cache_key, &iter->second}};
     }
   }
-  // For eager ops we early return the cache miss and do not make further
-  // optimizations.
-  if (!doperation.is_func()) {
-    stats_.misses++;
-    return {{cache_key, nullptr}};
-  }
 
   bool missed = UpdateDTensorOpAndSmallInputsCache(doperation, inputs);
 
@@ -744,6 +770,7 @@ bool ExecutableManager<T>::UpdateDTensorOpAndSmallInputsCache(
          executable_manager_impl_.GetConstantFoldableTensors(inputs)});
     return true;
   }
+
   // If we are here, then we have ran this function before but constant folded
   // some input(s) when it was not a constant input i.e. one of the small
   // value to this function input changed. So mark those changed values as
@@ -753,6 +780,8 @@ bool ExecutableManager<T>::UpdateDTensorOpAndSmallInputsCache(
   std::vector<int> non_constant_indices;
 
   for (auto const& [index, previous_small_input] : previous_small_inputs) {
+    // Some Ops the number of inputs can vary. We'll just skip updating them.
+    if (index >= inputs.size()) continue;
     auto* const_value_node = inputs[index]->const_value_node();
     if (const_value_node == nullptr) {
       continue;
@@ -760,7 +789,6 @@ bool ExecutableManager<T>::UpdateDTensorOpAndSmallInputsCache(
     if (const_value_node->const_value().has_value()) {
       if (NodeDefsHaveDifferentTensorProto(
               previous_small_input, const_value_node->const_value().value())) {
-        const_value_node->reset_const_value();
         non_constant_indices.push_back(index);
       }
     }
@@ -804,9 +832,42 @@ void ExecutableManager<T>::Remove(tensorflow::Fprint128 cache_key) {
 
 template <typename T>
 StatusOr<bool> ExecutableManager<T>::ShouldFoldInput(
-    const DTensorOperation& doperation, const int input_index) const {
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs, const int input_index) const {
+  const auto input = inputs[input_index];
+  const bool can_fold = input->const_value_node() &&
+                        input->const_value_node()->const_value().has_value();
   // For eager ops, assume the inputs are constant foldable.
-  if (!doperation.is_func()) return true;
+  if (!doperation.is_func()) {
+    // Fold if we are in a function or if a special eager op.
+    // TODO(b/270762002): Think about how to generalize this so it does not
+    // depend on operation_name. For example, we can check the max abs value of
+    // the tensor value.
+
+    if (doperation.name == absl::string_view("StatelessRandomUniform") ||
+        doperation.name == absl::string_view("StatelessRandomUniformFullInt") ||
+        doperation.name == absl::string_view("StatelessRandomNormal") ||
+        doperation.name == absl::string_view("StatelessTruncatedNormal")) {
+      // For all stateless rng ops, we avoid fold seed (input_index==1) in
+      // graph. This is an important optimization to avoid unnecessary MLIR SPMD
+      // lowering and TPU compilation during model parameters initialization
+      // process. which typically have the same shape for rng ops but different
+      // seeds.
+      return can_fold && (input_index != 1);
+    }
+    // Certain Ops we shall never fold in their inputs. Enable caching to reduce
+    // sizes of the graphs. This list is incomplete.
+    // FIXME(b/270762002): We only need constant folding for args that are
+    // matched against Constants in MLIR.
+    if (doperation.name != absl::string_view("Identity") &&
+        doperation.name != absl::string_view("DivNoNan") &&
+        doperation.name != absl::string_view("CopyToMesh") &&
+        doperation.name != absl::string_view("CopyToMeshGrad") &&
+        doperation.name != absl::string_view("Relayout") &&
+        doperation.name != absl::string_view("RelayoutGrad")) {
+      return can_fold;
+    }
+  }
   const tensorflow::Fprint128 doperation_hash =
       executable_manager_impl_.CacheKeyForDTensorOperation(doperation);
 
@@ -815,14 +876,15 @@ StatusOr<bool> ExecutableManager<T>::ShouldFoldInput(
   // foldable. The input at `input_index` is foldable only if it is one of the
   // indices we have saved as the small inputs.
   auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
-  return doperation_iter == dtensor_op_and_small_inputs_.end() ||
-         doperation_iter->second.contains(input_index);
+  return can_fold && (doperation_iter == dtensor_op_and_small_inputs_.end() ||
+                      doperation_iter->second.contains(input_index));
 }
 
 // ExecutionFunctions manager can not check if the input is foldable.
 template <>
 StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
-    const DTensorOperation& doperation, int input_index) const;
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs, int input_index) const;
 
 }  // namespace dtensor
 }  // namespace tensorflow

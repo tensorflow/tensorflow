@@ -14,7 +14,6 @@
 # ==============================================================================
 """Implementation for AtomicFunction."""
 
-from tensorflow.core.framework import function_pb2
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -58,30 +57,6 @@ class _InterpolateFunctionError(object):
     if g:
       exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
     return False
-
-
-class _EagerDefinedFunctionDeleter(object):
-  """Unregister function from eager context."""
-
-  __slots__ = ["name"]
-
-  def __init__(self, name):
-    self.name = name
-
-  def __del__(self):
-    try:
-      context.remove_function(self.name)
-    except TypeError:
-      # Suppress some exceptions, mainly for the case when we're running on
-      # module deletion. Things that can go wrong include the context module
-      # already being unloaded, self._handle._handle_data no longer being
-      # valid, and so on. Printing warnings in these cases is silly
-      # (exceptions raised from __del__ are printed as warnings to stderr).
-      pass  # 'NoneType' object is not callable when the handle has been
-      # partially unloaded.
-    except AttributeError:
-      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
-      # been unloaded. Will catch other module unloads as well.
 
 
 # TODO(b/232961485): Remove after quarantined `add_function_callback` removed.
@@ -142,27 +117,25 @@ class EagerDefinedFunction(object):
           None,
           compat.as_str(""))
 
-    self._c_func = c_api_util.ScopedTFFunction(fn, name)
-
-    for name, attr_value in attrs.items():
+    for attr_name, attr_value in attrs.items():
       serialized = attr_value.SerializeToString()
       # TODO(iga): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use status.
-      pywrap_tf_session.TF_FunctionSetAttrValueProto(fn, compat.as_str(name),
-                                                     serialized)
+      pywrap_tf_session.TF_FunctionSetAttrValueProto(
+          fn, compat.as_str(attr_name), serialized
+      )
+
+    # TODO(fmuham): pull from eager context instead.
+    self._c_func = c_api_util.ScopedTFFunction(fn, name)
+
+    self._name = compat.as_bytes(name)
+    self._bound_context = context.context()
+    self._bound_context.add_c_function(fn)
 
     # NOTE(feyu): Do not cache signature and definition at initialization to
     # save memory usage of concrete functions never called through Python. We
     # cache them on the first call of .definition and .signature.
     signature = self._get_definition().signature
-
-    self._name = compat.as_bytes(signature.name)
-    with ops.init_scope():
-      if context.executing_eagerly():
-        context.ensure_initialized()
-        context.add_function(fn)
-        self._function_deleter = _EagerDefinedFunctionDeleter(self.name)
-        self._registered_on_context = True
 
     self._num_outputs = len(signature.output_arg)
     self._output_types = [o.type for o in signature.output_arg]
@@ -193,15 +166,7 @@ class EagerDefinedFunction(object):
     return self._definition
 
   def _get_definition(self):
-    # TODO(apassos) avoid creating a FunctionDef (specially to grab the
-    # signature, but also in general it's nice not to depend on it.
-    with c_api_util.tf_buffer() as buffer_:
-      with self._c_func.get() as func:
-        pywrap_tf_session.TF_FunctionToFunctionDef(func, buffer_)
-      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
-    function_def = function_pb2.FunctionDef()
-    function_def.ParseFromString(compat.as_bytes(proto_data))
-    return function_def
+    return self._bound_context.get_function_def(self.name)
 
   def add_to_graph(self, g=None, overwrite=False):
     """Add the function to the current context or a graph, if supplied.
@@ -213,8 +178,8 @@ class EagerDefinedFunction(object):
         function of the same signature name in the graph `g` or context.
     """
     # pylint: disable=protected-access
-    if not g and context.executing_eagerly():
-      ctx = context.context()
+    if not g and self._bound_context.executing_eagerly():
+      ctx = self._bound_context
       if ctx.has_function(self.name):
         if overwrite:
           ctx.remove_function(self.name)
@@ -331,3 +296,17 @@ class EagerDefinedFunction(object):
         outputs[i].set_shape(shape)
       return outputs
 
+  def __del__(self):
+    try:
+      self._bound_context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.

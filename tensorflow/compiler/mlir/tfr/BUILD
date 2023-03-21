@@ -352,7 +352,8 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python/autograph/converters",
+        "//tensorflow/python/autograph/converters:control_flow",
+        "//tensorflow/python/autograph/converters:return_statements",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",

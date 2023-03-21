@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -188,13 +187,11 @@ class GraphExecutor {
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
       Options options, const FallbackState& fallback_state,
-      tfrt::tpu::TpuModelResource* tpu_model_resource,
       tensorflow::GraphDef graph_def,
       std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Ctor. Public for `Create()`. Do not use directly.
   GraphExecutor(Options options, const FallbackState& fallback_state,
-                tfrt::tpu::TpuModelResource* tpu_model_resource,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
                 std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
@@ -271,7 +268,6 @@ class GraphExecutor {
   std::reference_wrapper<const FallbackState> fallback_state_;
 
   tfrt::ResourceContext resource_context_;
-  tfrt::tpu::TpuModelResource* tpu_model_resource_;  // NOT owned.
 
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
       graph_execution_state_;

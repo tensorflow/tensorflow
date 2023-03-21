@@ -20,6 +20,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
@@ -79,7 +80,7 @@ class ControlFlowUtilTest(test.TestCase):
 
         def b(x):
           with ops.name_scope("NestedCond"):
-            return control_flow_ops.cond(
+            return cond.cond(
                 math_ops.less(x, 100), lambda: math_ops.add(x, 1),
                 lambda: math_ops.add(x, 2))
 
@@ -89,7 +90,7 @@ class ControlFlowUtilTest(test.TestCase):
 
       x = array_ops.placeholder(dtypes.int32)
       with ops.name_scope("OuterCond"):
-        control_flow_ops.cond(
+        cond.cond(
             math_ops.less(x, 1000), lambda: while_loop(x),
             lambda: math_ops.add(x, 2))
     return g

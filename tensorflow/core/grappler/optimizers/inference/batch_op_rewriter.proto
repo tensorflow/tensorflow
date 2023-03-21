@@ -26,6 +26,14 @@ message BatchOpRewriteConfig {
     // You can use QPS as a reference to decide how quickly to react to workload
     // changes.
     google.protobuf.UInt32Value batches_to_average_over = 4;
+
+    // If set, specifies `full_batch_scheduling_boost_micros` of
+    // `AdaptiveSharedBatchScheduler::Options`. A full batch is scheduled
+    // before an older, nearly empty batch as long as the age gap is smaller
+    // than full_batch_scheduling_boost_micros. The optimal value for this
+    // parameter should be of order the batch processing latency, but must be
+    // chosen carefully, as too large a value will harm tail latency.
+    google.protobuf.Int64Value full_batch_scheduling_boost_micros = 5;
   }
   // DEPRECATED. Use the adaptive_batch_scheduler_option field in batch_options.
   //

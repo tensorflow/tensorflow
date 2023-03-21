@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -225,7 +224,6 @@ class SavedModelImpl final : public SavedModel {
       std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<FallbackState> fallback_state,
-      std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
       std::unique_ptr<tfd::FallbackResourceArray> resource_array,
       std::unique_ptr<GraphExecutor> graph_executor);
@@ -306,9 +304,6 @@ class SavedModelImpl final : public SavedModel {
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
   std::unique_ptr<FallbackState> fallback_state_;
-  // TODO(b/178227859): Change the hardcoding of this specific TPU resource
-  // (TpuModelResource) to a general and plugable interface.
-  std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource_;
   std::unique_ptr<OpKernelRunnerTable> runner_table_;
   std::unique_ptr<tfd::FallbackResourceArray> resource_array_;
   tensorflow::mutex loading_result_cache_mu_;

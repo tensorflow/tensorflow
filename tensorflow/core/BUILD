@@ -181,6 +181,7 @@ tf_proto_library(
         "//tensorflow/tsl/profiler/protobuf:xplane_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1653,6 +1654,7 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",

@@ -1268,6 +1268,14 @@ class HloInstruction {
   // Drops all control predecessors and successors from this HLO instruction.
   Status DropAllControlDeps();
 
+  // Drops all control predecessors and successors from this HLO instruction,
+  // and the maintain the transitivie control dependencies between
+  // control predecessors and control successors.
+  Status SafelyDropAllControlDependencies();
+
+  // Returns if instruction has any control dependencies.
+  bool HasControlDependencies() const;
+
   // Copies the control predecessors and successors on this HLO instruction to
   // `inst`.  Does not do a deep copy so this makes sense only if `inst` and
   // this HLO are in the same module.
@@ -1858,6 +1866,9 @@ class HloInstruction {
   }
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
+  }
+  void set_metadata_deduplicated_name(const std::string& deduplicated_name) {
+    metadata_.set_deduplicated_name(deduplicated_name);
   }
   const OpMetadata& metadata() const { return metadata_; }
 

@@ -950,11 +950,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
-    auto output = node_->output();
-    if (output) {
-      output->record_stop(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
   }
@@ -978,9 +979,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
-    auto output = node_->output();
-    if (output) {
-      output->record_start(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_start(now_nanos);
     }
   }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
@@ -1001,10 +1001,12 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
@@ -1014,7 +1016,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_start(now_nanos);
     }
   }

@@ -3414,10 +3414,13 @@ mlir::LogicalResult TransposeOp::verify() {
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
   for (const auto& axis_int : perm.getValues<APInt>()) {
-    const int64_t axis = axis_int.getSExtValue();
+    int64_t axis = axis_int.getSExtValue();
+    if (axis < 0) {
+      axis += input_type.getRank();
+    }
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(
-          llvm::formatv("perm[{0}] must be in [0, rank)", index));
+          llvm::formatv("perm[{0}] must be in [-rank, rank)", index));
     }
     if (std::count(axes.begin(), axes.end(), axis) > 0) {
       return op.emitOpError(
@@ -3539,7 +3542,7 @@ void IfOp::getSuccessorRegions(std::optional<unsigned> index,
   // Otherwise, the successor is dependent on the condition.
   bool condition;
   if (auto cond_attr = operands.front().dyn_cast_or_null<IntegerAttr>()) {
-    condition = cond_attr.getValue().isOneValue();
+    condition = cond_attr.getValue().isOne();
   } else {
     // If the condition isn't constant, both regions may be executed.
     regions.push_back(RegionSuccessor(&getThenRegion()));

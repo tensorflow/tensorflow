@@ -24,7 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -325,7 +325,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def else_branch():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(True), then_branch, else_branch)
 
     self._testVariableReadInFunctionalOp(build_functional_op, "If")
@@ -340,7 +340,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def else_branch():
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(False), then_branch, else_branch)
 
     self._testVariableReadInFunctionalOp(build_functional_op, "If")
@@ -445,7 +445,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           def else_branch():
             return array_ops.zeros([], v.dtype)
 
-          return control_flow_ops.cond(
+          return cond.cond(
               constant_op.constant(True), then_branch, else_branch)
 
         return inner_fn()
@@ -516,7 +516,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def else_branch():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(True), then_branch, else_branch)
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "If")
@@ -532,7 +532,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(False), then_branch, else_branch)
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "If")
@@ -643,7 +643,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           def else_branch():
             return array_ops.zeros([], v.dtype)
 
-          return control_flow_ops.cond(
+          return cond.cond(
               constant_op.constant(True), then_branch, else_branch)
 
         return inner_fn()
@@ -669,7 +669,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
@@ -691,7 +691,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         one = constant_op.constant(1.0)
         one = c.mark_as_return(one)
       one.eval(feed_dict={p: False})
@@ -722,10 +722,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
             v.assign(v * 3, name="false_false")
             return 3.0
 
-          control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
+          cond.cond(q, inner_true_fn, inner_false_fn)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         with ops.name_scope("final"):
           val = v.read_value()
         val = c.mark_as_return(val)
@@ -749,7 +749,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
@@ -771,7 +771,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
@@ -792,7 +792,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         v.assign(v * 2)
         val = v.read_value()
         val = c.mark_as_return(val)

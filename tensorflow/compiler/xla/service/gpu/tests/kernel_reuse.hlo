@@ -42,6 +42,42 @@ ENTRY main {
 
 // -----
 
+// All (Triton) fusions must reuse the same kernel:
+// CHECK-LABEL: target triple
+// CHECK-NOT: define void
+// CHECK: define void @triton_gemm_dot1_impl(
+// CHECK-NOT: define void
+// CHECK: define void @triton_gemm_dot1(
+// CHECK-NOT: define void
+
+HloModule t
+
+triton_gemm_dot0 {
+  parameter_1 = f16[15,19]{1,0} parameter(1)
+  parameter_0 = s8[19,17]{1,0} parameter(0)
+  cp1.1 = f16[19,17]{1,0} convert(parameter_0)
+  ROOT dot0.1 = f16[15,17]{1,0} dot(parameter_1, cp1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+triton_gemm_dot1 {
+  parameter_1.1 = f16[15,19]{1,0} parameter(1)
+  parameter_0.1 = s8[19,17]{1,0} parameter(0)
+  cp3.1 = f16[19,17]{1,0} convert(parameter_0.1)
+  ROOT dot1.1 = f16[15,17]{1,0} dot(parameter_1.1, cp3.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p3 = s8[19,17]{1,0} parameter(3)
+  p2 = f16[15,19]{1,0} parameter(2)
+  p1 = s8[19,17]{1,0} parameter(1)
+  p0 = f16[15,19]{1,0} parameter(0)
+  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}"
+  triton_gemm_dot1 = f16[15,17]{1,0} fusion(p3, p2), kind=kCustom, calls=triton_gemm_dot1, backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}"
+  ROOT tuple = (f16[15,17]{1,0}, f16[15,17]{1,0}) tuple(triton_gemm_dot0, triton_gemm_dot1)
+}
+
+// -----
+
 // We need 2 different kernels:
 // - @fusion_2's %arg0 must have align 16, because we are passing a module input
 // - @fusion_1's %arg0 must have align 128, because we are passing an internal buffer
@@ -87,9 +123,10 @@ ENTRY main {
 // -----
 
 // We need 2 different kernels:
-// The first fusion call is aliased, the others are not.
+// The first has just 2 parameters (1 input, 1 output) and the second has 3 (2 input, 1 output).
+// All the parameters are noalias, because we are not passing the same argument twice to the kernel.
 // CHECK-LABEL: target triple
-// CHECK: define void @fusion_2(ptr align 128 dereferenceable(100) %arg0, ptr align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2) {
+// CHECK: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1) {
 // CHECK: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2) {
 // CHECK-NOT: define void
 
@@ -133,7 +170,7 @@ ENTRY main {
 // "!invariant.load" (thanks to ir_array.MarkInvariantOverWholeProgram).
 //
 // CHECK-LABEL: target triple
-// CHECK: define void @fusion_2(ptr align 128 dereferenceable(100) %arg0, ptr align 128 dereferenceable(100) %arg1) {
+// CHECK: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0) {
 // CHECK-NOT: !invariant.load
 // CHECK: define void @fusion(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1) {
 // CHECK-NOT: define void
@@ -170,4 +207,6 @@ ENTRY main {
   ROOT tuple = (f32[5,5]{1,0}, f32[5,5]{1,0}, f32[5,5]{1,0}) tuple(custom-call.1, custom-call.2, custom-call.3)
 }
 
-
+// We don't have a test case for aliasing, because it is hard or impossible to
+// create a situation when parameters are aliased, but not the same and at least
+// one of them is written.

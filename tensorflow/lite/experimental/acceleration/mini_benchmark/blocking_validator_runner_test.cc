@@ -60,19 +60,13 @@ class BlockingValidatorRunnerTest : public ::testing::Test {
 
     options_.data_directory_path = ::testing::TempDir();
     options_.storage_path =
-        absl::StrCat(::testing::TempDir(), "/storage_path.fb");
+        absl::StrCat(::testing::TempDir(), "storage_path.fb.1");
     options_.per_test_timeout_ms = 5000;
 
     plain_model_path_ = MiniBenchmarkTestHelper::DumpToTempFile(
         "mobilenet_quant.tflite",
         g_tflite_acceleration_embedded_mobilenet_model,
         g_tflite_acceleration_embedded_mobilenet_model_len);
-  }
-
-  void TearDown() override {
-    if (should_perform_test_) {
-      ASSERT_EQ(unlink(options_.storage_path.c_str()), 0);
-    }
   }
 
   std::string plain_model_path_;
@@ -205,7 +199,6 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   }
 }
 
-#ifndef __ANDROID__
 TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
@@ -231,7 +224,6 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
     }
   }
 }
-#endif  // !__ANDROID__
 
 TEST_F(BlockingValidatorRunnerTest, ReturnErrorWhenTimedOut) {
   if (!should_perform_test_) {

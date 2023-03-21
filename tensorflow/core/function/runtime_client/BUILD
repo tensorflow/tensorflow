@@ -127,7 +127,10 @@ pytype_strict_library(
         "runtime_client.py",
     ],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/core/function/transform:__subpackages__"],
+    visibility = [
+        "//learning/brain/experimental/tfq:__pkg__",
+        "//tensorflow/core/function/transform:__subpackages__",
+    ],
     deps = [
         ":runtime_client_pybind",
         "//tensorflow/core/framework:function_proto_py",

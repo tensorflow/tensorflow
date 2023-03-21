@@ -349,7 +349,6 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:from_generator_op",
         "//third_party/py/numpy",
     ],
 )
@@ -478,7 +477,6 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:ignore_errors_op",
         "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
     ],
@@ -572,7 +570,6 @@ cuda_py_test(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
@@ -621,9 +618,9 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_case",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -689,7 +686,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:cancellation",
@@ -765,8 +761,8 @@ cuda_py_test(
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
@@ -791,7 +787,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
-        "//tensorflow/python/data/ops:prefetch_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -952,6 +947,7 @@ cuda_py_test(
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
@@ -1221,9 +1217,6 @@ tf_py_test(
 py_strict_test(
     name = "io_test",
     srcs = ["io_test.py"],
-    tags = [
-        "notap",  # b/272281090
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",

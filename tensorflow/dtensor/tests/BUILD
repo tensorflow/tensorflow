@@ -21,12 +21,12 @@ tf_cc_test(
     name = "layout_to_xla_sharding_test",
     srcs = ["layout_to_xla_sharding_test.cc"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:layout_to_xla_sharding",
-        "//tensorflow/dtensor/cc:tensor_layout",
-        "//tensorflow/dtensor/proto:layout_proto_cc",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 

@@ -395,8 +395,8 @@ cc_library(
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/util/tensor_bundle:naming",
+        "//tensorflow/tsl/platform:types",
         "@com_google_protobuf//:protobuf_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings",
@@ -407,7 +407,11 @@ cc_library(
 cc_library(
     name = "fingerprinting",
     hdrs = ["fingerprinting.h"],
-    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    visibility = [
+        "//learning/brain/contrib/hub/server/distro:__subpackages__",
+        "//learning/tfx/pipeline/util:__subpackages__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
     deps = if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",

@@ -114,9 +114,6 @@ class DataTransferServer {
   // Register a DataTransferServer factory under `name`.
   static void Register(std::string name, ServerFactoryT factory);
 
-  // Returns the names under which servers have been `Register`ed.
-  static std::vector<std::string> RegisteredNames();
-
   // Builds a DataTransferServer from the factory registered with `name`.
   static Status Build(std::string name, GetElementT get_element,
                       std::shared_ptr<DataTransferServer>* out);

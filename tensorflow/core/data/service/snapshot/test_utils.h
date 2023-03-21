@@ -21,13 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -39,18 +41,26 @@ namespace testing {
 template <class T>
 tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
                                            const std::string& compression) {
-  experimental::DistributedSnapshotMetadata metadata;
-  metadata.set_compression(compression);
-  SnapshotReaderParams params{base_path, metadata, DataTypeVector{DT_INT64},
-                              Env::Default()};
-  SnapshotReader reader(params);
   std::vector<T> result;
-  while (true) {
-    TF_ASSIGN_OR_RETURN(GetNextResult next, reader.GetNext());
-    if (next.end_of_sequence) {
-      return result;
+  std::string chunks_directory = CommittedChunksDirectory(base_path);
+  TF_ASSIGN_OR_RETURN(std::vector<string> chunk_files,
+                      GetChildren(chunks_directory, Env::Default()));
+  for (const std::string& chunk_file : chunk_files) {
+    std::string chunk_file_path =
+        tsl::io::JoinPath(chunks_directory, chunk_file);
+    snapshot_util::TFRecordReader tfrecord_reader(chunk_file_path, compression,
+                                                  DataTypeVector{DT_INT64});
+    TF_RETURN_IF_ERROR(tfrecord_reader.Initialize(Env::Default()));
+
+    while (true) {
+      std::vector<Tensor> tensors;
+      Status status = tfrecord_reader.ReadTensors(&tensors);
+      if (errors::IsOutOfRange(status)) {
+        break;
+      }
+      TF_RETURN_IF_ERROR(status);
+      result.push_back(tensors[0].unaligned_flat<T>().data()[0]);
     }
-    result.push_back(next.tensors[0].unaligned_flat<T>().data()[0]);
   }
   return result;
 }
@@ -62,7 +72,8 @@ class PartialSnapshotWriter {
  public:
   static tsl::StatusOr<PartialSnapshotWriter> Create(
       const DatasetDef& dataset, const std::string& snapshot_path,
-      int64_t stream_index, const std::string& compression);
+      int64_t stream_index, const std::string& compression,
+      int64_t max_chunk_size_bytes = 1);
   virtual ~PartialSnapshotWriter() = default;
   PartialSnapshotWriter(const PartialSnapshotWriter&) = delete;
   PartialSnapshotWriter& operator=(const PartialSnapshotWriter&) = delete;
@@ -84,7 +95,8 @@ class PartialSnapshotWriter {
  private:
   PartialSnapshotWriter(const DatasetDef& dataset,
                         const std::string& snapshot_path, int64_t stream_index,
-                        const std::string& compression);
+                        const std::string& compression,
+                        int64_t max_chunk_size_bytes);
 
   tsl::Status Initialize();
 
@@ -92,6 +104,7 @@ class PartialSnapshotWriter {
   const std::string snapshot_path_;
   const int64_t stream_index_;
   const std::string compression_;
+  const int64_t max_chunk_size_bytes_;
 
   std::string tmp_snapshot_path_;
 };

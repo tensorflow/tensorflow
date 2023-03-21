@@ -19,7 +19,7 @@ limitations under the License.
 namespace tensorflow {
 PYBIND11_MODULE(_errors_test_helper, m) {
   m.def("TestRaiseFromStatus", [](int code) {
-    tensorflow::Status status(static_cast<tensorflow::error::Code>(code),
+    tensorflow::Status status(static_cast<absl::StatusCode>(code),
                               "test message");
     status.SetPayload("key1", absl::Cord("value1"));
     status.SetPayload("key2", absl::Cord("value2"));

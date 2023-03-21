@@ -972,7 +972,7 @@ def system_specific_test_config(environ_cp):
   # single list of filters for the .bazelrc file.
 
   # Filters to use with both --test_tag_filters and --build_tag_filters
-  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  test_and_build_filters = ['-benchmark-test', '-no_oss', '-oss_excluded']
   # Additional filters for --test_tag_filters beyond those in
   # test_and_build_filters
   test_only_filters = ['-oss_serial']

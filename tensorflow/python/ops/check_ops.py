@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -1575,7 +1576,7 @@ def _dimension_sizes(x):
     ]
     return sizes
   has_rank_zero = math_ops.equal(array_ops.rank(x), 0)
-  return control_flow_ops.cond(
+  return cond.cond(
       has_rank_zero, lambda: array_ops.constant([1]), lambda: dynamic_shape)
 
 
@@ -1943,7 +1944,7 @@ def _get_diff_for_monotonic_comparison(x):
   # With 2 or more elements, return x[1:] - x[:-1]
   s_len = array_ops.shape(x) - 1
   diff = lambda: array_ops.strided_slice(x, [1], [1] + s_len)- array_ops.strided_slice(x, [0], s_len)
-  return control_flow_ops.cond(is_shorter_than_two, short_result, diff)
+  return cond.cond(is_shorter_than_two, short_result, diff)
 
 
 @tf_export(

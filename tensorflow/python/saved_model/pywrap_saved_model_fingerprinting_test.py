@@ -60,6 +60,24 @@ class FingerprintingTest(test.TestCase):
       pywrap_fingerprinting.ReadSavedModelFingerprint(export_dir)
     self.assertRegex(str(excinfo.exception), "Could not read fingerprint.")
 
+  def test_read_saved_model_singleprint(self):
+    export_dir = test.test_src_dir_path(
+        "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
+    fingerprint = fingerprint_pb2.FingerprintDef().FromString(
+        pywrap_fingerprinting.ReadSavedModelFingerprint(export_dir))
+    singleprint = pywrap_fingerprinting.Singleprint(
+        fingerprint.graph_def_program_hash,
+        fingerprint.signature_def_hash,
+        fingerprint.saved_object_graph_hash,
+        fingerprint.checkpoint_hash)
+    # checkpoint_hash is non-deterministic and not included
+    self.assertRegex(singleprint,
+                     "/".join([
+                         "706963557435316516",  # graph_def_program_hash
+                         "5693392539583495303",  # signature_def_hash
+                         "12074714563970609759",  # saved_object_graph_hash
+                         ]))
+
 
 if __name__ == "__main__":
   test.main()

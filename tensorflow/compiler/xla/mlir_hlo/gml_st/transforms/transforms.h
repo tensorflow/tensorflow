@@ -24,6 +24,8 @@ namespace gml_st {
 constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
     "__perfectly_tiled_loop_label__";
 
+static constexpr llvm::StringRef kTransformedLabel = "__transformed_label__";
+
 template <typename ShapedTy>
 bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
@@ -38,9 +40,6 @@ void removeLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
 bool hasLabel(Operation *op, StringRef name);
-
-// Checks if `op` has the matching label attribute.
-bool hasMatchingLabel(Operation *op, StringRef label);
 
 }  // namespace gml_st
 }  // namespace mlir

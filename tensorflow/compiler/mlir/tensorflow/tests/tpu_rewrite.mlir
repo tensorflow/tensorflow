@@ -2643,3 +2643,29 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     return %1 : tensor<?xi32>
   }
 }
+
+// -----
+
+// The following xla.OpSharding is used:
+// Proto debug string:
+//   type : OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   last_tile_dims: REPLICATED
+// Serialized string:
+//   "\08\03\1A\06\01\01\01\01\01\01\22\01\00B\01\00"
+
+// Test that an input sharding with last_tile_dims REPLICATED won't generate SplitOp.
+//CHECK-NOT: tf.Split
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func.func @cluster_to_single_core(%arg0: tensor<128xf32>) -> tensor<128xf32> {
+    %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster1", func = @_func, num_replica = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", device_assignment = [], input_sharding_configuration = ["\08\03\1A\06\01\01\01\01\01\01\22\01\00B\01\00"], output_sharding_configuration = [""], use_spmd_for_xla_partitioning = false, use_tpu = true} : (tensor<128xf32>) -> tensor<128xf32>
+    func.return %0 : tensor<128xf32>
+  }
+  func.func @_func(%arg0: tensor<128xf32>) -> tensor<128xf32> {
+    func.return %arg0 : tensor<128xf32>
+  }
+}

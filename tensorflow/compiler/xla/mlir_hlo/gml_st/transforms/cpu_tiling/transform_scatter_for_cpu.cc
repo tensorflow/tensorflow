@@ -36,15 +36,12 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMSCATTERFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-constexpr llvm::StringRef kScatterTransformedLabel =
-    "__scatter_transformed_label__";
-
 struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
   using OpRewritePattern<thlo::ScatterOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(thlo::ScatterOp scatterOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(scatterOp, kScatterTransformedLabel)) return failure();
+    if (hasLabel(scatterOp, kTransformedLabel)) return failure();
 
     if (isa<scf::ForOp>(scatterOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
@@ -67,8 +64,8 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
       return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
                  thlo::ReverseOp, linalg::TransposeOp>(op);
     };
-    auto tilingResult = tileUsingSCFForOpAndFuseGreedily(
-        rewriter, scatterOp, opts, kScatterTransformedLabel, fuseFilterFn);
+    auto tilingResult = tileUsingSCFForOpAndFuseGreedily(rewriter, scatterOp,
+                                                         opts, fuseFilterFn);
 
     if (failed(tilingResult)) return failure();
 
@@ -105,7 +102,7 @@ struct TransformScatterForCpuPass
       return signalPassFailure();
     // Ensure we drop the marker in the end.
     f.walk([](thlo::ScatterOp scatterOp) {
-      removeLabel(scatterOp, kScatterTransformedLabel);
+      removeLabel(scatterOp, kTransformedLabel);
     });
   }
 };

@@ -592,7 +592,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsEmptyTuple(const Shape& shape) {
-  return shape.IsTuple() && TupleElementCount(shape) == 0;
+  return shape.IsTuple() && shape.tuple_shapes().empty();
 }
 
 /* static */ int64_t ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -602,7 +602,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ const Shape& ShapeUtil::GetTupleElementShape(const Shape& shape,
                                                           int64_t index) {
-  CHECK(shape.IsTuple());
   CHECK_GT(TupleElementCount(shape), index);
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape.tuple_shapes(index)));
   return shape.tuple_shapes(index);
@@ -619,8 +618,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                          int64_t limit) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
   CHECK(tuple.IsTuple());
-  CHECK_LE(start, TupleElementCount(tuple));
-  CHECK_LE(limit, TupleElementCount(tuple));
+  CHECK_LE(start, tuple.tuple_shapes_size());
+  CHECK_LE(limit, tuple.tuple_shapes_size());
 
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);

@@ -10333,6 +10333,111 @@ ENTRY entry {
                 _));
 }
 
+TEST_F(SpmdPartitioningTest, ParallelDimFromOutsideConditionalPositive) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+gather_comp {
+  %parameters = (s32[8,4,2,2], s32[1,8,4]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %gather.20 = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather.20), sharding={replicated}
+}
+
+add (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT sum = s32[] add(lhs, rhs)
+}
+
+scatter_comp {
+  %parameters = (s32[8,4,2,2], s32[1,8,4]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %constant = s32[] constant(0)
+  %base = s32[8,4,2,2]{3,2,1,0} broadcast(constant), dimensions={},
+    sharding={replicated}
+  %scatter.20 = s32[8,4,2,2]{3,2,1,0} scatter(
+    s32[8,4,2,2]{3,2,1,0} %base,
+    s32[2,8,4]{2,1,0} %concatenate.19,
+    s32[8,4,2,2]{3,2,1,0} %parameter.0),
+    to_apply=add,
+    update_window_dims={2,3},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=0
+  ROOT copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter.20), sharding={replicated}
+}
+
+ENTRY entry {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0), sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] constant(0), sharding={replicated}
+  %tuple = (s32[8,4,2,2], s32[1,8,4]) tuple(parameter.0, iota),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}}
+  %parameter.1 = pred[] parameter(1)
+  ROOT conditional = s32[8,4,2,2] conditional(parameter.1, tuple, tuple),
+    true_computation=gather_comp, false_computation=scatter_comp,
+    sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Verify gather is partitioned properly.
+  {
+    const auto partitioned_gather = module->entry_computation()
+                                        ->root_instruction()
+                                        ->true_computation()
+                                        ->root_instruction();
+    auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+    auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
+    auto gather =
+        AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
+    EXPECT_THAT(
+        partitioned_gather,
+        op::Copy(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+  }
+
+  // Verify scatter is partitioned properly.
+  {
+    const auto partitioned_scatter = module->entry_computation()
+                                         ->root_instruction()
+                                         ->false_computation()
+                                         ->root_instruction();
+    auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+    auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
+    auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+    auto scatter =
+        AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
+    EXPECT_THAT(partitioned_scatter,
+                op::Copy(op::AllReduce(
+                    op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+  }
+}
+
 TEST_F(SpmdPartitioningTest, GatherParallelDimAndNonParallelDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module

@@ -179,6 +179,10 @@ TEST_P(BatchOpRewriterTest, AdaptiveBatchScheduler) {
       .mutable_adaptive_batch_scheduler_option()
       ->mutable_max_inflight_batches_limit()
       ->set_value(32);
+  (*config.mutable_batch_options())["model_with_override"]
+      .mutable_adaptive_batch_scheduler_option()
+      ->mutable_full_batch_scheduling_boost_micros()
+      ->set_value(12345);
 
   RewriterConfig_CustomGraphOptimizer rewriter_config = MakeConfig(config);
   ConfigProto config_proto;
@@ -201,12 +205,11 @@ TEST_P(BatchOpRewriterTest, AdaptiveBatchScheduler) {
   // `enable_adaptive_shared_batching_thread_pool`, since `model_with_override`
   // override its scheduler options in `model_scheduler_options`.
   AddBatchOp(&expected_graph, 16 /* num_batch_threads */,
-             {
-                 {kBatchesToAverageOverAttr, 1000},
-                 {kInitialInflightBatchesAttr, 16},
-                 {kMinInflightBatchesAttr, 8},
-                 {kMaxInflightBatchesAttr, 32},
-             });
+             {{kBatchesToAverageOverAttr, 1000},
+              {kInitialInflightBatchesAttr, 16},
+              {kMinInflightBatchesAttr, 8},
+              {kMaxInflightBatchesAttr, 32},
+              {kFullBatchSchedulingBoostMicros, 12345}});
 
   EXPECT_EQ(optimized_graph.DebugString(), expected_graph.DebugString());
 }

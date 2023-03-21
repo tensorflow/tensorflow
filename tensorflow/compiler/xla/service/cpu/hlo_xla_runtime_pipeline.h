@@ -30,6 +30,7 @@ namespace cpu {
 
 struct HloXlaRuntimePipelineOptions {
   bool enable_tiling_and_fusion = false;
+  bool enable_fusion_outlining = false;
   bool sparse_bufferization = true;
   bool outline_with_xla_framework = false;
   bool experimental_deallocation = false;

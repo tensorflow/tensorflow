@@ -325,6 +325,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:framework",
@@ -669,6 +670,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
@@ -812,7 +814,10 @@ tf_xla_py_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
+<<<<<<< HEAD
         "requires-gpu-nvidia"
+=======
+>>>>>>> google_upstream/master
     ],
     deps = [
         ":xla_test",
@@ -1737,6 +1742,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:gradients",

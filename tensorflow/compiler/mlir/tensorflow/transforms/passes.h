@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
 #include <memory>
-#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -330,7 +329,7 @@ namespace tf_executor {
 
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFExecutorConvertControlToDataOutputsPass(bool coarse_tpu_tokens = false);
+CreateTFExecutorConvertControlToDataOutputsPass();
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorCheckControlDependenciesPass();
@@ -530,6 +529,12 @@ CreateTPUReorderReplicateAndPartitionedInputsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUResourceReadsWritesPartitioningPass();
 
+// Creates a pass that looks for usage of the result of
+// TPUCopyWithDynamicShapeOp and annotate these values to be dynamic shape. This
+// ensures that the generated tpu program has the correct inputs annotation.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUAnnotateDynamicShapeInputsPass();
+
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
@@ -549,6 +554,12 @@ CreateTPUParallelExecuteSinkResourceWritePass();
 // updates.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUMergeVariablesWithExecutePass();
+
+// Create a pass that extract TPUCopyWithDynamicShapeOp from the host launch op
+// and wrap them in device launch op. This allows this op executed on TPU while
+// still compiled on host.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateExtractTPUCopyWithDynamicShapeOpPass();
 
 // Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
 // packed tensor to have same device placement as underlying TPU device.
@@ -682,6 +693,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS
 #define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS
+#define GEN_PASS_DECL_EXTRACTTPUCOPYWITHDYNAMICSHAPEOPPASS
 #define GEN_PASS_DECL_TPUPARALLELEXECUTESINKRESOURCEWRITEPASS
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
 #define GEN_PASS_DECL_TPURESOURCEREADFORWRITEPASS

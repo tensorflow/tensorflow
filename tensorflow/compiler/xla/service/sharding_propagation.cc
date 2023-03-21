@@ -1439,6 +1439,10 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
   if (!IsSpatiallyPartitioned(&user)) {
     return std::nullopt;
   }
+  if (instruction.opcode() == HloOpcode::kConstant &&
+      user.sharding().IsManual()) {
+    return std::nullopt;
+  }
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
 
   switch (user.opcode()) {
@@ -2403,7 +2407,9 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
+  if (instruction->opcode() != HloOpcode::kConstant &&
+      (!instruction->has_sharding() ||
+       instruction->sharding().IsTileMaximal())) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;
@@ -2435,6 +2441,11 @@ bool ShardingPropagation::InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(
             *instruction, *user, aggressiveness, is_spmd, call_graph);
+    // Do not propagate manual sharding to constant from partially manual tuple.
+    if (instruction->opcode() == HloOpcode::kConstant && user_sharding &&
+        user_sharding->IsManual()) {
+      continue;
+    }
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <regex>  // NOLINT
+#include <string>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -430,8 +431,10 @@ class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
  public:
   FunctionErrorInjectionPass(string error_node, string error_device)
       : error_node_(error_node), error_device_(error_device) {}
-  tensorflow::Status Run(const tensorflow::DeviceSet& device_set,
+  tensorflow::Status Run(const std::string& function_name,
+                         const tensorflow::DeviceSet& device_set,
                          const tensorflow::ConfigProto& config_proto,
+                         absl::string_view xla_compile_device_type,
                          std::unique_ptr<tensorflow::Graph>* graph,
                          tensorflow::FunctionLibraryDefinition* flib_def,
                          std::vector<std::string>* control_ret_node_names,

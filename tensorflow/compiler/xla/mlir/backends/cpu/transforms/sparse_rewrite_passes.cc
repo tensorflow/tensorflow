@@ -88,23 +88,38 @@ struct SparseUnpackCallRewriter {
 
 struct SparseTransposeCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() >= 2 && "Need argument and permutation");
+    assert(op.getInputs().size() == 2 && "Need argument and permutation");
     assert(op.getResults().size() == 1 && "Need one output tensor");
-    // Rebuild the permutation from the parameters.
-    unsigned sz = op.getInputs().size() - 1;
-    llvm::SmallVector<int64_t> permutation_array(sz);
-    for (int64_t i = 0; i < sz; i++) {
-      auto input = op.getInputs()[i + 1].getDefiningOp<mhlo::ConstantOp>();
-      auto attr = input.getValue().cast<DenseElementsAttr>();
-      permutation_array[i] = attr.getValues<uint64_t>()[0];
-    }
-    DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
-        RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
-        permutation_array);
+
+    // The permutation is passed in as a constant of dense int elements.
+    auto permutation_constant =
+        op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto permutation =
+        permutation_constant.getValue().cast<DenseIntElementsAttr>();
+
     // Reconstruct the transpose operation.
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
         op, ret_sp_tensor.getType(), op.getInputs()[0], permutation);
+    return success();
+  }
+};
+
+struct SparseBroadcastInDimCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 &&
+           "Need argument and broadcast dimensions");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // Broadcast dimensions are passed in as a constant of dense int elements.
+    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto broadcast_dimensions =
+        dims_constant.getValue().cast<DenseIntElementsAttr>();
+
+    // Reconstruct the broadcast_in_dim operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], broadcast_dimensions);
     return success();
   }
 };
@@ -118,6 +133,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_sparse_pack", SparsePackCallRewriter()),
       std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
       std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
+      std::make_pair("sparse_tensor_broadcast_in_dim",
+                     SparseBroadcastInDimCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to

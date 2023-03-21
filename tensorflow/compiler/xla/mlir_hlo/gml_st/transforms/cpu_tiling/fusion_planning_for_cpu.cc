@@ -60,9 +60,14 @@ bool isElementwiseOp(Operation* op) {
 
 // Returns true is consumer and producer should be fused and tiled together.
 bool allowedToFuse(Operation* consumerOp, Operation* producerOp) {
+  // Verify that only known ops are fused.
+  if (!isa<linalg::LinalgDialect, tensor::TensorDialect, thlo::THLODialect>(
+          producerOp->getDialect()))
+    return false;
+
   if (isa<thlo::ScatterOp, thlo::SortOp>(producerOp)) return false;
 
-  if (isa<linalg::FillOp>(producerOp)) {
+  if (isa<linalg::FillOp, tensor::EmptyOp>(producerOp)) {
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(consumerOp);
     if (!dstStyleOp) return false;
 
@@ -96,7 +101,7 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
 
   for (auto& use : op->getUses()) {
     auto* useOp = use.getOwner();
-    // This op can be potentially fused into one of the consumens. Wait until
+    // This op can be potentially fused into one of the consumers. Wait until
     // that other op is processed.
     if (useOp && allowedToFuse(useOp, op.getOperation())) return failure();
   }
@@ -147,28 +152,21 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   return success();
 }
 
-// Duplicate linalg.fill op with rank-0 tensors results that have multiple
-// users. If linalg.fill is used inside and outside of a fusion cluster, it will
-// not be fused and can break some other passes that expect linalg.reduce inits
-// to be linalg.fill.
-LogicalResult copyConstantLikeFillOp(linalg::FillOp fillOp,
-                                     PatternRewriter& rewriter) {
-  // Only modify ops that fill rank-0 tensors.
-  if (fillOp.getRank(fillOp.getDpsInitOperand(0)) != 0) return failure();
-
+// Duplicates the op so each copy has only one use as init parameter.
+template <typename OpTy>
+LogicalResult duplicateInitOps(OpTy op, PatternRewriter& rewriter) {
   // Nothing to do, because the op has 0 or 1 users.
-  if (std::distance(fillOp->user_begin(), fillOp->user_end()) <= 1)
-    return failure();
+  if (std::distance(op->user_begin(), op->user_end()) <= 1) return failure();
 
   bool modified = false;
-  for (auto& use : llvm::make_early_inc_range(fillOp->getUses())) {
+  for (auto& use : llvm::make_early_inc_range(op->getUses())) {
     Operation* ownerOp = use.getOwner();
 
     auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
     if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
 
-    auto newFillOp = cast<linalg::FillOp>(rewriter.clone(*fillOp));
-    use.set(newFillOp.getResult(0));
+    auto newOp = cast<OpTy>(rewriter.clone(*op));
+    use.set(newOp->getResult(0));
     modified = true;
   }
   return success(modified);
@@ -225,7 +223,9 @@ struct FusionPlanningForCpuPass
     // Cleanup passes to prepare ops for better clustering.
     {
       RewritePatternSet patterns(context);
-      patterns.add(copyConstantLikeFillOp);
+      // Duplicate linalg.fill and tensor.empty that used as init parameters.
+      patterns.add(duplicateInitOps<linalg::FillOp>);
+      patterns.add(duplicateInitOps<tensor::EmptyOp>);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
         return signalPassFailure();

@@ -41,6 +41,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
@@ -264,7 +265,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
 
     def body(it, cost):
       embedding = embedding_ops.embedding_lookup(embedding_matrix, [0])
-      cost = control_flow_ops.cond(
+      cost = tf_cond.cond(
           math_ops.equal(it, 3), lambda: math_ops.square(cost),
           (lambda: cost + math_ops.reduce_sum(embedding)))
       return it + 1, cost
@@ -369,7 +370,7 @@ class CondTest(test_util.TensorFlowTestCase):
   def testCondTrue(self):
     x = constant_op.constant(2)
     y = constant_op.constant(5)
-    z = control_flow_ops.cond(
+    z = tf_cond.cond(
         math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
         lambda: math_ops.add(y, 23))
     self.assertEqual(self.evaluate(z), 34)
@@ -377,7 +378,7 @@ class CondTest(test_util.TensorFlowTestCase):
   def testCondFalse(self):
     x = constant_op.constant(2)
     y = constant_op.constant(1)
-    z = control_flow_ops.cond(
+    z = tf_cond.cond(
         math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
         lambda: math_ops.add(y, 23))
     self.assertEqual(self.evaluate(z), 24)
@@ -385,7 +386,7 @@ class CondTest(test_util.TensorFlowTestCase):
   def testCondTrueLegacy(self):
     x = constant_op.constant(2)
     y = constant_op.constant(5)
-    z = control_flow_ops.cond(
+    z = tf_cond.cond(
         math_ops.less(x, y),
         fn1=lambda: math_ops.multiply(x, 17),
         fn2=lambda: math_ops.add(y, 23))
@@ -394,7 +395,7 @@ class CondTest(test_util.TensorFlowTestCase):
   def testCondFalseLegacy(self):
     x = constant_op.constant(2)
     y = constant_op.constant(1)
-    z = control_flow_ops.cond(
+    z = tf_cond.cond(
         math_ops.less(x, y),
         fn1=lambda: math_ops.multiply(x, 17),
         fn2=lambda: math_ops.add(y, 23))
@@ -407,7 +408,7 @@ class CondTest(test_util.TensorFlowTestCase):
     with test_util.use_gpu():
       bool_var = variable_scope.get_variable(
           "bool_var", dtype=dtypes.bool, initializer=True)
-      cond_on_bool_var = control_flow_ops.cond(
+      cond_on_bool_var = tf_cond.cond(
           pred=bool_var,
           true_fn=lambda: state_ops.assign(bool_var, False),
           false_fn=lambda: True)
@@ -418,22 +419,22 @@ class CondTest(test_util.TensorFlowTestCase):
   def testCondMissingArg1(self):
     x = constant_op.constant(1)
     with self.assertRaises(TypeError):
-      control_flow_ops.cond(True, false_fn=lambda: x)
+      tf_cond.cond(True, false_fn=lambda: x)
 
   def testCondMissingArg2(self):
     x = constant_op.constant(1)
     with self.assertRaises(TypeError):
-      control_flow_ops.cond(True, lambda: x)
+      tf_cond.cond(True, lambda: x)
 
   def testCondDuplicateArg1(self):
     x = constant_op.constant(1)
     with self.assertRaises(TypeError):
-      control_flow_ops.cond(True, lambda: x, lambda: x, fn1=lambda: x)
+      tf_cond.cond(True, lambda: x, lambda: x, fn1=lambda: x)
 
   def testCondDuplicateArg2(self):
     x = constant_op.constant(1)
     with self.assertRaises(TypeError):
-      control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
+      tf_cond.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
   @test_util.enable_control_flow_v2
   @test_util.run_in_graph_and_eager_modes
@@ -442,9 +443,9 @@ class CondTest(test_util.TensorFlowTestCase):
     with backprop.GradientTape(persistent=True) as tape:
       tape.watch(true_in)
       tape.watch(false_in)
-      cond_true = control_flow_ops.cond(
+      cond_true = tf_cond.cond(
           array_ops.constant(True), lambda: true_in**2., lambda: false_in**2.)
-      cond_false = control_flow_ops.cond(
+      cond_false = tf_cond.cond(
           array_ops.constant(False), lambda: true_in**2., lambda: false_in**2.)
     grads_true = tape.gradient(
         cond_true, [true_in, false_in], output_gradients=3.)
@@ -461,7 +462,7 @@ class CondTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       writer = summary_ops_v2.create_file_writer(self.get_temp_dir())
       with writer.as_default(), summary_ops_v2.always_record_summaries():
-        op = control_flow_ops.cond(
+        op = tf_cond.cond(
             constant_op.constant(1) >= 0,
             lambda: control_flow_ops.group(summary_ops_v2.scalar("loss", 0.2)),
             control_flow_ops.no_op)
@@ -477,7 +478,7 @@ class ContextTest(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       x = constant_op.constant(2)
       y = constant_op.constant(5)
-      control_flow_ops.cond(
+      tf_cond.cond(
           math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
           lambda: math_ops.add(y, 23))
       for op in sess.graph.get_operations():
@@ -592,7 +593,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   def _testShape(self, fn_true, fn_false, expected_shape, strict=False):
     condition = array_ops.placeholder(dtypes.bool)
-    output_cond = control_flow_ops.cond(
+    output_cond = tf_cond.cond(
         condition, fn_true, fn_false, strict=strict)
     self.assertEqual(
         _raw_nested_shape(_get_nested_shape(output_cond)),
@@ -617,7 +618,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
       feed_dict = {}
 
     condition = array_ops.placeholder(dtypes.bool)
-    output_cond = control_flow_ops.cond(
+    output_cond = tf_cond.cond(
         condition, fn_true, fn_false, strict=strict)
     output_case = control_flow_case.case([(condition, fn_true)],
                                          fn_false,
@@ -691,10 +692,10 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_tensor = lambda: constant_op.constant(1)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.cond(constant_op.constant(True), fn_none, fn_tensor)
+      tf_cond.cond(constant_op.constant(True), fn_none, fn_tensor)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.cond(constant_op.constant(True), fn_tensor, fn_none)
+      tf_cond.cond(constant_op.constant(True), fn_tensor, fn_none)
 
   @test_util.run_deprecated_v1
   def test_tensors(self):
@@ -871,11 +872,11 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_tuple = lambda: (constant_op.constant(3),)
 
     with self.assertRaises(ValueError):
-      control_flow_ops.cond(
+      tf_cond.cond(
           constant_op.constant(True), fn_tensor, fn_list, strict=True)
 
     with self.assertRaises(TypeError):
-      control_flow_ops.cond(
+      tf_cond.cond(
           constant_op.constant(True), fn_list, fn_tuple, strict=True)
 
     with self.assertRaises(ValueError):
@@ -983,7 +984,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
   def test_cond_inside_while_loop(self):
 
     def body(i, matrix):
-      result_tuple, unused_matrix = control_flow_ops.cond(
+      result_tuple, unused_matrix = tf_cond.cond(
           constant_op.constant(True), lambda:
           (TestTuple(matrix * 2, matrix * 4), matrix), lambda:
           (TestTuple(matrix * 4, matrix * 2), matrix))

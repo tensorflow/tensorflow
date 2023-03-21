@@ -91,6 +91,24 @@ void DefineFingerprintingModule(py::module main_module) {
       py::doc(
           "Loads the `fingerprint.pb` from `export_dir`, returns an error if "
           "there is none."));
+
+  m.def(
+      "Singleprint",
+      [](uint64 graph_def_program_hash, uint64 signature_def_hash,
+         uint64 saved_object_graph_hash, uint64 checkpoint_hash) {
+        StatusOr<std::string> singleprint = fingerprinting::Singleprint(
+            graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
+            checkpoint_hash);
+        if (singleprint.ok()) {
+          return py::str(singleprint.value());
+        }
+        throw FingerprintException(
+            std::string("Could not create singleprint from given values.")
+                .c_str());
+      },
+      py::arg("graph_def_program_hash"), py::arg("signature_def_hash"),
+      py::arg("saved_object_graph_hash"), py::arg("checkpoint_hash"),
+      py::doc("Canonical fingerprinting ID for a SavedModel."));
 }
 
 }  // namespace python

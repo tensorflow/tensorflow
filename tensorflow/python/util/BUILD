@@ -262,6 +262,7 @@ tf_py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+        "//tensorflow/python/framework:tensor_conversion",
     ],
 )
 
