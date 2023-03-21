@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -105,6 +106,32 @@ struct SparseTransposeCallRewriter {
   }
 };
 
+struct SparseConcatenateCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // The concatenation dimension.
+    auto concat_dim = op.getInputs().back().getDefiningOp<mhlo::ConstantOp>();
+    auto concat_dim_attr = concat_dim.getValue().cast<DenseIntElementsAttr>();
+    // Reconstruct the concatenate operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    // Depending on test setup, we can get either a 32-bit integer or a 64-bit
+    // integer.
+    if (concat_dim_attr.getElementType().isInteger(32)) {
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint32_t>()[0]));
+    } else {
+      assert(concat_dim_attr.getElementType().isInteger(64));
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint64_t>()[0]));
+    }
+
+    return success();
+  }
+};
+
 struct SparseBroadcastInDimCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getInputs().size() == 2 &&
@@ -135,6 +162,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
       std::make_pair("sparse_tensor_broadcast_in_dim",
                      SparseBroadcastInDimCallRewriter()),
+      std::make_pair("sparse_tensor_concatenate",
+                     SparseConcatenateCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
