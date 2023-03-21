@@ -28,6 +28,18 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::testing::ElementsAre;
+
+TEST(SingleDeviceShardingTest, IndexDomains) {
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(reinterpret_cast<Device*>(1));
+
+  Shape shape({10, 20});
+  auto index_domains = sharding->IndexDomains(shape);
+  TF_ASSERT_OK(index_domains.status());
+  EXPECT_THAT(*index_domains, ElementsAre(IndexDomain(shape)));
+}
+
 TEST(OpaqueShardingTest, Disassemble) {
   DeviceList::Devices devices;
   devices.reserve(2);

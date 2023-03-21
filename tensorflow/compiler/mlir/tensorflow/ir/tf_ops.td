@@ -1435,6 +1435,9 @@ operations inside a TPU host.
   );
 }
 
+// We must manually define TPUPartitionedInput, TPUPartitionedInputV2,
+// TPUPartitionedOutput, and TPUPartitionedOutputV2 since they have an
+// optional attribute, _XlaSharding, unlike the TensorFlow definition.
 def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [Pure]> {
   let summary = [{
 An op that groups a list of partitioned inputs together. This op
@@ -1455,6 +1458,28 @@ An op that groups a list of partitioned inputs together. This op
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
+def TF_TPUPartitionedInputV2Op : TF_Op<"TPUPartitionedInputV2", [Pure]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. Supports ND sharding.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+    I64ArrayAttr:$partition_dims,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_packed,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [Pure]> {
   let summary = [{
 An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
@@ -1468,6 +1493,30 @@ outputs outside the XLA computation.
     TF_Tensor:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputV2Op : TF_Op<"TPUPartitionedOutputV2", [Pure]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation. Supports ND sharding.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    I64ArrayAttr:$partition_dims,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1817,6 +1866,34 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [Pure, ResultsBroadcastableShape]> {
   let builders = [
     OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
+}
+
+def TF_TPUCopyWithDynamicShapeOp : TF_Op<"TPUCopyWithDynamicShape", [AttrSizedOperandSegments]> {
+  let summary = [{
+Op that copies host tensors to device with bounded dynamic shape support.
+  }];
+
+  let description = [{
+This op copies the padded tensor on cpu to TPU without the padded data. `tensors` 
+is a list of cpu tensors with padded data. `unpadded_sizes` is a list of shape
+tensors which describes unpadded size of each dimension for each cpu tensor. 
+The size of the `unpadded_sizes` should be the same as `tensors`. They are both
+on host. `tpu_tensors` are list of tpu device tensors without the padded data.
+`tpu_tensors` also has the same size of the `tensors` and the shapes of 
+`tpu_tensors` are determined by the `unpadded_sizes`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$tensors,
+    Variadic<TF_Int32Tensor>:$unpadded_sizes
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$tpu_tensors
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
 #endif // TF_OPS

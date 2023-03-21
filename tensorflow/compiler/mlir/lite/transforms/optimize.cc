@@ -17,19 +17,21 @@ limitations under the License.
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -70,6 +73,14 @@ namespace {
 constexpr char kRelu[] = "RELU";
 constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
+
+ElementsAttr FlattenTo1D(Attribute a) {
+  auto elements = a.cast<DenseElementsAttr>();
+  const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
+  auto new_type = RankedTensorType::get(flattened_shape,
+                                        elements.getType().getElementType());
+  return elements.reshape(new_type);
+}
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (axis.getNumElements() == 0) {
@@ -101,8 +112,10 @@ class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
 
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
-  explicit OptimizePass(bool enable_canonicalization) {
+  explicit OptimizePass(bool enable_canonicalization,
+                        bool disable_fuse_mul_and_fc = false) {
     this->enable_canonicalization_ = enable_canonicalization;
+    this->disable_fuse_mul_and_fc_ = disable_fuse_mul_and_fc;
   }
 
   void runOnOperation() override;
@@ -140,11 +153,14 @@ bool IsTailOfShape(Type type1, Type type2) {
 bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
                                       const ArrayRef<int64_t> elements_shape,
                                       bool is_depthwise) {
-  // Also, val tensor must be of rank 1 or 0 (scalar).
-  const auto elements_rank = elements_shape.size();
-  if (elements_rank != 1 && elements_rank != 0) {
-    return false;
+  // Val tensor must be a scalar or of a shape [1, ... , 1, elements_depth].
+  const int elements_rank = elements_shape.size();
+  for (int i = 0; i < elements_rank - 1; ++i) {
+    if (elements_shape[i] != 1) {
+      return false;
+    }
   }
+
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
   // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
   // can let binary op to broadcast elements.
@@ -309,17 +325,7 @@ DenseElementsAttr GetShape(Value output_val) {
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(output_val.getContext(), 32)),
-      llvm::makeArrayRef(shape));
-}
-
-static Type GetShapeStrippedType(TypeAttr type_attr) {
-  auto type = type_attr.getValue();
-  auto shaped_type = type.dyn_cast<ShapedType>();
-  if (shaped_type) {
-    return shaped_type.getElementType();
-  } else {
-    return type;
-  }
+      llvm::ArrayRef(shape));
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
@@ -400,60 +406,36 @@ bool IsF32Value(Value value) {
   return value.getType().cast<ShapedType>().getElementType().isF32();
 }
 
-// Returns the number of elements in attr if it is a DenseElementsAttr, 1
-// otherwise, as an unranked int32 Attribute.
-Attribute GetNumElementsOrOne(Attribute attr) {
-  const auto dense_attr = attr.dyn_cast_or_null<DenseElementsAttr>();
-  int32_t num_elements = dense_attr ? dense_attr.getNumElements() : 1;
+// Returns the number of elements in attr if it is a static shape, 1 otherwise,
+// as an unranked int32 Attribute.
+Attribute GetNumElementsOrOne(Type type) {
+  auto shaped_type = type.cast<ShapedType>();
+  int32_t num_elements =
+      shaped_type.hasStaticShape() ? shaped_type.getNumElements() : 1;
 
-  OpBuilder builder(attr.getContext());
+  OpBuilder builder(type.getContext());
 
   return DenseIntElementsAttr::get(
       RankedTensorType::get({}, builder.getI32Type()),
       {llvm::APInt(32, num_elements, true)});
 }
 
-bool HasExactlyTwoElements(Attribute attr) {
-  const auto values = attr.dyn_cast_or_null<ElementsAttr>();
-  if (!values) return false;
-  return values.getNumElements() == 2;
-}
-
-// Returns true if attr is a DenseIntElementsAttr with the last element equal 1.
-bool IsLastElementEqualsOne(Attribute attr) {
-  const auto ints = attr.dyn_cast_or_null<DenseIntElementsAttr>();
-  if (!ints) return false;
-  if (ints.empty()) return false;
-  const auto last_element_index = ints.getNumElements() - 1;
-  const auto iterator = ints.value_begin<int>();
-  const int last_element = iterator[last_element_index];
-  return last_element == 1;
-}
-
 // Reshapes value to a given shape.
-Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value,
-                                  Attribute shape) {
-  // This function is always guarded with IsLastElementEqualsOne(), so we could
-  // cast safely here.
-  const auto old_shape = shape.cast<DenseIntElementsAttr>();
-  auto iterator = old_shape.value_begin<int>();
-  SmallVector<int, 4> new_shape;
-  SmallVector<int64_t, 4> new_shape_i64;
-  for (int i = 0; i < old_shape.size() - 1; ++i) {
-    new_shape.push_back(*iterator);
-    new_shape_i64.push_back(*iterator);
-    ++iterator;
+Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value) {
+  // This function is always guarded with HasTrivialShapeExceptSecondLastDim(),
+  // so we could cast safely here.
+  auto type = value.getType().cast<ShapedType>();
+  SmallVector<int> new_shape;
+  for (int64_t dim : type.getShape().drop_back()) {
+    new_shape.push_back(dim);
   }
   return builder.create<ReshapeOp>(
-      value.getLoc(),
-      RankedTensorType::get(
-          new_shape_i64, value.getType().cast<ShapedType>().getElementType()),
-      value,
+      value.getLoc(), value,
       builder.create<arith::ConstantOp>(
-          value.getLoc(), DenseIntElementsAttr::get(
-                              RankedTensorType::get({old_shape.size() - 1},
-                                                    builder.getI32Type()),
-                              new_shape)));
+          value.getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get(type.getRank() - 1, builder.getI32Type()),
+              new_shape)));
 }
 
 // Returns true if val has a static shape and the last dimension equals 1.
@@ -480,7 +462,10 @@ bool IsOneHotIndexAttribute(Attribute attr) {
   if (index_elem_bits != 32 && index_elem_bits != 64) {
     return false;
   }
-  if (index_type.getRank() != 1) {
+  // Checks that the index has shape of [1, 1, 1, ..., 1, N].
+  if (index_type.getRank() < 1 ||
+      llvm::any_of(index_type.getShape().drop_back(),
+                   [](int64_t dim) { return dim != 1; })) {
     return false;
   }
   const auto elems = dense_attr.value_begin<APInt>();
@@ -490,6 +475,32 @@ bool IsOneHotIndexAttribute(Attribute attr) {
     }
   }
   return true;
+}
+
+Value Get1DShapeValue(OpBuilder &builder, Value value) {
+  auto type = value.getType().cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return nullptr;
+  }
+  auto output_type = RankedTensorType::get({1}, builder.getI32Type());
+  const int num_elements = type.getNumElements();
+  return builder.create<ConstOp>(
+      value.getLoc(), output_type,
+      DenseIntElementsAttr::get(output_type, num_elements));
+}
+
+Type GetEmbeddingLookupShape(Value lookup, Value value) {
+  auto lookup_type = lookup.getType().cast<ShapedType>();
+  if (!lookup_type.hasStaticShape()) {
+    return nullptr;
+  }
+  auto value_type = value.getType().cast<ShapedType>();
+  if (!value_type.hasStaticShape() || value_type.getRank() != 2) {
+    return nullptr;
+  }
+  SmallVector<int64_t> new_shape = {lookup_type.getNumElements(),
+                                    value_type.getDimSize(0)};
+  return value_type.clone(new_shape);
 }
 
 // Creates FullyConnected op from params and returns the output.
@@ -1487,7 +1498,7 @@ struct FuseUnpackAndConcatToReshape
     if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
       return failure();
     }
-    for (auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
+    for (const auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
       if (index_and_value.value() !=
           unpack_op.getResult(index_and_value.index())) {
         return failure();
@@ -1538,7 +1549,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
 
   // It computes the last dim k of slice size of value.user.
   // If value has no use then return 0.
-  llvm::Optional<int32_t> ComputeSliceK(Value value) const {
+  std::optional<int32_t> ComputeSliceK(Value value) const {
     if (value.use_empty()) return 0;
     auto slice_op =
         llvm::dyn_cast_or_null<TFL::SliceOp>(value.getUses().begin().getUser());
@@ -1663,10 +1674,13 @@ void OptimizePass::runOnOperation() {
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
   patterns.add<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
-               FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
+               FuseFullyConnectedAndMul,
                FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
+  if (!this->disable_fuse_mul_and_fc_) {
+    patterns.add<FuseMulAndFullyConnected>(ctx);
+  }
   if (this->enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
@@ -1678,8 +1692,7 @@ void OptimizePass::runOnOperation() {
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
-      FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
-      FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
       FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
@@ -1687,6 +1700,9 @@ void OptimizePass::runOnOperation() {
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
       FuseUnpackAndConcatToReshape, OptimizeTopK>(ctx);
+  if (!this->disable_fuse_mul_and_fc_) {
+    phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
+  }
   if (this->enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
@@ -1695,8 +1711,9 @@ void OptimizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    bool enable_canonicalization) {
-  return std::make_unique<OptimizePass>(enable_canonicalization);
+    bool enable_canonicalization, bool disable_fuse_mul_and_fc) {
+  return std::make_unique<OptimizePass>(enable_canonicalization,
+                                        disable_fuse_mul_and_fc);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {

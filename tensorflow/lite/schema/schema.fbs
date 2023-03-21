@@ -742,6 +742,9 @@ table UnidirectionalSequenceLSTMOptions {
 
   // Parameter for Unidirectional Sequence LSTM version 3.
   asymmetric_quantize_inputs:bool;
+
+  // Parameter for unidirectional sequence RNN version 4.
+  diagonal_recurrent_tensors:bool;
 }
 
 table BidirectionalSequenceLSTMOptions {

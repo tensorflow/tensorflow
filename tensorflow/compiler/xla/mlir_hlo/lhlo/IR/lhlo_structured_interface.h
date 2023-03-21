@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H
-#define MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H
+#ifndef MLIR_HLO_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H
+#define MLIR_HLO_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H
 
 #include "mlir/IR/OpDefinition.h"
 
 /// Include the generated interface declarations.
 #include "lhlo/IR/lhlo_structured_interface.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H
+#endif  // MLIR_HLO_LHLO_IR_LHLO_STRUCTURED_INTERFACE_H

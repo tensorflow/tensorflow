@@ -2160,6 +2160,8 @@ TfLiteStatus ParseUnidirectionalSequenceLSTM(const Operator* op,
     params->time_major = seq_lstm_params->time_major();
     params->asymmetric_quantize_inputs =
         seq_lstm_params->asymmetric_quantize_inputs();
+    params->diagonal_recurrent_tensors =
+        seq_lstm_params->diagonal_recurrent_tensors();
   }
   *builtin_data = params.release();
   return kTfLiteOk;

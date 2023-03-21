@@ -78,3 +78,18 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "rng",
+    srcs = ["rng.cc"],
+    hdrs = ["rng.h"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "@com_google_absl//absl/status",
+        "@llvm-project//mlir:Support",
+    ],
+)

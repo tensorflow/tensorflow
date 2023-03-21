@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_entrypoint.h"
 
+#include <dlfcn.h>
+
+#include <memory>
 #include <string>
 
 #ifndef _WIN32
@@ -23,7 +26,6 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <cstdint>
-#include <memory>
 #include <thread>  // NOLINT: only used on Android, where std::thread is allowed
 #include <utility>
 #include <vector>
@@ -37,7 +39,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
@@ -47,33 +48,50 @@ namespace {
 
 using flatbuffers::Offset;
 
-MinibenchmarkStatus RunValidator(absl::string_view model_path,
-                                 const std::string& nnapi_sl_path,
-                                 TFLiteSettingsT& tflite_settings,
-                                 Validator::Results& results) {
-  // Load NNAPI Support Library if specified.
+Validator::Status RunValidator(absl::string_view model_path,
+                               const std::string& delegate_so_path,
+                               const TFLiteSettingsT& tflite_settings,
+                               Validator::Results& results) {
+  // Make a copy of tflite_settings for modification, so that the original
+  // tflite_settings will be written to storage. BlockingValidatorRunner
+  // compares the input and output tflite_settings to make sure all configs have
+  // corresponding results.
+  TFLiteSettingsT copy(tflite_settings);
+  // Load Delegate Library if specified.
   std::unique_ptr<const ::tflite::nnapi::NnApiSupportLibrary> nnapi_sl_handle;
-  if (tflite_settings.nnapi_settings && !nnapi_sl_path.empty()) {
-    // We are not calling dlclose, it will be done once the
-    // validator process ends.
-    nnapi_sl_handle = ::tflite::nnapi::loadNnApiSupportLibrary(nnapi_sl_path);
+  if (!delegate_so_path.empty()) {
+    if (tflite_settings.nnapi_settings) {
+      // We are not calling dlclose, it will be done once the
+      // validator process ends.
+      nnapi_sl_handle =
+          ::tflite::nnapi::loadNnApiSupportLibrary(delegate_so_path);
 
-    if (!nnapi_sl_handle) {
-      return kMiniBenchmarkCannotLoadSupportLibrary;
+      if (!nnapi_sl_handle) {
+        return Validator::Status{kMiniBenchmarkCannotLoadSupportLibrary,
+                                 BenchmarkStage_INITIALIZATION};
+      }
+
+      copy.nnapi_settings->support_library_handle =
+          reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5());
+    } else if (tflite_settings.gpu_settings) {
+      // Pass the module file path to GpuModulePlugin to load. GPU delegate is
+      // not currently using the stable delegate API, but uses the same
+      // mechanism to load.
+      // TODO(b/266066861): Migrate to stable delegate API once it's launched.
+      copy.stable_delegate_loader_settings =
+          std::make_unique<StableDelegateLoaderSettingsT>();
+      copy.stable_delegate_loader_settings->delegate_path = delegate_so_path;
     }
-
-    tflite_settings.nnapi_settings->support_library_handle =
-        reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5());
   }
 
   flatbuffers::FlatBufferBuilder fbb;
-  fbb.Finish(
-      CreateComputeSettings(fbb, ExecutionPreference_ANY,
-                            CreateTFLiteSettings(fbb, &tflite_settings)));
+  fbb.Finish(CreateComputeSettings(fbb, ExecutionPreference_ANY,
+                                   CreateTFLiteSettings(fbb, &copy)));
   std::unique_ptr<tools::ModelLoader> model_loader =
       tools::CreateModelLoaderFromPath(model_path);
   if (!model_loader) {
-    return kMinibenchmarkPreconditionNotMet;
+    return Validator::Status{kMinibenchmarkPreconditionNotMet,
+                             BenchmarkStage_INITIALIZATION};
   }
 
   auto validator = std::make_unique<Validator>(
@@ -86,7 +104,7 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
 }  // namespace
 
 extern "C" {
-// TODO(b/232085640): Add documentation to this function.
+
 int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
                                                                 char** argv) {
   if (argc < 6) return 1;
@@ -114,9 +132,9 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
   }
 
   FlatbufferStorage<BenchmarkEvent> storage(storage_path);
-  MinibenchmarkStatus status = storage.Read();
-  if (status != kMinibenchmarkSuccess) {
-    return status;
+  MinibenchmarkStatus read_status = storage.Read();
+  if (read_status != kMinibenchmarkSuccess) {
+    return read_status;
   }
   TFLiteSettingsT tflite_settings;
 
@@ -127,25 +145,30 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
         &fbb,
         CreateBenchmarkEvent(
             fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-            BenchmarkEventType_RECOVERED_ERROR, /* result */ 0,
-            CreateBenchmarkError(
-                fbb, BenchmarkStage_UNKNOWN,
-                kMinibenchmarkUnableToSetCpuAffinity, /*signal=*/0,
-                /*error_code=*/0,
-                /*mini_benchmark_error_code=*/set_big_core_affinity_errno),
+            BenchmarkEventType_RECOVERED_ERROR, /* result = */ 0,
+            // There is no dedicated field for the errno, so we pass it as
+            // exit_code instead.
+            CreateBenchmarkError(fbb, BenchmarkStage_INITIALIZATION,
+                                 /* exit_code = */ set_big_core_affinity_errno,
+                                 /* signal = */ 0,
+                                 /* error_code = */ 0,
+                                 /* mini_benchmark_error_code = */
+                                 kMinibenchmarkUnableToSetCpuAffinity),
             Validator::BootTimeMicros(), Validator::WallTimeMicros()));
   }
 
-  status = kMinibenchmarkNoValidationRequestFound;
+  Validator::Status run_status =
+      Validator::Status{kMinibenchmarkNoValidationRequestFound};
+
   for (int i = storage.Count() - 1; i >= 0; i--) {
     const BenchmarkEvent* event = storage.Get(i);
     if (event->event_type() == BenchmarkEventType_START) {
       event->tflite_settings()->UnPackTo(&tflite_settings);
 
       Validator::Results results;
-      status =
+      run_status =
           RunValidator(model_path, nnapi_sl_path, tflite_settings, results);
-      if (status != kMinibenchmarkSuccess) {
+      if (run_status.status != kMinibenchmarkSuccess) {
         break;
       }
 
@@ -185,9 +208,12 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
       &fbb, CreateBenchmarkEvent(
                 fbb, CreateTFLiteSettings(fbb, &tflite_settings),
                 BenchmarkEventType_ERROR, /* result */ 0,
-                CreateBenchmarkError(fbb, BenchmarkStage_UNKNOWN, status),
+                CreateBenchmarkError(fbb, run_status.stage, /* exit_code */ 0,
+                                     /* signal */ 0, /* error_code */ 0,
+                                     run_status.status),
                 Validator::BootTimeMicros(), Validator::WallTimeMicros()));
 }
+
 }  // extern "C"
 }  // namespace acceleration
 }  // namespace tflite

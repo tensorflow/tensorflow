@@ -22,11 +22,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "pybind11/pybind11.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/mhlo_passes/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
@@ -77,19 +80,28 @@ void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
   pm.enableIRPrinting(print_before, print_after);
 }
 
-// Converts an XlaComputation to an MHLO mlir::Module string. Exists for
-// backwards compatibility.
+// Converts an XlaComputation to an MHLO or StableHLO mlir::Module string.
+// Exists for backwards compatibility.
 // TODO(phawkins): port remaining users of XlaComputations to use mlir::Modules
 // instead and delete this function.
 StatusOr<std::string> PyXlaComputationToMlirModule(
-    const XlaComputation& computation) {
+    const XlaComputation& computation, bool emit_stable_hlo) {
   mlir::MLIRContext context;
+  if (VLOG_IS_ON(3)) context.disableMultithreading();
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
+  mlir::PassManager pm(&context);
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
+  if (emit_stable_hlo) {
+    pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  }
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
+  }
   return PrintModule(*module);
 }
 
@@ -108,6 +120,13 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
 StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
+  // JAX can be customized in a way that involves operations from custom
+  // dialects showing up in JAX IR.
+  // `ParseModule` won't know about these dialects, but that's fine since we
+  // just want to convert MHLO ops to StableHLO ops here and leave everything
+  // else unchanged.
+  // In order to achieve that, we're allowing unregistered dialects here.
+  context.allowUnregisteredDialects(true);
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);
@@ -122,6 +141,9 @@ StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
 StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
+  // See PyMhloToStablehlo for an explanation of why we're allowing unregistered
+  // dialects here.
+  context.allowUnregisteredDialects(true);
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);
@@ -133,13 +155,48 @@ StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   return PrintModule(*module);
 }
 
+StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
+                                                std::string target) {
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
+
+  // Legalize CHLO -> MHLO -> StableHLO
+  mlir::PassManager pm(&context);
+  // FIXME: Add other dialect registrations here.
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument("CHLO => MHLO => StableHLO failed");
+  }
+
+  // Serialize portable artifact
+  std::string buffer;
+  llvm::raw_string_ostream os(buffer);
+  if (failed(mlir::stablehlo::serializePortableArtifact(*module, target, os)))
+    return tsl::errors::InvalidArgument("Failed to serialize StableHLO");
+  return py::bytes(buffer);
+}
+
+StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {
+  mlir::MLIRContext context;
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::stablehlo::deserializePortableArtifact(bytecode_str, &context);
+  if (!module)
+    return tsl::errors::InvalidArgument("Failed to deserialize StableHLO");
+  return PrintModule(*module);
+}
+
 }  // namespace
 
 void BuildMlirSubmodule(py::module& m) {
   py::module mlir_module = m.def_submodule("mlir", "MLIR/XLA integration");
 
   mlir_module.def("xla_computation_to_mlir_module",
-                  &PyXlaComputationToMlirModule);
+                  &PyXlaComputationToMlirModule, py::arg("computation"),
+                  py::arg("emit_stable_hlo") = true);
   mlir_module.def("mlir_module_to_xla_computation",
                   &PyMlirModuleToXlaComputation, py::arg("mlir_module"),
                   py::arg("use_tuple_args") = false,
@@ -148,6 +205,10 @@ void BuildMlirSubmodule(py::module& m) {
                   py::arg("mlir_module"));
   mlir_module.def("stablehlo_to_mhlo", &PyStablehloToMhlo,
                   py::arg("mlir_module"));
+  mlir_module.def("serialize_portable_artifact", &PySerializePortableArtifact,
+                  py::arg("mlir_module"), py::arg("target"));
+  mlir_module.def("deserialize_portable_artifact",
+                  &PyDeserializePortableArtifact, py::arg("mlir_module"));
 }
 
 }  // namespace xla

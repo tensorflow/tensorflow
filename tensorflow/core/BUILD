@@ -177,6 +177,7 @@ tf_proto_library(
         "//tensorflow/tsl/profiler/protobuf:xplane_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -435,11 +436,6 @@ tf_cuda_library(
     ],
 )
 
-alias(
-    name = "ptr_util",
-    actual = "//tensorflow/core/util:ptr_util",
-)
-
 # TODO(gonnet): Remove this alias once all users have been moved to the actual target.
 alias(
     name = "reader_base",
@@ -605,6 +601,7 @@ cc_library(
         "//tensorflow/core/kernels:random_index_shuffle_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
+        "//tensorflow/core/kernels:sync_ops",
         "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:required",
@@ -628,23 +625,16 @@ cc_library(
         "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_mkl([
-        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
-        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_identity_op",
-        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
         "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
         "//tensorflow/core/kernels/mkl:mkl_requantize_ops",
         "//tensorflow/core/kernels/mkl:mkl_quantize_op",
         "//tensorflow/core/kernels/mkl:mkl_relu_op",
-        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
-        "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_swish_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_mish_op",
@@ -652,8 +642,8 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
     ]) + if_cuda([
@@ -942,6 +932,7 @@ filegroup(
         "nn_grad",
         "nn_ops_op_lib",
         "no_op_op_lib",
+        "optional_ops_op_lib",
         "parsing_ops_op_lib",
         "portable_op_registrations_and_gradients",
         "ragged_array_ops_op_lib",
@@ -970,6 +961,7 @@ filegroup(
         "stateless_random_ops_v2_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
+        "sync_ops_op_lib",
         "tpu_configuration_ops_op_lib",
         "tpu_cross_replica_ops_op_lib",
         "tpu_embedding_ops_op_lib",
@@ -1656,6 +1648,7 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",
@@ -1960,28 +1953,21 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ] + if_mkl([
-        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
-        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_identity_op",
-        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
-        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
         "//tensorflow/core/kernels/mkl:mkl_quantize_op",
         "//tensorflow/core/kernels/mkl:mkl_relu_op",
-        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
-        "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
-        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]),
 )
 

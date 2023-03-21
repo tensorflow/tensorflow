@@ -33,10 +33,38 @@ std::vector<const runtime::Module*> FfiModules();
 // Exports registered FFI modules to the given custom call registry.
 void ExportFfiModules(DynamicCustomCallRegistry& registry);
 
+// XLA runtime wrapper around FFI module.
+class FfiModule;
+
+//===----------------------------------------------------------------------===//
+// RAII helpers for the state instantiated by the FFI modules.
+//===----------------------------------------------------------------------===//
+
+// Deletes the FFI module `state` instantiated by the `module`.
+struct FfiStateDeleter {
+  void operator()(XLA_FFI_Module_State* state);
+  const FfiModule* module;
+};
+
+// A smart pointer owning `state` instantiated by the `module`.
+struct OwnedFfiState
+    : public std::unique_ptr<XLA_FFI_Module_State, FfiStateDeleter> {
+  using Base = std::unique_ptr<XLA_FFI_Module_State, FfiStateDeleter>;
+  OwnedFfiState(const FfiModule* module, XLA_FFI_Module_State* state);
+};
+
+//===----------------------------------------------------------------------===//
+// FFI modules <-> XLA runtime integration via UserData.
+//===----------------------------------------------------------------------===//
+
 // A vector of opaque pointers to FFI modules state that is passed around inside
 // `UserData` and enables FFI functions to find their state.
 struct FfiStateVector {
   std::vector<XLA_FFI_Module_State*> state;  // indexed by module id
+
+  // If FFI module instantiates state for each execution, the state vector will
+  // be the owner of that state for the duration of execution.
+  std::vector<OwnedFfiState> per_execution_state;
 };
 
 // FfiModulesState is a container that owns the FFI modules state.
@@ -47,7 +75,7 @@ class FfiModulesState {
   // Instantiates `FfiModulesState` from the registered FFI module.
   static absl::StatusOr<FfiModulesState> Instantiate();
 
-  FfiStateVector state_vector() const;
+  absl::StatusOr<FfiStateVector> state_vector() const;
 
  private:
   explicit FfiModulesState(std::vector<std::unique_ptr<Module::State>> state);

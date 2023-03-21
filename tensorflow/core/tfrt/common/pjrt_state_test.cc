@@ -57,14 +57,16 @@ TEST_F(PjRtStateTestFixture, AddAlreadyExistsPjRtClient) {
       tensorflow::DEVICE_CPU,
       xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
           .value()));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client_1,
+                          pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU));
+  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(
+      tensorflow::DEVICE_CPU, xla::GetTfrtCpuClient(/*asynchronous=*/true,
+                                                    /*cpu_device_count=*/1)
+                                  .value()));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client_2,
+                          pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU));
 
-  EXPECT_THAT(
-      pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
-                                 xla::GetTfrtCpuClient(/*asynchronous=*/true,
-                                                       /*cpu_device_count=*/1)
-                                     .value()),
-      StatusIs(tensorflow::error::ALREADY_EXISTS,
-               HasSubstr("PjRt client already exists for device type")));
+  EXPECT_NE(pjrt_client_1, pjrt_client_2);
 }
 
 TEST_F(PjRtStateTestFixture, GetNotExistPjRtClient) {

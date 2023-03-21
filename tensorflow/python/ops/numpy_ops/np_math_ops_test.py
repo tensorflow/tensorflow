@@ -125,6 +125,13 @@ class MathTest(test.TestCase, parameterized.TestCase):
     return self._testBinaryOp(
         np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
 
+  def testLcm(self):
+    a = np_array_ops.array(6, dtype=np.int8)
+    b = np_array_ops.array(22, dtype=np.int8)
+    res_tf = np_math_ops.lcm(a, b)
+    res_np = np.lcm(np.array(a), np.array(b))
+    self.assertEqual(res_tf, res_np)
+
   def _testUnaryOp(self, math_fun, np_fun, name):
 
     def run_test(a):
@@ -351,6 +358,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
+  ops.enable_tensor_equality()
   ops.enable_eager_execution()
   ops.enable_numpy_style_type_promotion()
   np_math_ops.enable_numpy_methods_on_tensor()

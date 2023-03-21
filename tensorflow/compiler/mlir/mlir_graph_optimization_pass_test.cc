@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
 #include <memory>
+#include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -89,6 +91,25 @@ class ModifyMlirModulePass : public MlirOptimizationPass {
   Status run_status_;
 };
 
+FunctionDef XTimesTwo() {
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  return FunctionDefHelper::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+}
+
 class MlirGraphOptimizationPassTest : public Test {
  public:
   void Init(Status pass_run_result,
@@ -108,7 +129,7 @@ class MlirGraphOptimizationPassTest : public Test {
                                                  std::move(optimization_pass));
     }
 
-    flib_.reset(new FunctionLibraryDefinition(graph_->flib_def()));
+    flib_ = std::make_unique<FunctionLibraryDefinition>(graph_->flib_def());
   }
 
   void AddModuleModificationPass(MlirOptimizationPassState pass_state,
@@ -149,6 +170,7 @@ class MlirGraphOptimizationPassTest : public Test {
   std::unique_ptr<Graph> graph_;
   std::unique_ptr<FunctionLibraryDefinition> flib_;
   std::vector<std::string> control_ret_node_names_;
+  std::string xla_compile_device_type_;
   bool control_rets_updated_{false};
 };
 
@@ -160,7 +182,8 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
   graph_->ToGraphDef(&original_graph_def);
 
   EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
+                "test_func", device_set_, config_proto_,
+                xla_compile_device_type_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status(error::Code::ABORTED, "aborted"));
   verifyGraph(original_graph_def);
@@ -171,13 +194,22 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
        {MlirOptimizationPassState::Disabled,
         MlirOptimizationPassState::FallbackEnabled});
 
+  // We expect the result graph to be exactly the same as the original graph
+  // so we define the `graph_` by the following `flib` in this test point
+  // instead of the way we do in the Init method.
+  FunctionDefLibrary flib;
+  *flib.add_function() = XTimesTwo();
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
+  graph_ = std::make_unique<Graph>(flib_def);
+
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             Status(error::Code::ABORTED, "aborted"));
 
   EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
+                "test_func", device_set_, config_proto_,
+                xla_compile_device_type_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             OkStatus());
   verifyGraph(original_graph_def);
@@ -192,7 +224,8 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             OkStatus());
   EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
+                "test_func", device_set_, config_proto_,
+                xla_compile_device_type_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             OkStatus());
 

@@ -79,6 +79,8 @@ filegroup(
         "bcast.cc",
         "bcast.h",
         "command_line_flags.h",
+        "debug_data_dumper.cc",
+        "debug_data_dumper.h",
         "determinism.h",
         "device_name_utils.h",
         "dump_graph.cc",
@@ -103,7 +105,6 @@ filegroup(
         "port.cc",
         "port.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
         "ragged_to_dense_util_common.h",
@@ -141,6 +142,7 @@ filegroup(
         "batch_util.h",
         "bcast.h",
         "command_line_flags.h",
+        "debug_data_dumper.h",
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
@@ -167,7 +169,6 @@ filegroup(
         "permutation_input_iterator.h",
         "permutation_output_iterator.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -187,6 +188,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "zen_util.h",
         "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )
@@ -209,6 +211,7 @@ filegroup(
         "activation_mode.cc",
         "batch_util.cc",
         "bcast.cc",
+        "debug_data_dumper.cc",
         "debug_events_writer.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
@@ -333,6 +336,7 @@ filegroup(
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
+        "debug_data_dumper.h",
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
@@ -348,7 +352,6 @@ filegroup(
         "mirror_pad_mode.h",
         "padding.h",
         "port.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -379,6 +382,32 @@ cc_library(
     name = "version_info",
     hdrs = ["version_info.h"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "fake_clock_env",
+    testonly = 1,
+    srcs = ["fake_clock_env.cc"],
+    hdrs = ["fake_clock_env.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_clock_env_test",
+    srcs = [
+        "fake_clock_env_test.cc",
+    ],
+    deps = [
+        ":fake_clock_env",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:env",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -561,14 +590,6 @@ cc_library(
 )
 
 cc_library(
-    name = "ptr_util",
-    hdrs = ["ptr_util.h"],
-    deps = [
-        "//tensorflow/tsl/util:ptr_util",
-    ],
-)
-
-cc_library(
     name = "tensor_format",
     srcs = ["tensor_format.cc"],
     hdrs = ["tensor_format.h"],
@@ -727,7 +748,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
@@ -753,6 +773,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_blas_utils",
+        "//tensorflow/compiler/xla/stream_executor:data_type",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
@@ -840,6 +862,7 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
+        "debug_data_dumper_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",

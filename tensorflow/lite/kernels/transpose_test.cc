@@ -92,13 +92,13 @@ class TransposeOpDynamicModel : public TransposeOpModel {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, TestUnequalPermSize) {
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {2}, {2, 2}), "2 != 4");
 }
 
 TEST(TransposeTest, TestPermOutOfBounds) {
-  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, -1, -2, -3}),
+  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, -1, -2, -5}),
                "Transpose op permutations array is out of bounds.");
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
                "Transpose op permutations array is out of bounds.");
@@ -376,7 +376,7 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsThird) {
   EXPECT_EQ(m.GetOutput(), out);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, Test7DInputTensor) {
   EXPECT_DEATH(
       TransposeOpConstModel({1, 2, 3, 4, 5, 6, 7}, {6}, {0, 1, 2, 3, 4, 5}),

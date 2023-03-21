@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -214,6 +215,40 @@ class ApproxTopkTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected_in_grads, result_in_grads = self.evaluate(
         ann_with_grads(db_op, out_grads_op))
     self.assertAllClose(expected_in_grads, result_in_grads)
+
+  def test_invalid_input(self):
+    @function(jit_compile=True)
+    def fuzz_jit():
+      return nn_ops.approx_max_k(
+          [
+              183.39395141601562,
+              62.6842041015625,
+              83.8385238647461,
+              204.36642456054688,
+          ],
+          4774,
+          reduction_dimension=0x8282828,
+          recall_target=135.9822179933652,
+          reduction_input_size_override=6154,
+          aggregate_to_topk=True,
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      fuzz_jit()
+
+  def test_b272094281(self):
+    @function(jit_compile=True)
+    def fuzz_jit():
+      return nn_ops.approx_max_k(
+          [],
+          9223372036854775807,
+          reduction_dimension=-4294967297 + 0x41,
+          reduction_input_size_override=-9223372036854775807,
+          aggregate_to_topk=False,
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      fuzz_jit()
 
 
 if __name__ == '__main__':

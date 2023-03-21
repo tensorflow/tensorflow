@@ -86,7 +86,7 @@ static absl::Status CompileAndExecute(std::string_view source,
   auto executed = executable->Execute(args, NoResultConverter{}, execute_opts);
   if (!executed.ok()) {
     return absl::InternalError(
-        absl::StrFormat("%s: %s", executed.message(), diagnostic));
+        absl::StrFormat("%s: %s", executed.status().message(), diagnostic));
   }
 
   return absl::OkStatus();
@@ -156,7 +156,7 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
   // Function that tests that we can successfully decode various kinds of
   // attributes attached to custom calls.
   XLA_FFI_DEFINE_FUNCTION(FFI_AttrsDecoding, AttrsDecoding,
-                          ffi::Ffi::Bind("ffi.attrs")
+                          ffi::Ffi::Binding()
                               .State<TestModuleState>()  // state
                               .Attr<std::string_view>("str")
                               .Attr<float>("f32")
@@ -173,7 +173,7 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
   // Function that tests that we can successfully decode various kinds of
   // arguments passed to custom calls.
   XLA_FFI_DEFINE_FUNCTION(FFI_Fill, Fill,
-                          ffi::Ffi::Bind("ffi.fill")
+                          ffi::Ffi::Binding()
                               .State<TestModuleState>()  // state
                               .Arg<int32_t>()            // arg0
                               .Arg<ffi::BufferArg>()     // arg1
@@ -228,34 +228,60 @@ FfiStatus TestModule::Fill(TestModuleState* state, int32_t arg0,
   return FfiStatus::Ok();
 }
 
+//===----------------------------------------------------------------------===//
+// FFI module for testing instantiating per-execution state.
+//===----------------------------------------------------------------------===//
+
+struct PerExecutionState {
+  PerExecutionState() { counter++; }
+  static int32_t counter;
+};
+
+int32_t PerExecutionState::counter = 0;
+
+struct PerExecutionStateModule : public ffi::StatefulModule<PerExecutionState> {
+  using Base = ffi::StatefulModule<PerExecutionState>;
+
+  explicit PerExecutionStateModule(const XLA_FFI_Api* api)
+      : Base(api, "per-execution-state-ffi-module", {},
+             /*per_execution_state=*/true) {}
+
+  std::unique_ptr<PerExecutionState> CreateState() final {
+    return std::make_unique<PerExecutionState>();
+  }
+};
+
 //----------------------------------------------------------------------------//
 
-static TestModule* RegisterModule() {
-  static TestModule* module = new TestModule(GetXlaFfiApi());
-  return module;
-}
-
-// When test is instantiated it automatically registers FFI module with the XLA
+// When test is instantiated it automatically registers FFI modules with the XLA
 // runtime.
 class FfiTest : public ::testing::Test {
  public:
-  FfiTest() : module_(*RegisterModule()) { ffi::ExportFfiModules(registry_); }
+  FfiTest() {
+    static const XLA_FFI_Api* api = GetXlaFfiApi();
 
-  TestModule& module() { return module_; }
+    static TestModule* module0 = new TestModule(api);
+    static PerExecutionStateModule* module1 = new PerExecutionStateModule(api);
+    (void)module0;
+    (void)module1;
+
+    ffi::ExportFfiModules(registry_);
+  }
+
   DynamicCustomCallRegistry& registry() { return registry_; }
 
  private:
-  TestModule& module_;
   DynamicCustomCallRegistry registry_;
 };
 
-TEST_F(FfiTest, ModuleRegistered) {
+TEST_F(FfiTest, ModulesRegistered) {
   std::vector<const Module*> modules = ffi::FfiModules();
-  ASSERT_EQ(modules.size(), 1);
+  ASSERT_EQ(modules.size(), 2);
   EXPECT_EQ(modules[0]->name(), "ffi-module");
+  EXPECT_EQ(modules[1]->name(), "per-execution-state-ffi-module");
 }
 
-TEST_F(FfiTest, ModuleExported) {
+TEST_F(FfiTest, ModulesExported) {
   EXPECT_TRUE(registry().Find("ffi.attrs_decoding"));
   EXPECT_TRUE(registry().Find("ffi.fill"));
 }
@@ -264,8 +290,8 @@ TEST_F(FfiTest, CreateState) {
   auto state = ffi::FfiModulesState::Instantiate();
   ASSERT_TRUE(state.ok());
 
-  ffi::FfiStateVector state_vector = state->state_vector();
-  ASSERT_EQ(state_vector.state.size(), 1);
+  absl::StatusOr<ffi::FfiStateVector> state_vector = state->state_vector();
+  ASSERT_EQ(state_vector->state.size(), 2);
 }
 
 TEST_F(FfiTest, AttrsDecoding) {
@@ -293,11 +319,11 @@ TEST_F(FfiTest, AttrsDecoding) {
 
   auto state = ffi::FfiModulesState::Instantiate();
   auto state_vector = state->state_vector();
-  CustomCall::UserData user_data(&state_vector);
+  CustomCall::UserData user_data(&*state_vector);
 
   VLOG(0) << CompileAndExecute(source, {}, registry(), user_data).message();
   ASSERT_TRUE(CompileAndExecute(source, {}, registry(), user_data).ok());
-  auto* attrs = reinterpret_cast<TestModuleState*>(state_vector.state[0]);
+  auto* attrs = reinterpret_cast<TestModuleState*>(state_vector->state[0]);
 
   EXPECT_EQ(attrs->str, "Foo");
   EXPECT_EQ(attrs->f32_attr, 42.0);
@@ -330,9 +356,9 @@ TEST_F(FfiTest, ScalarAndBufferArgs) {
   ASSERT_TRUE(state.ok());
 
   // Add an FFI state vector to the UserData.
-  ffi::FfiStateVector state_vector = state->state_vector();
-  CustomCall::UserData user_data(&state_vector);
-  ASSERT_EQ(state_vector.state.size(), 1);
+  absl::StatusOr<ffi::FfiStateVector> state_vector = state->state_vector();
+  CustomCall::UserData user_data(&state_vector.value());
+  ASSERT_EQ(state_vector->state.size(), 2);
 
   // Use vector as buffer storage.
   std::vector<float> buffer(16);
@@ -348,11 +374,26 @@ TEST_F(FfiTest, ScalarAndBufferArgs) {
   ASSERT_TRUE(CompileAndExecute(source, args, registry(), user_data).ok());
 
   // Check that the FFI function updated the corresponding module state.
-  auto* state_ptr = reinterpret_cast<TestModuleState*>(state_vector.state[0]);
+  auto* state_ptr = reinterpret_cast<TestModuleState*>(state_vector->state[0]);
   EXPECT_EQ(state_ptr->i32_arg, 42);
 
   // Check that FFI function filled the buffer argument with data.
   EXPECT_EQ(buffer, std::vector<float>(16, 42.0));
+}
+
+TEST_F(FfiTest, PerExecutionState) {
+  auto state = ffi::FfiModulesState::Instantiate();
+  ASSERT_TRUE(state.ok());
+
+  int32_t cnt0 = PerExecutionState::counter;
+  absl::StatusOr<ffi::FfiStateVector> state_vector0 = state->state_vector();
+  absl::StatusOr<ffi::FfiStateVector> state_vector1 = state->state_vector();
+  absl::StatusOr<ffi::FfiStateVector> state_vector2 = state->state_vector();
+  int32_t cnt1 = PerExecutionState::counter;
+
+  // Check that every time we create a state vector we create a new instance of
+  // the `PerExecutionState`.
+  EXPECT_EQ(cnt1 - cnt0, 3);
 }
 
 }  // namespace runtime

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -44,8 +43,9 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace tensorflow {
 namespace internal {
@@ -209,9 +209,9 @@ Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<string>* node_names, std::vector<string>* node_dtypes,
-    std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
-    std::vector<llvm::Optional<double>>* node_mins,
-    std::vector<llvm::Optional<double>>* node_maxs) {
+    std::vector<std::optional<std::vector<int>>>* node_shapes,
+    std::vector<std::optional<double>>* node_mins,
+    std::vector<std::optional<double>>* node_maxs) {
   quant_specs->inference_input_type =
       ConvertIODataTypeToDataType(toco_flags.inference_input_type());
   tensorflow::DataType inference_type =
@@ -335,7 +335,7 @@ Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
-    llvm::Optional<tensorflow::Session*> session) {
+    std::optional<tensorflow::Session*> session) {
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         module.get(),

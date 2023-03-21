@@ -180,6 +180,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -861,7 +862,7 @@ class _WithSpaceToBatch:
       input_spatial_shape = [input_shape_list[i] for i in spatial_dims]
     if input_spatial_shape is None or None in input_spatial_shape:
       input_shape_tensor = array_ops.shape(inp)
-      input_spatial_shape = array_ops.stack(
+      input_spatial_shape = array_ops_stack.stack(
           [input_shape_tensor[i] for i in spatial_dims])
 
     base_paddings = self.base_paddings
@@ -914,7 +915,7 @@ def _with_space_to_batch_base_paddings(filter_shape, num_spatial_dims,
   # convention as conv2d.
   pad_extra_start = pad_extra_shape // 2
   pad_extra_end = pad_extra_shape - pad_extra_start
-  base_paddings = array_ops.stack(
+  base_paddings = array_ops_stack.stack(
       [[pad_extra_start[i], pad_extra_end[i]] for i in range(num_spatial_dims)])
   return base_paddings
 
@@ -4788,6 +4789,11 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
+
+  Raises:
+    ValueError: If
+      - explicit padding is used with an input tensor of rank 5.
+      - explicit padding is used with data_format='NCHW_VECT_C'.
   """
   if input.shape is not None:
     n = len(input.shape) - 2
@@ -5042,6 +5048,9 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
+
+  Raises:
+    ValueError: If explicit padding is used with data_format='NCHW_VECT_C'.
   """
   with ops.name_scope(name, "MaxPool2d", [input]) as name:
     if data_format is None:

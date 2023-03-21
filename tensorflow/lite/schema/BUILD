@@ -181,4 +181,10 @@ cc_library(
     ],
 )
 
+flatbuffer_cc_library(
+    name = "conversion_metadata_fbs",
+    srcs = ["conversion_metadata.fbs"],
+    compatible_with = get_compatible_with_portable(),
+)
+
 tflite_portable_test_suite()

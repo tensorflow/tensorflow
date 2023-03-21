@@ -56,7 +56,7 @@ cc_library(
         "nn_grad.h",
     ],
     visibility = [
-        "//tensorflow:internal",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
@@ -140,10 +140,7 @@ filegroup(
         "nn_grad.h",
         "not_differentiable.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 cc_library(
@@ -152,7 +149,7 @@ cc_library(
     srcs = ["grad_test_helper.cc"],
     hdrs = ["grad_test_helper.h"],
     visibility = [
-        "//tensorflow:internal",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/c/eager:gradient_checker",

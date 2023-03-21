@@ -24,15 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
-#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace spmd {
@@ -2911,6 +2909,9 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
   auto sort = FindInstruction(module.get(), "sort.0");
+  // The shape of the operands changed from [2,209664] to [1,209664] due to
+  // moving the sharding from the sort dim (dim 1) to dim 0. This optimization
+  // was implemented for b/258523376.
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -3064,6 +3065,301 @@ ENTRY entry {
   auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_SlowSortBug) {
+  // Test with the sort in b/258523376 (same comparator, shapes, and sharding)
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[32768,65536]{1,0})->(f32[32768,65536]{1,0}, s32[32768,65536]{1,0})}
+
+region_174.7326 {
+  Arg_0.7327 = f32[] parameter(0), sharding={replicated}
+  compare.7339 = pred[] compare(Arg_0.7327, Arg_0.7327), direction=NE, sharding={replicated}
+  constant.7332 = s32[] constant(2143289344), sharding={replicated}
+  constant.7334 = f32[] constant(0), sharding={replicated}
+  compare.7337 = pred[] compare(Arg_0.7327, constant.7334), direction=EQ, sharding={replicated}
+  constant.7333 = s32[] constant(0), sharding={replicated}
+  bitcast-convert.7335 = s32[] bitcast-convert(Arg_0.7327), sharding={replicated}
+  select.7338 = s32[] select(compare.7337, constant.7333, bitcast-convert.7335), sharding={replicated}
+  select.7340 = s32[] select(compare.7339, constant.7332, select.7338), sharding={replicated}
+  constant.1127 = s32[] constant(0), sharding={replicated}
+  compare.7343 = pred[] compare(select.7340, constant.1127), direction=LT, sharding={replicated}
+  constant.7331 = u32[] constant(2147483647), sharding={replicated}
+  bitcast-convert.7336 = u32[] bitcast-convert(Arg_0.7327), sharding={replicated}
+  subtract.7341 = u32[] subtract(constant.7331, bitcast-convert.7336), sharding={replicated}
+  bitcast-convert.7342 = s32[] bitcast-convert(subtract.7341), sharding={replicated}
+  select.7344 = s32[] select(compare.7343, bitcast-convert.7342, select.7340), sharding={replicated}
+  Arg_1.7328 = f32[] parameter(1), sharding={replicated}
+  compare.7349 = pred[] compare(Arg_1.7328, Arg_1.7328), direction=NE, sharding={replicated}
+  constant.1125 = s32[] constant(2143289344), sharding={replicated}
+  constant.1126 = f32[] constant(0), sharding={replicated}
+  compare.7347 = pred[] compare(Arg_1.7328, constant.1126), direction=EQ, sharding={replicated}
+  constant.1128 = s32[] constant(0), sharding={replicated}
+  bitcast-convert.7345 = s32[] bitcast-convert(Arg_1.7328), sharding={replicated}
+  select.7348 = s32[] select(compare.7347, constant.1128, bitcast-convert.7345), sharding={replicated}
+  select.7350 = s32[] select(compare.7349, constant.1125, select.7348), sharding={replicated}
+  constant.1129 = s32[] constant(0), sharding={replicated}
+  compare.7353 = pred[] compare(select.7350, constant.1129), direction=LT, sharding={replicated}
+  constant.1130 = u32[] constant(2147483647), sharding={replicated}
+  bitcast-convert.7346 = u32[] bitcast-convert(Arg_1.7328), sharding={replicated}
+  subtract.7351 = u32[] subtract(constant.1130, bitcast-convert.7346), sharding={replicated}
+  bitcast-convert.7352 = s32[] bitcast-convert(subtract.7351), sharding={replicated}
+  select.7354 = s32[] select(compare.7353, bitcast-convert.7352, select.7350), sharding={replicated}
+  compare.7355 = pred[] compare(select.7344, select.7354), direction=LT, sharding={replicated}
+  compare.24 = pred[] compare(select.7354, select.7344), direction=LT, sharding={replicated}
+  compare.25 = pred[] compare(compare.7355, compare.24), direction=EQ, sharding={replicated}
+  Arg_2.7329 = s32[] parameter(2), sharding={replicated}
+  Arg_3.7330 = s32[] parameter(3), sharding={replicated}
+  compare.26 = pred[] compare(Arg_2.7329, Arg_3.7330), direction=LT, sharding={replicated}
+  ROOT select.21 = pred[] select(compare.25, compare.26, compare.7355), sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[32768,65536]{1,0} parameter(0)
+  negate.7325 = f32[32768,65536]{1,0} negate(param.0), sharding={devices=[1,64]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}
+  iota.30 = s32[32768,65536]{1,0} iota(), iota_dimension=1, sharding={devices=[1,64]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}
+  ROOT sort.0 = (f32[32768,65536]{1,0}, s32[32768,65536]{1,0}) sort(negate.7325, iota.30), dimensions={1}, is_stable=true, to_apply=region_174.7326, sharding={{devices=[1,64]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}, {devices=[1,64]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/64));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 512);
+    EXPECT_EQ(operand->shape().dimensions(1), 65536);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_OneOperand) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024,1024]{1,0})->f32[1024,1024]{1,0}}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  ROOT sort.0 = f32[1024,1024]{1,0} sort(negate.0), dimensions={1}, is_stable=true, to_apply=compare, sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 128);
+    EXPECT_EQ(operand->shape().dimensions(1), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_TwoOperands) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024,1024]{1,0})->(f32[1024,1024]{1,0},s32[1024,1024]{1,0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[1024,1024]{1,0} iota(), iota_dimension=1, sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  ROOT sort.0 = (f32[1024,1024]{1,0}, s32[1024,1024]{1,0}) sort(negate.0, iota.0), dimensions={1}, is_stable=true, to_apply=compare, sharding={{devices=[1,8]0,1,2,3,4,5,6,7},{devices=[1,8]0,1,2,3,4,5,6,7}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 128);
+    EXPECT_EQ(operand->shape().dimensions(1), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_ThreeOperands) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024,1024]{1,0})->(f32[1024,1024]{1,0},s32[1024,1024]{1,0},s32[1024,1024]{1,0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  p.2.lhs = s32[] parameter(4), sharding={replicated}
+  p.2.rhs = s32[] parameter(5), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[1024,1024]{1,0} iota(), iota_dimension=0, sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  iota.1 = s32[1024,1024]{1,0} iota(), iota_dimension=1, sharding={devices=[1,8]0,1,2,3,4,5,6,7}
+  ROOT sort.0 = (f32[1024,1024]{1,0}, s32[1024,1024]{1,0}, s32[1024,1024]{1,0}) sort(negate.0, iota.0, iota.1), dimensions={1}, is_stable=true, to_apply=compare, sharding={{devices=[1,8]0,1,2,3,4,5,6,7},{devices=[1,8]0,1,2,3,4,5,6,7},{devices=[1,8]0,1,2,3,4,5,6,7}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 128);
+    EXPECT_EQ(operand->shape().dimensions(1), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_RankOne) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024]{0})->(f32[1024]{0},s32[1024]{0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024]{0} parameter(0)
+  negate.0 = f32[1024]{0} negate(param.0), sharding={devices=[8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[1024]{0} iota(), iota_dimension=0
+  ROOT sort.0 = (f32[1024]{0}, s32[1024]{0}) sort(negate.0, iota.0), dimensions={0}, is_stable=true, to_apply=compare
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_TwoFreeDivisibleDims) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[8,1024,1024]{2,1,0})->(f32[8,1024,1024]{2,1,0},s32[8,1024,1024]{2,1,0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[8,1024,1024]{2,1,0} parameter(0)
+  negate.0 = f32[8,1024,1024]{2,1,0} negate(param.0), sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[8,1024,1024]{2,1,0} iota(), iota_dimension=2, sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  ROOT sort.0 = (f32[8,1024,1024]{2,1,0}, s32[8,1024,1024]{2,1,0}) sort(negate.0, iota.0), dimensions={2}, is_stable=true, to_apply=compare, sharding={{devices=[1,1,8]0,1,2,3,4,5,6,7},{devices=[1,1,8]0,1,2,3,4,5,6,7}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 1);
+    EXPECT_EQ(operand->shape().dimensions(1), 1024);
+    EXPECT_EQ(operand->shape().dimensions(2), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_OneFreeDivisibleDim) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[7,1024,1024]{2,1,0})->(f32[7,1024,1024]{2,1,0},s32[7,1024,1024]{2,1,0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[7,1024,1024]{2,1,0} parameter(0)
+  negate.0 = f32[7,1024,1024]{2,1,0} negate(param.0), sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  iota.0 = s32[7,1024,1024]{2,1,0} iota(), iota_dimension=2, sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  ROOT sort.0 = (f32[7,1024,1024]{2,1,0}, s32[7,1024,1024]{2,1,0}) sort(negate.0, iota.0), dimensions={2}, is_stable=true, to_apply=compare, sharding={{devices=[1,1,8]0,1,2,3,4,5,6,7},{devices=[1,1,8]0,1,2,3,4,5,6,7}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 7);
+    EXPECT_EQ(operand->shape().dimensions(1), 128);
+    EXPECT_EQ(operand->shape().dimensions(2), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_OneFreeNondivisibleDim) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[7,1024,1024]{2,1,0})->(f32[7,1024,1024]{2,1,0},s32[7,1024,1024]{2,1,0})}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[7,1024,1024]{2,1,0} parameter(0)
+  negate.0 = f32[7,1024,1024]{2,1,0} negate(param.0), sharding={devices=[1,2,4]0,1,2,3,4,5,6,7}
+  iota.0 = s32[7,1024,1024]{2,1,0} iota(), iota_dimension=2, sharding={devices=[1,2,4]0,1,2,3,4,5,6,7}
+  ROOT sort.0 = (f32[7,1024,1024]{2,1,0}, s32[7,1024,1024]{2,1,0}) sort(negate.0, iota.0), dimensions={2}, is_stable=true, to_apply=compare, sharding={{devices=[1,2,4]0,1,2,3,4,5,6,7},{devices=[1,2,4]0,1,2,3,4,5,6,7}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 2);
+    EXPECT_EQ(operand->shape().dimensions(1), 512);
+    EXPECT_EQ(operand->shape().dimensions(2), 1024);
+  }
+}
+
+TEST_F(SpmdPartitioningTest, SortShardedOnSortDim_LastTileDimReplicate) {
+  absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[1024,1024]{1,0})->f32[1024,1024]{1,0}}
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1024,1024]{1,0} parameter(0)
+  negate.0 = f32[1024,1024]{1,0} negate(param.0), sharding={devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT sort.0 = f32[1024,1024]{1,0} sort(negate.0), dimensions={1}, is_stable=true, to_apply=compare, sharding={devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto sort = FindInstruction(module.get(), "sort.1");
+  for (auto operand : sort->operands()) {
+    EXPECT_EQ(operand->shape().dimensions(0), 512);
+    EXPECT_EQ(operand->shape().dimensions(1), 1024);
+  }
 }
 
 TEST_F(SpmdPartitioningTest, ShardableTranspose) {
@@ -3356,18 +3652,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
-  // Left halo size should be 3 with 3 collective-permute.
-  auto reshape =
-      AllOf(op::Reshape(op::AllReduce(op::Select(
-                _,
-                op::DynamicSlice(
-                    op::Concatenate(op::CollectivePermute(op::Parameter()),
-                                    op::CollectivePermute(op::Parameter()),
-                                    op::CollectivePermute(op::Parameter()),
-                                    op::Parameter()),
-                    _, _),
-                _))),
-            op::Shape("f32[1,1,123]"));
+  auto reshape = AllOf(op::Reshape(op::AllReduce(op::Select(
+                           _, op::CollectivePermute(op::Parameter()), _))),
+                       op::Shape("f32[1,1,123]"));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, reshape);
 }
@@ -9751,7 +10038,7 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::DynamicSlice());
+  auto operand = AllOf(op::Shape("s32[2,2,2,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(
@@ -10044,6 +10331,111 @@ ENTRY entry {
       root,
       op::Tuple(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
                 _));
+}
+
+TEST_F(SpmdPartitioningTest, ParallelDimFromOutsideConditionalPositive) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+gather_comp {
+  %parameters = (s32[8,4,2,2], s32[1,8,4]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %gather.20 = s32[8,4,2,2]{3,2,1,0} gather(
+    s32[8,4,2,2]{3,2,1,0} %parameter.0,
+    s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=0,
+    slice_sizes={1,1,2,2}
+  ROOT %copy = s32[8,4,2,2]{3,2,1,0} copy(%gather.20), sharding={replicated}
+}
+
+add (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT sum = s32[] add(lhs, rhs)
+}
+
+scatter_comp {
+  %parameters = (s32[8,4,2,2], s32[1,8,4]) parameter(0),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}}
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} get-tuple-element(parameters), index=0,
+    sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} get-tuple-element(parameters), index=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %iota2 = s32[1,8,4]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %concatenate.19 = s32[2,8,4]{2,1,0} concatenate(s32[1,8,4]{2,1,0} %iota,
+    s32[1,8,4]{2,1,0} %iota2), dimensions={0},
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %constant = s32[] constant(0)
+  %base = s32[8,4,2,2]{3,2,1,0} broadcast(constant), dimensions={},
+    sharding={replicated}
+  %scatter.20 = s32[8,4,2,2]{3,2,1,0} scatter(
+    s32[8,4,2,2]{3,2,1,0} %base,
+    s32[2,8,4]{2,1,0} %concatenate.19,
+    s32[8,4,2,2]{3,2,1,0} %parameter.0),
+    to_apply=add,
+    update_window_dims={2,3},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=0
+  ROOT copy = s32[8,4,2,2]{3,2,1,0} copy(%scatter.20), sharding={replicated}
+}
+
+ENTRY entry {
+  %parameter.0 = s32[8,4,2,2]{3,2,1,0} parameter(0), sharding={replicated}
+  %iota = s32[1,8,4]{2,1,0} iota(), iota_dimension=1,
+    sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+  %counter = s32[] constant(0), sharding={replicated}
+  %tuple = (s32[8,4,2,2], s32[1,8,4]) tuple(parameter.0, iota),
+    sharding={{replicated}, {devices=[1,8,1]0,1,2,3,4,5,6,7}}
+  %parameter.1 = pred[] parameter(1)
+  ROOT conditional = s32[8,4,2,2] conditional(parameter.1, tuple, tuple),
+    true_computation=gather_comp, false_computation=scatter_comp,
+    sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  // Verify gather is partitioned properly.
+  {
+    const auto partitioned_gather = module->entry_computation()
+                                        ->root_instruction()
+                                        ->true_computation()
+                                        ->root_instruction();
+    auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+    auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
+    auto gather =
+        AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
+    EXPECT_THAT(
+        partitioned_gather,
+        op::Copy(op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _))));
+  }
+
+  // Verify scatter is partitioned properly.
+  {
+    const auto partitioned_scatter = module->entry_computation()
+                                         ->root_instruction()
+                                         ->false_computation()
+                                         ->root_instruction();
+    auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+    auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
+    auto update = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+    auto scatter =
+        AllOf(op::Shape("s32[1,4,2,2]"), op::Scatter(operand, indices, update));
+    EXPECT_THAT(partitioned_scatter,
+                op::Copy(op::AllReduce(
+                    op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+  }
 }
 
 TEST_F(SpmdPartitioningTest, GatherParallelDimAndNonParallelDimPartitioned) {
@@ -11177,8 +11569,11 @@ ENTRY %module {
 
   const HloInstruction* sort = FindInstruction(module.get(), "sort.0");
   EXPECT_NE(sort, nullptr);
+  // The subshape of the sort changed from [2,64,32128] to [1,16,32128] due to
+  // moving the sharding from the sort dim (dim 2) to other dimensions. This
+  // optimization was implemented for b/258523376.
   auto sort_match =
-      AllOf(op::Shape("(f32[2,64,32128], s32[2,64,32128])"), op::Sort(_, _));
+      AllOf(op::Shape("(f32[1,16,32128], s32[1,16,32128])"), op::Sort(_, _));
   EXPECT_THAT(sort, sort_match);
 }
 
@@ -12395,8 +12790,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Copy(op::CollectivePermute(
-                  op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_)))))));
+              op::Copy(op::Reshape(op::CollectivePermute(
+                  op::Reshape(op::Transpose(op::AllToAll(_)))))));
 }
 
 TEST_F(SpmdPartitioningTest, PaddedConvReshard) {
@@ -12707,6 +13102,178 @@ ENTRY %main.21 {
       op::Copy(AllOf(op::Shape("bf16[1,8,6144,48,64]"), op::Scatter(_, _, _))));
   // Check that there is no communication added.
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, MatchOutputAlignmentNonContractingDot) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  multiply.3535 = f32[4,4]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+  reshape.4221 = f32[4,4]{1,0} parameter(1), sharding={devices=[4,1,4]0,8,4,12,1,9,5,13,2,10,6,14,3,11,7,15 last_tile_dim_replicate}
+  dot.11597 = f32[4,4]{1,0} dot(multiply.3535, reshape.4221), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,1,8]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+  ROOT copy.1 = f32[4,4]{1,0} copy(dot.11597), sharding={devices=[2,1,8]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
+            nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardPartialMerging) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  multiply.3535 = f32[256,256,256]{2,1,0} parameter(0), sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT copy.1 = f32[256,256,256]{2,1,0} copy(multiply.3535), sharding={devices=[1,2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kAllToAll), nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, PartialReshardingInfiniteLoops) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  multiply.3535 = f32[256,256,256]{2,1,0} parameter(0), sharding={devices=[4,1,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT copy.1 = f32[256,256,256]{2,1,0} copy(multiply.3535), sharding={devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(SpmdPartitioningTest, GatherCostModelForUnmatchedSharding) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+region_10.581.clone {
+  Arg_0.53 = bf16[] parameter(0)
+  Arg_1.53 = bf16[] parameter(1)
+  ROOT add.1294 = bf16[] add(Arg_0.53, Arg_1.53)
+}
+
+ENTRY %main.21 {
+  p0 = bf16[8192,128]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+  p1 = s32[16384,1]{1,0} parameter(1), sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  gather.0 = bf16[16384,128]{1,0} gather(p0, p1), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}, sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  constant.2467 = bf16[] constant(0)
+  reduce.1749 = bf16[16384]{0} reduce(gather.0, constant.2467), dimensions={1}, to_apply=region_10.581.clone, sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  ROOT copy.1 = bf16[16384]{0} copy(reduce.1749), sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* gather = FindInstruction(module.get(), HloOpcode::kGather);
+  EXPECT_NE(gather, nullptr);
+  EXPECT_THAT(gather, op::Shape("bf16[2048,128]"));
+}
+
+TEST_F(SpmdPartitioningTest, ScatterCostModelForUnmatchedSharding) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+region_335.4575 {
+  Arg_0.4576 = bf16[] parameter(0)
+  Arg_1.4577 = bf16[] parameter(1)
+  ROOT add.4578 = bf16[] add(Arg_0.4576, Arg_1.4577)
+}
+
+ENTRY %main.21 {
+  p0 = bf16[8192,128]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+  p1 = s32[32768,1]{1,0} parameter(1), sharding={devices=[8,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  p2 = bf16[32768,128]{1,0} parameter(2), sharding={devices=[8,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  scatter.0 = bf16[8192,128]{1,0} scatter(p0, p1, p2), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=region_335.4575, sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+  ROOT convert.427 = f32[8192,128]{1,0} convert(scatter.0), sharding={devices=[2,4,2]0,8,2,10,4,12,6,14,1,9,3,11,5,13,7,15 last_tile_dim_replicate}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* scatter = FindInstruction(module.get(), HloOpcode::kScatter);
+  EXPECT_NE(scatter, nullptr);
+  auto* updates = scatter->operand(2);
+  EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[8,1]0,2,4,6,1,3,5,7}
+  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
+  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToLeft) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,32]{1,0} parameter(0), sharding={devices=[1,8]0,2,4,6,1,3,5,7}
+  tuple.2 = (f32[8,32]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
+  ROOT get-tuple-element.3 = f32[8,32]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, NoComplexReshardUnmergeToLeft) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,33]{1,0} parameter(0), sharding={devices=[1,8]0,2,4,6,1,3,5,7}
+  tuple.2 = (f32[8,33]{1,0}) tuple(Arg_0.1), sharding={{devices=[2,4]0,2,4,6,1,3,5,7}}
+  ROOT get-tuple-element.3 = f32[8,33]{1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[2,4]0,2,4,6,1,3,5,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_NE(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_EQ(alltoall, nullptr);
 }
 
 }  // namespace

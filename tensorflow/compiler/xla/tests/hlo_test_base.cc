@@ -547,10 +547,11 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                   .shape()
             : params_1[i]->shape();
 
-    if (!ShapeUtil::Equal(param_shape_0, param_shape_1)) {
+    if (!Shape::Equal().IgnoreTilesInLayout()(param_shape_0, param_shape_1)) {
       return ::testing::AssertionFailure()
              << "Error : mismatching parameter shapes: "
-             << param_shape_0.ToString() << " Vs. " << param_shape_1.ToString();
+             << param_shape_0.ToString(true) << " Vs. "
+             << param_shape_1.ToString(true);
     }
   }
 
@@ -867,9 +868,15 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
 StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunnerForTest(
     se::Platform* test_platform) {
   if (ShouldUsePjRt()) {
-    TF_ASSIGN_OR_RETURN(auto client, GetGlobalPjRtClientTestFactory().Get()());
+    PjRtClientTestFactoryRegistry& pjrt_registry =
+        GetGlobalPjRtClientTestFactory();
+    TF_ASSIGN_OR_RETURN(auto client, pjrt_registry.Get()());
+
+    auto device_shape_representation_fn =
+        pjrt_registry.GetDeviceShapeRepresentationFn(client.get());
+
     return std::unique_ptr<HloRunnerInterface>(
-        new HloRunnerPjRt(std::move(client)));
+        new HloRunnerPjRt(std::move(client), device_shape_representation_fn));
   } else {
     return std::unique_ptr<HloRunnerInterface>(new HloRunner(test_platform));
   }

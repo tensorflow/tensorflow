@@ -38,6 +38,7 @@ cc_library(
     deps = [
         "@com_google_protobuf//:protobuf_headers",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/c:kernels",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework",

@@ -208,7 +208,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_cuda11",
+        "no_mac_arm64",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -223,6 +226,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
+        "no_mac_arm64",
         "optonly",  # times out
     ],
     deps = [
@@ -247,7 +251,7 @@ tf_py_test(
     size = "small",
     srcs = ["ctc_decoder_ops_test.py"],
     deps = [
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -290,6 +294,7 @@ cuda_py_test(
     srcs = ["cudnn_deterministic_ops_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
+        "no_rocm_pre_53",
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -303,6 +308,7 @@ cuda_py_test(
     srcs = ["cudnn_d9m_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
+        "no_rocm",  #This is test is specific to CUDA and enables determinism through a CUDA specific env var.
     ],
     deps = [
         ":cudnn_deterministic_base",
@@ -555,8 +561,9 @@ cuda_py_test(
     tags = ["no_windows"],  # b/139739217
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -564,6 +571,7 @@ cuda_py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:tensor_array_ops",
@@ -656,9 +664,7 @@ cuda_py_test(
     srcs = ["xent_op_d9m_test.py"],
     tags = [
         "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
-        "noasan",  # TODO(b/231484532): Remove after flakiness resolved.
         "nomac",  # TODO(b/235277289) Flaky on OSX
-        "notsan",  # TODO(b/200548634): Remove.
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

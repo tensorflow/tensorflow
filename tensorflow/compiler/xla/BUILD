@@ -177,6 +177,18 @@ cc_library(
 )
 
 cc_library(
+    name = "frontend_attributes",
+    srcs = [
+        "frontend_attributes.cc",
+    ],
+    hdrs = [
+        "frontend_attributes.h",
+    ],
+    visibility = [":friends"],
+    deps = ["//tensorflow/compiler/xla/hlo/ir:hlo"],
+)
+
+cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],
@@ -194,6 +206,19 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//third_party/eigen3",
+    ],
+)
+
+xla_cc_test(
+    name = "types_test",
+    size = "small",
+    srcs = ["types_test.cc"],
+    visibility = [":friends"],
+    deps = [
+        ":test",
+        ":types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -221,6 +246,7 @@ cc_library(
         ":types",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:stacktrace",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -261,7 +287,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
@@ -387,6 +413,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":permutation_util",
+        ":printer",
         ":status",
         ":status_macros",
         ":statusor",
@@ -403,6 +430,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -451,6 +479,7 @@ xla_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
@@ -518,6 +547,7 @@ cc_library(
         ":array3d",
         ":array4d",
         ":permutation_util",
+        ":printer",
         ":shape_util",
         ":status_macros",
         ":types",
@@ -533,7 +563,6 @@ cc_library(
         "//tensorflow/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -555,6 +584,7 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -578,6 +608,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
@@ -602,6 +633,7 @@ cc_library(
         ":error_spec",
         ":literal",
         ":literal_util",
+        ":shape_util",
         ":util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:float8",
@@ -887,6 +919,7 @@ cc_library(
     hdrs = ["shape_layout.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":printer",
         ":shape_util",
         ":types",
         ":util",
@@ -1124,6 +1157,18 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
     ]),
+)
+
+cc_library(
+    name = "printer",
+    srcs = ["printer.cc"],
+    hdrs = ["printer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+    ],
 )
 
 filegroup(

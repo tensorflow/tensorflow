@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -26,11 +27,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/tests/testlib_pipeline.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
+#include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
@@ -53,37 +55,105 @@ static AsyncTaskRunner* NoRunner() {
   return reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 }
 
+// Lazily execute tasks
+class LazyAsyncTaskRunner : public AsyncTaskRunner {
+ public:
+  void Schedule(Task task) final { tasks_.push_back(std::move(task)); }
+  void Run() {
+    while (!tasks_.empty()) {
+      tasks_.back()();
+      tasks_.pop_back();
+      break;
+    }
+  }
+
+ private:
+  std::vector<Task> tasks_;
+};
+
+struct CustomCallRegistry {
+  std::function<void(DynamicCustomCallRegistry&)> dynamic_custom_calls;
+  std::function<void(DirectCustomCallRegistry&)> direct_custom_calls;
+};
+
 static absl::StatusOr<JitExecutable> Compile(
-    std::string_view module, absl::Span<const std::string_view> exported) {
+    std::string_view module, absl::Span<const std::string_view> exported,
+    const CustomCallRegistry& registry = {}) {
   JitExecutable::Options opts;
+  CompilationPipelineOptions copts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
-  opts.compiler.register_dialects = RegisterXlaRuntimeTestlibDialects;
+  opts.compiler.symbols_binding = ToSymbolsBinding(
+      registry.direct_custom_calls, copts.populate_type_id_names);
+  opts.compiler.register_dialects = [&](DialectRegistry& dialects) {
+    RegisterXlaRuntimeTestlibDialects(dialects);
+  };
   opts.compiler.create_compilation_pipeline = CreateXlaRuntimeTestlibPipeline;
 
   return JitExecutable::Instantiate(module, opts, exported);
 }
 
-static absl::Status Execute(JitExecutable& jit_executable, unsigned ordinal,
-                            ArgumentsRef args, ResultConverter& results,
-                            AsyncTaskRunner* async_task_runner = NoRunner()) {
+static absl::StatusOr<ExecutionReference> Execute(
+    JitExecutable& jit_executable, unsigned ordinal, ArgumentsRef args,
+    ResultConverter& results, AsyncTaskRunner* async_task_runner = NoRunner(),
+    const CustomCallRegistry& registry = {}, bool use_lazy_runner = false) {
   AsyncValuePtr<Executable> executable = jit_executable.DefaultExecutable();
   if (executable.IsError()) return executable.GetError();
 
+  // Register all dynamic custom calls.
+  DynamicCustomCallRegistry dynamic_custom_calls;
+  if (registry.dynamic_custom_calls)
+    registry.dynamic_custom_calls(dynamic_custom_calls);
+
+  CustomCall::UserData user_data;
+  // Always add a pointer to `self` to user data.
+  user_data.insert(&executable.get());
+
   Executable::ExecuteOpts execute_opts;
+  execute_opts.custom_call_registry = &dynamic_custom_calls;
+  execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner = async_task_runner;
+  if (use_lazy_runner) {
+    LazyAsyncTaskRunner runner;
+    execute_opts.async_task_runner = &runner;
+    FunctionRef function_ref = executable->function_ref(ordinal);
+    auto status = function_ref(args, results, execute_opts);
+    runner.Run();
+    return status;
+  }
 
   FunctionRef function_ref = executable->function_ref(ordinal);
   return function_ref(args, results, execute_opts);
 }
 
-static absl::Status CompileAndExecute(
+static absl::StatusOr<ExecutionReference> CompileAndExecute(
     std::string_view module, ArgumentsRef args, ResultConverter& results,
-    AsyncTaskRunner* async_task_runner = NoRunner()) {
-  StatusOr<JitExecutable> jit_executable = Compile(module, {"test"});
+    AsyncTaskRunner* async_task_runner = NoRunner(),
+    const CustomCallRegistry& registry = {}, bool use_lazy_runner = false) {
+  StatusOr<JitExecutable> jit_executable = Compile(module, {"test"}, registry);
   if (!jit_executable.ok()) return jit_executable.status();
 
-  return Execute(*jit_executable, 0, args, results, async_task_runner);
+  return Execute(*jit_executable, 0, args, results, async_task_runner, registry,
+                 use_lazy_runner);
 }
+
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// An owning wrapper around Memref desciptor that releases the underlying buffer
+// when destructed. Used for testing passing ownerhip of memrefs allocated in
+// the compiled executables to the C++ caller.
+struct OwnedMemref {
+  ~OwnedMemref() {
+    if (desc.has_value()) std::free(desc->data());
+  }
+
+  MemrefDesc* operator->() { return &desc.value(); }
+
+  std::optional<MemrefDesc> desc;
+};
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 
@@ -122,7 +192,7 @@ struct ReturnMemref {
     auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, ret);
     if (failed(desc)) return failure();
 
-    *ptr = std::move(*desc);
+    ptr->desc = std::move(*desc);
     return success();
   }
 
@@ -133,7 +203,7 @@ struct ReturnMemref {
     return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
   }
 
-  std::optional<MemrefDesc>* ptr = nullptr;
+  OwnedMemref* ptr = nullptr;
 };
 
 struct ReturnAsyncToken {
@@ -144,7 +214,7 @@ struct ReturnAsyncToken {
     // Load the pointer to the async token from a pointer to result storage.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_ptr, sizeof(void*));
     void* ret = *reinterpret_cast<void**>(result_ptr);
-    auto* token = static_cast<mlir::runtime::AsyncToken*>(ret);
+    auto* token = static_cast<AsyncRuntime::Token*>(ret);
     auto* async_value = AsyncRuntime::GetAsyncValue(token);
     CHECK(async_value->IsAvailable());
     chain.SetStateConcrete();
@@ -159,21 +229,61 @@ struct ReturnAsyncI32 {
   LogicalResult operator()(unsigned result_index, const Type* type,
                            const Type* runtime_type, void* result_ptr) const {
     auto* value_type = llvm::dyn_cast<AsyncValueType>(type);
-    if (!value_type) return mlir::failure();
+    if (!value_type) return failure();
 
     // Load the pointer to the async value from a pointer to result storage.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_ptr, sizeof(void*));
     void* ret = *reinterpret_cast<void**>(result_ptr);
-    auto* value = static_cast<mlir::runtime::AsyncValue*>(ret);
+    auto* value = static_cast<AsyncRuntime::Value*>(ret);
     auto* scalar = llvm::dyn_cast<ScalarType>(&value_type->value_type());
+
     if (scalar && scalar->type() == PrimitiveType::S32) {
       ExtractAsyncValue(value, ptr.value(), Emplace);
       return success();
     }
+
     return failure();
   }
 
   AsyncValuePtr<int32_t> ptr;
+};
+
+struct ReturnAsyncMemref {
+  LogicalResult operator()(unsigned result_index, const Type* type,
+                           const Type* runtime_type, void* result_ptr) const {
+    auto* value_type = llvm::dyn_cast<AsyncValueType>(type);
+    if (!value_type) return failure();
+
+    // Load the pointer to the async memref from a pointer to result storage.
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_ptr, sizeof(void*));
+    void* ret = *reinterpret_cast<void**>(result_ptr);
+    auto* value = static_cast<AsyncRuntime::Value*>(ret);
+    auto* memref = llvm::dyn_cast<MemrefType>(&value_type->value_type());
+
+    if (memref) {
+      // TODO(ezhulenev): Emplace function captures `memref` by reference, and
+      // if `value` is not available, then it will lead to asan errors. We need
+      // an `ExtractAsyncValue` that can take absl::AnyInvocable callback, that
+      // will capture all referenced values. Alternative solution is a large
+      // switch statement that will dispatch for different types and ranks.
+      ExtractAsyncValue(value, ptr.value(), [&](void* data, AsyncValue* dst) {
+        auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, data);
+        if (succeeded(desc)) dst->get<OwnedMemref>().desc = std::move(*desc);
+      });
+      return success();
+    }
+
+    return failure();
+  }
+
+  MemrefDesc operator()(PrimitiveType element_type, void* base_ptr,
+                        void* data_ptr, int64_t offset,
+                        absl::Span<const int64_t> sizes,
+                        absl::Span<const int64_t> strides) const {
+    return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
+  }
+
+  AsyncValuePtr<OwnedMemref> ptr;
 };
 
 // Execute all tasks in the caller thread immediately.
@@ -213,17 +323,14 @@ TEST(ExecutableTest, ReturnMemref) {
     }
   )";
 
-  std::optional<MemrefDesc> result;
+  OwnedMemref result;
   ResultConverterSet converter(AssertNoError, ReturnMemref{&result});
 
   ASSERT_TRUE(CompileAndExecute(module, {}, converter).ok());
-  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(result.desc.has_value());
   EXPECT_EQ(result->rank(), 2);
   EXPECT_EQ(result->size(0), 1);
   EXPECT_EQ(result->size(1), 2);
-
-  // Result converter passed onwership of the underlying buffer to MemrefDesc.
-  std::free(result->data());
 }
 
 TEST(ExecutableTest, ScalarArgs) {
@@ -295,7 +402,8 @@ TEST(ExecutableTest, AssertionFailure) {
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
     EXPECT_FALSE(executed.ok());
-    EXPECT_EQ(executed.message(), "run time error: Oops, argument can't be 42");
+    EXPECT_EQ(executed.status().message(),
+              "run time error: Oops, argument can't be 42");
   }
 }
 
@@ -326,7 +434,8 @@ TEST(ExecutableTest, AssertionFailureOrResult) {
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
     EXPECT_FALSE(executed.ok());
-    EXPECT_EQ(executed.message(), "run time error: Oops, argument can't be 42");
+    EXPECT_EQ(executed.status().message(),
+              "run time error: Oops, argument can't be 42");
     EXPECT_EQ(result, 0);
   }
 }
@@ -388,6 +497,115 @@ TEST(ExecutableTest, AsyncScalarRet) {
   EXPECT_EQ(result.get(), 42);
 }
 
+TEST(ExecutableTest, AsyncTokenArg) {
+  absl::string_view module = R"(
+    async.func @test(%arg0: !async.token, %arg1: i32) -> !async.value<i32> {
+      async.await %arg0 : !async.token
+      return %arg1 : i32
+    }
+  )";
+
+  AsyncValueRef<int32_t> result = MakeConstructedAsyncValueRef<int32_t>();
+  ResultConverterSet converter(AssertNoError, ReturnAsyncI32{result.AsPtr()});
+
+  AsyncValueRef<Chain> ch = tsl::MakeAvailableAsyncValueRef<Chain>();
+
+  Arguments<AsyncTokenArg, ScalarArg> arguments(2);
+  arguments.emplace_back(AsyncTokenArg(ch));
+  arguments.push_back(ScalarArg(static_cast<int32_t>(22)));
+
+  ASSERT_TRUE(CompileAndExecute(module, arguments, converter).ok());
+  EXPECT_EQ(result.get(), 22);
+}
+
+TEST(ExecutableTest, AsyncScalarArg) {
+  absl::string_view module = R"(
+    async.func @test(%arg0: !async.value<i32>, %arg1: i32) -> !async.value<i32> {
+      %0 = async.await %arg0 : !async.value<i32>
+      %1 = arith.addi %0, %arg1 : i32
+      return %1 : i32
+    }
+  )";
+
+  AsyncValueRef<int32_t> result = MakeConstructedAsyncValueRef<int32_t>();
+  ResultConverterSet converter(AssertNoError, ReturnAsyncI32{result.AsPtr()});
+
+  AsyncValueRef<int32_t> async_val =
+      tsl::MakeAvailableAsyncValueRef<int32_t>(20);
+  AsyncScalarArg arg0(async_val);
+  ScalarArg arg1(static_cast<int32_t>(22));
+
+  Arguments<AsyncScalarArg, ScalarArg> arguments(2);
+  arguments.push_back(arg0);
+  arguments.push_back(arg1);
+
+  ASSERT_TRUE(CompileAndExecute(module, arguments, converter).ok());
+  EXPECT_EQ(result.get(), 42);
+}
+
+TEST(ExecutableTest, AsyncMemrefArg) {
+  absl::string_view module = R"(
+    async.func @test(%arg0: !async.value<memref<?xf32>>) ->
+    !async.value<memref<?xf32>> {
+      %0 = async.await %arg0 : !async.value<memref<?xf32>>
+      return %0 : memref<?xf32>
+    }
+  )";
+
+  AsyncValueRef<OwnedMemref> result =
+      MakeConstructedAsyncValueRef<OwnedMemref>();
+  ResultConverterSet converter(AssertNoError,
+                               ReturnAsyncMemref{result.AsPtr()});
+  std::vector<float> input = {42.0, 42.0, 42.0, 42.0};
+  MemrefDesc memref{
+      PrimitiveType::F32, input.data(), 0, {4}, {4} /*fake strides*/};
+  AsyncValueRef<MemrefDesc> async_memref =
+      tsl::MakeAvailableAsyncValueRef<MemrefDesc>(std::move(memref));
+
+  AsyncMemrefArg arg0(async_memref);
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
+
+  ASSERT_TRUE(result.get().desc.has_value());
+  EXPECT_EQ(result.get()->rank(), 1);
+  EXPECT_EQ(result.get()->size(0), 4);
+
+  float* data = reinterpret_cast<float*>(result.get()->data());
+  EXPECT_TRUE(std::all_of(data, data + 4, [](float v) { return v == 42.0f; }));
+}
+
+TEST(ExecutableTest, AsyncMemrefRet) {
+  absl::string_view module = R"(
+    async.func @test(%arg0: index) -> !async.value<memref<?xf32>> {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
+      %0 = memref.alloc(%arg0) : memref<?xf32>
+      scf.for %i = %c0 to %arg0 step %c1 {
+        %c42 = arith.constant 42.0 : f32
+        memref.store %c42, %0[%i] : memref<?xf32>
+      }
+
+      return %0 : memref<?xf32>
+    }
+  )";
+
+  AsyncValueRef<OwnedMemref> result =
+      MakeConstructedAsyncValueRef<OwnedMemref>();
+  ResultConverterSet converter(AssertNoError,
+                               ReturnAsyncMemref{result.AsPtr()});
+
+  ScalarArg arg0(static_cast<int64_t>(32));
+
+  ASSERT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
+  ASSERT_TRUE(result.get().desc.has_value());
+  EXPECT_EQ(result.get()->rank(), 1);
+  EXPECT_EQ(result.get()->size(0), 32);
+
+  float* data = reinterpret_cast<float*>(result.get()->data());
+  EXPECT_TRUE(std::all_of(data, data + 32, [](float v) { return v == 42.0f; }));
+}
+
 TEST(ExecutableTest, AsyncWaiting) {
   absl::string_view module = R"(
     async.func @test2(%arg0: i32, %arg1: i32) -> !async.value<i32> {
@@ -410,6 +628,91 @@ TEST(ExecutableTest, AsyncWaiting) {
   ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
   EXPECT_EQ(result.get(), 42);
 }
+
+TEST(ExecutableTest, AsyncCustomCall) {
+  absl::string_view source = R"(
+    func.func private @custom_call_return() -> !async.value<i32>
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
+
+    func.func private @custom_call(%arg32 : i32)
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    async.func @test() -> !async.token {
+      %0 = func.call @custom_call_return() : () -> !async.value<i32>
+      %1 = async.await %0 : !async.value<i32>
+      func.call @custom_call(%1) : (i32) -> ()
+      return
+    }
+  )";
+
+  auto f_result = []() -> absl::StatusOr<AsyncValueRef<int32_t>> {
+    return tsl::MakeAvailableAsyncValueRef<int32_t>(42);
+  };
+
+  int32_t i32 = 0;
+  auto f = [&](int32_t arg) {
+    i32 = arg;
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Ret<AsyncValueRef<int32_t>>()
+                          .To(f_result));
+
+    registry.Register(
+        CustomCall::Bind("test.custom_call").Arg<int32_t>().To(f));
+  }};
+
+  AsyncValueRef<Chain> result = MakeConstructedAsyncValueRef<Chain>();
+  ResultConverterSet converter(AssertNoError, ReturnAsyncToken{result.AsPtr()});
+
+  ASSERT_TRUE(
+      CompileAndExecute(source, /*args=*/{}, converter, NoRunner(), registry)
+          .ok());
+  EXPECT_EQ(i32, 42);
+}
+
+TEST(ExecutableTest, AsyncExecute) {
+  absl::string_view source = R"(
+    module {
+    func.func private @custom_call_return() -> !async.value<i32>
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call_return" }
+
+    async.func @test() -> !async.value<i32> {
+      %token, %result = async.execute -> !async.value<i32> {
+        %0 = func.call @custom_call_return() : () -> !async.value<i32>
+        %1 = async.await %0 : !async.value<i32>
+        async.yield %1 : i32
+      }
+      %1 = async.await %result : !async.value<i32>
+      return %1 : i32
+    }
+    }
+  )";
+
+  LazyAsyncTaskRunner runner;
+
+  auto async_result = tsl::MakeAvailableAsyncValueRef<int32_t>(42);
+  auto f_result = [&]() -> absl::StatusOr<AsyncValueRef<int32_t>> {
+    return async_result;
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call_return")
+                          .Ret<AsyncValueRef<int32_t>>()
+                          .To(f_result));
+  }};
+  AsyncValueRef<int32_t> result = MakeConstructedAsyncValueRef<int32_t>();
+  ResultConverterSet converter(AssertNoError, ReturnAsyncI32{result.AsPtr()});
+
+  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, converter, &runner,
+                                registry, /*use_lazy_runner=*/true)
+                  .ok());
+
+  EXPECT_EQ(result.get(), 42);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//

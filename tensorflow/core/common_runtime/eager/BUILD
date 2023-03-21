@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_copts",
@@ -157,6 +158,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
+            "//tensorflow/core/framework:full_type_proto_cc",
             "//tensorflow/core:lib",
             "//tensorflow/c/eager:immediate_execution_context",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
@@ -180,6 +182,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:full_type_proto_cc",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/ops:resource_variable_ops_op_lib",
     ],
@@ -564,6 +567,9 @@ cc_library(
     }) + if_mkl([
         ":mkl_eager_op_rewrite",
         "//tensorflow/core/graph:mkl_graph_util",
+    ]) + if_zendnn([
+        ":zen_eager_op_rewrite",
+        "//tensorflow/core/graph:zen_graph_util",
     ]),
 )
 
@@ -573,10 +579,13 @@ tf_cc_test(
     deps = [
         ":core",
         ":execute",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/lib/monitoring:cell_reader",
     ],
 )
 
@@ -596,6 +605,21 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
     ],
+)
+
+cc_library(
+    name = "zen_eager_op_rewrite",
+    srcs = ["zen_eager_op_rewrite.cc"],
+    copts = tf_copts(),
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/graph:zen_graph_util",
+    ],
+    alwayslink = 1,
 )
 
 tf_mkl_kernel_library(
@@ -821,7 +845,7 @@ filegroup(
         "tensor_handle_data.h",
     ],
     visibility = [
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

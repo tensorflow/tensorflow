@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
 namespace tensorflow {
 namespace {
@@ -42,19 +43,6 @@ using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
-
-bool IsSessionInitializer(mlir::func::FuncOp op) {
-  auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
-      op->getParentOfType<mlir::ModuleOp>());
-  if (!session_initializer_op) return false;
-
-  for (auto sym_ref : session_initializer_op.getInitializers()) {
-    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
-      return true;
-  }
-
-  return false;
-}
 
 mlir::TF::ResourceHandle GetResourceHandle(mlir::Operation *op) {
   llvm::StringRef device;
@@ -81,7 +69,7 @@ struct HoistInfo {
 
   // Mapping from the old values produced by hoisted ops before hoisting to the
   // new values after hoisting.
-  mlir::BlockAndValueMapping value_mapping;
+  mlir::IRMapping value_mapping;
 
   // `hoisted_values` is to keep all values that are produced by hoisted ops
   // but used by non-hoisted ops. These values will be replaced by results of
@@ -168,10 +156,11 @@ void ReplaceHoistedValues(
   }
 }
 
-bool OnlyHasReadEffect(mlir::Operation *op) {
+bool OnlyHasReadOrNoEffect(mlir::Operation *op) {
   auto interface = llvm::dyn_cast<mlir::MemoryEffectOpInterface>(op);
   if (!interface) return false;
-  return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
+  return interface.onlyHasEffect<mlir::MemoryEffects::Read>() ||
+         interface.hasNoEffect();
 }
 
 bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
@@ -335,7 +324,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     const auto &vars = iter.second;
     if (std::all_of(vars.begin(), vars.end(), [](mlir::Operation *op) {
           for (auto *user : op->getUsers()) {
-            if (!OnlyHasReadEffect(user)) return false;
+            if (!OnlyHasReadOrNoEffect(user)) return false;
           }
           return true;
         })) {

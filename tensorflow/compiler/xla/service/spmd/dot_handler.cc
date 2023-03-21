@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <optional>
 
 #include "absl/algorithm/container.h"
@@ -26,10 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/spmd/convolution_handler.h"
@@ -2332,6 +2333,18 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
   if (other_group_dims.size() == 1 &&
       other_group_dims[0] ==
           other_sharding.tile_assignment().num_dimensions() - 1) {
+    // Try to reuse the device groups from the output to match the partially
+    // replicated dim.
+    if (auto grouped_sharding = hlo_sharding_util::
+            PartialReplicatedGroupShardingWithAssignedDeviceGroups(
+                other_sharding,
+                other_sharding.tile_assignment().dimensions().back() /
+                    group_count,
+                output_grouped.device_groups)) {
+      std::vector<int64_t> group_dim_shards = {
+          other_sharding.tile_assignment().dimensions().back() / group_count};
+      return grouped_sharding.value();
+    }
     std::vector<int64_t> group_dim_shards = {
         other_sharding.tile_assignment().dimensions().back() / group_count};
     return AlignGroupsWith(

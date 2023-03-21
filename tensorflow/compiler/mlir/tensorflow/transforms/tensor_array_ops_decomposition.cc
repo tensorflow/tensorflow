@@ -16,7 +16,6 @@ limitations under the License.
 #include <optional>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -105,7 +104,7 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 }
 
 // Tries to infer the tensor array element shape.
-llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
+std::optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
   auto element_shape = ta.getElementShapeAttr().cast<mlir::TF::ShapeAttr>();
   if (element_shape.hasStaticShape()) {
@@ -117,7 +116,7 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
 
   bool has_failure = false;
   auto elem_type = cutil::GetElementTypeFromAccess(
-      ta.getHandle(), module, [&](Operation* user) -> llvm::Optional<Type> {
+      ta.getHandle(), module, [&](Operation* user) -> std::optional<Type> {
         if (has_failure) return std::nullopt;
         if (auto write = llvm::dyn_cast<TF::TensorArrayWriteV3Op>(user)) {
           return write.getValue().getType();
@@ -258,7 +257,7 @@ LogicalResult HandleTensorArrayWriteV3Op(
   auto buffer = cutil::ReadLocalVariable(local_var, builder, write.getLoc());
   auto index_reshape =
       cutil::ReshapeScalarToSizeType(builder, write.getIndex(), write.getLoc());
-  auto elem = write.getValue();
+  Value elem = write.getValue();
   if (stat_it->getSecond().accumulate_on_write) {
     // Get the old slice, and accumulate with it. We set keep_slice_shape
     // (keeping the leading size-1 dimension) because it avoids reshape back and
@@ -338,15 +337,16 @@ LogicalResult HandleTensorArraySplitV3Op(
   buffer_shape.push_back(count);
   for (int64_t dim : elem_type.getShape()) buffer_shape.push_back(dim);
   // Reshape the input to match the buffer of the tensor array.
-  auto buffer = builder
-                    .create<TF::ReshapeOp>(
-                        split.getLoc(),
-                        ArrayRef<Type>{RankedTensorType::get(
-                            buffer_shape, elem_type.getElementType())},
-                        ArrayRef<Value>{split.getValue(),
-                                        cutil::GetR1Const(buffer_shape, builder,
-                                                          split.getLoc())})
-                    .getOutput();
+  Value buffer =
+      builder
+          .create<TF::ReshapeOp>(
+              split.getLoc(),
+              ArrayRef<Type>{RankedTensorType::get(buffer_shape,
+                                                   elem_type.getElementType())},
+              ArrayRef<Value>{
+                  split.getValue(),
+                  cutil::GetR1Const(buffer_shape, builder, split.getLoc())})
+          .getOutput();
   // Accumulate with the old buffer.
   auto old_buffer =
       cutil::ReadLocalVariable(local_var, builder, split.getLoc());

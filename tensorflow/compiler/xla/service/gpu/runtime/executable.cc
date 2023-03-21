@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/conv_reorder.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -86,9 +89,11 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterCollectiveCustomCalls(registry);
   RegisterGemmCustomCalls(registry);
   RegisterConvCustomCalls(registry);
+  RegisterConvReorderCustomCalls(registry);
   RegisterMemcpyCustomCalls(registry);
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
+  RegisterSendRecvCustomCalls(registry);
 
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
@@ -110,6 +115,7 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 
   RegisterTracingTypeIdNames(registry);
   RegisterConvTypeIdNames(registry);
+  RegisterSendRecvTypeIdNames(registry);
 
 #if GOOGLE_CUDA
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
@@ -121,6 +127,7 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   PopulateConvAttrEncoding(encoding);
   PopulateFftAttrEncoding(encoding);
   PopulateDotDimsAttrEncoding(encoding);
+  PopulateSendRecvAttrEncoding(encoding);
 
 #if GOOGLE_CUDA
   PopulateCublasLtMatmulAttrEncoding(encoding);
@@ -297,6 +304,7 @@ Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
+    NonAtomicallyUpgradeableRWLock& gpu_lock,
     const BufferAllocation* temp_alloc) {
   // We pass a pointer to the executable through UserData, so that we can
   // get access to other exported functions from custom call handlers.
@@ -337,11 +345,12 @@ Status GpuRuntimeExecutable::Execute(
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(device_ordinal);
 
-  // Async collective support instantiated for each Gpu executable run, so that
-  // concurrent executions can run independenty using a separate set of events
-  // for communication.
+  // Async Collectives support and Send/Recv events instantiated for each Gpu
+  // executable run, so that concurrent executions can run independenty using a
+  // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  SendRecvEvents send_recv_events;
 
   // Always pass in the temp buffer, even if it is null, to accommodate the
   // 0-sized buffer corner case.
@@ -349,19 +358,39 @@ Status GpuRuntimeExecutable::Execute(
   if (temp_alloc)
     temp_buffer = buffer_allocations.GetDeviceAddress(temp_alloc->index());
 
-  // Take snapshots of every state required by custom calls.
+  // State cached separately for each stream executor.
   StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
+  StreamExecutorConvRunners::Snapshot conv_runners =
+      conv_runners_(executor)->snapshot();
+
+#if GOOGLE_CUDA
+  StreamExecutorGraphInstances::Snapshot graph_instances =
+      graph_instances_(executor)->snapshot();
+  CapturedFunctionExecutionCount::Snapshot execution_count =
+      captured_function_counts_(executor)->snapshot();
+#endif  // GOOGLE_CUDA
+
+  // State cached globally for gpu executable.
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
+#if GOOGLE_CUDA
+  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+#endif  // GOOGLE_CUDA
+
   // Initialize state required for running functions exported from FFI modules.
-  FfiStateVector ffi_state = ffi_modules_state_.state_vector();
+  absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners_cache_,
-      &collectives_, &fft_plans,
+      &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
+      &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
+#if GOOGLE_CUDA
+      // Auxiliary data that is available only if compiled with CUDA support.
+      &matmul_plans, &graph_instances, &execution_count,
+#endif  // GOOGLE_CUDA
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
@@ -371,13 +400,6 @@ Status GpuRuntimeExecutable::Execute(
   if (!state_ref.ok())
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
-
-#if GOOGLE_CUDA
-  // Add auxiliary data that is available only if compiled with CUDA support.
-  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
-  GraphInstances::Snapshot graph_instances = graph_instances_.snapshot();
-  user_data.insert_all(&matmul_plans, &graph_instances);
-#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

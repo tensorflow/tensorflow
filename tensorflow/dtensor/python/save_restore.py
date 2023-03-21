@@ -67,7 +67,7 @@ def sharded_save(
   # Make sure all clients have written the files
   mesh_util.barrier(mesh.host_mesh(), 'SaveV2')  # pylint: disable=protected-access
 
-  with api.run_on(mesh.host_mesh()):
+  with api.default_mesh(mesh.host_mesh()):
     merge_op = io_ops.MergeV2Checkpoints(
         checkpoint_prefixes=[file_prefix],
         destination_prefix=file_prefix,

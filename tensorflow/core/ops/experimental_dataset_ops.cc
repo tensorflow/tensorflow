@@ -481,8 +481,6 @@ REGISTER_OP("GetElementAtIndex")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
-                                                           "output_types"))
     .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("ExperimentalGroupByWindowDataset")
@@ -1511,6 +1509,14 @@ REGISTER_OP("DataServiceDatasetV4")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("DistributedSave")
+    .Input("dataset: variant")
+    .Input("directory: string")
+    .Input("address: string")
+    .Attr("metadata: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("RegisterDataset")
     .Input("dataset: variant")

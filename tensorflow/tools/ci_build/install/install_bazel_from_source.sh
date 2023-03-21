@@ -17,8 +17,7 @@
 # This script is to be used to install bzel on non x86_64 systems
 # It will compile bazel from source and install it in /usr/local/bin
 
-# Select bazel version.
-BAZEL_VERSION="5.1.1"
+BAZEL_VERSION="5.3.0"
 
 set +e
 local_bazel_ver=$(bazel version 2>&1 | grep -i label | awk '{print $3}')

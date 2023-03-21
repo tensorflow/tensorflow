@@ -30,6 +30,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+char PjRtCompatibleClient::ID = 0;
 char PjRtClient::ID = 0;
 
 std::unique_ptr<PjRtClient> PjRtClient::Create(

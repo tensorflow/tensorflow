@@ -24,6 +24,9 @@ using ::testing::ElementsAreArray;
 class FftTest : public MlirGpuTestBase {};
 
 TEST_F(FftTest, SimpleCase1) {
+  // TODO(b/267637553): convert to use new MLIR executables (most likely just
+  // updating the mlir text to use untyped u8 memrefs).
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(false);
   const char* mlir_text = R"(
       module attributes {hlo.unique_id = 0 : i32} {
         func.func @main(%arg0: memref<4xf32> {

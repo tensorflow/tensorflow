@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const int Graph::kControlSlot = -1;
-
 // Node
 Node::NodeClass Node::GetNodeClassForOp(const std::string& ts) {
   static const absl::flat_hash_map<std::string, Node::NodeClass>*
@@ -180,6 +178,50 @@ void Node::ClearTypeInfo() {
     MaybeCopyOnWrite();
     props_->node_def.clear_experimental_type();
   }
+}
+
+Status Node::ShrinkTypeInfo(const absl::flat_hash_map<int, int>& index_mapping,
+                            const string& type_attr_name,
+                            bool update_full_type) {
+  std::vector<DataType> dtypes;
+  TF_RETURN_IF_ERROR(GetNodeAttr(def(), type_attr_name, &dtypes));
+
+  std::vector<DataType> new_dtypes;
+  new_dtypes.reserve(index_mapping.size());
+  for (int i = 0; i < dtypes.size(); ++i) {
+    if (index_mapping.contains(i)) {
+      new_dtypes.emplace_back(dtypes[i]);
+    }
+  }
+
+  ClearAttr(type_attr_name);
+  AddAttr(type_attr_name, new_dtypes);
+
+  if (!update_full_type || !def().has_experimental_type()) {
+    return OkStatus();
+  }
+  FullTypeDef ft = def().experimental_type();
+  if (ft.type_id() != TFT_PRODUCT) {
+    return errors::Internal(
+        "In ShrinkTypeInfo, full type information does not start with "
+        "TFT_PRODUCT\n",
+        ft.DebugString());
+  }
+  if (ft.args_size() != dtypes.size()) {
+    return errors::Internal("In ShrinkTypeInfo, ft.args_size() ",
+                            ft.args_size(), " != dtypes.size() ",
+                            dtypes.size());
+  }
+  FullTypeDef new_ft;
+  new_ft.set_type_id(TFT_PRODUCT);
+  for (int i = 0; i < ft.args_size(); ++i) {
+    if (index_mapping.contains(i)) {
+      (*new_ft.add_args()) = ft.args(i);
+    }
+  }
+  MaybeCopyOnWrite();
+  *(mutable_def()->mutable_experimental_type()) = new_ft;
+  return OkStatus();
 }
 
 const std::string& Node::name() const { return props_->node_def.name(); }
@@ -941,6 +983,28 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
     result[n->name()] = n;
   }
   return result;
+}
+
+void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
+  for (Node* n : op_nodes()) {
+    if (n->name() == name) {
+      NodeDef& node_def = n->props_->node_def;
+      n->MaybeCopyOnWrite();
+      *(node_def.mutable_experimental_type()) = ft;
+      break;
+    }
+  }
+}
+
+void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
+  *result = nullptr;
+  for (Node* n : op_nodes()) {
+    if (n->name() == name) {
+      NodeDef& node_def = n->props_->node_def;
+      *result = &node_def.experimental_type();
+      break;
+    }
+  }
 }
 
 std::string Edge::DebugString() const {

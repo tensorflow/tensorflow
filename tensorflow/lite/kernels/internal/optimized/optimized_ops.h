@@ -7195,8 +7195,7 @@ template <typename T>
 inline void Transpose3D(const TransposeParams& params,
                         const RuntimeShape& input_shape, const T* input_data,
                         const RuntimeShape& output_shape, T* output_data) {
-  int s1, s2, s3;
-  s1 = input_shape.Dims(0);
+  int s2, s3;
   s2 = input_shape.Dims(1);
   s3 = input_shape.Dims(2);
 

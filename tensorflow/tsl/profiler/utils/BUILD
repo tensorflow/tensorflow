@@ -24,6 +24,14 @@ cc_library(
 )
 
 cc_library(
+    name = "format_utils",
+    hdrs = ["format_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),
@@ -279,13 +287,15 @@ cc_library(
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/tsl/lib/gtl:map_util",
+        "//tensorflow/tsl/platform:dso_loader",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/profiler/lib:context_types_hdrs",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -320,6 +330,7 @@ tsl_cc_test(
         ":xplane_schema",
         ":xplane_test_utils",
         ":xplane_visitor",
+        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:types",

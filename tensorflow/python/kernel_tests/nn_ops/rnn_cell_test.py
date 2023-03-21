@@ -32,12 +32,14 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import   array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import rnn_cell_impl
@@ -966,7 +968,7 @@ class LSTMTest(test.TestCase):
             constant_op.constant(
                 np.random.randn(batch_size, input_size).astype(np.float32))
         ]
-      inputs_c = array_ops.stack(inputs)
+      inputs_c = array_ops_stack.stack(inputs)
       cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
@@ -1021,7 +1023,8 @@ class LSTMTest(test.TestCase):
       if in_graph_mode:
         comparison_fn(outputs_static, outputs_dynamic)
       else:
-        self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
+        self.assertAllEqual(
+            array_ops_stack.stack(outputs_static), outputs_dynamic)
       comparison_fn(np.hstack(state_static), np.hstack(state_dynamic))
 
   @test_util.run_in_graph_and_eager_modes
@@ -1045,7 +1048,7 @@ class LSTMTest(test.TestCase):
             constant_op.constant(
                 np.random.randn(batch_size, input_size).astype(np.float32))
         ]
-      inputs_c = array_ops.stack(inputs)
+      inputs_c = array_ops_stack.stack(inputs)
 
       def _cell(i):
         return rnn_cell.LSTMCell(
@@ -1111,7 +1114,8 @@ class LSTMTest(test.TestCase):
       if in_graph_mode:
         comparison_fn(outputs_static, outputs_dynamic)
       else:
-        self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
+        self.assertAllEqual(
+            array_ops_stack.stack(outputs_static), outputs_dynamic)
         state_static = nest.flatten(state_static)
         state_dynamic = nest.flatten(state_dynamic)
       comparison_fn(np.hstack(state_static), np.hstack(state_dynamic))
@@ -1153,7 +1157,7 @@ class LSTMTest(test.TestCase):
             dtypes.float32, shape=(time_steps, batch_size, input_size))
       else:
         concat_inputs = constant_op.constant(input_values)
-      inputs = array_ops.unstack(concat_inputs)
+      inputs = array_ops_stack.unstack(concat_inputs)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
@@ -1233,7 +1237,8 @@ class LSTMTest(test.TestCase):
             sequence_length=sequence_length,
             time_major=True,
             dtype=dtypes.float32)
-        split_outputs_dynamic = array_ops.unstack(outputs_dynamic, time_steps)
+        split_outputs_dynamic = array_ops_stack.unstack(
+            outputs_dynamic, time_steps)
 
       if in_graph_mode:
 
@@ -1406,6 +1411,43 @@ class LSTMTest(test.TestCase):
               h_grad=h_grad,
               use_peephole=use_peephole))
 
+  def testLSTMBlockInvalidArgument(self):
+    # Test case for GitHub issue 58175
+    forget_bias = -121.22699269620765
+    cell_clip = -106.82307555235684
+    use_peephole = False
+    seq_len_max = math_ops.saturate_cast(
+        random_ops.random_uniform(
+            [13, 11, 0], minval=0, maxval=64, dtype=dtypes.int64
+        ),
+        dtype=dtypes.int64,
+    )
+    x = random_ops.random_uniform([1, 3, 15], dtype=dtypes.float32)
+    cs_prev = random_ops.random_uniform([3, 0], dtype=dtypes.float32)
+    h_prev = random_ops.random_uniform([3, 0], dtype=dtypes.float32)
+    w = random_ops.random_uniform([15, 0], dtype=dtypes.float32)
+    wci = random_ops.random_uniform([0], dtype=dtypes.float32)
+    wcf = random_ops.random_uniform([0], dtype=dtypes.float32)
+    wco = random_ops.random_uniform([0], dtype=dtypes.float32)
+    b = random_ops.random_uniform([0], dtype=dtypes.float32)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(
+          gen_rnn_ops.BlockLSTM(
+              forget_bias=forget_bias,
+              cell_clip=cell_clip,
+              use_peephole=use_peephole,
+              seq_len_max=seq_len_max,
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+          )
+      )
+
 
 class BidirectionalRNNTest(test.TestCase):
 
@@ -1445,7 +1487,7 @@ class BidirectionalRNNTest(test.TestCase):
                        [batch_size if use_shape else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
-    outputs = array_ops.stack(outputs)
+    outputs = array_ops_stack.stack(outputs)
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
@@ -1556,7 +1598,7 @@ class BidirectionalRNNTest(test.TestCase):
             dtypes.float32,
             shape=(batch_size if use_shape else None, input_size))
     ]
-    inputs_c = array_ops.stack(inputs)
+    inputs_c = array_ops_stack.stack(inputs)
     if not use_time_major:
       inputs_c = array_ops.transpose(inputs_c, [1, 0, 2])
     outputs, states = rnn.bidirectional_dynamic_rnn(
@@ -1734,7 +1776,7 @@ class MultiDimensionalLSTMTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(batch_size,) + input_size)
       ]
-      inputs_c = array_ops.stack(inputs)
+      inputs_c = array_ops_stack.stack(inputs)
       # Create a cell for the whole test. This is fine because the cell has no
       # variables.
       cell = DummyMultiDimensionalLSTM(feature_dims)
@@ -1845,8 +1887,8 @@ class NestedLSTMTest(test.TestCase):
                       array_ops.placeholder(
                           dtypes.float32, shape=(None, input_size)))
       inputs = max_length * [single_input]
-      inputs_c = (array_ops.stack([input_[0] for input_ in inputs]),
-                  array_ops.stack([input_[1] for input_ in inputs]))
+      inputs_c = (array_ops_stack.stack([input_[0] for input_ in inputs]),
+                  array_ops_stack.stack([input_[1] for input_ in inputs]))
       single_input_using_dim = (array_ops.placeholder(
           dtypes.float32, shape=(batch_size, input_size)),
                                 array_ops.placeholder(
@@ -2160,7 +2202,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = (time_ >= sequence_length)
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2265,13 +2307,14 @@ class RawRNNTest(test.TestCase):
           loop_state = constant_op.constant([0])
           next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
-          loop_state = array_ops.stack([array_ops.squeeze(loop_state) + 1])
+          loop_state = array_ops_stack.stack(
+              [array_ops.squeeze(loop_state) + 1])
           next_state = cell_state
         emit_output = cell_output  # == None for time == 0
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2314,7 +2357,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2357,7 +2400,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2423,7 +2466,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = (time_ >= sequence_length)
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))

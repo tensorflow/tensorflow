@@ -86,7 +86,7 @@ hlo_module       {
       }
       id: 3
       operand_ids: 2
-      is_cross_program_prefetch: true
+      cross_program_prefetch_index: 0
     }
     instructions {
       name: "copy-done.4"
@@ -202,9 +202,13 @@ hlo_module       {
   }
   id: 5
   entry_computation_id: 5
-# CHECK-SAME: mhlo.cross_program_prefetches = [#mhlo.cross_program_prefetch<parameter = 1, indices = [0]>]
+# CHECK-SAME: mhlo.cross_program_prefetches = [#mhlo.cross_program_prefetch<parameter = 1, indices = [0], offset = 0>]
   cross_program_prefetches {
     parameter: 1
     index: 0
   }
+# CHECK-SAME: mhlo.is_dynamic = true
+  is_dynamic: true
+# CHECK-SAME: mhlo.use_auto_spmd_partitioning = true
+  use_auto_spmd_partitioning: true
 }

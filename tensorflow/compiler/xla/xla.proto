@@ -17,8 +17,14 @@ syntax = "proto3";
 
 package xla;
 
+import "google/protobuf/any.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
+
+// Proto version of `xla::CompilationEnvironments`.
+message CompilationEnvironmentsProto {
+  repeated google.protobuf.Any environments = 1;
+}
 
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
@@ -205,16 +211,13 @@ message DebugOptions {
 
   ShapeChecks xla_gpu_shape_checks = 170;
 
-  // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
-  bool xla_cpu_enable_mlir_lowering = 171;
+  reserved 171;  // Was xla_cpu_enable_mlir_lowering
 
   // If true, use MLIR instead of IR emitter to generate device code for
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
   bool xla_gpu_enable_mlir_lowering = 173;
 
-  // If true, generate softmax fusion nodes which are used in the MLIR lowering
-  // to generate device code for softmax.
-  bool xla_gpu_enable_softmax_fusion = 179;
+  reserved 179;  // Was xla_gpu_enable_softmax_fusion
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -316,6 +319,9 @@ message DebugOptions {
   // Whether to dump llvm ir when compiling to ptx.
   bool xla_gpu_dump_llvmir = 155;
 
+  // Whether to dump mlir using pretty print form.
+  bool xla_dump_enable_mlir_pretty_form = 185;
+
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
 
@@ -344,7 +350,7 @@ message DebugOptions {
   // modules will be dumped.
   bool xla_detailed_logging_and_dumping = 143;
 
-  // Overrides normal multi-threaded compilation settting to use this many
+  // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
   int32 xla_gpu_force_compilation_parallelism = 147;
 
@@ -414,7 +420,7 @@ message DebugOptions {
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
   // Allows all floating-point conversions to be simplified, including those
-  // that affect the numerics. The `BFloat16Normalization` pass inserts many
+  // that affect the numerics. The `FloatNormalization` pass inserts many
   // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
   // `AlgebraicSimplifier`, as that will only simplify conversions that are
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
@@ -439,7 +445,36 @@ message DebugOptions {
 
   bool xla_dump_latency_hiding_schedule = 182;
 
-  // Next id: 184
+  // By default, MLIR lowering will use Linalg elementwise fusion. If this flag
+  // is enabled, the pipeline will use tiling, fusion, peeling, vectorization
+  // instead.
+  bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
+
+  bool xla_cpu_enable_mlir_fusion_outlining = 192;
+
+  // If set, use the experimental deallocation pass from mlir-hlo.
+  bool xla_cpu_enable_experimental_deallocation = 191;
+
+  bool xla_gpu_enable_latency_hiding_scheduler = 186;
+
+  enum PartitioningAlgorithm {
+    PARTITIONING_ALGORITHM_NOOP = 0;
+    PARTITIONING_ALGORITHM_EXP0 = 1;
+    PARTITIONING_ALGORITHM_EXP1 = 2;
+    PARTITIONING_ALGORITHM_EXP2 = 3;
+  }
+  // The partitioning algorithm to be used in the PartitionAssignment pass.
+  PartitioningAlgorithm xla_partitioning_algorithm = 187;
+
+  bool xla_gpu_enable_triton_gemm = 188;
+
+  bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
+
+  bool xla_gpu_triton_gemm_any = 190;
+
+  bool xla_gpu_allow_all_reduce_kernel = 193;
+
+  // Next id: 194
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -530,7 +565,13 @@ message ExecutionOptions {
   // which can be used by higher level framework as a way to query intermediate
   // sharding of operations when multiple computation would be chained and
   // merged together.
-  bool allow_spmd_sharding_propagation_to_output = 14;
+  // This is a vector of bool, because the user can control (if the output of
+  // the computation is a tuple) which elements of the tuple can have the
+  // sharding substituted and which don't. If only one boolean value is passed
+  // in the vector that's interpreted as the value to be applied for every
+  // single element of the output tuple. One value per element of the tuple
+  // means that each value is attached to one of the output elements.
+  repeated bool allow_spmd_sharding_propagation_to_output = 14;
 
   // Whether to broadcast args across all replicas. One entry per arg.
   repeated bool param_requires_broadcast_via_collectives = 18;
@@ -593,8 +634,8 @@ message HloModuleConfigProto {
   repeated uint64 memory_space_assignment_config = 23;
   repeated BoolList phase_ordering_config = 24;
   int32 phase_index = 25;
-  map<string, string> flag_config = 26;
-  bool allow_spmd_sharding_propagation_to_output = 27;
+  reserved 26;  // Was flag_config
+  repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
 }
@@ -818,4 +859,15 @@ message ScheduleProto {
   repeated Instruction instructions = 1;
   // Computation id (matches the id in HloComputationProto).
   int64 computation_id = 2;
+  HloModuleProto hlo_module = 3;
+  int64 cycles_per_microsecond = 4;
+}
+
+message ProfiledInstructionsProto {
+  message Instruction {
+    string name = 1;
+    double timestamp_us = 2;
+    double duration_us = 3;
+  }
+  repeated Instruction instructions = 1;
 }

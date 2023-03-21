@@ -741,6 +741,17 @@ class MemrefRetEncoding : public CustomCallRetEncoding {
                                       mlir::LLVM::AllocaOp) const final;
 };
 
+class AsyncValueRetEncoding : public CustomCallRetEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, Allocas &a,
+                                  mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                  mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
+};
+
 //===----------------------------------------------------------------------===//
 // Default encodings for arguments, attributes and results.
 //===----------------------------------------------------------------------===//

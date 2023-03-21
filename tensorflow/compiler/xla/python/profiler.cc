@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -75,7 +75,8 @@ void BuildProfilerSubmodule(py::module* m) {
              tensorflow::profiler::XSpace xspace;
              // Disables the ProfilerSession
              TF_RETURN_IF_ERROR(sess->CollectData(&xspace));
-             return tsl::profiler::ExportToTensorBoard(xspace, tensorboard_dir);
+             return tsl::profiler::ExportToTensorBoard(
+                 xspace, tensorboard_dir, /* also_export_trace_json= */ true);
            });
 
   py::class_<tensorflow::ProfileOptions> profile_options_class(

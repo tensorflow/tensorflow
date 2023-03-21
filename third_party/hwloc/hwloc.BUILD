@@ -9,7 +9,7 @@ licenses(["notice"])
 exports_files(["COPYING"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@org_tensorflow//third_party:common.bzl", "template_rule")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 COMMON_INCLUDE_COPTS = [
     "-I.",
@@ -46,14 +46,14 @@ _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update({
     "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
 })
 
-template_rule(
+expand_template(
     name = "include_hwloc_autogen_config_h",
-    src = "include/hwloc/autogen/config.h.in",
     out = "include/hwloc/autogen/config.h",
     substitutions = select({
         "@org_tensorflow//tensorflow/tsl:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
         "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
     }),
+    template = "include/hwloc/autogen/config.h.in",
 )
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
@@ -210,21 +210,21 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update(_INCLUDE_PRIVATE_HWLO
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS.update(_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS)
 
-template_rule(
+expand_template(
     name = "include_private_hwloc_autogen__config_h",
-    src = "include/private/autogen/config.h.in",
     out = "include/private/autogen/config.h",
     substitutions = if_cuda(
         _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS,
         if_false = _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
     ),
+    template = "include/private/autogen/config.h.in",
 )
 
-template_rule(
+expand_template(
     name = "move_static_components_h",
-    src = "@org_tensorflow//third_party/hwloc:static-components.h",
     out = "hwloc/static-components.h",
     substitutions = {"&hwloc_linuxio_component": "//&hwloc_linuxio_component"},
+    template = "@org_tensorflow//third_party/hwloc:static-components.h",
 )
 
 cc_library(

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_BENCHMARK_MLIR_FUNCTION_H_
 
 #include <functional>
+#include <optional>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
@@ -48,7 +49,7 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
 void RunEigenBenchmark(
     ::testing::benchmark::State& state,
     std::function<void(llvm::ArrayRef<Tensor>,
-                       llvm::Optional<Eigen::ThreadPoolDevice>)>
+                       std::optional<Eigen::ThreadPoolDevice>)>
         compute,
     llvm::ArrayRef<InputTensorSpec> input_specs);
 

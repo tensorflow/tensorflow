@@ -171,7 +171,6 @@ cc_library(
         ":xla_compiler",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -179,6 +178,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
@@ -294,6 +294,10 @@ cc_library(
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/tsl/platform:blocking_counter",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:tstring",
+        "//tensorflow/tsl/platform:types",
     ] + tf_additional_tensor_coding_deps(),
     alwayslink = 1,
 )
@@ -413,6 +417,24 @@ cc_library(
     ),
 )
 
+tf_cc_test(
+    name = "graph_compiler_test",
+    srcs = ["graph_compiler_test.cc"],
+    deps = [
+        ":graph_compiler_util",
+        ":tf2xla_proto_cc",
+        ":xla_compilation_device",
+        ":xla_compiler",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "xla_compiler",
     srcs = [
@@ -462,9 +484,9 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla:executable_run_options",
@@ -1332,8 +1354,9 @@ cc_library(
     deps = [
         ":xla_compiler",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
+        "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1346,7 +1369,6 @@ cc_library(
     deps = [
         ":resource_operation_table",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

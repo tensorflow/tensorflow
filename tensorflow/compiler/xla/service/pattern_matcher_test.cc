@@ -633,17 +633,17 @@ TEST_F(PatternMatcherTest, CustomCallTargetMatcherDescribeAndExplain) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto* root = hlo_module->entry_computation()->root_instruction();
-  EXPECT_TRUE(Match(root, match::Op().WithCustomCallTarget("test_target")));
+  EXPECT_TRUE(Match(root, match::Op().WithCustomCallTarget({"test_target"})));
   EXPECT_TRUE(Match(
       root, match::Op().WithCustomCallTarget({"test_target", "other_target"})));
   EXPECT_TRUE(Match(
       root, match::Op().WithCustomCallTarget({"other_target", "test_target"})));
-  EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget("other_target")));
+  EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget({"other_target"})));
   EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget(
                                {"other_target", "other_target2"})));
 
   EXPECT_DESC_AND_EXPLANATION(
-      root, match::Op().WithCustomCallTarget("other_target"),
+      root, match::Op().WithCustomCallTarget({"other_target"}),
       "an HloInstruction custom call with target 'other_target'",
       "HloInstruction is not a custom call with a target 'other_target'\nin "
       "out = f32[] custom-call(), custom_call_target=\"test_target\"");
@@ -1227,9 +1227,9 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
   auto* root = hlo_module->entry_computation()->root_instruction();
 
   EXPECT_TRUE(Match(root, m::CustomCall()));
-  EXPECT_TRUE(Match(root, m::CustomCall("test_target")));
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target"})));
   EXPECT_TRUE(Match(
-      root, m::CustomCall("test_target", m::Parameter(0), m::Parameter(1))));
+      root, m::CustomCall({"test_target"}, m::Parameter(0), m::Parameter(1))));
 
   EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"})));
   EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"})));
@@ -1240,20 +1240,20 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
 
   HloInstruction* instr;
   EXPECT_TRUE(Match(root, m::CustomCall(&instr)));
-  EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target")));
-  EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target", m::Parameter(0),
-                                        m::Parameter(1))));
+  EXPECT_TRUE(Match(root, m::CustomCall(&instr, {"test_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall(&instr, {"test_target"},
+                                        m::Parameter(0), m::Parameter(1))));
 
   const HloInstruction* const_instr;
   EXPECT_TRUE(Match(root, m::CustomCall(&const_instr)));
-  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr, "test_target")));
-  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr, "test_target",
+  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr, {"test_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr, {"test_target"},
                                         m::Parameter(0), m::Parameter(1))));
 
-  EXPECT_FALSE(Match(root, m::CustomCall("other_target")));
+  EXPECT_FALSE(Match(root, m::CustomCall({"other_target"})));
   EXPECT_FALSE(Match(root, m::CustomCall({"other_target", "other_target2"})));
   EXPECT_FALSE(Match(
-      root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
+      root, m::CustomCall({"test_target"}, m::Parameter(1), m::Parameter(0))));
 }
 
 }  // namespace

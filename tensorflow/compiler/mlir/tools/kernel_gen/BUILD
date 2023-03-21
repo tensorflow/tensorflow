@@ -45,10 +45,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf_no_fallback",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:bufferize",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf_no_fallback",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",  # fixdeps: keep
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
@@ -96,10 +96,10 @@ tf_cc_binary(
     ],
     deps = [
         ":kernel_creator",
+        "@llvm-project//llvm:TargetParser",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
@@ -195,6 +195,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/tsl/platform:hash",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",

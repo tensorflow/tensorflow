@@ -29,39 +29,11 @@ filegroup(
 )
 
 cc_library(
-    name = "string_container_utils",
-    hdrs = ["utils/string_container_utils.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "array_container_utils",
-    hdrs = ["utils/array_container_utils.h"],
-    deps = [
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "name_utils",
-    srcs = ["utils/name_utils.cc"],
-    hdrs = ["utils/name_utils.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "op_or_arg_name_mapper",
     srcs = ["op_or_arg_name_mapper.cc"],
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
-        ":name_utils",
+        "//tensorflow/compiler/mlir/utils:name_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -74,32 +46,33 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
+        ":passes",
+        ":register_common_dialects",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",  # buildcleaner:keep
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tosa:tf_passes",
         "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tosa:tfl_passes",
-        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
-        "@stablehlo//:register",
     ],
 )
 
@@ -123,10 +96,10 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/tosa:tf_passes",
         "//tensorflow/compiler/mlir/tosa:tfl_passes",
     ],
@@ -180,18 +153,13 @@ cc_library(
     alwayslink = 1,
 )
 
+# This should just be a wrapper around tf_mlir_opt_main. Don't add
+# direct dependencies to this binary.
 tf_cc_binary(
     name = "tf-opt",
     testonly = True,
     deps = [
-        ":passes",
         ":tf_mlir_opt_main",
-        "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
     ],
 )
 
@@ -201,22 +169,50 @@ tf_cc_binary(
     srcs = ["tf_mlir_reduce_main.cc"],
     deps = [
         ":init_mlir",
-        ":passes",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        ":register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_reduce_patterns_inc_gen",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
-        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirReduceLib",
         "@llvm-project//mlir:Reducer",
+    ],
+)
+
+cc_library(
+    name = "register_common_dialects",
+    testonly = True,
+    srcs = ["register_common_dialects.cc"],
+    hdrs = ["register_common_dialects.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
+        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/service/cpu:hlo_xla_runtime_pipeline",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
         "@stablehlo//:register",
+    ],
+)
+
+tf_cc_test(
+    name = "register_common_dialects_test",
+    srcs = ["register_common_dialects_test.cc"],
+    deps = [
+        ":register_common_dialects",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -252,6 +248,7 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
         "@llvm-project//mlir:IR",
     ],
 )

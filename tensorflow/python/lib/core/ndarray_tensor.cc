@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
 #include "tensorflow/tsl/python/lib/core/float8.h"
@@ -473,8 +474,20 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
     if (!s.ok()) {
       return s;
     }
-  } else if (static_cast<size_t>(PyArray_NBYTES(py_array)) !=
-             TF_TensorByteSize(tensor.get())) {
+  } else if ((!IsZenDnnEnabled()) &&
+             (static_cast<size_t>(PyArray_NBYTES(py_array)) !=
+              TF_TensorByteSize(tensor.get()))) {
+    return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
+                            " bytes but TF_Tensor was ",
+                            TF_TensorByteSize(tensor.get()), " bytes");
+  }
+  // Default TF implementation compares ndarray bytes with TF_Tensor bytes
+  // which is allocated using allocate_output API for fixed size.
+  // ZenDNN mempool optimization utilizes pre-allocated buffers with TF_Tensor.
+  // Hence, the amount of allocated TF_Tensor bytes is always greater than or
+  // equal to the number of bytes requested by the op execution.
+  else if (IsZenDnnEnabled() && (static_cast<size_t>(PyArray_NBYTES(py_array)) >
+                                 TF_TensorByteSize(tensor.get()))) {
     return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
                             " bytes but TF_Tensor was ",
                             TF_TensorByteSize(tensor.get()), " bytes");

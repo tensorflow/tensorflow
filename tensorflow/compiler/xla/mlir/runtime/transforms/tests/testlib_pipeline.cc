@@ -53,6 +53,7 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
 
   // Export functions to the XLA runtime.
   passes->addPass(CreateExportRuntimeFunctionsPass());
+  passes->addPass(CreateConvertCustomCallsPass());
   passes->addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
@@ -66,11 +67,21 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert async runtime operations to LLVM dialect.
-  passes->addPass(mlir::createConvertAsyncToLLVMPass());
+  // TODO(b/267828330): Migrate to opaque pointers.
+  mlir::ConvertAsyncToLLVMPassOptions async_to_llvm_opts;
+  async_to_llvm_opts.useOpaquePointers = false;
+  passes->addPass(mlir::createConvertAsyncToLLVMPass(async_to_llvm_opts));
 
   // Convert everything else to LLVM dialect.
-  passes->addPass(mlir::createMemRefToLLVMConversionPass());
-  passes->addPass(mlir::createConvertFuncToLLVMPass());
+  // TODO(b/267828330): Migrate to opaque pointers.
+  mlir::FinalizeMemRefToLLVMConversionPassOptions memref_to_llvm_opts;
+  memref_to_llvm_opts.useOpaquePointers = false;
+  passes->addPass(
+      mlir::createFinalizeMemRefToLLVMConversionPass(memref_to_llvm_opts));
+  // TODO(b/267828330): Migrate to opaque pointers.
+  mlir::ConvertFuncToLLVMPassOptions func_to_llvm_opts;
+  func_to_llvm_opts.useOpaquePointers = false;
+  passes->addPass(mlir::createConvertFuncToLLVMPass(func_to_llvm_opts));
   passes->addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Clean up IR before translating it to LLVM.

@@ -540,11 +540,6 @@ void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
   options->use_tfrt = use_tfrt;
 }
 
-void TFE_ContextOptionsSetTfrtDistributedRuntime(
-    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime) {
-  options->use_tfrt_distributed_runtime = use_tfrt_distributed_runtime;
-}
-
 TFE_CancellationManager* TFE_NewCancellationManager() {
   return tensorflow::wrap(new tensorflow::CancellationManager);
 }
@@ -799,7 +794,8 @@ void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
 }
 
 void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
-                           TF_Buffer* value_buf, TF_Status* status) {
+                           int64_t timeout_in_ms, TF_Buffer* value_buf,
+                           TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
   tsl::CoordinationServiceAgent* coord_agent =
@@ -809,7 +805,14 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
         "Coordination service is not enabled.");
     return;
   }
-  auto status_or_value = coord_agent->GetKeyValue(key);
+  absl::Duration timeout;
+  if (timeout_in_ms > 0) {
+    timeout = absl::Milliseconds(timeout_in_ms);
+  } else {
+    // Block until the key-value is set or the worker shuts down.
+    timeout = absl::InfiniteDuration();
+  }
+  auto status_or_value = coord_agent->GetKeyValue(key, timeout);
   status->status = status_or_value.status();
   if (!status_or_value.ok()) return;
 
@@ -848,7 +851,7 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
         "Coordination service is not enabled.");
     return;
   }
-  tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+  tensorflow::Status s(static_cast<absl::StatusCode>(error_code),
                        error_message);
   status->status = coord_agent->ReportError(s);
 }

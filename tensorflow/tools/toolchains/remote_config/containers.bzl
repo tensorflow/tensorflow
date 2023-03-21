@@ -7,10 +7,11 @@ container_digests = {
     # JAX manylinux2014 configs.
     "cuda11.1-cudnn8-ubuntu20.04-manylinux2014-multipython": "sha256:011034978c5f1e5dcecc816b3b964faafc42b243001d9cd09ff7cfe4a6a0f4b9",
     "cuda11.4-cudnn8.2-ubuntu20.04-manylinux2014-multipython": "sha256:a4373ccb9dfeefaf2b98dab0efa76e327553e381ed184a0c0432f24121049a93",
-    "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:a2d60d6c87b2a618940953dd50180dd36e285c674bf2a754055957ecf0e65c79",
+    "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:6c7a3d009c65392f7d22d122956f2a7618d3567d5762973ff40f390664fe06ac",
+    "cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython": "sha256:0d78e1e54f172ebbfdb55b46241e93f35d9e5fa7328dd92f80e6a40027552e83",
     # ROCM, probably not all of them still in use
     "rocm-ubuntu18.04-manylinux2010-multipython": "sha256:6e953a09b145df338bcb03e9e36f99b291140c29b72d0a048fb6c5905ccad5eb",
-    "rocm-ubuntu20.04-manylinux2014-multipython": "sha256:26720ebae4d6d12b1fca529616bfacfd0460990d4725af35e0f4af3c2422f227",
+    "rocm-ubuntu20.04-manylinux2014-multipython": "sha256:906faec7765fe5dd067f2b092b5d5f220c1fedde725fb42c83d031b4d6f32204",
     # Unused?
     "ubuntu16.04": "sha256:b90dcf2f35f3354909f4491bdf019c110b4b4d95ef0395ebf178bc5d523a4208",
     "centos6": "sha256:d09c12fb26fbbe8398b4973260c75172eb67d509dae9d6f4ad54279b7d6b0494",
@@ -104,6 +105,13 @@ containers = {
         "registry": "gcr.io",
         "repository": "tensorflow-testing/nosla-cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython",
         "digest": container_digests["cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython"],
+    },
+
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython.
+    "cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython",
+        "digest": container_digests["cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython"],
     },
 
     # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.rocm-ubuntu18.04-manylinux2010-multipython.

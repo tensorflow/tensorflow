@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
 
-ABSL_FLAG(bool, tf_use_pjrt, false, "Use PjRtClient in Tensorflow.");
-
 namespace tensorflow {
 
 PjRtState* PjRtState::Create() { return new PjRtState(); }
@@ -40,8 +38,7 @@ Status PjRtState::SetPjRtClient(const DeviceType& device_type,
                                 std::unique_ptr<xla::PjRtClient> client) {
   absl::MutexLock lock(&mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
-    return errors::AlreadyExists("PjRt client already exists for device type ",
-                                 device_type);
+    unused_.push_back(std::move(it->second));
   }
   clients_[device_type] = std::move(client);
   return OkStatus();

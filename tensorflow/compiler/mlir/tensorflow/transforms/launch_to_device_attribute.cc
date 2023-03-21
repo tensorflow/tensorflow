@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -51,9 +52,14 @@ struct LaunchToDeviceAttributePass
 LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
                                     tf_device::LaunchOp launch,
                                     Region& region) {
+  auto parallel_group_attr =
+      launch->getAttrOfType<StringAttr>(TF::kParallelExecAnnotation);
   auto result = region.walk([&](Operation* op) -> WalkResult {
     if (op->getDialect() != tf_dialect) return WalkResult::advance();
 
+    if (parallel_group_attr) {
+      op->setAttr(TF::kParallelExecAnnotation, parallel_group_attr);
+    }
     auto device_attr = op->getAttr(kDeviceAttr);
     if (!device_attr) {
       op->setAttr(kDeviceAttr, launch.getDeviceAttr());

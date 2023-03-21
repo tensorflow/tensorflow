@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -94,8 +94,9 @@ void TFToMhloPass::runOnOperation() {
   RewritePatternSet patterns(context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
-                                             /*prefer_tf2xla=*/false);
+  mhlo::Tf2XlaTypeConverter converter;
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns(
+      "XLA_CPU_JIT", patterns, context, converter, /*prefer_tf2xla=*/false);
   chlo::populateDecomposeChloPatterns(context, &patterns);
   chlo::populateChloBroadcastingPatterns(context, &patterns);
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);

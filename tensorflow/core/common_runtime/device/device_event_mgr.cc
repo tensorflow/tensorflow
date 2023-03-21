@@ -15,15 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
 namespace {
-// The EventMgr has 1 thread for the polling loop and one to execute
-// event callback functions. Issues for reconsideration:
+
+// The EventMgr has two threads to execute event callback functions. Issues for
+// reconsideration:
 //  - Is this the right number of threads?
 //  - Should EventMgrs be shared between devices on a machine with multiple
 //  devices of the same type?
@@ -92,155 +101,146 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
-      polling_active_delay_usecs_(gpu_options.polling_active_delay_usecs()
-                                      ? gpu_options.polling_active_delay_usecs()
-                                      : 10),
       threadpool_(Env::Default(), "Device_Event_Manager", kNumThreads) {
   device_event_mgr::InitThreadpoolLabels(&threadpool_);
-  StartPollingLoop();
 }
 
 EventMgr::~EventMgr() {
-  StopPollingLoop();
+  // Wait for all streams to complete.  All of the streams have completed when
+  // `callback_streams_` is empty, or when all of the remaining streams are in
+  // an error state.
+  mutex_lock lock(mu_);
+  mu_.Await(tsl::Condition(
+      +[](decltype(callback_streams_)* callback_streams) {
+        // std::all_of returns true if the container is empty.
+        return absl::c_all_of(*callback_streams,
+                              [](auto& kv) { return !kv.first->ok(); });
+      },
+      &callback_streams_));
 
-  // Events are owned by this object.
-  for (auto& e : free_events_) {
-    delete e;
-  }
-  while (!used_events_.empty()) {
-    InUse* ue = &used_events_[0];
-    delete ue->event;
-    if (ue->func != nullptr) threadpool_.Schedule(ue->func);
-    used_events_.pop_front();
-  }
+  // The threadpool's destructor will block waiting for all outstanding
+  // callbacks to complete.
 }
 
-void EventMgr::StartPollingLoop() {
-  CHECK(polling_stopped_ == nullptr);
+void EventMgr::ThenExecute(se::Stream* stream, std::function<void()> func) {
+  // Ensure the correct GPU is active before making any CUDA calls.
+  //
+  // This shouldn't be necessary!  StreamExecutor uses the CUDA driver API, and
+  // all calls there take a GPU context as a parameter; the "current GPU" from
+  // the perspective of the runtime API shouldn't matter.  But we can verify
+  // that it in fact *does* matter, perhaps specifically because of the
+  // ThenHostCallback calls, though it's hard to tell.
+  //
+  // This library is only available when GOOGLE_CUDA is defined.
+#if GOOGLE_CUDA
+  stream_executor::gpu::ScopedActivateExecutorContext scoped_activation{exec_};
+#endif
+
+  // tl;dr: Don't make CUDA calls while holding the lock on mu_.
+  //
+  // There are three mutexes at play here.  We need to be careful to avoid a
+  // cycle in the order in which we acquire them.  The mutexes are:
+  //
+  //  1. Any mutexes inside the CUDA runtime or driver.  We can consider these
+  //     to be a single mutex that wraps all CUDA calls and is also held while
+  //     running the host callback, because that's the worst case for our
+  //     analysis.
+  //  2. Any mutexes inside threadpool_, which again we can consier to be a
+  //     single mutex wrapping all calls to the object.
+  //  3. EventMgr::mu_.
+  //
+  // The CUDA host callback needs to schedule func on threadpool_ (that's the
+  // whole point of all this).  It also needs to modify internal state of the
+  // EventMgr, e.g. to push an elements back onto free_events_ and
+  // free_streams_.  Thus it's unavoidable that we acquire mutexes (2) and (3)
+  // while holding (1).  This means that to avoid a deadlock, we must drop the
+  // lock on the EventMgr (3) before making any CUDA API calls (1)!
+
+  // Get an event and stream off the free list, lazily creating them if
+  // necessary.  There's currently no limit on the number of allocated events
+  // and streams.
+  //
+  // If we have to create a new stream/event, don't call Init() while holding
+  // mu_, because that's what touches the CUDA API and can cause deadlocks.
+  std::unique_ptr<se::Event> event;
+  bool is_new_event = false;
+  se::Stream* callback_stream;
+  bool is_new_stream = false;
   {
-    mutex_lock l(mu_);
-    stop_polling_ = false;
-  }
-  polling_stopped_.reset(new Notification);
-  threadpool_.Schedule([this]() { PollLoop(); });
-}
+    mutex_lock lock(mu_);
 
-void EventMgr::StopPollingLoop() {
-  if (polling_stopped_) {
-    {
-      mutex_lock l(mu_);
-      stop_polling_ = true;
-      events_pending_.notify_all();
+    // Get an event off the free list.
+    if (free_events_.empty()) {
+      free_events_.push_back(std::make_unique<se::Event>(exec_));
+      is_new_event = true;
     }
-    polling_stopped_->WaitForNotification();
-    polling_stopped_.reset(nullptr);
-  }
-}
+    event = std::move(free_events_.back());
+    free_events_.pop_back();
 
-// A polling loop to detect completion of device events.
-//
-// While one or more events is outstanding, poll for completed events.  When no
-// events are outstanding, we sleep until one is enqueued.
-void EventMgr::PollLoop() {
-  ToFreeVector to_free;
-  while (true) {
-    bool events_still_pending;
-    {
-      mutex_lock l(mu_);
-      if (stop_polling_) {
-        break;
-      }
-      if (used_events_.empty()) {
-        events_pending_.wait(l);
-      }
-      PollEvents(true, &to_free);
-      events_still_pending = !used_events_.empty();
-    }
-    FreeMemory(to_free);
-    to_free.clear();
+    // Get the internal stream associated with `stream`, or grab one off the
+    // free list.
+    //
+    // Disable thread-safety analysis on this lambda because tsl::Mutex
+    // currently lacks an AssertHeld function.  :(
+    auto it = callback_streams_.lazy_emplace(
+        stream, [&](const auto& ctor) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+          if (free_streams_.empty()) {
+            free_streams_.push_back(std::make_unique<se::Stream>(exec_));
+            is_new_stream = true;
+          }
+          ctor(stream, std::make_pair(std::move(free_streams_.back()),
+                                      /*num_pending_events=*/0));
+          free_streams_.pop_back();
+        });
+    callback_stream = it->second.first.get();
+    it->second.second++;  // increment num_pending_events
+  }
+  if (is_new_event) {
+    event->Init();
+  }
+  if (is_new_stream) {
+    callback_stream->Init();
+  }
 
-    if (events_still_pending) {
-      Env::Default()->SleepForMicroseconds(polling_active_delay_usecs_);
-    }
-  }
-  polling_stopped_->Notify();
-}
+  // Set callback_stream to run `func` when `stream` finishes the work that's
+  // currently pending.
+  stream->ThenRecordEvent(event.get());
+  callback_stream->ThenWaitFor(event.get());
 
-void EventMgr::QueueInUse(se::Stream* stream, InUse in_use) {
-  VLOG(2) << "QueueInUse  free_events_ " << free_events_.size()
-          << " used_events_ " << used_events_.size();
-  // Events are created on demand, and repeatedly reused.  There is no
-  // limit placed here on the number of allocated Events.
-  if (free_events_.empty()) {
-    free_events_.push_back(new se::Event(exec_));
-    free_events_.back()->Init();
-  }
-  se::Event* e = free_events_.back();
-  free_events_.pop_back();
-  stream->ThenRecordEvent(e);
-  in_use.event = e;
-  bool was_empty = used_events_.empty();
-  used_events_.push_back(in_use);
-  // Maybe wake up the polling thread
-  if (was_empty) events_pending_.notify_all();
-}
+  // `mutable` is needed on the lambda so we can move `event` and `func`.
+  // Without `mutable`, these variables are const and can't be moved.
+  callback_stream->ThenDoHostCallbackWithStatus(
+      [this, stream, event = std::move(event),
+       func = std::move(func)]() mutable {
+        threadpool_.Schedule(std::move(func));
 
-// This function must be called periodically to check whether pending
-// events have recorded, and then retire them.  Initial observations
-// suggest that typical behavior in a TensorFlow program is to have
-// 0-3 events pending most of the time, but there are occasionally
-// spikes of up to several hundred outstanding.  (If GPUKernelTracker
-// is used to cap pending kernels there should never be more than
-// that many.)
-//
-// NOTE: If all events are on the same stream, no later event will
-// complete before an earlier event, except possibly if the earlier
-// event transitions to an error state, so there's no advantage in
-// looking past the first kPending event.  However, if we're using
-// multiple streams there may be some gain in looking deeper.
-// As a compromise, PollEvent() calls that are triggered by the queueing
-// of a single event never look past the first kPending event.  Consequently
-// those calls do an expected constant amount of work, unaffected by the
-// length of the pending queue.  Calls coming from the dedicated
-// polling thread always sweep the full queue.
-void EventMgr::PollEvents(bool is_dedicated_poller,
-                          gtl::InlinedVector<InUse, 4>* to_free) {
-  VLOG(2) << "PollEvents  free_events_ " << free_events_.size()
-          << " used_events_ " << used_events_.size();
-  // Sweep the remaining events in order.  If this is the dedicated
-  // polling thread, check the entire set.  Otherwise, just sweep up to
-  // the first non-complete record that is still pending.
-  for (auto& iu : used_events_) {
-    if (iu.event == nullptr) continue;
-    se::Event::Status s = iu.event->PollForStatus();
-    switch (s) {
-      case se::Event::Status::kUnknown:
-      case se::Event::Status::kError:
-        // We don't expect to see these.  Someday maybe propagate
-        // a Status error, but for now fail hard.
-        LOG(FATAL) << "Unexpected Event status: " << static_cast<int>(s);
-        break;
-      case se::Event::Status::kPending:
-        if (!is_dedicated_poller) return;  // quit processing queue
-        break;
-      case se::Event::Status::kComplete:
-        // Make a copy of the InUse record so we can free it after releasing
-        // the lock
-        to_free->push_back(iu);
-        free_events_.push_back(iu.event);
-        // Mark this InUse record as completed.
-        iu.event = nullptr;
-    }
-  }
-  // Then clear any completed InUse records from the front of the queue.
-  while (!used_events_.empty()) {
-    InUse& iu = used_events_.front();
-    if (iu.event == nullptr) {
-      used_events_.pop_front();
-    } else {
-      break;
-    }
-  }
+        mutex_lock lock(mu_);
+        free_events_.push_back(std::move(event));
+
+        // Update the number of pending events on `stream` and erase it from
+        // callback_streams_ if no events are pending any longer.
+        auto callback_stream_it = callback_streams_.find(stream);
+        if (callback_stream_it == callback_streams_.end()) {
+          return tsl::errors::Internal(
+              "Invariant violation in EventMgr: callback_streams_ does not "
+              "contain stream ",
+              stream);
+        }
+        auto& [callback_stream, num_pending_events] =
+            callback_stream_it->second;
+        if (num_pending_events <= 0) {
+          return tsl::errors::Internal(
+              "Invariant violation in EventMgr: refcount for stream ", stream,
+              "should be >= 1, but was ", num_pending_events);
+        }
+        num_pending_events--;
+
+        if (num_pending_events == 0) {
+          free_streams_.push_back(std::move(callback_stream));
+          callback_streams_.erase(callback_stream_it);
+        }
+        return tsl::OkStatus();
+      });
 }
 
 EventMgrFactory* EventMgrFactory::Singleton() {

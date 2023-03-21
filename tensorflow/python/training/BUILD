@@ -122,7 +122,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":training_lib",
-        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_core",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/training/tracking:base",
@@ -322,6 +322,7 @@ py_library(
         ":queue_runner",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
@@ -336,6 +337,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/summary",
         "//tensorflow/python/util:tf_export",
     ],
@@ -391,11 +393,11 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:tf_export",
     ],
@@ -589,9 +591,6 @@ tf_py_test(
     srcs = ["server_lib_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    tags = [
-        "noasan",  # TODO(b/161236904): flaky timeout in trying to start gRPC server
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -742,7 +741,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_oss",  # Test flaky due to port collisions.
-        "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
     deps = [
@@ -881,6 +879,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
@@ -904,6 +903,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -919,11 +919,7 @@ tf_py_test(
     size = "medium",
     srcs = ["saver_large_variable_test.py"],
     python_version = "PY3",
-    tags = [
-        "manual",
-        "noasan",  # http://b/30379628
-        "notsan",  # http://b/30379628
-    ],
+    tags = ["manual"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -939,10 +935,6 @@ tf_py_test(
     size = "medium",
     srcs = ["saver_large_partitioned_variable_test.py"],
     python_version = "PY3",
-    tags = [
-        "noasan",  # http://b/30782289
-        "notsan",  # http://b/30782289
-    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -1106,7 +1098,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows
-        "notsan",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -1332,6 +1323,9 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python:math_ops",
     ] + TRAINING_TEST_DEPS,
 )
 
@@ -1383,7 +1377,6 @@ cuda_py_test(
         ":session_manager",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -1391,6 +1384,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/checkpoint:checkpoint_management",
     ],
 )

@@ -63,7 +63,7 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
       /*mlir_context=*/nullptr, llvm_module.get());
 
   HloModuleConfig module_config;
-  module_config.set_debug_options(GetDebugOptionsFromFlags());
+  module_config.set_debug_options(debug_options_);
   return CompileLmhloToExecutable(
       static_cast<GpuCompiler*>(backend_->compiler()), module, "TestModule",
       module_config, Compiler::CompileOptions(), "main", stream_exec,

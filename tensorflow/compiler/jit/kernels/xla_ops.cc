@@ -29,8 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -479,6 +482,13 @@ NameAttrList FunctionAttr(OpKernelConstruction* ctx) {
   return *func;
 }
 
+std::vector<int> VectorAttr(OpKernelConstruction* ctx,
+                            absl::string_view attr_name) {
+  std::vector<int> vec;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(), ctx->GetAttr(attr_name, &vec));
+  return vec;
+}
+
 bool MustCompileAttr(OpKernelConstruction* ctx) {
   bool must_compile;
   OP_REQUIRES_OK_RETURN(ctx, false,
@@ -492,6 +502,14 @@ bool HasRefVars(OpKernelConstruction* ctx) {
                         ctx->GetAttr(kXlaHasReferenceVarsAttr, &has_ref_vars));
   return has_ref_vars;
 }
+
+class XlaLaunchV2Op : public XlaLocalLaunchBase {
+ public:
+  explicit XlaLaunchV2Op(OpKernelConstruction* ctx)
+      : XlaLocalLaunchBase(ctx, VectorAttr(ctx, "constants"),
+                           VectorAttr(ctx, "resources"), FunctionAttr(ctx),
+                           /*has_ref_vars=*/true) {}
+};
 
 }  // namespace
 
@@ -530,12 +548,12 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     if (must_compile_) {
       return DeviceCompileMode::kStrict;
     }
-    return GetXlaOpsCommonFlags().tf_xla_async_compilation
+    return GetXlaOpsCommonFlags()->tf_xla_async_compilation
                ? DeviceCompileMode::kAsync
                : DeviceCompileMode::kLazy;
   }();
 
-  if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
+  if (GetXlaOpsCommonFlags()->tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
   } else {
@@ -684,6 +702,8 @@ void XlaMergeOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
+
+REGISTER_KERNEL_BUILDER(Name("XlaLaunchV2").Device(DEVICE_CPU), XlaLaunchV2Op);
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
                             .Device(DEVICE_GPU)

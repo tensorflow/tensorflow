@@ -173,6 +173,8 @@ tf_kernel_library(
     srcs = if_nccl([
         "collective_nccl.h",
         "collective_nccl.cc",
+        "collective_nccl_all_to_all.h",
+        "collective_nccl_all_to_all.cc",
         "collective_nccl_broadcaster.h",
         "collective_nccl_broadcaster.cc",
         "collective_nccl_gatherer.h",
@@ -210,6 +212,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:collective_test_util",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/nccl:collective_communicator",
     ],
 )
@@ -1258,6 +1262,7 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_cross_op",
+        ":ragged_fill_empty_rows_op",
         ":ragged_gather_op",
         ":ragged_range_op",
         ":ragged_tensor_from_variant_op",
@@ -1405,10 +1410,11 @@ tf_cc_test(
         ":ragged_tensor_to_variant_op",
         ":ragged_tensor_variant",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1461,6 +1467,36 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_fill_empty_rows_op",
+    prefix = "ragged_fill_empty_rows_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "fill_empty_rows_functor",
+    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_cc_test(
+    name = "ragged_fill_empty_rows_op_test",
+    size = "small",
+    srcs = ["ragged_fill_empty_rows_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_fill_empty_rows_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1660,6 +1696,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "no_mac_arm64",
         "requires-gpu-sm70",
     ],
     deps = [
@@ -1689,7 +1726,6 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_benchmark_test.cc"],
     tags = [
         "nomac",  # b/132448918
-        "nomsan",  # b/141643254
     ],
     deps = [
         ":bias_op",
@@ -1718,7 +1754,6 @@ tf_cuda_cc_test(
     name = "conv_grad_filter_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_grad_filter_ops_benchmark_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":conv_ops",
         ":host_constant_op",
@@ -1742,7 +1777,6 @@ tf_cuda_cc_test(
     name = "conv_grad_input_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_grad_input_ops_benchmark_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":conv_ops",
         ":host_constant_op",
@@ -1832,9 +1866,6 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
     srcs = ["fused_batch_norm_op_test.cc"],
-    tags = [
-        "nomsan",  # TODO(b/181135145), use-of-uninitialized-value in initializedLoggingWithEnvVariables
-    ],
     deps = [
         ":fused_batch_norm_op",
         ":ops_testutil",
@@ -1855,10 +1886,7 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_ex_op_test",
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "nomsan",  # b/141643254
-    ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":cwise_op",
         ":fused_batch_norm_op",
@@ -1887,7 +1915,6 @@ tf_cc_test(
     name = "in_topk_op_test",
     size = "small",
     srcs = ["in_topk_op_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":in_topk_op",
         ":ops_testutil",
@@ -2073,6 +2100,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -2099,7 +2127,6 @@ tf_cc_test(
     name = "one_hot_op_test",
     size = "small",
     srcs = ["one_hot_op_test.cc"],
-    tags = ["nomsan"],  # b/141643254
     deps = [
         ":one_hot_op",
         ":ops_testutil",
@@ -2871,7 +2898,6 @@ tf_cc_tests(
     srcs = [
         "tensor_map_test.cc",
     ],
-    tags = ["nomsan"],  # b/163222155
     deps = [
         ":tensor_map",
         "//tensorflow/core:framework",
@@ -3067,9 +3093,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lmdb_reader_op",
     prefix = "lmdb_reader_op",
-    deps = IO_DEPS + [
-        "@lmdb",
-    ],
+    deps = IO_DEPS,
 )
 
 tf_kernel_library(
@@ -3574,6 +3598,7 @@ tf_kernel_library(
     gpu_srcs = [
         "scan_ops.h",
         "scan_ops_gpu.h",
+        "scan_ops_gpu_bfloat16.cu.cc",
         "scan_ops_gpu_double.cu.cc",
         "scan_ops_gpu_float.cu.cc",
         "scan_ops_gpu_half.cu.cc",
@@ -3926,6 +3951,7 @@ tf_kernel_library(
         "conv_grad_input_ops.h",
         "conv_grad_ops.h",
         "conv_ops_fused_impl.h",
+        "conv_ops_impl.h",
         "deep_conv2d.h",
         "fill_functor.h",
         "gemm_functors.h",
@@ -4562,7 +4588,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
-    deps = PARSING_DEPS,
+    deps = [
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+    ] + PARSING_DEPS,
 )
 
 tf_cc_test(
@@ -4866,7 +4894,25 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+    deps = SPARSE_DEPS + [
+        ":gpu_prim_hdrs",
+        "fill_empty_rows_functor",
+    ] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_kernel_library(
+    name = "fill_empty_rows_functor",
+    prefix = "fill_empty_rows_functor",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
@@ -5053,6 +5099,7 @@ tf_cuda_cc_tests(
     name = "sparse2_tests",
     size = "small",
     srcs = [
+        "sparse_fill_empty_rows_op_test.cc",
         "sparse_tensor_dense_matmul_op_test.cc",
         "sparse_to_dense_op_test.cc",
         "sparse_xent_op_test.cc",
@@ -5070,6 +5117,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -5291,7 +5339,6 @@ tf_cuda_cc_test(
     name = "scatter_nd_op_test",
     size = "small",
     srcs = ["scatter_nd_op_test.cc"],
-    tags = ["noasan"],  # http://b/32635055
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -5920,6 +5967,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -6113,7 +6161,6 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
-        "bias_op_gpu.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
@@ -6264,12 +6311,14 @@ filegroup(
         "conv_3d.h",
         "conv_ops.h",
         "conv_ops_gpu.h",
+        "conv_ops_impl.h",
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
         "diag_op.h",
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
+        "fill_empty_rows_functor.h",
         "fused_batch_norm_op.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
@@ -6316,7 +6365,6 @@ filegroup(
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
         "sparse_xent_op.h",
-        "sparse_fill_empty_rows_op.h",
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
@@ -6383,6 +6431,11 @@ filegroup(
         "conv_grad_shape_utils.cc",
         "conv_grad_shape_utils.h",
         "conv_ops.cc",
+        "conv_ops_bfloat16.cc",
+        "conv_ops_double.cc",
+        "conv_ops_float.cc",
+        "conv_ops_half.cc",
+        "conv_ops_int32.cc",
         "conv_ops_3d.cc",
         "conv_ops_fused_double.cc",
         "conv_ops_fused_float.cc",
@@ -7246,7 +7299,6 @@ tf_cc_test(
     name = "quantized_conv_ops_test",
     size = "small",
     srcs = ["quantized_conv_ops_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7286,7 +7338,6 @@ tf_cc_test(
     name = "quantized_matmul_op_test",
     size = "small",
     srcs = ["quantized_matmul_op_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7481,6 +7532,7 @@ tf_cc_test(
     name = "quantized_instance_norm_test",
     size = "small",
     srcs = ["quantized_instance_norm_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -7611,6 +7663,14 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "sync_ops",
+    prefix = "sync_ops",
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
 # should not be linked by projects that also link the cwise_op library.
@@ -7718,7 +7778,6 @@ tf_cc_shared_library(
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",

@@ -99,7 +99,6 @@ cc_library(
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
     copts = tsl_copts(),
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
@@ -143,7 +142,6 @@ cc_library(
         "-DTPU_GCS_FS",
         "-DPLATFORM_CLOUD_TPU",
     ],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
@@ -454,7 +452,6 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:scanner",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -477,7 +474,6 @@ tsl_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],

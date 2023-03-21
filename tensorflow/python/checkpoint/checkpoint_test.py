@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -47,6 +48,12 @@ from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
+
+try:
+  import psutil  # pylint: disable=g-import-not-at-top
+  psutil_import_succeeded = True
+except ImportError:
+  psutil_import_succeeded = False
 
 
 class NonLayerTrackable(autotrackable.AutoTrackable):
@@ -203,9 +210,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     )
   @test_util.run_in_graph_and_eager_modes
   def testMoreComplexSaveableReturned(self, enable_async_ckpt):
-    if enable_async_ckpt and not context.executing_eagerly():
-      self.skipTest(
-          "Skipping this test as async checkpoint does not support graph mode.")
     v = _OwnsMirroredVariables()
     checkpoint = trackable_utils.Checkpoint(v=v)
     test_dir = self.get_temp_dir()
@@ -214,6 +218,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt_options = checkpoint_options.CheckpointOptions(
         experimental_enable_async_checkpoint=enable_async_ckpt)
     save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
+    # TODO(chienchunh): Identify why sync needs to be called here.
+    if enable_async_ckpt:
+      checkpoint._async_checkpointer().sync()
     self.evaluate(v.non_dep_variable.assign(43.))
     self.evaluate(v.mirrored.assign(44.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
@@ -221,6 +228,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(42., self.evaluate(v.mirrored))
     self.evaluate(v.non_dep_variable.assign(44.))
     save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
+    # TODO(chienchunh): Identify why sync needs to be called here.
+    if enable_async_ckpt:
+      checkpoint._async_checkpointer().sync()
     self.evaluate(v.non_dep_variable.assign(45.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(44., self.evaluate(v.non_dep_variable))
@@ -248,9 +258,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     )
   @test_util.run_in_graph_and_eager_modes
   def testAssertConsumedNoCheckpoint(self, enable_async_ckpt):
-    if enable_async_ckpt and not context.executing_eagerly():
-      self.skipTest(
-          "Skipping this test as async checkpoint does not support graph mode.")
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     v = variable_scope.get_variable(name="v", initializer=0.)
     self.evaluate(v.initializer)
@@ -344,9 +351,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     )
   @test_util.run_in_graph_and_eager_modes
   def testCustomNumbering(self, enable_async_ckpt):
-    if enable_async_ckpt and not context.executing_eagerly():
-      self.skipTest(
-          "Skipping this test as async checkpoint does not support graph mode.")
     directory = self.get_temp_dir()
     prefix = os.path.join(directory, "ckpt")
     step = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
@@ -862,9 +866,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       ("_enable_async_ckpt", True),
       ("_disable_async_ckpt", False))
   def test_inititialize_with_data_structures(self, enable_async_ckpt):
-    if enable_async_ckpt and not context.executing_eagerly():
-      self.skipTest(
-          "Skipping this test as async checkpoint does not support graph mode.")
     checkpoint = trackable_utils.Checkpoint(
         a=[variables_lib.Variable(0.), variables_lib.Variable(1.)],
         b={"a": variables_lib.Variable(2.), "b": variables_lib.Variable(3.)})
@@ -1137,9 +1138,26 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt = trackable_utils.Checkpoint(v=v)
     self.evaluate(v.initializer)
     prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
-    with ops.default_session(None):
+    with stack.default_session(None):
       with self.assertRaisesRegex(RuntimeError, "create a session"):
         ckpt.write(prefix)
+
+  def test_ckpt_files_closed_after_restoration(self):
+    if not psutil_import_succeeded:
+      self.skipTest(
+          "psutil is required to check that we've closed our files.")
+    root = autotrackable.AutoTrackable()
+    root.v = variables_lib.Variable(1)
+    ckpt = trackable_utils.Checkpoint(root=root)
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+
+    root2 = autotrackable.AutoTrackable()
+    ckpt2 = trackable_utils.Checkpoint(root=root2)
+    ckpt2.restore(save_path)
+
+    proc = psutil.Process()
+    for file in proc.open_files():
+      self.assertNotIn(save_path, file[0])
 
 
 class SerializeToTensorTest(test.TestCase):

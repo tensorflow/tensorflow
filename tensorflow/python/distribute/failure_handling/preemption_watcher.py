@@ -21,7 +21,21 @@ from absl import logging
 from tensorflow.python.distribute.failure_handling.failure_handling_util import detect_platform
 from tensorflow.python.distribute.failure_handling.failure_handling_util import PlatformDevice
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
+from tensorflow.python.framework.errors import AbortedError
+from tensorflow.python.framework.errors import CancelledError
+from tensorflow.python.framework.errors import UnavailableError
 from tensorflow.python.util.tf_export import tf_export
+
+
+_preemption_watcher_initialization_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/preemption_watcher_initialized",
+    "Counter for usages of PreemptionWatcher",
+)
+_preemption_handling_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/preemption_watcher_handled",
+    "Counter for number of preempions catched and handled by PreemptionWatcher",
+)
 
 _PREEMPTION_KEY = "TF_DEFAULT_PREEMPTION_NOTICE_KEY"
 
@@ -60,7 +74,8 @@ class PreemptionWatcher:
       train_model(strategy)
       keep_running = False
     except Exception as e:
-      if preemption_watcher and preemption_watcher.preemption_msg:
+      if preemption_watcher and preemption_watcher.preemption_message:
+        preemption_watcher.block_until_worker_exit()
         keep_running = True
       else:
         raise e
@@ -70,16 +85,20 @@ class PreemptionWatcher:
     preemption_message: A variable to store the preemption message fetched from
       the coordination service. If it is not None, then there is a preemption
       happened.
+    platform: A PlatformDevice to indicate the current job's platform. Refer to
+      failure_handling_util.py for the definition of enum class PlatformDevice.
   """
 
   def __init__(self):
     # TODO(b/254321514): Integrate with GPU and cloud enviornmenmt.
     self._preemption_message = None
-    platform = detect_platform()
-    if platform != PlatformDevice.INTERNAL_TPU:
-      logging.warning("Preemption watcher does not support environment: %s",
-                      platform)
+    self._platform = detect_platform()
+    if self._platform != PlatformDevice.INTERNAL_TPU:
+      logging.warning(
+          "Preemption watcher does not support environment: %s", self._platform
+      )
     else:
+      _preemption_watcher_initialization_counter.get_cell().increase_by(1)
       threading.Thread(target=self._watch_preemption_key, daemon=True).start()
 
   @property
@@ -90,5 +109,23 @@ class PreemptionWatcher:
   def _watch_preemption_key(self):
     logging.info("Watching preemption signal.")
     message = context.context().get_config_key_value(_PREEMPTION_KEY)
+    _preemption_handling_counter.get_cell().increase_by(1)
     logging.info("Preemption signal received.")
     self._preemption_message = message
+
+  def block_until_worker_exit(self):
+    """Block coordinator until workers exit.
+
+    In some rare cases, another error could be raised during the
+    preemption grace period. This will cause the coordinator to reconnect to the
+    same TPU workers, which will be killed later. It prevents the coordinator to
+    reconnect to new TPU workers, and falls back to a hard restart. To avoid
+    this situation, this method will block the coordinator to reconnect until
+    workers exit. This method will be a no-op for non-TPU platform.
+    """
+    if self._platform != PlatformDevice.INTERNAL_TPU:
+      return
+    try:
+      context.context().get_config_key_value("BLOCK_TILL_EXIT")
+    except (AbortedError, CancelledError, UnavailableError):
+      logging.info("Workers exited.")

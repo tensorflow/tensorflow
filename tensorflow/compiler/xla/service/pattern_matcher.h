@@ -1270,13 +1270,12 @@ class HloInstructionPatternOpcodeImpl {
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (invert_ && inst->opcode() == opcode_) {
-      EXPLAIN << "HloInstruction has opcode " << HloOpcodeString(opcode_)
+      EXPLAIN << "HloInstruction has opcode " << opcode_
               << ", expected anything else";
       return false;
     }
     if (!invert_ && inst->opcode() != opcode_) {
-      EXPLAIN << "HloInstruction doesn't have opcode "
-              << HloOpcodeString(opcode_);
+      EXPLAIN << "HloInstruction doesn't have opcode " << opcode_;
       return false;
     }
     return true;
@@ -1284,9 +1283,9 @@ class HloInstructionPatternOpcodeImpl {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     if (!invert_) {
-      *os << "with opcode " << HloOpcodeString(opcode_);
+      *os << "with opcode " << opcode_;
     } else {
-      *os << "with any opcode other than " << HloOpcodeString(opcode_);
+      *os << "with any opcode other than " << opcode_;
     }
   }
 
@@ -1994,11 +1993,6 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
   }
 
-  // Modifies the pattern to match only the custom call with a given target.
-  auto WithCustomCallTarget(absl::string_view custom_call_target) const {
-    return AppendImpl(HloInstructionCustomCallTargetImpl({custom_call_target}));
-  }
-
   // Modifies the pattern to match a custom call with one of the given targets.
   auto WithCustomCallTarget(
       absl::Span<const absl::string_view> custom_call_targets) const {
@@ -2258,6 +2252,11 @@ XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
 XLA_UNOP_PATTERN(AllReduce)
+XLA_UNOP_PATTERN(AllReduceStart)
+XLA_UNOP_PATTERN(AllReduceDone)
+XLA_UNOP_PATTERN(CollectivePermute)
+XLA_UNOP_PATTERN(CollectivePermuteStart)
+XLA_UNOP_PATTERN(CollectivePermuteDone)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
@@ -2281,6 +2280,7 @@ XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
 XLA_UNOP_PATTERN(Slice)
 XLA_UNOP_PATTERN(Sqrt)
+XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
 #undef XLA_UNOP_PATTERN
@@ -2449,12 +2449,6 @@ auto CustomCall(Arg0&& arg0, Args&&... args) {
 }
 
 template <typename... Args>
-auto CustomCall(absl::string_view custom_call_target, Args&&... args) {
-  return CustomCall(std::forward<Args>(args)...)
-      .WithCustomCallTarget(custom_call_target);
-}
-
-template <typename... Args>
 auto CustomCall(absl::Span<const absl::string_view> custom_call_targets,
                 Args&&... args) {
   return CustomCall(std::forward<Args>(args)...)
@@ -2469,13 +2463,6 @@ auto CustomCall(HloInstructionType** matched_inst, Arg0&& arg0,
   return detail::WithOperands(
       CustomCall(matched_inst).WithNumOperands(sizeof...(Args) + 1),
       /*operand_num=*/0, std::forward<Arg0>(arg0), std::forward<Args>(args)...);
-}
-
-template <typename HloInstructionType, typename... Args>
-auto CustomCall(HloInstructionType** matched_inst,
-                absl::string_view custom_call_target, Args&&... args) {
-  return CustomCall(matched_inst, std::forward<Args>(args)...)
-      .WithCustomCallTarget(custom_call_target);
 }
 
 template <typename HloInstructionType, typename... Args>

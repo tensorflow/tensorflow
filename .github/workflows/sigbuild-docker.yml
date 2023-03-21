@@ -61,10 +61,10 @@ jobs:
           # [[:digit:]] searches for numbers and \+ joins them together
           major_version=$(grep "^#define TF_MAJOR_VERSION" ./tensorflow/core/public/version.h | grep -o "[[:digit:]]\+")
           minor_version=$(grep "^#define TF_MINOR_VERSION" ./tensorflow/core/public/version.h | grep -o "[[:digit:]]\+")
-          echo ::set-output name=TF_VERSION::${major_version}.${minor_version}
+          echo "TF_VERSION=${major_version}.${minor_version}" >> "$GITHUB_OUTPUT"
           # Also get the current date to do cache busting. Assumes one day
           # is an ok range for rebuilds
-          echo "::set-output name=DATE::$(date +'%Y-%m-%d')"
+          echo "DATE=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
         id: tf-version
       -
         name: Build and push

@@ -52,8 +52,8 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
                    "VarsAndArithmeticObjectGraph");
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
-  FingerprintDef fingerprint_def =
-      CreateFingerprintDef(saved_model_pb, export_dir);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
+                          CreateFingerprintDef(saved_model_pb, export_dir));
 
   EXPECT_GT(fingerprint_def.saved_model_checksum(), 0);
   EXPECT_EQ(fingerprint_def.graph_def_program_hash(), 10127142238652115842U);
@@ -72,15 +72,15 @@ TEST(FingerprintingTest, TestCompareFingerprintForTwoModelSavedTwice) {
 
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
-  FingerprintDef fingerprint_def =
-      CreateFingerprintDef(saved_model_pb, export_dir);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
+                          CreateFingerprintDef(saved_model_pb, export_dir));
 
   const std::string export_dir2 = io::JoinPath(
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "bert2");
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb2,
                           ReadSavedModel(export_dir2));
-  FingerprintDef fingerprint_def2 =
-      CreateFingerprintDef(saved_model_pb2, export_dir2);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def2,
+                          CreateFingerprintDef(saved_model_pb2, export_dir2));
 
   EXPECT_EQ(fingerprint_def.graph_def_program_hash(),
             fingerprint_def2.graph_def_program_hash());
@@ -95,10 +95,10 @@ TEST(FingerprintingTest, TestFingerprintComputationDoesNotMutateModel) {
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "bert1");
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
-  FingerprintDef fingerprint_def =
-      CreateFingerprintDef(saved_model_pb, export_dir);
-  FingerprintDef fingerprint_def2 =
-      CreateFingerprintDef(saved_model_pb, export_dir);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
+                          CreateFingerprintDef(saved_model_pb, export_dir));
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def2,
+                          CreateFingerprintDef(saved_model_pb, export_dir));
 
   EXPECT_EQ(fingerprint_def.saved_model_checksum(),
             fingerprint_def2.saved_model_checksum());
@@ -109,8 +109,8 @@ TEST(FingerprintingTest, TestFingerprintHasVersion) {
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "bert1");
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
-  FingerprintDef fingerprint_def =
-      CreateFingerprintDef(saved_model_pb, export_dir);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
+                          CreateFingerprintDef(saved_model_pb, export_dir));
   EXPECT_EQ(fingerprint_def.version().producer(), 1);
 }
 
@@ -119,8 +119,8 @@ TEST(FingerprintingTest, TestHashCheckpointForModelWithNoVariables) {
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "bert1");
   TF_ASSERT_OK_AND_ASSIGN(SavedModel saved_model_pb,
                           ReadSavedModel(export_dir));
-  FingerprintDef fingerprint_def =
-      CreateFingerprintDef(saved_model_pb, export_dir);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
+                          CreateFingerprintDef(saved_model_pb, export_dir));
   EXPECT_EQ(fingerprint_def.checkpoint_hash(), 0);
 }
 
@@ -137,6 +137,24 @@ TEST(FingerprintingTest, TestReadNonexistentFingerprint) {
   const std::string export_dir = io::JoinPath(
       testing::TensorFlowSrcRoot(), "cc/saved_model/testdata", "AssetModule");
   EXPECT_FALSE(ReadSavedModelFingerprint(export_dir).ok());
+}
+
+TEST(FingerprintingTest, TestSingleprint) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "VarsAndArithmeticObjectGraph");
+  const std::string const_singleprint =
+      "706963557435316516/5693392539583495303/12074714563970609759/"
+      "10788359570789890102";
+  EXPECT_EQ(Singleprint(export_dir), const_singleprint);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_pb,
+                          ReadSavedModelFingerprint(export_dir));
+  EXPECT_EQ(Singleprint(fingerprint_pb), const_singleprint);
+  EXPECT_EQ(Singleprint(fingerprint_pb.graph_def_program_hash(),
+                        fingerprint_pb.signature_def_hash(),
+                        fingerprint_pb.saved_object_graph_hash(),
+                        fingerprint_pb.checkpoint_hash()),
+            const_singleprint);
 }
 
 }  // namespace

@@ -206,7 +206,6 @@ tf_py_test(
     size = "large",
     srcs = ["index_shuffle_test.py"],
     shard_count = 12,
-    tags = ["requires-mem:24g"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -223,6 +222,9 @@ tf_py_test(
     name = "io_test",
     size = "medium",
     srcs = ["io_test.py"],
+    tags = [
+        "notap",  # b/272281090
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -351,6 +353,7 @@ tf_py_test(
     srcs = ["map_defun_op_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -396,7 +399,6 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:map_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -514,10 +516,7 @@ tf_py_test(
     size = "medium",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
-    tags = [
-        "no_oss",
-        "notsan",  # b/173146507
-    ],
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",

@@ -32,7 +32,9 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 
 
 # TODO(allenl): Allow something other than "CUSTOM" so we don't need device
@@ -191,7 +193,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Pack must be called eagerly.")
+      raise RuntimeError("`pack` must be called eagerly.")
     if any(
         issubclass(type(t), resource_variable_ops.BaseResourceVariable)
         for t in tensors):
@@ -242,7 +244,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Unpack must be called eagerly.")
+      raise RuntimeError("`unpack` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       raise TypeError(
           "Received Variable input to unpack, Variable is not supported.")
@@ -282,7 +284,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("FetchLayout must be called eagerly.")
+      raise RuntimeError("`fetch_layout` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       dtensor = dtensor.read_value()
     try:
@@ -294,16 +296,33 @@ class DTensorDevice(object):
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
     return layout_lib.Layout.from_string(layout_string)
 
-  def set_same_shape_policy(self, enabled):
-    """Guess layouts using the layouts of other tensors with the same shape.
+  def is_dtensor(self, tensor: Any) -> bool:
+    """Check whether the input tensor is a DTensor.
 
-    This is the default behavior, and is quite safe. The `default_layout` scope
-    overrides shape-based guesses.
+    In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+    let you check and handle the tensor differently if a tf.Tensor is a DTensor.
 
     Args:
-      enabled: A boolean indicating whether to use the policy.
+      tensor: an object to be checked.
+
+    Returns:
+      bool, True if the given tensor is a DTensor.
+
+    Raises:
+      RuntimeError: When not called eagerly.
     """
-    _pywrap_dtensor_device.SetSameShapePolicy(self._device_info, enabled)
+    if not context.executing_eagerly():
+      raise RuntimeError("`is_dtensor` must be called eagerly.")
+    if not tensor_util.is_tensor(tensor):
+      return False
+    if isinstance(tensor, variables.Variable):
+      # Get the resource handle for tf.Variable
+      tensor = tensor._handle   # pylint: disable=protected-access
+    return _pywrap_dtensor_device.IsDTensor(
+        context.context()._handle,  # pylint: disable=protected-access
+        tensor,
+        self._device_info,
+    )
 
   def set_tpu_core_ids(self, mesh_name, tpu_core_ids):
     """Sets the singleton global device ID-to-physical core ID map.
@@ -347,15 +366,35 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_hit_and_miss_count(self):
+  def _get_function_cache_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
-      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      A dictionary.
+        'miss': number of cache misses;
+        'hit': number of cache hits; and
+        'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+    return _pywrap_dtensor_device.GetFunctionCacheStats(
         context.context()._handle,  # pylint: disable=protected-access,
+        self._device_info,
+    )
+
+  def set_iterator_element_layouts(self, iterator_resource_dtensor,
+                                   layouts: List[layout_lib.Layout]):
+    """Sets the element layouts on an iterator resource tensor.
+
+    Args:
+      iterator_resource_dtensor: a DTensor created by packing the individiual
+        iterator resource tensors.
+      layouts: the flattened list of layouts to be applied to the elements
+        emitted by the iterator resource DTensor.
+    """
+    _pywrap_dtensor_device.SetIteratorElementLayouts(
+        context.context()._handle,  # pylint: disable=protected-access
+        iterator_resource_dtensor,
+        [layout.to_string() for layout in layouts],
         self._device_info)
 
   @contextlib.contextmanager

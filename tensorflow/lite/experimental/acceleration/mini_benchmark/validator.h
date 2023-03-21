@@ -22,12 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
@@ -71,8 +71,17 @@ class Validator {
     std::vector<std::vector<char>> actual_inference_output;
   };
 
+  // Status from validation run.
+  struct Status {
+    // Status of the mini benchmark run.
+    MinibenchmarkStatus status;
+    // Stage during which validation run failed.
+    // Unknown in case of a successful run.
+    BenchmarkStage stage = BenchmarkStage_UNKNOWN;
+  };
+
   // Run the validation graph and return validation results.
-  MinibenchmarkStatus RunValidation(Results* results_out);
+  Status RunValidation(Results* results_out);
 
   // Get timestamps.
   static int64_t BootTimeMicros();

@@ -191,7 +191,7 @@ class DynamicMultidimOp : public OpKernel {
     TensorShape output_shape;
     auto vec = ctx->input(0).flat<int32>();
     for (int i = 0; i < vec.size(); i++) {
-      output_shape.AddDim(vec(i));
+      OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(vec(i)));
     }
     Tensor* out_tensor = nullptr;
     OP_REQUIRES_OK(ctx,

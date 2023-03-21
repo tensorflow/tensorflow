@@ -22,18 +22,18 @@ import weakref
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function.capture import capture_container
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import quarantine
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -41,7 +41,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
@@ -52,6 +51,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -322,7 +322,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       def loop_body(_):
         return variable_scope.get_variable('a', shape=())
 
-      return control_flow_ops.while_loop(loop_test, loop_body, [0.0])
+      return while_loop.while_loop(loop_test, loop_body, [0.0])
 
     self.assertEqual(test_function().shape, [])
 
@@ -602,10 +602,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([3, 1], func([[0], [1.0], [1]]))
     self.assertAllEqual([2, 2], func(numpy.array([[1, 1], [2, 2]])))
 
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `func` failed'
+    ):
       func([0.0, 1.0, 2.0])  # Wrong shape.
 
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `func` failed'
+    ):
       func([['wrong dtype']])
 
   def testNestedInputSignatures(self):
@@ -715,12 +719,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     defined = quarantine.defun_with_attributes(foo, input_signature=signature)
     a = array_ops.ones([1])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError,
+                                'Binding inputs to tf.function `foo` failed'):
       defined([a, a, a], [a])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError,
+                                'Binding inputs to tf.function `foo` failed'):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
@@ -737,7 +741,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'Parameter .* was expected to be of type .* but is .*'):
+        TypeError, 'Binding inputs to tf.function `foo` failed'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -831,17 +835,23 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     # Different number of rows
     rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt3)
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegex(ValueError, 'Structure .* does not match'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt4)
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
-    with self.assertRaisesRegex(ValueError, 'does not match'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt5)
 
   def testInputSignatureWithKeywordOnlyArgs(self):
@@ -877,7 +887,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     save(mod, '/tmp/kwonlyf', defined.get_concrete_function(*signature))
     loaded = load('/tmp/kwonlyf')
     result = loaded.signatures['serving_default'](
-        a=array_ops.constant(1), b=array_ops.constant(2))
+        a=array_ops.constant(1),
+        b=array_ops.constant(2),
+        d=array_ops.constant(5))
     self.assertEqual(result['output_0'].numpy(), 11)
 
   def testInputSignatureWithKeywordOnlyArgsNoDefaults(self):
@@ -890,14 +902,25 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     with self.assertRaisesRegex(
-        ValueError, "keyword-only arguments must have default values.*'b'"):
+        TypeError,
+        (
+            'Since input_signature is defined, keyword-only parameter `b` must'
+            ' have a default value'
+        ),
+    ):
       quarantine.defun_with_attributes(test_func, input_signature=signature)
 
     test_func_lambda = lambda a, *, b: a + b
     with self.assertRaisesRegex(
-        ValueError, "keyword-only arguments must have default values.*'b'"):
+        TypeError,
+        (
+            'Since input_signature is defined, keyword-only parameter `b` must'
+            ' have a default value'
+        ),
+    ):
       quarantine.defun_with_attributes(
-          test_func_lambda, input_signature=signature)
+          test_func_lambda, input_signature=signature
+      )
 
   def testTensorKeywordArguments(self):
 
@@ -939,61 +962,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(six, 2.0)
     self.assertAllEqual(seven, 2.0)
 
-  def testFunctionWithExtraAttributes(self):
-
-    @quarantine.defun_with_attributes(attributes={
-        'experimental_1': 'value1',
-        'experimental_2': 2
-    })
-    def matmul(x, y):
-      return math_ops.matmul(x, y)
-
-    def add(x, y):
-      return math_ops.add(x, y)
-
-    defun_add = quarantine.defun_with_attributes(
-        add, attributes={
-            'experimental_3': True,
-            'experimental_4': 1.0
-        })
-
-    with context.graph_mode(), self.cached_session():
-      with ops.get_default_graph().as_default():
-        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        sq = matmul(t, t)
-        double = defun_add(t, t)
-        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
-        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
-
-        graph = ops.get_default_graph()
-        # pylint: disable=protected-access
-        self.assertLen(graph._functions, 2)
-        functions = list(graph._functions.values())
-        self.assertRegex(functions[0].definition.signature.name, '.*matmul.*')
-        attrs = functions[0].definition.attr
-        self.assertLen(attrs, 2)
-        self.assertEqual(attrs['experimental_1'].s, b'value1')
-        self.assertEqual(attrs['experimental_2'].i, 2)
-
-        self.assertRegex(functions[1].definition.signature.name, '.*add.*')
-        attrs = functions[1].definition.attr
-        self.assertLen(attrs, 2)
-        self.assertEqual(attrs['experimental_3'].b, True)
-        self.assertEqual(attrs['experimental_4'].f, 1.0)
-        # pylint: enable=protected-access
-
   def testFunctionWithInvalidAttribute(self):
-
-    @quarantine.defun_with_attributes(attributes={'experimental_1': ['value1']})
     def add(x, y):
       return math_ops.add(x, y)
 
-    with self.assertRaisesRegex(ValueError,
-                                'Attribute experimental_1 must be .* Got .*'):
-      with context.graph_mode(), self.cached_session():
-        with ops.get_default_graph().as_default():
-          t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-          add(t, t)
+    with self.assertRaisesRegex(
+        ValueError,
+        'TracingCompiler does not support `experimental_1` as an attribute.',
+    ):
+      quarantine.defun_with_attributes(
+          add, attributes={'experimental_1': 'value1'}
+      )
 
   def testRegisterFunction(self):
 
@@ -1122,10 +1101,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testEagerCaptures(self):
     with context.eager_mode():
       large_tensor = array_ops.ones(shape=(256,))
-      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertGreater(256, capture_container._EAGER_CONST_THRESHOLD)
 
       small_tensor = array_ops.ones(shape=(4,))
-      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertLessEqual(4, capture_container._EAGER_CONST_THRESHOLD)
 
       v = resource_variable_ops.ResourceVariable(0.0)
 
@@ -1230,7 +1209,39 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises((TypeError, ValueError)):
       graph_function('Not a Tensor.')
 
-  def testSwapImplementationWithGrapplerPlugin(self):
+  @parameterized.parameters([
+      (
+          quarantine.defun_with_attributes(
+              attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'CPU',
+              }
+          ),
+          quarantine.defun_with_attributes(
+              attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'GPU',
+              }
+          ),
+      ),
+      (
+          polymorphic_function.function(
+              experimental_attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'CPU',
+              }
+          ),
+          polymorphic_function.function(
+              experimental_attributes={
+                  'api_implements': 'random_boost',
+                  'api_preferred_device': 'GPU',
+              }
+          ),
+      ),
+  ])
+  def testSwapImplementationWithGrapplerPlugin(
+      self, cpu_decorator, gpu_decorator
+  ):
     # Set the min_graph_nodes to -1 since the graph in this test is too small,
     # and will be ignored by grappler if don't set this.
     rewrites = rewriter_config_pb2.RewriterConfig()
@@ -1243,17 +1254,11 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session(
         config=config_proto, graph=ops.Graph(), use_gpu=True):
 
-      @quarantine.defun_with_attributes(attributes={
-          'api_implements': 'random_boost',
-          'api_preferred_device': 'CPU'
-      })
+      @cpu_decorator
       def cpu_boost(x):
         return math_ops.add(x, 2.0)
 
-      @quarantine.defun_with_attributes(attributes={
-          'api_implements': 'random_boost',
-          'api_preferred_device': 'GPU'
-      })
+      @gpu_decorator
       def gpu_boost(x):
         return math_ops.add(x, 4.0)
 
@@ -2023,9 +2028,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testClearFunctionCallbacks(self):
     quarantine.add_function_callback(lambda f: None)
     quarantine.add_function_callback(lambda f: None)
-    self.assertLen(monomorphic_function._function_callbacks, 2)
+    self.assertLen(atomic_function.function_callbacks, 2)
     quarantine.clear_function_callbacks()
-    self.assertEmpty(monomorphic_function._function_callbacks)  # pylint:disable=protected-access
+    self.assertEmpty(atomic_function.function_callbacks)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNoneGradient(self):
@@ -2316,7 +2321,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
 
-if __name__ == '__main__':
+def setUpModule():
   ops.enable_eager_execution()
   cpus = config.list_physical_devices('CPU')
   # Set 4 virtual CPUs
@@ -2326,4 +2331,7 @@ if __name__ == '__main__':
       context.LogicalDeviceConfiguration(),
       context.LogicalDeviceConfiguration()
   ])
+
+
+if __name__ == '__main__':
   test.main()

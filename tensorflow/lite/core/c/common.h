@@ -42,6 +42,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_COMMON_H_
 #define TENSORFLOW_LITE_CORE_C_COMMON_H_
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -468,8 +469,9 @@ typedef struct TfLiteTensor {
   // Optional. Encodes shapes with unknown dimensions with -1. This field is
   // only populated when unknown dimensions exist in a read-write tensor (i.e.
   // an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
-  // `dims_signature` contains [1, -1, -1, 3]). Note that this field only
-  // exists when TF_LITE_STATIC_MEMORY is not defined.
+  // `dims_signature` contains [1, -1, -1, 3]).  If no unknown dimensions exist
+  // then `dims_signature` is either null, or set to an empty array.  Note that
+  // this field only exists when TF_LITE_STATIC_MEMORY is not defined.
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
@@ -647,23 +649,26 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// Tensors with allocation types other than `kTfLiteDynamic` will be ignored and
+// a kTfLiteOk will be returned.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
-// Behaviour is undefined if `tensor` is NULL.
 // If `preserve_data` is true, tensor data will be unchanged in the range from
-// the start of the region up to the minimum of the old and new sizes.
-void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
-                                 bool preserve_data);
+// the start of the region up to the minimum of the old and new sizes. In the
+// case of NULL tensor, or an error allocating new memory, returns
+// `kTfLiteError`.
+TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                         bool preserve_data);
 
 // Change the size of the memory block owned by `tensor` to `num_bytes`.
-// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored and
+// a kTfLiteOk will be returned.
 // `tensor`'s internal data buffer will be assigned a pointer
 // which can safely be passed to free or realloc if `num_bytes` is zero.
-// Behaviour is undefined if `tensor` is NULL.
 // Tensor data will be unchanged in the range from the start of the region up to
-// the minimum of the old and new sizes.
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+// the minimum of the old and new sizes. In the case
+// of NULL tensor, or an error allocating new memory, returns `kTfLiteError`.
+TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 #endif  // TF_LITE_STATIC_MEMORY
 
 // WARNING: This is an experimental interface that is subject to change.
@@ -954,12 +959,46 @@ typedef struct TfLiteRegistration {
   // ops. We keep it inside of `TfLiteRegistration` and use it to route
   // callbacks properly.
   TfLiteRegistrationExternal* registration_external;
+
+  // Retrieves asynchronous kernel.
+  // If the node is not capable of asynchronous execution, returns nullptr.
+  struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
+                                            TfLiteNode* node);
 } TfLiteRegistration;
 
+/// \private
 // Old version of `TfLiteRegistration` to maintain binary backward
 // compatibility.
-// WARNING: This structure is deprecated / not an official part of the API.
-// It should be only used for binary backward compatibility.
+// The legacy registration type must be a POD struct type whose field types must
+// be a prefix of the field types in TfLiteRegistration, and offset of the first
+// field in TfLiteRegistration that is not present in the legacy registration
+// type must be greater than or equal to the size of the legacy registration
+// type.
+// WARNING: This structure is deprecated / not an official part of the
+// API. It should be only used for binary backward compatibility.
+typedef struct TfLiteRegistration_V2 {
+  void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
+  void (*free)(TfLiteContext* context, void* buffer);
+  TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);
+  TfLiteStatus (*invoke)(TfLiteContext* context, TfLiteNode* node);
+  const char* (*profiling_string)(const TfLiteContext* context,
+                                  const TfLiteNode* node);
+  int32_t builtin_code;
+  const char* custom_name;
+  int version;
+  TfLiteRegistrationExternal* registration_external;
+} TfLiteRegistration_V2;
+
+/// \private
+// Old version of `TfLiteRegistration` to maintain binary backward
+// compatibility.
+// The legacy registration type must be a POD struct type whose field types must
+// be a prefix of the field types in TfLiteRegistration, and offset of the first
+// field in TfLiteRegistration that is not present in the legacy registration
+// type must be greater than or equal to the size of the legacy registration
+// type.
+// WARNING: This structure is deprecated / not an official part of the
+// API. It should be only used for binary backward compatibility.
 typedef struct TfLiteRegistration_V1 {
   void* (*init)(TfLiteContext* context, const char* buffer, size_t length);
   void (*free)(TfLiteContext* context, void* buffer);
@@ -1133,6 +1172,20 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+
+// Returns a pointer to the data associated with the provided opaque 'delegate'.
+//
+// A null pointer will be returned when:
+// - The 'delegate' is null.
+// - The 'data' field of the 'TfLiteOpaqueDelegateBuilder' used to construct the
+//   'delegate' was null.
+// - Or in case of any other error.
+// - The 'delegate' has been constructed via a 'TfLiteOpaqueDelegateBuilder',
+//   but the 'data' field of the 'TfLiteOpaqueDelegateBuilder' is null.
+//
+//  The data_ field of 'delegate' will be returned if the
+//  'opaque_delegate_builder' field is null.
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

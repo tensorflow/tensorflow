@@ -112,8 +112,8 @@ tsl_gpu_cc_test(
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
-        "nomac",
         "gpu_cupti",
+        "nomac",
     ],
     deps = [
         "//tensorflow/tsl/platform:test_main",
@@ -246,17 +246,17 @@ tsl_gpu_library(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:abi",
-        "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:parse_annotation",
+        "//tensorflow/tsl/profiler/utils:trace_utils",
         "//tensorflow/tsl/profiler/utils:xplane_builder",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
-        "//tensorflow/tsl/profiler/utils:trace_utils",
     ] + tf_additional_cupti_deps(),
 )
 

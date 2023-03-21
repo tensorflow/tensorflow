@@ -24,16 +24,16 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
@@ -576,6 +576,33 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+}
+
+TEST(TestDelegateKernel, WithoutName) {
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromFile(
+          "third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::InterpreterBuilder builder(*model, resolver);
+  TfLiteDelegate tflite_delegate{};
+  tflite_delegate.Prepare =
+      [](TfLiteContext* context,
+         struct TfLiteDelegate* delegate) -> TfLiteStatus {
+    TfLiteIntArray* execution_plan;
+    TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
+    TfLiteRegistration registration{};
+    registration.init = [](TfLiteContext* context, const char* buffer,
+                           size_t length) -> void* { return nullptr; };
+    context->ReplaceNodeSubsetsWithDelegateKernels(context, registration,
+                                                   execution_plan, delegate);
+    return kTfLiteOk;
+  };
+  builder.AddDelegate(&tflite_delegate);
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  builder(&interpreter);
+  ASSERT_NE(interpreter, nullptr);
 }
 
 TEST_F(TestDelegate, DelegateCustomOpResolution) {

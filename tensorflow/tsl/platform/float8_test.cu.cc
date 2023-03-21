@@ -42,6 +42,8 @@ struct Float8TestParamNames {
   static std::string GetName(int idx) {
     if constexpr (std::is_same_v<TypeParam, float8_e4m3fn>) {
       return "float8_e4m3fn";
+    } else if constexpr (std::is_same_v<TypeParam, float8_e4m3b11>) {
+      return "float8_e4m3b11";
     } else if constexpr (std::is_same_v<TypeParam, float8_e5m2>) {
       return "float8_e5m2";
     }
@@ -49,7 +51,8 @@ struct Float8TestParamNames {
   }
 };
 
-using Float8Types = ::testing::Types<float8_e4m3fn, float8_e5m2>;
+using Float8Types =
+    ::testing::Types<float8_e4m3fn, float8_e5m2, float8_e4m3b11>;
 TYPED_TEST_SUITE(Float8Test, Float8Types, Float8TestParamNames);
 
 TEST(Float8E4m3Test, NumericLimits) {
@@ -328,10 +331,10 @@ TEST(Float8Test, Half_To_Float8E5m2) {
 
   Eigen::half nan =
       Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(0x7C01));
-  EXPECT_EQ(static_cast<float8_e5m2>(nan).rep(), 0x7D);
+  EXPECT_EQ(static_cast<float8_e5m2>(nan).rep(), 0x7E);
   Eigen::half nnan =
       Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(0xFC01));
-  EXPECT_EQ(static_cast<float8_e5m2>(nnan).rep(), 0xFD);
+  EXPECT_EQ(static_cast<float8_e5m2>(nnan).rep(), 0xFE);
 
   // Rounding vs truncation.
   Eigen::half less_than_two =
@@ -352,6 +355,33 @@ TEST(Float8Test, Half_To_Float8E5m2) {
                                       /*kTruncate=*/true>(-less_than_two)
                  .rep()),
             0xBF);
+
+  // Saturation.
+  for (uint16_t i = static_cast<uint16_t>(Eigen::numext::bit_cast<uint8_t>(
+                        std::numeric_limits<float8_e5m2>::max()))
+                    << 8;
+       i < Eigen::numext::bit_cast<uint16_t>(
+               std::numeric_limits<Eigen::half>::infinity());
+       ++i) {
+    Eigen::half big_half = Eigen::numext::bit_cast<Eigen::half>(i);
+    float big_float = static_cast<float>(big_half);
+    EXPECT_EQ(
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             big_half)
+             .rep()),
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             big_float)
+             .rep()))
+        << i;
+    EXPECT_EQ(
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             -big_half)
+             .rep()),
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             -big_float)
+             .rep()))
+        << i;
+  }
 }
 
 using ::testing::Eq;
@@ -414,9 +444,9 @@ TYPED_TEST(Float8Test, CallTheConstOperator) {
 
       EXPECT_EQ(a == b, float{a} == float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a != b, float{a} != float{b});
-      EXPECT_EQ(a < b, float{a} < float{b});
+      EXPECT_EQ(a < b, float{a} < float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a <= b, float{a} <= float{b});
-      EXPECT_EQ(a > b, float{a} > float{b});
+      EXPECT_EQ(a > b, float{a} > float{b}) << float{a} << " vs " << float{b};
       EXPECT_EQ(a >= b, float{a} >= float{b});
     }
   }
@@ -558,6 +588,15 @@ TYPED_TEST(Float8CastTest, DeviceCast) {
   device.deallocate(src_device_buffer);
   device.deallocate(dst_device_buffer);
   synchronize(device);
+}
+
+TEST(Float8Test, SmallCastToDenormal) {
+  // Special edge-case where rounding to a normalized value would
+  // normally round down, but rounding to a subnormal rounds up.
+  float x = std::ldexp(1.3125, -15);
+  float8_e5m2 y = static_cast<float8_e5m2>(x);
+  float z = static_cast<float>(y);
+  EXPECT_EQ(z, std::ldexp(1.5, -15));
 }
 
 }  // namespace

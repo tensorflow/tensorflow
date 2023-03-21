@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -33,7 +35,7 @@ class TransposeTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 
  protected:
-  void TestTransposeConstant021(size_t n1, size_t n2, size_t n3);
+  void TestTransposeConstant(Vector3 sizes, Vector3 transpose_dims);
 };
 
 XLA_TEST_F(TransposeTest, Transpose0x0) {
@@ -154,35 +156,47 @@ TEST_F(TransposeTest, Small_2x2) {
   ComputeAndCompareR2<float>(&builder, *expected, {}, ErrorSpec(1e-4));
 }
 
-void TransposeTest::TestTransposeConstant021(size_t n1, size_t n2, size_t n3) {
-  Array3D<int32_t> aoperand(n1, n2, n3);
-  Array3D<int32_t> expected(n1, n3, n2);
-  for (size_t i = 0; i < n1; ++i) {
-    for (size_t j = 0; j < n2; ++j) {
-      for (size_t k = 0; k < n3; ++k) {
-        aoperand(i, j, k) = i * n3 * n2 + j * n3 + k;
-        expected(i, k, j) = aoperand(i, j, k);
+void TransposeTest::TestTransposeConstant(Vector3 sizes,
+                                          Vector3 transpose_dims) {
+  Array3D<int32_t> aoperand(sizes[0], sizes[1], sizes[2]);
+  std::vector<int32_t> expected(sizes[0] * sizes[1] * sizes[2]);
+  for (int64_t i = 0; i < sizes[0]; ++i) {
+    for (int64_t j = 0; j < sizes[1]; ++j) {
+      for (int64_t k = 0; k < sizes[2]; ++k) {
+        Vector3 indices{i, j, k};
+        aoperand(i, j, k) = (i * sizes[1] + j) * sizes[2] + k;
+        expected[(indices[transpose_dims[0]] * sizes[transpose_dims[1]] +
+                  indices[transpose_dims[1]]) *
+                     sizes[transpose_dims[2]] +
+                 indices[transpose_dims[2]]] = aoperand(i, j, k);
       }
     }
   }
 
   XlaBuilder builder(TestName());
   auto operand = ConstantR3FromArray3D(&builder, aoperand);
-  Transpose(operand, {0, 2, 1});
+  auto transpose = Transpose(operand, transpose_dims);
+  // Add a reshape so that the transpose does not disappear during layout
+  // assignment.
+  Reshape(transpose, {sizes[0] * sizes[1] * sizes[2]});
 
-  ComputeAndCompareR3<int32_t>(&builder, expected, {});
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 TEST_F(TransposeTest, TransposeConstant021_SingleIncompleteTilePerLayer) {
-  TestTransposeConstant021(2, 2, 3);
+  TestTransposeConstant({2, 16, 17}, {0, 2, 1});
 }
 
 TEST_F(TransposeTest, TransposeConstant021_SingleCompleteTilePerLayer) {
-  TestTransposeConstant021(2, 32, 32);
+  TestTransposeConstant({2, 32, 32}, {0, 2, 1});
 }
 
 TEST_F(TransposeTest, TransposeConstant021_MultipleTilesPerLayer) {
-  TestTransposeConstant021(2, 70, 35);
+  TestTransposeConstant({2, 70, 35}, {0, 2, 1});
+}
+
+TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
+  TestTransposeConstant({20, 30, 1}, {2, 1, 0});
 }
 
 }  // namespace

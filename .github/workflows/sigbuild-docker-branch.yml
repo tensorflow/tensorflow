@@ -55,9 +55,9 @@ jobs:
       -
         name: Generate variables for cache busting and tag naming
         run: |
-          echo "::set-output name=DATE::$(date +'%Y-%m-%d')"
+          echo "DATE=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
           # Converts r2.9 to just 2.9
-          echo "::set-output name=REF::$(echo $GITHUB_REF_NAME | sed 's/r//g')"
+          echo "REF=$(echo $GITHUB_REF_NAME | sed 's/r//g')" >> "$GITHUB_OUTPUT"
         id: vars
       -
         name: Build and push

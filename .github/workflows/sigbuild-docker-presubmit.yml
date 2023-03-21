@@ -48,7 +48,7 @@ jobs:
       -
         name: Grab the date to do cache busting (assumes same day OK to keep)
         run: |
-          echo "::set-output name=DATE::$(date +'%Y-%m-%d')"
+          echo "DATE=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
         id: date
       -
         name: Build containers, and push to GCR only if the 'build and push to gcr.io for staging' label is applied

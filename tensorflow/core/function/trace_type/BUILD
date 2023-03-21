@@ -33,7 +33,9 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
-    deps = [],
+    deps = [
+        "//third_party/py/numpy",
+    ],
 )
 
 py_strict_test(
@@ -53,12 +55,14 @@ py_strict_test(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -72,6 +76,7 @@ pytype_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":serialization",
+        ":util",
         "//tensorflow/core/function/trace_type:default_types_proto_py",
         "//tensorflow/python/types",
     ],

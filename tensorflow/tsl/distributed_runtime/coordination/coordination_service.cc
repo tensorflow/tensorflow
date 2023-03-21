@@ -389,8 +389,8 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               }
               const bool is_stale = task_state->TimeSinceLastHeartbeatMs() >
                                     heartbeat_timeout_ms_;
-              VLOG(1) << "Checking staleness for " << task_name
-                      << " stale?=" << is_stale;
+              VLOG(10) << "Checking staleness for " << task_name
+                       << " stale?=" << is_stale;
               if (is_stale) {
                 stale_task_names.push_back(task_name);
                 status = MakeCoordinationError(errors::Unavailable(
@@ -673,7 +673,7 @@ CoordinationServiceStandaloneImpl::GetTaskState(
       error = cluster_state_[task_name]->GetStatus();
     }
     *state_info.mutable_task() = task;
-    state_info.set_error_code(error.code());
+    state_info.set_error_code(error.raw_code());
     state_info.set_error_message(error.error_message());
     if (!error.ok()) {
       *state_info.mutable_error_payload()->mutable_source_task() = task;
@@ -734,7 +734,7 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
 
   auto request = std::make_shared<ReportErrorToTaskRequest>();
   auto response = std::make_shared<ReportErrorToTaskResponse>();
-  request->set_error_code(error.code());
+  request->set_error_code(error.raw_code());
   request->set_error_message(error.error_message());
   CoordinatedTask* error_source =
       request->mutable_error_payload()->mutable_source_task();
@@ -766,7 +766,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   }
   assert(!error.ok());
   ReportErrorToTaskRequest request;
-  request.set_error_code(error.code());
+  request.set_error_code(error.raw_code());
   request.set_error_message(error.error_message());
   CoordinationServiceError* payload = request.mutable_error_payload();
   *payload->mutable_source_task() = source_task;
@@ -849,6 +849,7 @@ std::string NormalizeKey(const StringPiece orig_key) {
 
 Status CoordinationServiceStandaloneImpl::InsertKeyValue(
     const std::string& key, const std::string& value) {
+  VLOG(3) << "InsertKeyValue(): " << key << ": " << value;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   if (kv_store_.find(norm_key) != kv_store_.end()) {
@@ -868,6 +869,7 @@ Status CoordinationServiceStandaloneImpl::InsertKeyValue(
 
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
+  VLOG(3) << "GetKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   const auto& iter = kv_store_.find(norm_key);
@@ -885,6 +887,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
 
 StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
     const std::string& key) {
+  VLOG(3) << "TryGetKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   const auto& iter = kv_store_.find(norm_key);
@@ -896,6 +899,7 @@ StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
 
 std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
     absl::string_view directory_key) {
+  VLOG(3) << "TryGetKeyValueDir(): " << directory_key;
   std::vector<KeyValueEntry> kvs_in_directory;
   const std::string norm_key = NormalizeKey(directory_key);
   const std::string dir = absl::StrCat(norm_key, "/");
@@ -923,6 +927,7 @@ std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
 
 Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
     const std::string& key) {
+  VLOG(3) << "DeleteKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   // Delete directory: find key range that match directory prefix
@@ -962,6 +967,8 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
     const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
     StatusCallback done) {
+  VLOG(3) << "Task " << GetTaskName(task) << "invoked BarrierAsync("
+          << barrier_id << ").";
   mutex_lock l(state_mu_);
   auto pair = barriers_.try_emplace(barrier_id);
   auto it = pair.first;
@@ -1103,6 +1110,7 @@ Status CoordinationServiceStandaloneImpl::CancelBarrier(
       "Barrier (", barrier_id, ") is cancelled by task: ", GetTaskName(task))));
   PassBarrier(barrier_id, cancelled, barrier);
 
+  VLOG(3) << "Barrier (" << barrier_id << ") is cancelled.";
   return OkStatus();
 }
 
@@ -1111,6 +1119,7 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     absl::string_view barrier_id, Status result, BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
+  VLOG(3) << "Barrier(" << barrier_id << ") has passed with status: " << result;
   // Special hook for device propagation barrier to set global device ids.
   if (barrier_id == device_propagation_barrier_id_) {
     AggregateClusterDevices();

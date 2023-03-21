@@ -27,6 +27,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -34,6 +36,9 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
 
 class LiftQuantizableSpotsAsFunctionsDRQPass
     : public PassWrapper<LiftQuantizableSpotsAsFunctionsDRQPass,
@@ -47,12 +52,17 @@ class LiftQuantizableSpotsAsFunctionsDRQPass
 
   // Constructor used by manually creating the pass.
   explicit LiftQuantizableSpotsAsFunctionsDRQPass(
-      int min_num_elements_for_weights) {
+      const QuantMethod quantization_method, const OpSet target_opset,
+      const int min_num_elements_for_weights) {
+    quantization_method_ = quantization_method;
+    target_opset_ = target_opset;
     min_num_elements_for_weights_ = min_num_elements_for_weights;
   }
 
   LiftQuantizableSpotsAsFunctionsDRQPass(
       const LiftQuantizableSpotsAsFunctionsDRQPass& other) {
+    quantization_method_ = other.quantization_method_;
+    target_opset_ = other.target_opset_;
     min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
   }
 
@@ -74,18 +84,45 @@ class LiftQuantizableSpotsAsFunctionsDRQPass
 
   void runOnOperation() override;
 
+ private:
+  Option<OpSet> target_opset_{
+      *this, "target-opset", llvm::cl::init(OpSet::TF),
+      llvm::cl::desc("Choose target opset."),
+      llvm::cl::values(
+          clEnumValN(OpSet::TF, "TF",
+                     "Uses TF ops that mimic quantization behavior"),
+          clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
+          clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
+                     "Uses TF Uniform Quantized ops"))};
+
   Option<int64_t> min_num_elements_for_weights_{
       *this, "min-num-elements-for-weights", llvm::cl::init(0),
       llvm::cl::desc("The minimum required number of elements in a weight "
                      "array to apply quantization.")};
+
+  Option<QuantMethod> quantization_method_{
+      *this, "quantization-method",
+      llvm::cl::init(
+          tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE),
+      llvm::cl::desc("Choose quantization method."),
+      llvm::cl::values(
+          clEnumValN(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
+              "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+                     "weight_only", "Post-training weight_only quantizaiton"))};
 };
 
 class CheckQuantizableOps
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
   explicit CheckQuantizableOps(MLIRContext* context,
-                               int min_num_elements_for_weights)
+                               const QuantMethod quantization_method,
+                               const OpSet target_opset,
+                               const int min_num_elements_for_weights)
       : OpRewritePattern<TF::PartitionedCallOp>(context),
+        quantization_method_(quantization_method),
+        target_opset_(target_opset),
         min_num_elements_for_weights_(min_num_elements_for_weights) {}
 
  private:
@@ -108,9 +145,27 @@ class CheckQuantizableOps
         call_op->removeAttr(kQuantTraitAttrName);
       }
     }
+
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    if ((quantization_method_ ==
+         tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) &&
+        (function_name.contains("batch_matmul") ||
+         function_name.contains("conv3d"))) {
+      call_op->removeAttr(kQuantTraitAttrName);
+    }
+
+    // TODO(b/270906404): Support weight-only gather for uniform quantized opset
+    // in PTQ mode
+    if (target_opset_ == OpSet::UNIFORM_QUANTIZED &&
+        function_name.contains("gather")) {
+      call_op->removeAttr(kQuantTraitAttrName);
+    }
+
     return failure();
   }
-
+  QuantMethod quantization_method_;
+  OpSet target_opset_;
   int min_num_elements_for_weights_;
 };
 
@@ -124,7 +179,8 @@ void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
   ModuleOp module = getOperation();
 
   populateWithGenerated(patterns);
-  patterns.add<CheckQuantizableOps>(ctx, min_num_elements_for_weights_);
+  patterns.add<CheckQuantizableOps>(ctx, quantization_method_, target_opset_,
+                                    min_num_elements_for_weights_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
   for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
@@ -138,9 +194,11 @@ void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights) {
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+    const QuantMethod quantization_method, const OpSet target_opset,
+    const int min_num_elements_for_weights) {
   return std::make_unique<LiftQuantizableSpotsAsFunctionsDRQPass>(
-      min_num_elements_for_weights);
+      quantization_method, target_opset, min_num_elements_for_weights);
 }
 
 }  // namespace quant

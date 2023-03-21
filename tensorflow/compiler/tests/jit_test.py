@@ -28,10 +28,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -338,7 +340,7 @@ class XlaCompilationTest(test.TestCase):
       with jit_scope():
         c = lambda i, _: math_ops.less(i, 5)
         b = lambda i, x: (i + 1, x * 2.0 + 1.0)
-        _, y = control_flow_ops.while_loop(c, b, (constant_op.constant(0), x))
+        _, y = while_loop.while_loop(c, b, (constant_op.constant(0), x))
 
       run_metadata = config_pb2.RunMetadata()
       result = session.run(y, {x: np.float32(2)},
@@ -357,7 +359,7 @@ class XlaCompilationTest(test.TestCase):
       c = array_ops.placeholder(dtypes.bool)
       with jit_scope():
         z = x + 1.0
-        w = control_flow_ops.cond(c, lambda: z, lambda: y)
+        w = cond.cond(c, lambda: z, lambda: y)
         t = math_ops.add(z, w)
 
       # If JIT compilation chooses to cluster z and t, then execution will
@@ -415,8 +417,7 @@ class XlaCompilationTest(test.TestCase):
         y = x + 1.0
         c = lambda i, _x, _y: math_ops.less(i, 5)
         b = lambda i, x, _y: (i + 1, x * 2.0 + 1.0, x - 3.0)
-        _, _, w = control_flow_ops.while_loop(c, b,
-                                              (constant_op.constant(0), y, x))
+        _, _, w = while_loop.while_loop(c, b, (constant_op.constant(0), y, x))
         u = w + y
       result = session.run(u, {x: np.float32(2)})
       self.assertAllClose(result, np.float32(63), rtol=1e-1)

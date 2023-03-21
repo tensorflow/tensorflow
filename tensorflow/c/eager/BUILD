@@ -128,7 +128,7 @@ filegroup(
         "tfe_tensorhandle_internal.h",
     ],
     visibility = [
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )
@@ -749,10 +749,6 @@ tf_cuda_cc_test(
     tags = [
         "no_oss",  # TODO(b/200848572)
         "no_windows",
-        # TODO(b/136478427): sanitizers report issues due to unclean exit.
-        "noasan",  # leaks gRPC server instances
-        "nomsan",  # b/229991646: use of destructed memory due to unclean exit.
-        "notsan",  # b/259602430: race on destructed mutex due to unclean exit.
     ],
     deps = [
         ":c_api",
@@ -928,18 +924,24 @@ tf_cuda_cc_test(
     name = "c_api_unified_experimental_test",
     size = "small",
     srcs = [
+        "c_api_unified_experimental_internal.h",
         "c_api_unified_experimental_test.cc",
     ],
     args = ["--heap_check="],
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

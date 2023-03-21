@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -51,6 +52,14 @@ class Sharding : public llvm::RTTIExtends<Sharding, llvm::RTTIRoot> {
   virtual StatusOr<
       std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const = 0;
+
+  // Maps each shard to an `IndexDomain` over `shape`. The result is a list of
+  // `index_domain_i` such that `array[index_domain_i] = disassembled_array_i`.
+  // Note that multiple shards may map onto equal `IndexDomain`. For instance, a
+  // fully replicated sharding would return a vector of `[IndexDomain(shape)] *
+  // devices().size()`.
+  virtual StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape) const = 0;
 
   virtual std::string DebugString() const = 0;
 
@@ -81,6 +90,9 @@ class SingleDeviceSharding final
 
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
+
+  StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape) const override;
 
   std::string DebugString() const override;
 
@@ -126,6 +138,9 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
 
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
+
+  StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape) const override;
 
   std::string DebugString() const override;
 

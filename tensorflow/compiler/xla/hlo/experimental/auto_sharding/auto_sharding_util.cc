@@ -37,8 +37,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/index_util.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -430,6 +430,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:
@@ -688,6 +689,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:

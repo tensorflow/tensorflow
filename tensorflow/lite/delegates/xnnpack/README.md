@@ -59,6 +59,8 @@ The exact command depends on the target platform, e.g. for Android AAR you'd use
 ```
 bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define android_dexmerger_tool=d8_dexmerger \
+  --define android_incremental_dexing_tool=d8_dexbuilder \
   --define tflite_with_xnnpack=true \
   //tensorflow/lite/java:tensorflow-lite
 ```
@@ -441,6 +443,10 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TANH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 #### `TRANSPOSE`
 
 * The first input and the output must be in 32-bit floating-point format.
@@ -454,23 +460,34 @@ Below is the list of currently supported floating-point operators:
 * Output size, filter and bias (if present) must be static (use
   `kTfLiteMmapRo` allocation type).
 
-### Floating-Point (IEEE FP16) Operators (experimental)
+### Floating-Point (IEEE FP16) Operators
 
 XNNPACK supports half-precision (using IEEE FP16 format) inference for a subset
 of floating-point operators. XNNPACK automatically enables half-precision
 inference when the following conditions are met:
 
 * XNNPACK runs on hardware that natively supports computations in IEEE FP16
-format. Currently, this hardware is limited to ARM64 devices with ARMv8.2 FP16
-arithmetics extension, and includes Android phones starting with Pixel 3,
-Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
-newer SoCs, and all Apple Silicon Macs.
+format. Currently, this hardware is limited to ARM & ARM64 devices with
+ARMv8.2 FP16 arithmetics extension, and includes Android phones starting with
+Pixel 3, Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with
+A11 or newer SoCs, all Apple Silicon Macs, and Windows ARM64 laptops based with
+Snapdragon 850 SoC or newer.
 
 * IEEE FP16 inference is supported for every floating-point operator in the
 model.
 
 * The model's "reduced_precision_support" metadata indicates that the model
-is compatible with FP16 inference.
+is compatible with FP16 inference. The metadata can be added during model
+conversion using the `_experimental_supported_accumulation_type` attribute
+of the [tf.lite.TargetSpec](https://www.tensorflow.org/api_docs/python/tf/lite/TargetSpec)
+object:
+
+```python
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+...
+converter.target_spec.supported_types = [tf.float16]
+converter.target_spec._experimental_supported_accumulation_type = tf.dtypes.float16
+```
 
 When the above conditions are met, XNNPACK replace FP32 operators with their
 FP16 equivalents, and insert additional operators to convert model inputs
@@ -486,7 +503,7 @@ is used. Forcing FP16 inference has several effects:
 * Besides ARM64 devices with ARMv8.2 FP16 arithmetics extension, forced FP16
 inference is supported on x86/x86-64 devices with AVX2 extension in emulation
 mode: all elementary floating-point operations are computed in FP32, then
-converted to FP16 and back to FP32. Note that such simulation is not exactly
+converted to FP16 and back to FP32. Note that such simulation is not bit-exact
 equivalent to native FP16 inference, but simulates the effects of restricted
 mantissa precision and exponent range in the native FP16 arithmetics.
 
@@ -512,171 +529,10 @@ TfLiteDelegate* xnnpack_delegate =
     TfLiteXNNPackDelegateCreate(&xnnpack_options);
 ```
 
-Below is the list of operators supported in IEEE FP16 inference:
-
-#### `ABS`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `ADD`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `AVERAGE_POOL_2D`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `CEIL`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `CONV_2D`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `CONCATENATION`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `DEPTH_TO_SPACE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `DEPTHWISE_CONV_2D`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `DIV`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `FLOOR`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `FULLY_CONNECTED`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `HARD_SWISH`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `LEAKY_RELU`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `LOGISTIC`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `MAX_POOL_2D`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `MAXIMUM`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `MEAN`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `MINIMUM`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `MUL`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `NEG`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `PAD`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `PRELU`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `RELU`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `RELU6`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `RELU_N1_TO_1`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `RESHAPE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `RESIZE_BILINEAR`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `ROUND`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SLICE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SOFTMAX`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SPACE_TO_DEPTH`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SPLIT`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SQRT`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SQUARE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SQUARED_DIFFERENCE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `STRIDED_SLICE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `SUB`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
-
-#### `TRANSPOSE`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
-
-#### `TRANSPOSE_CONV`
-
-* Must satisfy constraints on the floating-point (FP32) operator.
+XNNPACK has full feature parity between FP32 and FP16 operators: all operators
+that are supported for FP32 inference are also supported for FP16 inference,
+and vice versa. In particular, sparse inference operators are supported for FP16
+inference on ARM processors.
 
 ### Quantized Operators
 
@@ -803,6 +659,13 @@ Below is the list of currently supported quantized operators:
   as the outputs, and the ratio of input scale to output scale must be in the
   [2**-8, 2**7] range.
 
+#### `RESHAPE`
+
+*   The first input and the output must be in 8-bit quantized format.
+*   The second input (the input with the new shape specification) must be either
+    static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
+    specified via `ReshapeOptions` table).
+
 #### `RESIZE_BILINEAR`
 
 * The first input and the output must be 4D tensors in 8-bit quantized format.
@@ -831,6 +694,10 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TANH`
+
+* Inputs and outputs must be in 8-bit quantized format.
+
 #### `TRANSPOSE`
 
 * The first input and the output must be in 8-bit quantized format.
@@ -848,7 +715,8 @@ Below is the list of currently supported quantized operators:
 
 XNNPACK backend supports sparse inference for CNN models described in the
 [Fast Sparse ConvNets](https://arxiv.org/abs/1911.09723) paper. Sparse
-inference is restricted to subgraphs with the following operators:
+inference is restricted to subgraphs with the following floating-point
+operators:
 
 * Sparse subgraph must store its weights in sparse representation (using
   `DENSIFY` operators in the TensorFlow Lite schema).

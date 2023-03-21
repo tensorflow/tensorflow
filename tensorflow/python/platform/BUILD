@@ -147,6 +147,7 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/259295275) re-enable after fixing sysconfig.get_path breakage
+        "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
     ],
     deps = [
         ":client_testlib",
@@ -160,6 +161,7 @@ tf_py_test(
     srcs = ["stacktrace_handler_test.py"],
     python_version = "PY3",
     tags = [
+        "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
         "no_windows",
         "nomac",
     ],
@@ -194,11 +196,11 @@ tf_python_pybind_extension(
     ],
 )
 
-pybind_extension(
+tf_python_pybind_extension(
     name = "_pywrap_cpu_feature_guard",
     srcs = ["cpu_feature_guard_wrapper.cc"],
     deps = [
-        "//tensorflow/core/platform:cpu_feature_guard",
+        "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

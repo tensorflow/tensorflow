@@ -97,9 +97,10 @@ PjRtLoadedExecutable::GetCostAnalysis() const {
       modules[0]->entry_computation()->Accept(hlo_cost_analysis.get()));
 
   // Return cost properties
-  const auto cost_analysis_properties = hlo_cost_analysis->properties();
-  return absl::flat_hash_map<std::string, PjRtValueType>(
-      cost_analysis_properties.begin(), cost_analysis_properties.end());
+  absl::flat_hash_map<std::string, PjRtValueType> ret;
+  hlo_cost_analysis->properties().ForEach(
+      [&](absl::string_view key, float val) { ret[key] = val; });
+  return ret;
 }
 
 }  // namespace xla

@@ -50,6 +50,8 @@ class PjRtCompatibleClient
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
   virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
+
+  static char ID;  // NOLINT
 };
 
 // `Client` implementation that wraps `xla::PjRtClient`.

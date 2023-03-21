@@ -61,13 +61,27 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":compression_ops",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_library(
+    name = "distributed_save_op",
+    srcs = [
+        "distributed_save_op.py",
+    ],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util",
     ],
 )
 
@@ -83,6 +97,7 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -122,6 +137,7 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -282,7 +298,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:random_op",
         "//tensorflow/python/data/util:structure",
     ],
 )
@@ -310,7 +325,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:map_op",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
@@ -413,6 +427,7 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -426,6 +441,7 @@ py_library(
         ":counter",
         ":data_service_ops",
         ":distribute",
+        ":distributed_save_op",
         ":enumerate_ops",
         ":error_ops",
         ":from_list",

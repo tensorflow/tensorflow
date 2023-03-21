@@ -382,29 +382,6 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
 }
 
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
-    const XlaComputation& computation, CompileOptions options,
-    std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
-  std::optional<std::string> fingerprint;
-  auto* ifrt_xla_client = llvm::dyn_cast_or_null<ifrt::XlaCompatibleCompiler>(
-      ifrt_client_->GetDefaultCompiler());
-  if (!ifrt_xla_client) {
-    return FailedPrecondition("Not XLA-compatible client");
-  }
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        ifrt_loaded_executable,
-        ifrt_xla_client->CompileXla(computation, std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
-  }
-  auto traceback = Traceback::Get();
-  return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(ifrt_loaded_executable),
-      std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
-}
-
-StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
@@ -522,15 +499,6 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     for (const auto& buffer : arr->pjrt_buffers()) {
       TF_RETURN_IF_ERROR(
           add_buffer_to_profile(buffer.get(), array->traceback.get()));
-    }
-  }
-
-  for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
-       sharded_buffer = sharded_buffer->next_) {
-    for (int i = 0; i < sharded_buffer->num_devices(); ++i) {
-      auto* buffer = sharded_buffer->pjrt_buffer(i);
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer, sharded_buffer->traceback().get()));
     }
   }
 

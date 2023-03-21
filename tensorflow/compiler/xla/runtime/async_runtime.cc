@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -60,9 +61,13 @@ struct AsyncToken : public AsyncRuntimeObject {
 };
 
 struct AsyncValue : public AsyncRuntimeObject {
+  explicit AsyncValue(unsigned ref_count = 1)
+      : AsyncRuntimeObject(ref_count),
+        chain(MakeConstructedAsyncValueRef<Chain>(storage)) {}
+
   explicit AsyncValue(size_t size, size_t alignment, unsigned ref_count = 1)
       : AsyncRuntimeObject(ref_count),
-        data_storage(size, alignment),
+        data_storage(Storage(size, alignment)),
         chain(MakeConstructedAsyncValueRef<Chain>(storage)) {
     // Storage memory will be initialized by the compiled executable.
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
@@ -70,8 +75,15 @@ struct AsyncValue : public AsyncRuntimeObject {
 
   std::byte* GetStorage() {
     assert(!GetAsyncValue()->IsError() && "unexpected error state");
-    if (data_storage.is_inline) return &data_storage.inline_buffer[0];
-    return data_storage.allocated_buffer;
+    assert(data_storage.has_value() && "unallocated data storage");
+    if (data_storage->is_inline) return &data_storage->inline_buffer[0];
+    return data_storage->allocated_buffer;
+  }
+
+  void AllocateStorage(size_t size, size_t alignment) {
+    data_storage = Storage(size, alignment);
+    // Storage memory will be initialized by the compiled executable.
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
   }
 
   tsl::AsyncValue* GetAsyncValue() const { return chain.AsPtr().value(); }
@@ -105,7 +117,7 @@ struct AsyncValue : public AsyncRuntimeObject {
     };
   };
 
-  Storage data_storage;
+  std::optional<Storage> data_storage;
 
   // Async value that tracks value readiness. It becomes available when result
   // is written to the data storage and ready for consumption.
@@ -208,6 +220,11 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
   return value->GetStorage();
 }
 
+/*static*/ void AsyncRuntime::AllocateStorage(Value* value, size_t size,
+                                              size_t alignment) {
+  return value->AllocateStorage(size, alignment);
+}
+
 /*static*/ AsyncValue* AsyncRuntime::GetAsyncValue(AsyncRuntime::Value* value) {
   return value->GetAsyncValue();
 }
@@ -285,12 +302,21 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
   Await(token->GetAsyncValue());
 }
 
+/*static*/ AsyncRuntime::Value* AsyncRuntime::CreateValue() {
+  // AsyncRuntime::Value created with a reference count of 2 because it will be
+  // returned to the `async.execute` caller and also will be later on emplaced
+  // by the asynchronously executed task. If the caller immediately will drop
+  // its reference we must ensure that the value will be alive until the
+  // asynchronous operation is completed.
+  return new AsyncRuntime::Value(/*ref_count=*/2);
+}
+
 /*static*/ AsyncRuntime::Value* AsyncRuntime::CreateValue(size_t size,
                                                           size_t alignment) {
   // AsyncRuntime::Value created with a reference count of 2 because it will be
   // returned to the `async.execute` caller and also will be later on emplaced
   // by the asynchronously executed task. If the caller immediately will drop
-  // its reference we must ensure that the token will be alive until the
+  // its reference we must ensure that the value will be alive until the
   // asynchronous operation is completed.
   return new AsyncRuntime::Value(size, alignment, /*ref_count=*/2);
 }
@@ -335,6 +361,21 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
 
 /*static*/ void AsyncRuntime::AwaitGroup(AsyncRuntime::Group* group) {
   Await(group->GetCompletionAsyncValue());
+}
+
+/*static*/ AsyncRuntime::Token* AsyncRuntime::AsToken(
+    tsl::AsyncValueRef<tsl::Chain> chain) {
+  AsyncRuntime::Token* token = CreateToken();
+
+  chain.AndThen([token](absl::StatusOr<tsl::Chain*> status_or) {
+    if (!status_or.ok()) {
+      SetError(token);
+    } else {
+      SetAvailable(token);
+    }
+  });
+
+  return token;
 }
 
 }  // namespace runtime

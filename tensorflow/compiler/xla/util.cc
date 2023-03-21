@@ -388,7 +388,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     } else if (any_present) {
       // Try to find if there is a to dimension that is like (from) [2,32] ->
-      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // (to) [4,4,4] to detect that from dimension 1 can be partially mapped
       // into dimension 1 and 2 of the to sizes with a partial size of 2.
       if (common_factors[i].first + 2 == common_factors[i + 1].first &&
           absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {

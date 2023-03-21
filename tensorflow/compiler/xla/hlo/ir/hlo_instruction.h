@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -65,7 +66,7 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
-std::string PrintName(const std::string& name, bool print_ids);
+absl::string_view PrintName(absl::string_view name, bool print_ids);
 
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
@@ -406,16 +407,18 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  const std::string& LookupOrInsert(const std::string& name) {
-    std::string& canonical_name = canonical_name_map_[name];
+  const std::string& LookupOrInsert(int unique_id) {
+    std::string& canonical_name = canonical_name_map_[unique_id];
     if (canonical_name.empty()) {
       absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
     }
     return canonical_name;
   }
 
+  void Reserve(size_t size) { canonical_name_map_.reserve(size); }
+
  private:
-  absl::flat_hash_map<std::string, std::string> canonical_name_map_;
+  absl::flat_hash_map<int, std::string> canonical_name_map_;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -646,7 +649,7 @@ class HloInstruction {
   // prefetch or not.
   static std::unique_ptr<HloInstruction> CreateCopyStart(
       const Shape& shape, HloInstruction* operand,
-      bool is_cross_program_prefetch = false);
+      std::optional<int> cross_program_prefetch_index = std::nullopt);
 
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
@@ -1265,6 +1268,14 @@ class HloInstruction {
   // Drops all control predecessors and successors from this HLO instruction.
   Status DropAllControlDeps();
 
+  // Drops all control predecessors and successors from this HLO instruction,
+  // and the maintain the transitivie control dependencies between
+  // control predecessors and control successors.
+  Status SafelyDropAllControlDependencies();
+
+  // Returns if instruction has any control dependencies.
+  bool HasControlDependencies() const;
+
   // Copies the control predecessors and successors on this HLO instruction to
   // `inst`.  Does not do a deep copy so this makes sense only if `inst` and
   // this HLO are in the same module.
@@ -1291,9 +1302,9 @@ class HloInstruction {
           eq_operands = std::equal_to<const HloInstruction*>(),
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
-      bool layout_sensitive = true) const {
+      bool layout_sensitive = true, bool sharding_sensitive = false) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
-                             layout_sensitive,
+                             layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/false);
   }
@@ -1306,9 +1317,9 @@ class HloInstruction {
           eq_operands = std::equal_to<const HloInstruction*>(),
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
-      bool layout_sensitive = true) const {
+      bool layout_sensitive = true, bool sharding_sensitive = false) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
-                             layout_sensitive,
+                             layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/true);
   }
@@ -1321,9 +1332,9 @@ class HloInstruction {
           eq_operands = std::equal_to<const HloInstruction*>(),
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations = std::equal_to<const HloComputation*>(),
-      bool layout_sensitive = true) const {
+      bool layout_sensitive = true, bool sharding_sensitive = false) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
-                             layout_sensitive,
+                             layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/true,
                              /*ignore_commutative_operand_order=*/true);
   }
@@ -1504,6 +1515,12 @@ class HloInstruction {
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
   std::string SignatureString() const;
 
+  // Prints a debugging string that represents this instruction.
+  void Print(Printer* printer) const {
+    return Print(printer, HloPrintOptions());
+  }
+  void Print(Printer* printer, const HloPrintOptions& options) const;
+
   // Returns a debugging string that represents this instruction.
   //
   // (We express the default options using an overload rather than a default
@@ -1515,10 +1532,24 @@ class HloInstruction {
   std::string ToString() const { return ToString(HloPrintOptions()); }
   std::string ToString(const HloPrintOptions& options) const;
 
-  // Components of the ToString() representation:
+  // Components of the Print() and ToString() representation:
 
-  // Returns a string representation of the operand list.
-  std::string OperandsToString(const HloPrintOptions& options) const;
+  // Helper class for PrintExtraAttributes.
+  class AttributePrinter {
+   public:
+    explicit AttributePrinter(std::function<Printer*()> next_printer)
+        : next_printer_(std::move(next_printer)) {}
+
+    void Next(absl::FunctionRef<void(Printer*)> print_func) {
+      print_func(next_printer_());
+    }
+
+   private:
+    std::function<Printer*()> next_printer_;
+  };
+  // Prints the string representation of op-specific attributes.
+  void PrintExtraAttributes(AttributePrinter& printer,
+                            const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
   std::vector<std::string> ExtraAttributesToString(
@@ -1532,9 +1563,9 @@ class HloInstruction {
   // The canonical string representation needs to name operands and instruction
   // names in a consistent way. This is implemented through the
   // canonical_name_map.
-  std::string ToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
-      CanonicalNameMap* canonical_name_map) const;
+  void PrintWithCanonicalNameMap(Printer* printer,
+                                 const HloPrintOptions& options,
+                                 CanonicalNameMap* canonical_name_map) const;
 
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
@@ -1835,6 +1866,9 @@ class HloInstruction {
   }
   void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
+  }
+  void set_metadata_deduplicated_name(const std::string& deduplicated_name) {
+    metadata_.set_deduplicated_name(deduplicated_name);
   }
   const OpMetadata& metadata() const { return metadata_; }
 
@@ -2149,8 +2183,8 @@ class HloInstruction {
       absl::string_view async_execution_thread,
       bool skip_async_execution_thread_overwrite);
 
-  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
-  bool is_cross_program_prefetch() const;
+  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch_index().
+  std::optional<int> cross_program_prefetch_index() const;
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;
@@ -2255,7 +2289,8 @@ class HloInstruction {
           eq_operands,
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations,
-      bool layout_sensitive, bool ignore_channel_id_values,
+      bool layout_sensitive, bool sharding_sensitive,
+      bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -2266,11 +2301,9 @@ class HloInstruction {
     LOG(FATAL) << "Unimplemented method.";
   }
 
-  // Implementation for non-common logic of ExtraAttributesToString.
-  virtual std::vector<std::string> ExtraAttributesToStringImpl(
-      const HloPrintOptions& options) const {
-    return {};
-  }
+  // Implementation for non-common logic of PrintExtraAttributes.
+  virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                        const HloPrintOptions& options) const {}
 
   // Implementation for IsElementwise if operand_idx is nullopt and for
   // IsElementwiseOnOperand if otherwise.
@@ -2281,8 +2314,8 @@ class HloInstruction {
       const std::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
-  virtual std::string OperandsToStringWithCanonicalNameMap(
-      const HloPrintOptions& options,
+  virtual void PrintOperandsWithCanonicalNameMap(
+      Printer* printer, const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
   // See comments on Identical().
@@ -2395,9 +2428,9 @@ extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-std::string ToString(HloInstruction::FusionKind kind);
+absl::string_view ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
-    const std::string& kind_name);
+    absl::string_view kind_name);
 
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.

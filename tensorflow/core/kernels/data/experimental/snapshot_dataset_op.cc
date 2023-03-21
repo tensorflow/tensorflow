@@ -142,7 +142,9 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality();
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -989,8 +991,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "SnapshotDatasetOp::Dataset"; }
 
-    int64_t CardinalityInternal() const override {
-      return input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return input_->Cardinality(options);
     }
 
     Status InputDatasets(
@@ -1580,9 +1582,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                           Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           int64_t code_int;
           TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
-          error::Code code = static_cast<error::Code>(code_int);
+          absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-          if (code != error::Code::OK) {
+          if (code != absl::StatusCode::kOk) {
             tstring error_message;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(ErrorMessageKey(index), &error_message));

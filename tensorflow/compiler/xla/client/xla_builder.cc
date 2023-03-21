@@ -38,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -257,11 +255,14 @@ XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
   });
 }
 
-XlaOp XlaBuilderFriend::BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
-                                       bool is_cross_program_prefetch) {
+XlaOp XlaBuilderFriend::BuildCopyStart(
+    XlaBuilder* builder, const XlaOp operand,
+    std::optional<int> cross_program_prefetch_index) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
-    instr.set_is_cross_program_prefetch(is_cross_program_prefetch);
+    if (cross_program_prefetch_index) {
+      instr.set_cross_program_prefetch_index(*cross_program_prefetch_index);
+    }
 
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
                         builder->GetShapePtr(operand));
@@ -2120,15 +2121,35 @@ void XlaBuilder::Outfeed(XlaOp operand, const Shape& shape_with_layout,
 
     // Outfeed takes a token as its second operand. Generate the token to pass
     // to the outfeed.
-    HloInstructionProto token_instr;
-    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
-                                                    HloOpcode::kAfterAll, {}));
-
-    TF_RETURN_IF_ERROR(
-        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand, token})
-            .status());
-
+    XlaOp token;
+    auto make_token = [&]() {
+      HloInstructionProto token_instr;
+      *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+      return AddInstruction(std::move(token_instr), HloOpcode::kAfterAll, {});
+    };
+    auto make_outfeed = [&](XlaOp token) {
+      return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
+                            {operand, token});
+    };
+    if (sharding()) {
+      XlaScopedShardingAssignment scoped_sharding(
+          this, sharding_builder::AssignDevice(0));
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    }
+    if (sharding()) {
+      OpSharding tuple_sharding = *sharding();
+      if (tuple_sharding.type() != OpSharding::TUPLE) {
+        tuple_sharding = sharding_builder::Tuple({});
+        *tuple_sharding.add_tuple_shardings() = *sharding();
+      }
+      *tuple_sharding.add_tuple_shardings() = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, tuple_sharding);
+      TF_RETURN_IF_ERROR(make_outfeed(token).status());
+    } else {
+      TF_RETURN_IF_ERROR(make_outfeed(token).status());
+    }
     // The outfeed instruction produces a token. However, existing users expect
     // a nil shape (empty tuple). This should only be relevant if the outfeed is
     // the root of a computation.
@@ -4023,7 +4044,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
         *const_instr.mutable_shape() = instr_proto->shape();
       }
-      *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
+      *const_instr.mutable_opcode() =
+          std::string(HloOpcodeString(HloOpcode::kConstant));
       const_instr.set_id(handle);
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
@@ -4199,7 +4221,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
 
   const int64_t handle = GetNextId();
   instr.set_id(handle);
-  instr.set_opcode(HloOpcodeString(opcode));
+  *instr.mutable_opcode() = std::string(HloOpcodeString(opcode));
   if (instr.name().empty()) {
     instr.set_name(instr.opcode());
   }
@@ -5090,6 +5112,9 @@ XlaOp Cos(const XlaOp operand) {
 }
 XlaOp Sin(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSin, operand);
+}
+XlaOp Tan(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kTan, operand);
 }
 XlaOp Tanh(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kTanh, operand);

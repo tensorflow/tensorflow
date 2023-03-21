@@ -450,6 +450,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/mkl:build_defs_bzl",
         "//tensorflow/tsl/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",

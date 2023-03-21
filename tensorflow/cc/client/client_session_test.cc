@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/client/client_session.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/barrier.h"

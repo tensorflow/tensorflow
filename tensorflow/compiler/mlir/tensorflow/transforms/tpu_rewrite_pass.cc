@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <type_traits>
 
 #include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -116,7 +116,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
-    Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
+    std::optional<SymbolTable::UseRange> uses =
+        SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
       func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
@@ -284,7 +285,7 @@ LogicalResult SetMetadataProtoRetvals(
 // TODO(lyandy): Support session handle and guaranteed consts.
 LogicalResult SetMetadataProtoFromClusterFuncOp(
     tf_device::ClusterFuncOp op, int num_replicas, int num_cores_per_replica,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   if (auto options_attr =
           op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
@@ -337,7 +338,7 @@ tf_device::LaunchOp WrapOpInLaunch(OpBuilder* builder, Location loc,
 Operation* BuildCompileOp(
     tf_device::ClusterFuncOp cluster_func, int num_replicas,
     int num_cores_per_replica, llvm::StringRef compilation_device,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
@@ -647,11 +648,11 @@ LogicalResult CheckTPUPartitionedInputAndOutputAreValid(
   for (auto cluster_result : parallel_execute.getExecuteOutputs()) {
     for (Operation* user :
          llvm::make_early_inc_range(cluster_result.getUsers())) {
-      // Check that user has no outputs that are TPUPartitionedOutput
+      // Check that user has no outputs that are TPUPartitionedOutputV2
       for (auto result : user->getResults()) {
         for (Operation* user : llvm::make_early_inc_range(result.getUsers())) {
-          if (llvm::isa<TF::TPUPartitionedOutputOp>(user)) {
-            user->emitError() << "Input of TPUPartitionedOutput must "
+          if (llvm::isa<TF::TPUPartitionedOutputV2Op>(user)) {
+            user->emitError() << "Input of TPUPartitionedOutputV2 must "
                               << "be in tpu computation.";
             return failure();
           }
@@ -661,15 +662,15 @@ LogicalResult CheckTPUPartitionedInputAndOutputAreValid(
   }
   for (auto cluster_operand : cluster.getOperands()) {
     Operation* def = cluster_operand.getDefiningOp();
-    // This pass assumes that a TPUPartitionedInput is preceeded by
+    // This pass assumes that a TPUPartitionedInputV2 is preceeded by
     // ReadVariable ops, and not vice versa. An earlier pass,
     // TPUResourceReadsWritesPartitioning, should have ensured this
     // precondition.
     if (!def) continue;
     for (auto operand : def->getOperands()) {
       Operation* def_of_read = operand.getDefiningOp();
-      if (llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(def_of_read)) {
-        def_of_read->emitError() << "Output of TPUPartitionedInput must "
+      if (llvm::isa_and_nonnull<TF::TPUPartitionedInputV2Op>(def_of_read)) {
+        def_of_read->emitError() << "Output of TPUPartitionedInputV2 must "
                                  << "be in tpu computation.";
         return failure();
       }
@@ -731,7 +732,7 @@ LogicalResult Rewrite(
   if (!old_parallel_execute)
     old_parallel_execute = BuildParallelExecuteOp(cluster_func, builder);
 
-  // check TPUPartitionedInput and TPUPartitionedOutput are in valid pattern
+  // check TPUPartitionedInputV2 and TPUPartitionedOutputV2 are in valid pattern
   if (failed(CheckTPUPartitionedInputAndOutputAreValid(cluster_func,
                                                        old_parallel_execute)))
     return failure();
@@ -880,8 +881,8 @@ LogicalResult Rewrite(
   return RemoveSingletonParallelExecuteOp(new_parallel_execute, builder);
 }
 
-// Erase rewritten ClusterFuncOp(s). If TPUPartitionedInputOp /
-// TPUPartitionedOutputOp are present, they must be removed along with the
+// Erase rewritten ClusterFuncOp(s). If TPUPartitionedInputV2Op /
+// TPUPartitionedOutputV2Op are present, they must be removed along with the
 // ClusterFuncOp(s).
 void EraseClusterFuncs(
     llvm::MutableArrayRef<tf_device::ClusterFuncOp> to_be_erased) {
@@ -892,7 +893,7 @@ void EraseClusterFuncs(
 
     for (auto result : old_parallel_execute.getExecuteOutputs()) {
       for (Operation* user : llvm::make_early_inc_range(result.getUsers())) {
-        if (llvm::isa<TF::TPUPartitionedOutputOp>(user)) {
+        if (llvm::isa<TF::TPUPartitionedOutputV2Op>(user)) {
           assert(user->use_empty());
           user->erase();
         }
@@ -902,7 +903,7 @@ void EraseClusterFuncs(
     for (auto operand : cluster.getOperands()) {
       Operation* def = operand.getDefiningOp();
       if (operand.hasOneUse() &&
-          llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(def)) {
+          llvm::isa_and_nonnull<TF::TPUPartitionedInputV2Op>(def)) {
         operand.dropAllUses();
         def->erase();
       }

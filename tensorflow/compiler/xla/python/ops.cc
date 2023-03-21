@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "pybind11/attr.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/lib/approx_topk.h"
 #include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
@@ -497,6 +497,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Sign);
   UNARY_OP(Cos);
   UNARY_OP(Sin);
+  UNARY_OP(Tan);
   UNARY_OP(Tanh);
   UNARY_OP(IsFinite);
   UNARY_OP(Neg);

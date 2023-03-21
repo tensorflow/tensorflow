@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
@@ -30,8 +29,8 @@ using ::stream_executor::gpu::GpuContext;
 using ::stream_executor::gpu::GpuDeviceHandle;
 using ::stream_executor::gpu::GpuDevicePtr;
 using ::stream_executor::gpu::GpuDriver;
-using ::stream_executor::port::Status;
-using ::stream_executor::port::StatusOr;
+using ::tsl::Status;
+using ::tsl::StatusOr;
 
 // Rounds value up to the specified power of two alignment.
 size_t AlignUp(size_t value, size_t alignment) {
@@ -50,7 +49,7 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
   TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
                       SupportsVirtualAddressManagement(device));
   if (!supports_virtual_address_management) {
-    return stream_executor::port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "GPU %d does not support virtual memory address management.",
         gpu_id.value()));
   }
@@ -59,8 +58,7 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
 
 }  // namespace
 
-/* static */ stream_executor::port::StatusOr<
-    std::unique_ptr<GpuVirtualMemAllocator>>
+/* static */ tsl::StatusOr<std::unique_ptr<GpuVirtualMemAllocator>>
 GpuVirtualMemAllocator::Create(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,

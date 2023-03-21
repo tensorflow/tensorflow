@@ -3,7 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "VERSION", "tf_python_pybind_static_deps")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,6 +21,7 @@ py_strict_library(
     deps = [
         ":builder",
         ":constants",
+        ":fingerprinting",
         ":load",
         ":loader",
         ":main_op",
@@ -70,10 +71,13 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":fingerprinting_utils",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
@@ -93,6 +97,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
@@ -172,6 +177,7 @@ tf_py_test(
     deps = [
         ":builder",
         ":constants",
+        ":fingerprinting",
         ":loader",
         ":main_op",
         ":signature_def_utils",
@@ -195,6 +201,17 @@ tf_py_test(
 )
 
 py_strict_library(
+    name = "path_helpers",
+    srcs = ["path_helpers.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":constants",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_strict_library(
     name = "utils",
     srcs = [
         "utils.py",
@@ -202,12 +219,10 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":constants",
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lib",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:util",
@@ -288,7 +303,7 @@ py_strict_library(
         ":function_serialization",
         ":revived_types",
         ":signature_constants",
-        "//tensorflow/core/function/polymorphism:function_type",
+        "//tensorflow/core/function/capture:restore_captures",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -332,7 +347,9 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":builder",
+        ":fingerprinting_utils",
         ":function_serialization",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":revived_types",
         ":save_context",
@@ -355,7 +372,6 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python:versions",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
@@ -368,14 +384,16 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager/polymorphic_function:saved_model_exported_concrete",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:asset",
-        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/trackable:trackable_utils",
-        "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/saving:trace_saveable_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -391,6 +409,7 @@ tf_py_test(
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
@@ -408,16 +427,21 @@ py_library(
         "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
     ],
     deps = [
+        ":fingerprinting",
         ":function_deserialization",
         ":load_options",
         ":load_v1_in_v2",
         ":loader",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":revived_types",
         ":utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:restore_captures",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -435,7 +459,6 @@ py_library(
         "//tensorflow/python/distribute:values_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:asset",
@@ -446,6 +469,7 @@ py_library(
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -489,9 +513,9 @@ cuda_py_test(
     deps = [
         ":load",
         ":save",
-        "//tensorflow/python:cond_v2",  # b/118513001
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
@@ -503,8 +527,9 @@ cuda_py_test(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
-        "@absl_py//absl/testing:parameterized",
-    ],
+    ] + if_google([
+        "//tensorflow/cc/experimental/tf2:runtime_pybind",
+    ]),
 )
 
 tf_py_test(
@@ -552,6 +577,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/trackable:data_structures",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -575,6 +601,7 @@ py_strict_library(
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:function",
@@ -614,23 +641,9 @@ py_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:indexed_slices",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/ops:optional_ops",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/framework:extension_type",
-        "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/ops/numpy_ops:numpy",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:row_partition",
+        "//tensorflow/python/framework:type_spec_registry",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
@@ -644,6 +657,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:type_spec_registry",
     ],
 )
 
@@ -694,6 +708,7 @@ tf_py_test(
     name = "metrics_test",
     srcs = ["metrics_test.py"],
     deps = [
+        ":fingerprinting",
         ":pywrap_saved_model",
         "//tensorflow/python/eager:test",
     ],
@@ -722,13 +737,14 @@ tf_python_pybind_extension(
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
-    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
-        "//tensorflow:windows": [],
-    }),
+    # This fails Windows builds. Please check b/266870200 for details.
+    #    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+    #        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+    #        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+    #        "//tensorflow:windows": [],
+    #    }),
+    #    static_deps = tf_python_pybind_static_deps(),
     features = ["-layering_check"],
-    static_deps = tf_python_pybind_static_deps(),
     visibility = ["//tensorflow/python/training:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",
@@ -768,12 +784,37 @@ tf_py_test(
     ],
 )
 
+py_strict_library(
+    name = "fingerprinting",
+    srcs = ["fingerprinting.py"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "fingerprinting_utils",
+    srcs = ["fingerprinting_utils.py"],
+    deps = [
+        ":fingerprinting",
+        ":pywrap_saved_model",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util",
+        "@absl_py//absl/logging",
+    ],
+)
+
 tf_py_test(
     name = "fingerprinting_test",
     size = "small",
     srcs = ["fingerprinting_test.py"],
     python_version = "PY3",
     deps = [
+        ":fingerprinting",
         "//tensorflow/python/eager:test",
     ],
 )

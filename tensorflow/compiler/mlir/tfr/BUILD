@@ -224,7 +224,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -247,14 +246,13 @@ tf_cc_test(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -266,7 +264,6 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
         "@llvm-project//mlir:IR",
@@ -298,7 +295,6 @@ cc_library(
     hdrs = ["integration/node_expansion_pass.h"],
     deps = [
         ":tfr_decompose_ctx",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
@@ -356,7 +352,8 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python/autograph/converters",
+        "//tensorflow/python/autograph/converters:control_flow",
+        "//tensorflow/python/autograph/converters:return_statements",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
@@ -364,7 +361,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
     ],
 )

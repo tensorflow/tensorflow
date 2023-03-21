@@ -56,18 +56,39 @@ cc_library(
     hdrs = ["conv.h"],
     deps = [
         ":support",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
+        "//tensorflow/compiler/xla/service/gpu:gpu_serializable_autotuner",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "conv_reorder",
+    srcs = ["conv_reorder.cc"],
+    hdrs = ["conv_reorder.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
     ],
 )
 
@@ -99,6 +120,7 @@ cc_library(
         ":cholesky",
         ":collectives",
         ":conv",
+        ":conv_reorder",
         ":cublas_lt_matmul",
         ":custom_call",
         ":fft",
@@ -108,6 +130,7 @@ cc_library(
         ":kernel_launch",
         ":memcpy",
         ":memset",
+        ":send_recv",
         ":support",
         ":tracing",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -118,6 +141,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings",
@@ -147,16 +171,23 @@ cc_library(
     hdrs = ["gemm.h"],
     deps = [
         ":support",
+        "@com_google_absl//absl/container:node_hash_map",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
-        "//tensorflow/compiler/xla/runtime:logical_result",
         "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
-        "@com_google_absl//absl/container:node_hash_map",
-    ],
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
+        "//tensorflow/compiler/xla/stream_executor:blas",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
+        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
+    ]),
 )
 
 cc_library(
@@ -164,21 +195,23 @@ cc_library(
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
     deps = [
+        ":conv",
+        ":gemm",
         ":kernel_launch",
         ":support",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
+    ]),
 )
 
 cc_library(
@@ -275,6 +308,30 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "send_recv",
+    srcs = ["send_recv.cc"],
+    hdrs = ["send_recv.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@tf_runtime//:async_value",
     ],
 )
 

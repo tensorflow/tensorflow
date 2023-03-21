@@ -199,7 +199,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
     "mhlo.return"(%max) : (tensor<f32>) -> ()
   })
   {
-    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 6]]> : tensor<2x4xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 2
@@ -213,7 +213,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
-// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,7}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,6}}
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
 
 // -----
@@ -354,24 +354,26 @@ func.func @main(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: ten
 // -----
 
 // CHECK:  HloModule
-func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
-  // CHECK:  [[VAL_1:%.*]] = s32[4] parameter(0)
-  // CHECK:  [[VAL_2:%.*]] = s32[4] parameter(1)
-  // CHECK:  [[ATAN2:%.*]] = s32[4] atan2(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %0 = mhlo.atan2 %arg0, %arg1 : tensor<4xi32>
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4xi32>, %arg3: tensor<4xi32>) -> (tensor<4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
+  // CHECK:  [[VAL_1:%.*]] = f32[4] parameter(0)
+  // CHECK:  [[VAL_2:%.*]] = f32[4] parameter(1)
+  // CHECK:  [[ATAN2:%.*]] = f32[4] atan2(f32[4] [[VAL_1]], f32[4] [[VAL_2]])
+  // CHECK:  [[VAL_3:%.*]] = s32[4] parameter(2)
+  // CHECK:  [[VAL_4:%.*]] = s32[4] parameter(3)
+  %0 = mhlo.atan2 %arg0, %arg1 : tensor<4xf32>
 
-  // CHECK:  [[SHL:%.*]] = s32[4] shift-left(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %1 = mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHL:%.*]] = s32[4] shift-left(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %1 = mhlo.shift_left %arg2, %arg3 : tensor<4xi32>
 
-  // CHECK:  [[SHRA:%.*]] = s32[4] shift-right-arithmetic(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %2 = mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHRA:%.*]] = s32[4] shift-right-arithmetic(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %2 = mhlo.shift_right_arithmetic %arg2, %arg3 : tensor<4xi32>
 
-  // CHECK:  [[SHRL:%.*]] = s32[4] shift-right-logical(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %3 = mhlo.shift_right_logical %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHRL:%.*]] = s32[4] shift-right-logical(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %3 = mhlo.shift_right_logical %arg2, %arg3 : tensor<4xi32>
 
   // CHECK:  ROOT
-  // CHECK-SAME:  [[VAL_7:%.*]] = (s32[4], s32[4], s32[4], s32[4]) tuple(s32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
-  func.return %0, %1, %2, %3 : tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
+  // CHECK-SAME:  [[VAL_9:%.*]] = (f32[4], s32[4], s32[4], s32[4]) tuple(f32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
+  func.return %0, %1, %2, %3 : tensor<4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
 }
 
 // -----
@@ -768,7 +770,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK:  HloModule
 func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.copy"(%arg0) { is_cross_program_prefetch } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  %0 = "mhlo.copy"(%arg0) {cross_program_prefetch_index = 0 : i32} : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
 
@@ -781,7 +783,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
 // CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  is_cross_program_prefetch
+// CHECK-SAME:  cross_program_prefetch_index=0
 // CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
 
 
@@ -802,6 +804,21 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[SUM_COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SetBound", mhlo.literal = dense<1> : tensor<i32>} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[2,3] custom-call(f32[2,3] [[VAL_1]])
+// CHECK-SAME:  custom_call_target="SetBound"
+// CHECK-SAME:  literal=s32[] 1
 
 // -----
 
@@ -855,6 +872,36 @@ func.func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
 // CHECK: %[[ARG1]] = s8[3] parameter(1)
 // CHECK: ROOT
 // CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
+
+// -----
+
+// Test dot i4xi4 -> i8
+
+func.func @main(%arg0: tensor<3xi4>, %arg1: tensor<3xi4>) -> tensor<i8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xi4>, tensor<3xi4>) -> tensor<i8>
+  func.return %0 : tensor<i8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: s4[3], [[ARG_2:.*]]: s4[3]) -> s8[]
+// CHECK:  %[[ARG_1:.*]] = s4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = s4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = s8[] dot(s4[3] %[[ARG_1:.*]], s4[3] %[[ARG_2:.*]])
+
+// -----
+
+// Test dot ui4xui4 -> ui8
+
+func.func @main(%arg0: tensor<3xui4>, %arg1: tensor<3xui4>) -> tensor<ui8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xui4>, tensor<3xui4>) -> tensor<ui8>
+  func.return %0 : tensor<ui8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: u4[3], [[ARG_2:.*]]: u4[3]) -> u8[]
+// CHECK:  %[[ARG_1:.*]] = u4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = u4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = u8[] dot(u4[3] %[[ARG_1:.*]], u4[3] %[[ARG_2:.*]])
 
 // -----
 
@@ -2097,6 +2144,16 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // -----
 
 // CHECK: HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[2] parameter(0)
+  %0 = "mhlo.tan"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: tan(f32[2] %[[ARG0]])
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
 // CHECK{LITERAL}: output_to_operand_aliasing={{0}: (0, {1})}
 func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
   %0 = "mhlo.custom_call"(%arg0, %arg1) {
@@ -2153,10 +2210,10 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_
 // CHECK:  HloModule
 func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 // CHECK: %[[ARG0:.*]] = s32[2,2] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), channel_id=1, replica_groups={{.}}{1,2},{0}}, dimensions={1}
+// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), channel_id=1, replica_groups={{.}}{1,2},{0,3}}, dimensions={1}
   %0 = "mhlo.all_to_all"(%arg0) {
     concat_dimension = 1 : i64,
-    replica_groups = dense<[[1, 2], [0, -1]]> : tensor<2x2xi64>,
+    replica_groups = dense<[[1, 2], [0, 3]]> : tensor<2x2xi64>,
     split_count = 2 : i64, split_dimension = 1 : i64,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 1>
   } : (tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -2204,3 +2261,13 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  api_version=API_VERSION_TYPED_FFI
 // CHECK-SAME:  backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"
+
+// -----
+
+// CHECK: ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[] parameter(0), parameter_replication={true}
+// CHECK:  [[VAL_2:%.*]] = (f32[2,4], (f32[2,4])) parameter(1), parameter_replication={false,true}
+
+func.func @main(%arg0: tensor<f32> {mhlo.parameter_replication = [true]}, %arg1: tuple<tensor<2x4xf32>, tuple<tensor<2x4xf32>>> {mhlo.parameter_replication = [false, true]}) -> tensor<f32> {
+  return %arg0 : tensor<f32>
+}
