@@ -29,6 +29,9 @@ DebugDataDumper* DebugDataDumper::Global() {
 
 bool DebugDataDumper::ShouldDump(const std::string& name,
                                  bool bypass_name_filter) const {
+  // Do not dump data for the wrapped functions.
+  if (absl::StartsWith(name, "__wrapped__")) return false;
+
   // Do name filter check if bypass_name_filter is false.
   if (!bypass_name_filter) {
     // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
@@ -153,7 +156,7 @@ void DebugDataDumper::DumpMLIRModule(const std::string& name,
 
 std::string DebugDataDumper::GetDumpFileBasename(const std::string& name,
                                                  const std::string& tag) {
-  return absl::StrFormat("%s.%d.%s", name, GetNextDumpId(name), tag);
+  return absl::StrFormat("%s.%04d.%s", name, GetNextDumpId(name), tag);
 }
 
 }  // namespace tensorflow
