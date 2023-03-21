@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/refcount.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -156,9 +158,9 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
 
 Status MakeNestedDataset(const SnapshotReaderParams& params,
                          DatasetBase** output) {
-  std::vector<std::string> chunk_files;
-  TF_RETURN_IF_ERROR(
-      params.env->GetChildren(params.CommittedChunksDirectory(), &chunk_files));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::string> chunk_files,
+      GetChildren(params.CommittedChunksDirectory(), params.env));
 
   std::vector<DatasetBase*> datasets;
   datasets.reserve(chunk_files.size());
@@ -179,10 +181,10 @@ Status MakeNestedDataset(const SnapshotReaderParams& params,
 
 }  // namespace
 
-Status MakeSnapshotReaderDataset(
+StatusOr<core::RefCountPtr<DatasetBase>> MakeSnapshotReaderDataset(
     const SnapshotReaderParams& params,
     InstantiatedCapturedFunction& instantiated_captured_func,
-    IteratorContext* ctx, core::RefCountPtr<DatasetBase>* output) {
+    IteratorContext* ctx) {
   DatasetBase* dataset_of_snapshot_files;
   TF_RETURN_IF_ERROR(MakeNestedDataset(params, &dataset_of_snapshot_files));
 
@@ -203,12 +205,11 @@ Status MakeSnapshotReaderDataset(
         "argument. Got ",
         reader_output.size(), ".");
   }
-  DatasetBase* output_dataset_ptr = nullptr;
+  DatasetBase* output_dataset = nullptr;
   TF_RETURN_IF_ERROR(
-      GetDatasetFromVariantTensor(reader_output[0], &output_dataset_ptr));
-  output_dataset_ptr->Ref();
-  output->reset(output_dataset_ptr);
-  return OkStatus();
+      GetDatasetFromVariantTensor(reader_output[0], &output_dataset));
+  output_dataset->Ref();
+  return core::RefCountPtr<DatasetBase>(output_dataset);
 }
 
 }  // namespace data

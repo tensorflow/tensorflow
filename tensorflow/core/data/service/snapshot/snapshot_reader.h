@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/refcount.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -61,10 +61,10 @@ struct SnapshotReaderParams {
 };
 
 // Creates a dataset that reads tf.data distributed snapshots.
-Status MakeSnapshotReaderDataset(
+StatusOr<core::RefCountPtr<DatasetBase>> MakeSnapshotReaderDataset(
     const SnapshotReaderParams& params,
     InstantiatedCapturedFunction& instantiated_captured_func,
-    IteratorContext* ctx, core::RefCountPtr<DatasetBase>* output);
+    IteratorContext* ctx);
 
 }  // namespace data
 }  // namespace tensorflow

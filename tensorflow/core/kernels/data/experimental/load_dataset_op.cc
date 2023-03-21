@@ -314,9 +314,9 @@ class LoadDatasetOp::DatasetV2 : public DatasetBase {
       SnapshotReaderParams params{dataset()->path_, dataset()->metadata_,
                                   dataset()->output_types_,
                                   dataset()->output_shapes_, ctx->env()};
-      core::RefCountPtr<DatasetBase> input;
-      TF_RETURN_IF_ERROR(MakeSnapshotReaderDataset(
-          params, *instantiated_captured_func, ctx, &input));
+      TF_ASSIGN_OR_RETURN(
+          core::RefCountPtr<DatasetBase> input,
+          MakeSnapshotReaderDataset(params, *instantiated_captured_func, ctx));
       return input->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
