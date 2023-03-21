@@ -1153,11 +1153,10 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
     Value offset = b.create<ConstantOp>(i64(memref_offset));
-    Value data = b.create<LLVM::GEPOp>(desc->getElementPtrType(),
-                                       desc->alignedPtr(b, loc), offset);
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
-    memref = b.create<LLVM::InsertValueOp>(
-        memref, b.create<LLVM::BitcastOp>(ptr, data), 2);
+    Value data = b.create<LLVM::GEPOp>(ptr, memref_ty.getElementType(),
+                                       desc->alignedPtr(b, loc), offset);
+    memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
   }
 
   return memref;
@@ -1300,8 +1299,7 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 
   // Fill memref descriptor pointers and offset.
   Value gep = b.create<LLVM::GEPOp>(ptr, encoded, alloca, ValueRange({c0, c2}));
-  Value data_ptr = b.create<LLVM::BitcastOp>(memref_desc.getElementPtrType(),
-                                             b.create<LLVM::LoadOp>(ptr, gep));
+  Value data_ptr = b.create<LLVM::LoadOp>(ptr, gep);
   memref_desc.setAllocatedPtr(b, loc, data_ptr);
   memref_desc.setAlignedPtr(b, loc, data_ptr);
 

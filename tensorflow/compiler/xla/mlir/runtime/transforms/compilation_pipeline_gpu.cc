@@ -82,21 +82,11 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
   pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertAsyncToLLVMPassOptions async_to_llvm_opts;
-  async_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertAsyncToLLVMPass(async_to_llvm_opts));
+  pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::FinalizeMemRefToLLVMConversionPassOptions memref_to_llvm_opts;
-  memref_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(
-      mlir::createFinalizeMemRefToLLVMConversionPass(memref_to_llvm_opts));
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertFuncToLLVMPassOptions func_to_llvm_opts;
-  func_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertFuncToLLVMPass(func_to_llvm_opts));
+  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Clean up IR before passing it to LLVM.
