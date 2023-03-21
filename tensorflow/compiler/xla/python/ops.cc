@@ -433,7 +433,12 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_tuple(svd.u, svd.d, svd.v);
       },
       py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
-  ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
+  ops.def(
+      "TopK",
+      [](XlaOp input, int64_t k) {
+        return TopK(input, k, /*index_type=*/PrimitiveType::S32);
+      },
+      py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
   ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),
           py::arg("left_side"), py::arg("lower"), py::arg("unit_diagonal"),
