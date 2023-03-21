@@ -431,9 +431,6 @@ class FileSystem {
   std::string CreateURI(StringPiece scheme, StringPiece host,
                         StringPiece path) const;
 
-  ///  \brief Creates a temporary file name with an extension.
-  std::string GetTempFilename(const std::string& extension) const;
-
   /// \brief Return true if path is absolute.
   bool IsAbsolutePath(tsl::StringPiece path) const;
 
