@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -39,7 +40,8 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
                          const DeviceSet* device_set,
                          const ConfigProto& config_proto, const Graph& graph,
                          const FunctionLibraryDefinition& function_library));
-  MOCK_METHOD4(Run, Status(const ConfigProto& config_proto,
+  MOCK_METHOD5(Run, Status(const std::string& function_name,
+                           const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph,
                            const FunctionLibraryDefinition& function_library));
 };
@@ -72,8 +74,8 @@ class ModifyMlirModulePass : public MlirOptimizationPass {
 
   // Just modify MLIR module so that we can check whether original TF graph
   // has changed or not.
-  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-             const Graph& graph,
+  Status Run(const std::string& function_name, const ConfigProto& config_proto,
+             mlir::ModuleOp module, const Graph& graph,
              const FunctionLibraryDefinition& function_library) override {
     mlir::Builder b(module.getContext());
     auto producer = b.getNamedAttr("producer", b.getI32IntegerAttr(0));
@@ -123,7 +125,7 @@ class MlirGraphOptimizationPassTest : public Test {
 
       ON_CALL(*optimization_pass, GetPassState(_, _, _, _))
           .WillByDefault(Return(pass_state));
-      ON_CALL(*optimization_pass, Run(_, _, _, _))
+      ON_CALL(*optimization_pass, Run(_, _, _, _, _))
           .WillByDefault(Return(pass_run_result));
       MlirOptimizationPassRegistry::Global().Add(pass_priority++,
                                                  std::move(optimization_pass));

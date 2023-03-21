@@ -21,22 +21,36 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 
-#define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                        \
-  do {                                                                        \
-    if (DebugDataDumper::Global()->ShouldDump(name))                          \
-      DebugDataDumper::Global()->DumpOpCreationStackTraces(name, tag, graph); \
+////////////////////////////////////////////////////////////////////////////////
+// The followings are the interfaces to dump debug data.
+//
+// They are designed in MACRO to avoid expensive operations
+// if no dump is required. For example
+//
+// DUMP_MLIR_MODULE("name", "tag", GetModuleTxt(op), false)
+//
+// In the above code, GetModuleTxt is not called if ShouldDump returns false.
+////////////////////////////////////////////////////////////////////////////////
+
+#define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                    \
+  do {                                                                    \
+    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))        \
+      ::tensorflow::DebugDataDumper::Global()->DumpOpCreationStackTraces( \
+          name, tag, graph);                                              \
   } while (false)
 
-#define DUMP_GRAPH(name, tag, graph)                          \
-  do {                                                        \
-    if (DebugDataDumper::Global()->ShouldDump(name))          \
-      DebugDataDumper::Global()->DumpGraph(name, tag, graph); \
+#define DUMP_GRAPH(name, tag, graph)                                        \
+  do {                                                                      \
+    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))          \
+      ::tensorflow::DebugDataDumper::Global()->DumpGraph(name, tag, graph); \
   } while (false)
 
-#define DUMP_MLIR_MODULE(name, tag, module_txt, bypass_name_filter)      \
-  do {                                                                   \
-    if (DebugDataDumper::Global()->ShouldDump(name, bypass_name_filter)) \
-      DebugDataDumper::Global()->DumpMLIRModule(name, tag, module_txt);  \
+#define DUMP_MLIR_MODULE(name, tag, module_txt, bypass_name_filter)        \
+  do {                                                                     \
+    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(               \
+            name, bypass_name_filter))                                     \
+      ::tensorflow::DebugDataDumper::Global()->DumpMLIRModule(name, tag,   \
+                                                              module_txt); \
   } while (false)
 
 namespace tensorflow {

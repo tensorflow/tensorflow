@@ -248,8 +248,8 @@ Status MlirFunctionOptimizationPass::Run(
       VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
               << (*graph)->num_edges();
       timings.Reset({kTfMlirCategory, name.str()});
-      pass_status = pass_registration.pass->Run(config_proto, *module_ref,
-                                                **graph, *flib_def);
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, *module_ref, **graph, *flib_def);
       timings.ReportAndStop();
       if (pass_status.ok()) {
         VLOG(2) << "Finished MLIR graph optimization pass: "
@@ -267,8 +267,8 @@ Status MlirFunctionOptimizationPass::Run(
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
       timings.Reset({kTfMlirCategory, name.str() + "_fallback"});
-      pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
-                                                **graph, *flib_def);
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, module_ref_clone, **graph, *flib_def);
       timings.ReportAndStop();
 
       if (pass_status.ok()) {
