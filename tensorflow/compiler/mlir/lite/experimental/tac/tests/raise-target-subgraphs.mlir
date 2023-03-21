@@ -1,4 +1,5 @@
 // RUN: tac-opt-all-backends -tfl-raise-target-subgraphs %s -split-input-file | FileCheck %s
+// RUN: tac-opt-all-backends -tfl-raise-target-subgraphs="skip-raise-cpu-ops=true" %s -split-input-file | FileCheck %s --check-prefixes=CHECK-SKIP-CPU
 
 module {
 func.func @simpleWhile(%arg0: tensor<i32>) -> tensor<i32> {
@@ -502,3 +503,50 @@ func.func @cond_false_72730(%arg0: tensor<?x?x!tf_type.string>, %arg1: tensor<?x
 // CHECK:     %21 = tfl.add %arg17, %arg3 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<i32>
 // CHECK:     return %1, %5, %7, %11, %13, %15, %16, %18, %20, %21 : tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi1>, tensor<?xi1>, tensor<?xi32>, tensor<?xi32>, tensor<i32>
 // CHECK:   }
+
+// -----
+
+// CHECK-SKIP-CPU-LABEL: testSkipCpuOps
+func.func @testSkipCpuOps(%arg0: tensor<1xf32>) -> (tensor<1xf32>, tensor<1xf32>) {
+  %0 = "tfl.add"(%arg0, %arg0) {tac.device = "GPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tfl.add"(%arg0, %0) {tac.device = "CPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  func.return %0, %1 : tensor<1xf32>, tensor<1xf32>
+}
+
+// CHECK-SKIP-CPU:   %[[RES0:.*]] = call @func_0_GPU_FLOAT(%arg0) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1xf32>) -> tensor<1xf32>
+// CHECK-SKIP-CPU:   %[[RES1:.*]] = tfl.add %arg0, %[[RES0]] {fused_activation_function = "RELU6", tac.device = "CPU", tac.inference_type = "FLOAT"} : tensor<1xf32>
+// CHECK-SKIP-CPU:   return %[[RES0]], %[[RES1]] : tensor<1xf32>, tensor<1xf32>
+// CHECK-SKIP-CPU: }
+// CHECK-SKIP-CPU: func.func private @func_0_GPU_FLOAT(%arg0: tensor<1xf32>) -> tensor<1xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
+// CHECK-SKIP-CPU:   %[[RES2:.*]] = tfl.add %arg0, %arg0 {fused_activation_function = "RELU6", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<1xf32>
+// CHECK-SKIP-CPU:   return %[[RES2]] : tensor<1xf32>
+// CHECK-SKIP-CPU: }
+
+// -----
+
+// CHECK-SKIP-CPU-LABEL: testSkipCpuOpsWithinLoop
+func.func @testSkipCpuOpsWithinLoop(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tfl.while"(%arg0) ({
+  ^bb0(%block: tensor<i32>):
+    "tfl.yield"(%block) : (tensor<i32>) -> ()
+  },{
+  ^bb0(%block: tensor<i32>):
+    %0 = "tfl.add"(%arg0, %block) {tac.device = "GPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%0) : (tensor<i32>) -> ()
+  }) {tac.device = "CPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<i32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-SKIP-CPU: "tfl.while"
+// CHECK-SKIP-CPU:   ^bb0(%[[ARG0:.*]]: tensor<i32>):
+// CHECK-SKIP-CPU:     "tfl.yield"(%[[ARG0]]) : (tensor<i32>) -> ()
+// CHECK-SKIP-CPU: }, {
+// CHECK-SKIP-CPU:   ^bb0(%[[ARG1:.*]]: tensor<i32>):
+// CHECK-SKIP-CPU:     %[[RES0:.*]] = func.call @func_0_GPU_FLOAT(%{{.*}}, %[[ARG1]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK-SKIP-CPU:     "tfl.yield"(%[[RES0]]) : (tensor<i32>) -> ()
+// CHECK-SKIP-CPU: }) {fused_activation_function = "RELU6", tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<i32>) -> tensor<i32>
+
+// CHECK-SKIP-CPU: func.func private @func_0_GPU_FLOAT(%[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>) -> tensor<i32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
+// CHECK-SKIP-CPU:   %[[RES1:.*]] = tfl.add %[[ARG2]], %[[ARG3]] {fused_activation_function = "RELU6", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<i32>
+// CHECK-SKIP-CPU:   return %[[RES1]] : tensor<i32>
+// CHECK-SKIP-CPU: }
