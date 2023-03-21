@@ -155,6 +155,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python/tpu",
     "//tensorflow/python/util:example_parser_configuration",
+    "//tensorflow/python/util:function_utils",
     "//tensorflow/python:image_grad_test_base",
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:test_ops",

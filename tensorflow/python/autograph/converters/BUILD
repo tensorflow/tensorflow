@@ -305,7 +305,7 @@ py_strict_test(
         "//tensorflow/python/autograph/core:ag_ctx",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/framework:constant_op",
     ],
 )

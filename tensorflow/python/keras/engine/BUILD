@@ -147,7 +147,7 @@ py_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core:ag_ctx",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:context",

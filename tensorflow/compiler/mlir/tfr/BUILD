@@ -354,7 +354,7 @@ py_library(
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
         "//tensorflow/python/autograph/converters:control_flow",
         "//tensorflow/python/autograph/converters:return_statements",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/framework",
