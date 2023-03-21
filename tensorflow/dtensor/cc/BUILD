@@ -288,9 +288,11 @@ cc_library(
     name = "parallel_executor_interface",
     hdrs = ["parallel_executor.h"],
     deps = [
-        ":dtensor_device_util",
+        ":tensor_layout",
+        ":tensor_with_layout",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/tsl/platform:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

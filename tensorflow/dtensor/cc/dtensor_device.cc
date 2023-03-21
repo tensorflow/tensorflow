@@ -1707,13 +1707,14 @@ void DTensorDevice::ParallelExecuteRegularOperation(
     mlir::ModuleOp mlir_module, const DTensorOperation& doperation,
     const TFE_OpAttrs* attributes, int* num_outputs, TFE_TensorHandle** outputs,
     TF_Status* status) {
-  auto future_result =
+  ASSIGN_OR_RETURN_C_STATUS(
+      ParallelExecutor::ExecutionResult execution_result,
       parallel_executor_->Execute(context, inputs, mlir_module,
-                                  /*entry_function_name=*/"main", attributes);
-  auto result_with_status = future_result.Await();
+                                  /*entry_function_name=*/"main", attributes),
+      status);
+  RETURN_C_STATUS_IF_NOT_OK(execution_result.status.Await(), status);
 
-  std::vector<TensorWithLayout*> typed_outputs;
-  ASSIGN_OR_RETURN_C_STATUS(typed_outputs, result_with_status, status);
+  std::vector<TensorWithLayout*> typed_outputs = execution_result.outputs;
   // assign outputs and take outputs' ownership
   *num_outputs = typed_outputs.size();
   for (int i = 0; i < *num_outputs; ++i) {
