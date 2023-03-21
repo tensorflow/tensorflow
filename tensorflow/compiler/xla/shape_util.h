@@ -287,7 +287,7 @@ class ShapeUtil {
   // element type changed to type.
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
-  // Retursn a shape with same dimensions but with all dimensions set to static.
+  // Returns a shape with same dimensions but with all dimensions set to static.
   static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
@@ -689,6 +689,9 @@ class ShapeUtil {
   using ForEachVisitorFunction =
       absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>)>;
 
+  using ForEachVisitorFunctionNoStatus =
+      absl::FunctionRef<bool(absl::Span<const int64_t>)>;
+
   // Iterates through all the shape indexes, in minor to major order,
   // starting from the base indexes, incrementing by the incr steps, up to
   // count (index[i] < base[i] + count[i]), and calls the visitor_function
@@ -720,6 +723,11 @@ class ShapeUtil {
                            absl::Span<const int64_t> incr,
                            const ForEachVisitorFunction& visitor_function);
 
+  static void ForEachIndexNoStatus(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachVisitorFunctionNoStatus& visitor_function);
+
   // These convenience wrappers don't take `base`, `count` and `incr`
   // explicitly, but iterate over every element in `shape` instead.
 
@@ -730,6 +738,15 @@ class ShapeUtil {
     return ForEachIndexWithStatus(shape, base,
                                   /*count=*/shape.dimensions(), incr,
                                   visitor_function);
+  }
+
+  static void ForEachIndexNoStatus(
+      const Shape& shape,
+      const ForEachVisitorFunctionNoStatus& visitor_function) {
+    std::vector<int64_t> base(shape.dimensions_size());
+    std::vector<int64_t> incr(shape.dimensions_size(), 1);
+    ForEachIndexNoStatus(shape, base,
+                         /*count=*/shape.dimensions(), incr, visitor_function);
   }
 
   static void ForEachIndex(const Shape& shape,
@@ -773,7 +790,10 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
-  // About 0-2-1 transpose:
+  // In this case, we care about transposes that swap two dimensions of a
+  // a shape that can be viewed as three logical components 0-1-2 in the order
+  // of major to minor.
+  // As an example, let's consider a 0-2-1 transpose:
   //
   // If a shape can be viewed as three logical components 0-1-2 in the order of
   // major to minor, a 0-2-1-transpose changes the order of such logical
@@ -783,15 +803,19 @@ class ShapeUtil {
   // normalized shapes. The original input/output shapes are called unnormalized
   // shapes.
   //
+  // 'permutation' specifies the kind of transpose. For a 0-2-1 transpose, it
+  // should be set to {0, 2, 1}.
   // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-  // normalized shape of `b` or the 0-2-1 shape.
-  static std::optional<Vector3> FindTranspose021(const Shape& input_shape,
-                                                 const Shape& output_shape);
+  // normalized shape of `b` or the 0-2-1 shape. In general, the
+  // permutation[0]-permutation[1]-permutation[2] shape is returned.
+  static std::optional<Vector3> GetNormalizedTransposeShape(
+      const Shape& input_shape, const Shape& output_shape,
+      const Vector3& permutation);
 
   // Entry point for physical + logical transposition.
-  static std::optional<Vector3> FindLogicalTranspose021(
+  static std::optional<Vector3> GetNormalizedLogicalTransposeShape(
       const Shape& input_shape, const Shape& output_shape,
-      absl::Span<int64_t const> dimensions);
+      absl::Span<int64_t const> dimensions, const Vector3& permutation);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
@@ -849,14 +873,20 @@ class ShapeUtil {
   struct ForEachState {
     ForEachState(const Shape& s, absl::Span<const int64_t> b,
                  absl::Span<const int64_t> c, absl::Span<const int64_t> i);
-    ~ForEachState();
+    inline ~ForEachState() = default;
 
     const Shape& shape;
-    const absl::Span<const int64_t> base;
-    const absl::Span<const int64_t> count;
-    const absl::Span<const int64_t> incr;
+    // Pointers to arrays of the passed-in spans
+    const int64_t* const base;
+    const int64_t* const count;
+    const int64_t* const incr;
+
+    const int64_t* const minor_to_major;  // Base of s's minor_to_major array
     const int64_t rank;
+
     std::vector<int64_t> indexes;  // The mutable set of indices we go through
+    int64_t* indexes_ptr;          // Points into "indexes"
+    absl::Span<const int64_t> indexes_span;  // Pre-formed span of "indexes"
 
     int64_t IncrementDim();
     bool IsZeroElementArray() const;
@@ -871,6 +901,11 @@ class ShapeUtil {
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
       const ForEachVisitorFunction& visitor_function);
 
+  static void ForEachIndexInternalNoStatus(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachVisitorFunctionNoStatus& visitor_function);
+
   static Status ForEachIndexInternalParallel(
       const Shape& shape, absl::Span<const int64_t> base,
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
@@ -879,6 +914,41 @@ class ShapeUtil {
   ShapeUtil(const ShapeUtil&) = delete;
   ShapeUtil& operator=(const ShapeUtil&) = delete;
 };
+
+inline ShapeUtil::ForEachState::ForEachState(const Shape& s,
+                                             absl::Span<const int64_t> b,
+                                             absl::Span<const int64_t> c,
+                                             absl::Span<const int64_t> i)
+    : shape(s),
+      base(b.data()),
+      count(c.data()),
+      incr(i.data()),
+      minor_to_major(shape.layout().minor_to_major().data()),
+      rank(LayoutUtil::MinorToMajor(shape).size()),
+      indexes(b.begin(), b.end()),
+      indexes_ptr((rank == 0) ? nullptr : &indexes[0]),
+      indexes_span(indexes) {
+  CHECK_EQ(shape.rank(), b.size());
+  CHECK_EQ(i.size(), b.size());
+  CHECK_EQ(c.size(), b.size());
+}
+
+inline int64_t ShapeUtil::ForEachState::IncrementDim() {
+  int64_t n;
+  for (n = 0; n < rank; ++n) {
+    int64_t dim = minor_to_major[n];
+    indexes_ptr[dim] += incr[dim];
+    if (indexes_ptr[dim] < base[dim] + count[dim]) {
+      break;
+    }
+    indexes_ptr[dim] = base[dim];
+  }
+  return n;
+}
+
+inline bool ShapeUtil::ForEachState::IsZeroElementArray() const {
+  return ShapeUtil::IsZeroElementArray(shape);
+}
 
 }  // namespace xla
 

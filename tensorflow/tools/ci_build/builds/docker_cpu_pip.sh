@@ -44,7 +44,7 @@ bazel --output_base=/tmp test --define=no_tensorflow_py_deps=true \
       --test_lang_filters=py \
       --build_tests_only \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_pip,-nopip,-gpu,-tpu \
+      --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_pip,-nopip,-gpu,-tpu \
       --test_size_filters=small,medium \
       --test_timeout 300,450,1200,3600 \
       --test_output=errors \

@@ -20,9 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -1554,44 +1554,6 @@ ENTRY e {
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-TEST_F(MultiOutputFusionTest, SkipSoftmaxCustomCallComputation) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule softmax
-
-%max_computation (arg_0: f32[], arg_1: f32[]) -> f32[] {
-  %arg_0 = f32[] parameter(0)
-  %arg_1 = f32[] parameter(1)
-  ROOT %maximum.2 = f32[] maximum(f32[] %arg_0, f32[] %arg_1)
-}
-
-%add_computation (arg_0.1: f32[], arg_1.1: f32[]) -> f32[] {
-  %arg_0.1 = f32[] parameter(0)
-  %arg_1.1 = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %arg_0.1, f32[] %arg_1.1)
-}
-
-%softmax_computation (parameter_0: f32[10,2]) -> f32[10,2] {
-  %parameter_0 = f32[10,2]{1,0} parameter(0)
-  %constant = f32[] constant(-inf)
-  %reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %parameter_0, f32[] %constant), dimensions={1}, to_apply=%max_computation
-  %broadcast.3 = f32[10,2]{1,0} broadcast(f32[10]{0} %reduce.1), dimensions={0}
-  %subtract.3 = f32[10,2]{1,0} subtract(f32[10,2]{1,0} %parameter_0, f32[10,2]{1,0} %broadcast.3)
-  %exponential.3 = f32[10,2]{1,0} exponential(f32[10,2]{1,0} %subtract.3)
-  %constant.1 = f32[] constant(0)
-  %second_reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %exponential.3, f32[] %constant.1), dimensions={1}, to_apply=%add_computation
-  %broadcast.4 = f32[10,2]{1,0} broadcast(f32[10]{0} %second_reduce.1), dimensions={0}
-  ROOT %divide.2 = f32[10,2]{1,0} divide(f32[10,2]{1,0} %exponential.3, f32[10,2]{1,0} %broadcast.4)
-}
-
-ENTRY %main (param_0: f32[10,2]) -> f32[10,2] {
-  %param_0 = f32[10,2]{1,0} parameter(0)
-  ROOT %custom-call = f32[10,2]{1,0} custom-call(f32[10,2]{1,0} %param_0), custom_call_target="__softmax_fusion", called_computations={%softmax_computation}
-}
-)")
-                    .value();
-  EXPECT_FALSE(mof_.Run(module.get()).value());
-}
-
 class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
 };
 
@@ -1674,7 +1636,15 @@ ENTRY main {
 }
   )";
 
-  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+  CheckGpuMultiOutputFusion(hlo, R"(
+  // CHECK: %fused_computation ({{[^ ]+}} f32[16,32]) -> (f32[16,32], f32[32,16]) {
+  // CHECK-NEXT: [[param_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+  // CHECK-NEXT: [[s_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0]])
+  // CHECK-NEXT: [[copy:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1]])
+  // CHECK-NEXT: [[transpose:[^ ]+]] = f32[32,16]{1,0} transpose([[param_0]]), dimensions={1,0}
+  // CHECK-NEXT: ROOT {{[^ ]+}} = (f32[16,32]{0,1}, f32[32,16]{1,0}) tuple([[copy]], [[transpose]])
+  // CHECK: %fusion = (f32[16,32]{0,1}, f32[32,16]{1,0}) fusion(%{{.*}}), kind=kInput, calls=%fused_computation
+)");
 }
 
 TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesDifferentTypes) {

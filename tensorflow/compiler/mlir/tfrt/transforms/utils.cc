@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
@@ -90,6 +91,19 @@ std::optional<std::string> CanonicalizeTensorflowFunctionName(
   }
 
   return original_func_name.str();
+}
+
+bool IsSessionInitializer(mlir::func::FuncOp op) {
+  auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
+      op->getParentOfType<mlir::ModuleOp>());
+  if (!session_initializer_op) return false;
+
+  for (auto sym_ref : session_initializer_op.getInitializers()) {
+    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
+      return true;
+  }
+
+  return false;
 }
 
 }  // namespace tensorflow

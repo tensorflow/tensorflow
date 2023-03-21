@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/py_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 
 namespace tensorflow {
 namespace data {
@@ -85,6 +86,9 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
                 errors::InvalidArgument(
                     "Failed to parse DistributedSnapshotMetadata from string: ",
                     std::string(serialized_metadata_)));
+  }
+  if (metadata.compression() == "AUTO") {
+    metadata.set_compression(tsl::io::compression::kSnappy);
   }
 
   DataServiceDispatcherClient client(address, DefaultProtocol());

@@ -68,7 +68,7 @@ def AllGather(
     replica_groups: Sequence[_ReplicaGroup] = ...,
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...,
-    use_global_device_placement: Optional[bool] = ...) -> XlaOp: ...
+    use_global_device_ids: Optional[bool] = ...) -> XlaOp: ...
 def AllReduce(
     operand: XlaOp,
     computation: XlaComputation,

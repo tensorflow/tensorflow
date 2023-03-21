@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
@@ -34,7 +34,6 @@ limitations under the License.
 namespace xla {
 
 class PyBuffer;
-class PyShardedBuffer;
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
@@ -251,7 +250,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
  private:
   friend class PyBuffer;
-  friend class PyShardedBuffer;
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
@@ -266,7 +264,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
-  PyShardedBuffer* sharded_buffers_ = nullptr;
 };
 
 }  // namespace xla

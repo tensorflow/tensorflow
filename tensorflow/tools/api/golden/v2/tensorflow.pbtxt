@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "Graph"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "IndexedSlices"
@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "Operation"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "OptionalSpec"
@@ -891,6 +891,14 @@ tf_module {
   member_method {
     name: "py_function"
     argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ragged_fill_empty_rows"
+    argspec: "args=[\'value_rowids\', \'values\', \'nrows\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ragged_fill_empty_rows_grad"
+    argspec: "args=[\'reverse_index_map\', \'grad_values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "random_index_shuffle"

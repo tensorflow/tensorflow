@@ -1278,7 +1278,7 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
     return TensorShape(dims)
 
   @doc_controls.do_not_doc_inheritable
-  def placeholder_value(self, placeholder_context=None):
+  def placeholder_value(self, placeholder_context):
     raise NotImplementedError("A graph placeholder is not currently supported"
                               "for an object of type: TensorShape.")
 

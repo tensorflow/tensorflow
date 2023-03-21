@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -122,6 +123,19 @@ EventMgr::~EventMgr() {
 }
 
 void EventMgr::ThenExecute(se::Stream* stream, std::function<void()> func) {
+  // Ensure the correct GPU is active before making any CUDA calls.
+  //
+  // This shouldn't be necessary!  StreamExecutor uses the CUDA driver API, and
+  // all calls there take a GPU context as a parameter; the "current GPU" from
+  // the perspective of the runtime API shouldn't matter.  But we can verify
+  // that it in fact *does* matter, perhaps specifically because of the
+  // ThenHostCallback calls, though it's hard to tell.
+  //
+  // This library is only available when GOOGLE_CUDA is defined.
+#if GOOGLE_CUDA
+  stream_executor::gpu::ScopedActivateExecutorContext scoped_activation{exec_};
+#endif
+
   // tl;dr: Don't make CUDA calls while holding the lock on mu_.
   //
   // There are three mutexes at play here.  We need to be careful to avoid a

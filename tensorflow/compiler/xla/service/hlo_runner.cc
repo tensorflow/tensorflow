@@ -50,12 +50,38 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
 HloRunner::~HloRunner() {}
 
 StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
-    const Literal& literal) {
+    const Literal& literal, int64_t param_no) {
+  auto shape_representation_fn = [this, param_no](const Shape& shape) {
+    Shape new_shape = device_shape_representation_fn_(shape);
+    if (entry_computation_layout_ == nullptr) {
+      return new_shape;
+    }
+
+    Shape entry_computation_shape =
+        entry_computation_layout_->parameter_shape(param_no);
+    // Favor entry computation shape with some adjustment.
+    ShapeUtil::ForEachMutableSubshape(
+        &new_shape,
+        [&entry_computation_shape](Shape* subshape, const ShapeIndex& index) {
+          if (!subshape->IsArray()) {
+            return;
+          }
+          Shape entry_computation_subshape =
+              ShapeUtil::GetSubshape(entry_computation_shape, index);
+          if (entry_computation_subshape.is_static() &&
+              !entry_computation_subshape.layout().tiles().empty() &&
+              *subshape != entry_computation_subshape) {
+            *subshape = entry_computation_subshape;
+          }
+        });
+    return new_shape;
+  };
+
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer buffer,
       backend().transfer_manager()->AllocateScopedShapedBuffer(
           literal.shape(), backend().memory_allocator(),
-          backend().default_device_ordinal(), device_shape_representation_fn_));
+          backend().default_device_ordinal(), shape_representation_fn));
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
@@ -67,10 +93,11 @@ StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
     absl::Span<const Literal* const> literals) {
   std::vector<ScopedShapedBuffer> buffers;
   buffers.reserve(literals.size());
-  for (const Literal* literal : literals) {
+  for (auto i = 0; i < literals.size(); i++) {
+    const Literal* literal = literals[i];
     CHECK(literal != nullptr);
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                        TransferLiteralToDevice(*literal));
+                        TransferLiteralToDevice(*literal, i));
     buffers.push_back(std::move(buffer));
   }
   return std::move(buffers);
@@ -117,7 +144,7 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      ExecutionProfile* profile) {
   xla::UpdateEntryComputationLayout(module.get(),
                                     device_shape_representation_fn_);
-
+  entry_computation_layout_ = &(module->entry_computation_layout());
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -132,6 +159,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
 StatusOr<Literal> HloRunner::ExecuteWithExecutable(
     Executable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
+  entry_computation_layout_ =
+      &(executable->module().entry_computation_layout());
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -259,7 +288,8 @@ StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
     Executable* executable, std::vector<ScopedShapedBuffer> arguments,
     ExecutionProfile* profile) {
   std::vector<ExecutionInput> execution_arguments;
-  // We need this to keep the arguments not owned by execution_arguments alive.
+  // We need this to keep the arguments not owned by execution_arguments
+  // alive.
   std::vector<se::OwningDeviceMemory> owned_arguments;
 
   ExecutionInputsFromMovedScopedShapedBuffers(
@@ -428,11 +458,11 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     }
   }
 
-  LOG(INFO) << "Replicated execution started";
+  VLOG(1) << "Replicated execution started";
   TF_ASSIGN_OR_RETURN(
       std::vector<ScopedShapedBuffer> results,
       execution_helper(service_run_options, argument_buffer_slices));
-  LOG(INFO) << "Replicated execution terminated";
+  VLOG(1) << "Replicated execution terminated";
 
   std::vector<Literal> exec_results;
   exec_results.reserve(options.num_replicas);
@@ -464,8 +494,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
               options.num_replicas);
           {
-            LOG(INFO) << "Creating thread pool for " << options.num_replicas
-                      << " replicas";
+            VLOG(1) << "Creating thread pool for " << options.num_replicas
+                    << " replicas";
             tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
                                          options.num_replicas);
             for (int64_t i = 0; i < options.num_replicas; ++i) {
@@ -478,8 +508,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
               });
             }
 
-            // Note: the thread pool destructor guarantees it completes all work
-            // before we leave this scope.
+            // Note: the thread pool destructor guarantees it completes all
+            // work before we leave this scope.
           }
           for (auto& thread_result : thread_results) {
             if (!thread_result.ok()) {
@@ -520,8 +550,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
             options.num_replicas);
         {
-          LOG(INFO) << "Creating thread pool for " << options.num_replicas
-                    << " replicas";
+          VLOG(1) << "Creating thread pool for " << options.num_replicas
+                  << " replicas";
           tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
                                        options.num_replicas);
           for (int64_t i = 0; i < options.num_replicas; ++i) {

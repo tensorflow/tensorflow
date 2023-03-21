@@ -153,8 +153,8 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
   for (auto [parameter, index, alt_memory_offset] : prefetches) {
     llvm::SmallVector<int64_t, 4> dims;
     for (auto dim : index) dims.push_back(dim);
-    llvm::Optional<int64_t> offset =
-        alt_memory_offset ? llvm::Optional<int64_t>(*alt_memory_offset)
+    std::optional<int64_t> offset =
+        alt_memory_offset ? std::optional<int64_t>(*alt_memory_offset)
                           : std::nullopt;
     shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
         builder->getContext(), parameter, dims, offset));

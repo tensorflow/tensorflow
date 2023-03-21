@@ -315,7 +315,7 @@ func.func @attr_transpose_adjoint(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16x
 func.func @attr_type_extensions_bounds(
     %arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>)
     -> tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>> {
-  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>) -> ()
+  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #stablehlo.bounds<16, ?>>) -> ()
   func.return %arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>
 }
 // CHECK-LABEL: "attr_type_extensions_bounds"
@@ -1507,6 +1507,17 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 }
 // CHECK-LABEL: "op_subtract"
 
+func.func @op_tan(%arg0: tensor<f32>) -> tensor<f32> {
+  //               CHECK: "stablehlo.custom_call"(%arg0) {
+  //          CHECK-SAME:    call_target_name = "mhlo.tan"
+  // CHECK-SAME{LITERAL}:    mhlo.attributes = {}
+  // CHECK-SAME{LITERAL}:    mhlo.version = 1 : i64
+  //          CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-LABEL: "op_tan"
+
 func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.tanh"(%arg0) : (tensor<f32>) -> tensor<f32>
   %0 = "mhlo.tanh"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -1838,6 +1849,17 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 // Some ops, attributes and types used in MHLO programs are not supported in StableHLO.
 // The following features are private, and not convertable to StableHLO even
 // with the experimental flag.
+
+// -----
+
+func.func @attr_precision_config_invalid() -> tensor<8x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
+  %0 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    precision_config = [#mhlo<precision PACKED_NIBBLE>, 1 : i32]
+  } : () -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
 
 // -----
 

@@ -9,7 +9,7 @@ func.func @reduce_row_sum_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> {
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK:         scf.parallel
+// CHECK:         scf.for
 // CHECK:           scf.for
 // CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 
@@ -23,7 +23,7 @@ func.func @reduce_column_sum_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK:         scf.parallel
+// CHECK:         scf.for
 // CHECK:           scf.for
 // CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 
@@ -37,7 +37,7 @@ func.func @reduce_row_mean_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> 
       : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
-// CHECK:         scf.parallel
+// CHECK:         scf.for
 // CHECK:           scf.for
 // CHECK-COUNT-4:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 // CHECK:             scf.yield
@@ -69,7 +69,7 @@ func.func @reduction_of_cast(%arg0: tensor<?xi64>) -> tensor<i32> {
     : (tensor<?xi32>, tensor<1xi32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
-// CHECK: scf.parallel
+// CHECK: scf.for
 // CHECK:   arith.trunci
 // CHECK: scf.for
 // CHECK:   arith.muli

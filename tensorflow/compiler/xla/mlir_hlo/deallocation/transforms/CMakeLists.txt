@@ -21,8 +21,11 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_mlir_library(DeallocationPasses
-  deallocate.cc
   buffer_reuse.cc
+  convert_deallocation_ops_to_llvm.cc
+  deallocate.cc
+  deallocation_to_scf.cc
+  split_alloc_tensors.cc
 
   DEPENDS
   MLIRDeallocationPassesIncGen
@@ -32,9 +35,14 @@ add_mlir_library(DeallocationPasses
   Core
 
   LINK_LIBS PUBLIC
+  MLIRAnalysis
+  MLIRArithDialect
+  MLIRBufferizationDialect
   MLIRControlFlowInterfaces
   MLIRFuncDialect
   MLIRIR
+  MLIRLLVMCommonConversion
+  MLIRLLVMDialect
   MLIRMemRefDialect
   MLIRPass
   MLIRSupport

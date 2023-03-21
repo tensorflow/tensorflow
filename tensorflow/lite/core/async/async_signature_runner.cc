@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_subgraph.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -46,11 +46,11 @@ int AsyncSignatureRunner::GetTensorIndex(TfLiteIoType io_type,
                                          const char* name) const {
   int tensor_index = -1;
   switch (io_type) {
-    case TfLiteIoType::kTfLiteIoInput: {
+    case kTfLiteIoTypeInput: {
       tensor_index = GetIndex(signature_def_->inputs, name);
       break;
     };
-    case TfLiteIoType::kTfLiteIoOutput: {
+    case kTfLiteIoTypeOutput: {
       tensor_index = GetIndex(signature_def_->outputs, name);
       break;
     }
@@ -141,21 +141,19 @@ TfLiteStatus AsyncSignatureRunner::Wait(TfLiteExecutionTask* task) {
 TfLiteStatus AsyncSignatureRunner::Finish(TfLiteExecutionTask* task) {
   return async_subgraph_->Finish(task);
 }
-const TfLiteTensor* AsyncSignatureRunner::input_tensor(
+const TfLiteOpaqueTensor* AsyncSignatureRunner::input_tensor(
     const char* input_name) const {
-  if (auto idx = GetTensorIndex(TfLiteIoType::kTfLiteIoInput, input_name);
-      idx >= 0) {
-    return subgraph_->tensor(idx);
+  if (auto idx = GetTensorIndex(kTfLiteIoTypeInput, input_name); idx >= 0) {
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(subgraph_->tensor(idx));
   }
   subgraph_->ReportError("Input name %s was not found", input_name);
   return nullptr;
 }
 
-const TfLiteTensor* AsyncSignatureRunner::output_tensor(
+const TfLiteOpaqueTensor* AsyncSignatureRunner::output_tensor(
     const char* output_name) const {
-  if (auto idx = GetTensorIndex(TfLiteIoType::kTfLiteIoOutput, output_name);
-      idx >= 0) {
-    return subgraph_->tensor(idx);
+  if (auto idx = GetTensorIndex(kTfLiteIoTypeOutput, output_name); idx >= 0) {
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(subgraph_->tensor(idx));
   }
   subgraph_->ReportError("Output name %s was not found", output_name);
   return nullptr;

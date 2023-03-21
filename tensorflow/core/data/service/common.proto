@@ -3,10 +3,9 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
-import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
+import "tensorflow/tsl/protobuf/status.proto";
 
 // Next tag: 2
 message DatasetDef {
@@ -52,12 +51,12 @@ message TaskDef {
   bool use_cross_trainer_cache = 13;
 }
 
-// Next tag: 8
+// Next tag: 9
 message TaskInfo {
   // The address of the worker processing the task.
   string worker_address = 1;
-  // The transfer address of the worker processing the task.
-  string transfer_address = 4;
+  // The data transfer servers of the worker processing the task.
+  repeated DataTransferServerInfo transfer_servers = 8;
   // Tags attached to the worker. This allows reading from selected workers.
   // For example, by applying a "COLOCATED" tag, tf.data service is able to read
   // from the local tf.data worker if one exists, then from off-TF-host workers,
@@ -72,6 +71,7 @@ message TaskInfo {
   // The round to start reading from the task in. For non-round-robin reads,
   // this is always 0.
   int64 starting_round = 5;
+  reserved 4;
 }
 
 // Next tag: 5
@@ -92,10 +92,9 @@ message SnapshotTaskProgress {
   // True if the snapshot is complete successfully. Unset if the snapshot is not
   // complete or an error has occurred.
   bool completed = 2;
-  // If any error occurs during the snapshot processing, the `error_code` and
-  // `error_message` will be filled with the error status.
-  error.Code error_code = 3;
-  string error_message = 4;
+  // If any error occurs during the snapshot processing, `status` will be filled
+  // with the error status.
+  StatusProto status = 3;
 }
 
 message SnapshotStreamInfo {
@@ -126,4 +125,13 @@ enum TargetWorkers {
   TARGET_WORKERS_ANY = 2;
   // Only reads from local workers. If no local worker is found, it is an error.
   TARGET_WORKERS_LOCAL = 3;
+}
+
+// Information about one of a worker server's data transfer servers.
+message DataTransferServerInfo {
+  string protocol = 1;
+  string address = 2;
+  // If provided, properties of the server used to determine compatibility with
+  // a client.
+  bytes compatibility_info = 3;
 }

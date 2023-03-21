@@ -37,7 +37,7 @@ xla::Status CreateXlaStatus(::TpuStatus* status) {
   if (status->code == tsl::error::OK) {
     return ::tsl::OkStatus();
   } else {
-    return xla::Status(tsl::error::Code(status->code),
+    return xla::Status(absl::StatusCode(status->code),
                        absl::StrFormat("%s", status->msg));
   }
 }

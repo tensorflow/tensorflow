@@ -13,14 +13,25 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/stack_frame.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tsl {
+namespace {
+
+using ::testing::IsEmpty;
+using ::tsl::testing::IsOk;
+using ::tsl::testing::StatusIs;
 
 TEST(ToStringTest, PayloadsArePrinted) {
   Status status = errors::Aborted("Aborted Error Message");
@@ -43,6 +54,21 @@ TEST(ToStringTest, MatchesAbslStatus) {
                                             "payload_value %c%c%c", 1, 2, 3)));
 
   EXPECT_EQ(status.ToString(), absl_status.ToString());
+}
+
+TEST(StackTrace, SerializeAndDeserializeCorrectly) {
+  Status status = errors::Aborted("Aborted Error Message");
+  std::vector<StackFrame> stack_trace;
+  stack_trace.push_back(StackFrame("filename_1", 33, "func_name_1"));
+  stack_trace.push_back(StackFrame("filename_2", 66, "func_name_2"));
+  errors::SetStackTrace(status, stack_trace);
+
+  std::vector<StackFrame> deserialized = errors::GetStackTrace(status);
+
+  EXPECT_EQ(stack_trace.size(), deserialized.size());
+  for (size_t i = 0; i < stack_trace.size(); ++i) {
+    EXPECT_EQ(stack_trace[i], deserialized[i]);
+  }
 }
 
 TEST(StatusGroupTest, DeterministicOrderWithoutPayloads) {
@@ -125,14 +151,14 @@ TEST(StatusGroupTest, PayloadsMergedProperly) {
 }
 
 TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
-  Status s(error::INTERNAL, "Error message");
+  Status s(absl::StatusCode::kInternal, "Error message");
   s.SetPayload("key1", absl::Cord("value1"));
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));
 
-  std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
-    payloads[std::string(key)] = std::string(value);
+  std::unordered_map<std::string, absl::Cord> payloads;
+  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   });
 
   EXPECT_EQ(payloads.size(), 3);
@@ -147,12 +173,50 @@ TEST(Status, OkStatusForEachPayloadNoIteration) {
   s.SetPayload("key2", absl::Cord("value2"));
   s.SetPayload("key3", absl::Cord("value3"));
 
-  std::unordered_map<std::string, std::string> payloads;
-  s.ForEachPayload([&payloads](StringPiece key, StringPiece value) {
-    payloads[std::string(key)] = std::string(value);
+  std::unordered_map<std::string, absl::Cord> payloads;
+  s.ForEachPayload([&payloads](StringPiece key, const absl::Cord& value) {
+    payloads[std::string(key)] = value;
   });
 
   EXPECT_EQ(payloads.size(), 0);
 }
 
+TEST(Status, SaveOKStatusToProto) {
+  tensorflow::StatusProto status_proto = StatusToProto(OkStatus());
+  EXPECT_EQ(status_proto.code(), error::OK);
+  EXPECT_THAT(status_proto.message(), IsEmpty());
+}
+
+TEST(Status, SaveErrorStatusToProto) {
+  tensorflow::StatusProto status_proto =
+      StatusToProto(errors::NotFound("Not found"));
+  EXPECT_EQ(status_proto.code(), error::NOT_FOUND);
+  EXPECT_EQ(status_proto.message(), "Not found");
+}
+
+TEST(Status, SaveEmptyStatusToProto) {
+  tensorflow::StatusProto status_proto = StatusToProto(Status());
+  EXPECT_EQ(status_proto.code(), error::OK);
+  EXPECT_THAT(status_proto.message(), IsEmpty());
+}
+
+TEST(Status, MakeOKStatusFromProto) {
+  tensorflow::StatusProto status_proto;
+  status_proto.set_code(error::OK);
+  EXPECT_THAT(StatusFromProto(status_proto), IsOk());
+}
+
+TEST(Status, MakeErrorStatusFromProto) {
+  tensorflow::StatusProto status_proto;
+  status_proto.set_code(error::INVALID_ARGUMENT);
+  status_proto.set_message("Invalid argument");
+  EXPECT_THAT(StatusFromProto(status_proto),
+              StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
+}
+
+TEST(Status, MakeStatusFromEmptyProto) {
+  EXPECT_THAT(StatusFromProto(tensorflow::StatusProto()), IsOk());
+}
+
+}  // namespace
 }  // namespace tsl

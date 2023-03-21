@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -278,7 +279,7 @@ class ExtensionType(
       conditions.append(
           math_ops.reduce_all(
               gen_math_ops.equal(t1, t2, incompatible_shape_error=False)))
-    return math_ops.reduce_all(array_ops.stack(conditions))
+    return math_ops.reduce_all(array_ops_stack.stack(conditions))
 
   def __ne__(self, other):
     eq = self.__eq__(other)

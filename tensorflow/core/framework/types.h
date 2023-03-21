@@ -545,8 +545,14 @@ struct TypeHasher {
   }
 };
 
-// Maps a legacy DType proto enum to an equivalent FullType ID.
+// Maps a legacy DType proto enum to an equivalent FullType ID,
+// i.e. sets the type_id of t based on dtype.
 void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t);
+
+// Set the type id_of t to TFT_TENSOR and add a child arg by mapping
+// a legacy DType proto enun to an equivalent FullType ID, e.g.
+// if dtype is DT_FLOAT, sets t to TFT_TENSOR[TFT_FLOAT].
+void map_dtype_to_child_of_tensor(const DataType& dtype, FullTypeDef& t);
 
 }  // namespace tensorflow
 

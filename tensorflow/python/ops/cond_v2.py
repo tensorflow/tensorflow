@@ -333,7 +333,7 @@ def get_func_graphs(op):
       func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       handle_data_util.copy_handle_data(external_t, internal_t)
-    func_graph.reset_captures(zip(inputs, func_graph.inputs))
+    func_graph._function_captures.reset_captures(inputs, func_graph.inputs)
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -584,7 +584,8 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph.reset_captures(zip(new_inputs, branch_graph.inputs))
+    branch_graph._function_captures.reset_captures(
+        new_inputs, branch_graph.inputs)
 
   return new_inputs
 

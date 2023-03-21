@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -35,11 +36,8 @@ namespace quant {
 namespace {
 
 using ::mlir::tf_saved_model::GetInitializerFunction;
-using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using ::mlir::tf_saved_model::SessionInitializerOp;
 
 // This pass creates a RestoreV2 op in the initializer function with
 // type "restore_op" that initializes variables from checkpoint. It finds
@@ -110,7 +108,7 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
                                        OpBuilder& builder) {
   const auto filename_op_type = RankedTensorType::get(
       /*shape=*/{}, /*elementType=*/builder.getType<TF::StringType>());
-  const auto file_prefix_attr = builder.getStringAttr("__tf_file_prefix");
+  const auto file_prefix_attr = builder.getStringAttr(kTfFilePrefix);
   const auto arg_attrs = builder.getDictionaryAttr({builder.getNamedAttr(
       kTfSavedModelIndexPathAttr, builder.getArrayAttr({file_prefix_attr}))});
 
@@ -149,6 +147,15 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
   SmallVector<std::string> tensor_names{};
   for (auto var_handle_op : target_var_handle_ops) {
     tensor_names.emplace_back(var_handle_op.getSharedName().str());
+    // Location must be set to the same name as the shared name. The Location is
+    // later tranlated to the op's name when exported to `GraphDef`. This is
+    // required to find the correct variable name to restore when it is
+    // imported back to MLIR. When importing the graph to MLIR, the name of the
+    // op is used to retrieve the tensor values of each variable. See
+    // `InitializeVariablesInSessionInitializer` for further details.
+    const auto loc = NameLoc::get(StringAttr::get(
+        var_handle_op.getContext(), var_handle_op.getSharedName()));
+    var_handle_op->setLoc(loc);
 
     // Ex) If VarHandleOp's type is tensor<!tf_type.resource<tensor<1xf32>>>,
     // then tensor<1xf32> is the subtype.

@@ -13,29 +13,27 @@
 # limitations under the License.
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
-
 import collections.abc
 import tempfile
-from typing import Callable, Collection, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
 from absl import logging
 
 import numpy as np
 
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
+from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
-from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
@@ -44,9 +42,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
-
-# The signature key of the saved model init op.
-_INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
@@ -58,6 +53,9 @@ _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 # Default minimum number of elements in the weights for them to be quantized
 # during dynamic range quantization (DRQ).
 _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
+
+# Name of the saved model assets directory.
+_ASSETS_DIR = 'assets'
 
 
 def _is_qat_saved_model(saved_model_path: str):
@@ -195,7 +193,9 @@ def _convert_values_to_tf_tensors(
     if isinstance(tensorlike_value, core.Tensor):
       tensor_value = tensorlike_value
     else:
-      tensor_value = ops.convert_to_tensor_v2_with_dispatch(tensorlike_value)
+      tensor_value = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          tensorlike_value
+      )
 
     tensor_mapping[name] = tensor_value
 
@@ -515,29 +515,29 @@ def _run_graph_for_calibration(
 
 
 def _run_static_range_qat(
-    saved_model_path: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     signature_def_keys: Sequence[str],
     tags: Collection[str],
     quant_opts: quant_opts_pb2.QuantizationOptions,
-) -> exported_model_pb2.ExportedModel:
+    signature_def_map: _SignatureDefMap,
+) -> None:
   """Runs static-range quantization for a Quantization-Aware Trained model.
 
   Runs the quantization for a model trained using QAT.
 
   Args:
-    saved_model_path: Path to SavedModel.
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
     signature_def_keys: Keys of the signatures of the functions that are the
       target for quantization.
     tags: Tags identifying the MetaGraphDef.
     quant_opts: Quantization options.
-
-  Returns:
-    exported_model: Contains the GraphDef and extra metadata required for saving
-      the quantized graph to SavedModel.
+    signature_def_map: Signature def key -> SignatureDef mapping.
   """
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
-      saved_model_path,
+      src_saved_model_path,
       list(signature_def_keys),
       set(tags),
       quant_opts.SerializeToString(),
@@ -547,7 +547,17 @@ def _run_static_range_qat(
       exported_model_serialized
   )
 
-  return exported_model
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -583,14 +593,64 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
         )
 
 
+def _copy_assets(src_path: str, dst_path: str) -> None:
+  """Copies the assets directory of the saved model.
+
+  Clones the contents of the assets/ directory from the source saved model
+  directory to the destination saved model directory. Nothing will be copied if
+  there are no assets directory in the source directory.
+
+  Args:
+    src_path: Source saved model directory.
+    dst_path: Destination saved model directory. This directory must exist.
+  """
+  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
+  if not file_io.file_exists_v2(src_assets_path):
+    # Do nothing if the source assets path does not exist.
+    return
+
+  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
+  file_io.create_dir_v2(dst_assets_path)
+
+  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+    for asset_file_name in files:
+      src_asset_file = file_io.join(curr_dir, asset_file_name)
+
+      # Construct the destination assets file path.
+      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+
+      file_io.copy_v2(src_asset_file, dst_asset_file)
+      logging.info(
+          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+      )
+
+
+def _get_saver_def_or_none(
+    exported_model: exported_model_pb2.ExportedModel,
+) -> Optional[saver_pb2.SaverDef]:
+  """Returns the SaverDef from ExportedModel, None otherwise.
+
+  Args:
+    exported_model: ExportedModel to take the SaverDef from.
+
+  Returns:
+    SaverDef instance if the field `saver_def` is set. None otherwise.
+  """
+  if exported_model.HasField('saver_def'):
+    return exported_model.saver_def
+  return None
+
+
 def _run_static_range_ptq(
-    saved_model_path: str,
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
     signature_def_keys: Sequence[str],
     tags: Collection[str],
     quant_opts: quant_opts_pb2.QuantizationOptions,
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
     signature_def_map: _SignatureDefMap,
-) -> Tuple[exported_model_pb2.ExportedModel, _SignatureDefMap]:
+) -> None:
   """Runs static-range Post-Training Quantization.
 
   Runs static-range PTQ for the model. Runs the calibration step with
@@ -599,7 +659,8 @@ def _run_static_range_ptq(
   been modified according to the changes in the graph.
 
   Args:
-    saved_model_path: Path to SavedModel.
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
     signature_def_keys: Keys of the signature defs of the functions that are the
       target for quantization.
     tags: Tags to identify the MetaGraphDef to be used for quantization.
@@ -611,23 +672,17 @@ def _run_static_range_ptq(
 
   Raises:
     ValueError if the graph doesn't contain a valid signature.
-
-  Returns:
-    exported_model: Contains the GraphDef and extra metadata required for saving
-      the quantized graph to SavedModel.
-    signature_def_map: Contains the SignatureDefs, possibly modified
-      according to the quantized graph to match the original signature defs.
   """
   logging.info('Running post-training quantization pre-calibration step.')
 
-  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
   function_aliases = loader.get_meta_graph_def_from_tags(
       tags
   ).meta_info_def.function_aliases
 
   exported_model_serialized = (
       pywrap_quantize_model.quantize_ptq_model_pre_calibration(
-          saved_model_path,
+          src_saved_model_path,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
@@ -645,44 +700,51 @@ def _run_static_range_ptq(
       if node_def.op == 'CustomAggregator':
         node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
 
-  float_model_dir = tempfile.mkdtemp()
+  pre_calib_output_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
       graph_def,
-      float_model_dir,
+      pre_calib_output_model_path,
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
-      exported_model.variable_shared_names,
       exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(src_saved_model_path, pre_calib_output_model_path)
 
   # Uses the representative dataset to collect statistics for calibration.
   # Handles the graph mode execution separately in case TF2 is disabled or
   # eager execution is disabled. The min & max values are stored separately
   # in a global CalibratorSingleton instance.
   _run_graph_for_calibration(
-      float_model_dir, signature_def_keys, tags, representative_dataset
+      pre_calib_output_model_path,
+      signature_def_keys,
+      tags,
+      representative_dataset,
   )
   _add_calibration_statistics(graph_def)
 
-  calibrated_model_dir = tempfile.mkdtemp()
+  calibrated_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
       graph_def,
-      calibrated_model_dir,
+      calibrated_model_path,
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
-      exported_model.variable_shared_names,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(pre_calib_output_model_path, calibrated_model_path)
 
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
       pywrap_quantize_model.quantize_ptq_model_post_calibration(
-          calibrated_model_dir,
+          calibrated_model_path,
           list(signature_def_keys),
           set(tags),
           quant_opts.SerializeToString(),
@@ -694,7 +756,19 @@ def _run_static_range_ptq(
       exported_model_serialized
   )
 
-  return exported_model, signature_def_map
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+
+  _copy_assets(calibrated_model_path, dst_saved_model_path)
 
 
 def _static_range_quantize(
@@ -764,30 +838,24 @@ def _static_range_quantize(
     )
 
   if is_qat_saved_model:
-    exported_model = _run_static_range_qat(
-        saved_model_path, signature_keys, tags, quantization_options
+    _run_static_range_qat(
+        saved_model_path,
+        output_directory,
+        signature_keys,
+        tags,
+        quantization_options,
+        signature_def_map,
     )
   else:
-    exported_model, signature_def_map = _run_static_range_ptq(
+    _run_static_range_ptq(
         saved_model_path,
+        output_directory,
         signature_keys,
         tags,
         quantization_options,
         representative_dataset,
         signature_def_map,
     )
-
-  save_model.save_model_v1(
-      exported_model.graph_def,
-      output_directory,
-      signature_def_map,
-      tags,
-      init_op_name=exported_model.init_node_name,
-      restore_op_name=exported_model.restore_node_name,
-      checkpoint_dir=exported_model.checkpoint_dir,
-      variable_shared_names=exported_model.variable_shared_names,
-      function_aliases=exported_model.function_aliases,
-  )
 
   return saved_model_load(output_directory)
 
@@ -846,7 +914,7 @@ def _dynamic_range_quantize(
   # please also update default value in tflite converter:
   # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
   if quantization_options.min_num_elements_for_weights == 0:
-    (quantization_options.min_num_elements_for_weights) = (
+    quantization_options.min_num_elements_for_weights = (
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
     )
     logging.warn(
@@ -876,9 +944,14 @@ def _dynamic_range_quantize(
       exported_model.graph_def,
       output_directory,
       signature_def_map,
-      tags=tags,
+      tags,
       init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+  _copy_assets(saved_model_path, output_directory)
 
   return saved_model_load(output_directory)
 
@@ -945,9 +1018,12 @@ def _populate_quantization_options_default_values(
   if (
       quantization_options.quantization_method.experimental_method
       == _ExperimentalMethod.WEIGHT_ONLY
-      and quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      and (
+          quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+          or quantization_options.op_set == quant_opts_pb2.OpSet.TF
+      )
   ):
-    raise ValueError('Uniform quantized opset does not support weight-only.')
+    raise ValueError('TF/Uniform quantized opset does not support weight-only.')
 
   # Converter assumes options are specified. So set SRQ explicitly.
   if (

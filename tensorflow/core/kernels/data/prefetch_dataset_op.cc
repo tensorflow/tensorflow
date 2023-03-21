@@ -95,8 +95,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);
   }
@@ -181,6 +179,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       IteratorContext iter_ctx(params);
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           &iter_ctx, this, prefix(), &input_impl_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
+      }
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
       return OkStatus();
     }
@@ -191,7 +192,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(*mu_);
-        TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
+        TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
         while (buffer_.empty() && !prefetch_thread_finished_ &&
@@ -283,6 +284,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
+      DCHECK(!prefetch_thread_);
       DCHECK(buffer_.empty());
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       size_t buffer_size;
@@ -315,6 +317,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
         RecordBufferEnqueue(ctx, buffer_element.value);
       }
+      if (ctx->warm_start()) {
+        TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
+      }
       return OkStatus();
     }
 
@@ -341,10 +346,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           limit == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(limit))));
-      result.push_back(std::make_pair(
-          "buffer_size",
-          size == -1 ? kTraceInfoUnavailable
-                     : strings::Printf("%lld", static_cast<long long>(size))));
       result.push_back(std::make_pair(
           "autotune",
           dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));
@@ -458,7 +459,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
-    Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
+    Status EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
@@ -558,9 +559,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(absl::StrCat(prefix(), "::", index),

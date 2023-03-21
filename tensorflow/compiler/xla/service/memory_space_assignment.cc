@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+
 namespace xla {
 
 namespace memory_space_assignment {
@@ -276,6 +279,55 @@ std::string UsesToString(const std::vector<HloUse>& uses) {
   return absl::StrJoin(uses_str, ",");
 }
 
+StatusOr<xla::HloLiveRange::LogicalTime> GetScheduleTimeFromInstructionName(
+    absl::string_view name,
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) {
+  for (auto schedule_entry : schedule) {
+    if (schedule_entry.first->name() == name) {
+      return schedule_entry.second;
+    }
+  }
+  return NotFound("Reference instruction %s was not found in the schedule.",
+                  name);
+}
+
+StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
+    const std::vector<OverridePreferredPrefetchTime>&
+        override_preferred_prefetch_times,
+    const HloUse& hlo_use,
+    const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
+        instruction_schedule) {
+  // If the operand number and instruction name of current HloUse matches
+  // an override config, find the reference instruction time from the
+  // instruction schedule and set the preferred prefetch time before or
+  // after the reference instruction.
+  for (const auto& override_preferred_prefetch_time :
+       override_preferred_prefetch_times) {
+    if (override_preferred_prefetch_time.instruction_name_ !=
+            hlo_use.instruction->name() ||
+        hlo_use.operand_number !=
+            override_preferred_prefetch_time.operand_number_ ||
+        hlo_use.operand_index !=
+            override_preferred_prefetch_time.operand_index_) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto reference_instruction_time,
+        GetScheduleTimeFromInstructionName(
+            override_preferred_prefetch_time.reference_instruction_name_,
+            instruction_schedule));
+    if (override_preferred_prefetch_time.placement_ ==
+        OverridePreferredPrefetchTime::Placement::kBefore) {
+      return static_cast<std::optional<int64_t>>(reference_instruction_time -
+                                                 1);
+    } else {
+      return static_cast<std::optional<int64_t>>(reference_instruction_time);
+    }
+  }
+  return static_cast<std::optional<int64_t>>(std::nullopt);
+}
+
 }  // namespace
 
 /*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
@@ -331,6 +383,13 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
     MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
+  if (cache) {
+    auto it =
+        cache->memory_boundedness.find(interval.buffer->defining_position());
+    if (it != cache->memory_boundedness.end()) {
+      return it->second;
+    }
+  }
   float alternate_mem_benefit =
       GetAlternateMemoryBenefit(interval.buffer->defining_position(), cache);
 
@@ -362,7 +421,12 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
   // Penalize larger buffers by dividing the benefit by the square root of the
   // size. Empirically, we observed this resulted in better performance compared
   // to dividing by the size.
-  return alternate_mem_benefit / std::sqrt(interval.size);
+  float memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
+  if (cache) {
+    cache->memory_boundedness[interval.buffer->defining_position()] =
+        memory_boundedness;
+  }
+  return memory_boundedness;
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
@@ -984,6 +1048,81 @@ CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
     const {
   return cost_analysis_.GetMemoryBoundedness(interval);
+}
+
+std::string OverridePreferredPrefetchTime::ToString() const {
+  std::string placement_string =
+      placement_ == Placement::kBefore ? "before" : "after";
+  return absl::StrCat(instruction_name_, ":", operand_number_, ":",
+                      operand_index_.ToString(), ":", placement_string, ":",
+                      reference_instruction_name_);
+}
+
+/*static*/ StatusOr<
+    std::vector<memory_space_assignment::OverridePreferredPrefetchTime>>
+OverridePreferredPrefetchTime::ParseOverridePreferredPrefetchTimesConfig(
+    std::string override_preferred_prefetch_times_config) {
+  std::vector<memory_space_assignment::OverridePreferredPrefetchTime>
+      override_preferred_prefetch_times;
+  if (override_preferred_prefetch_times_config.empty()) {
+    return override_preferred_prefetch_times;
+  }
+  std::vector<std::string> override_configs =
+      absl::StrSplit(override_preferred_prefetch_times_config, ';');
+  for (const auto& config : override_configs) {
+    TF_ASSIGN_OR_RETURN(auto override_preferred_prefetch_time,
+                        ParseOverridePreferredPrefetchTimeConfig(config));
+    override_preferred_prefetch_times.push_back(
+        override_preferred_prefetch_time);
+  }
+  return override_preferred_prefetch_times;
+}
+
+/*static*/ StatusOr<ShapeIndex>
+OverridePreferredPrefetchTime::ParseOperandIndex(std::string config) {
+  ShapeIndex operand_index{};
+  if (config.empty()) {
+    return operand_index;
+  }
+  for (const absl::string_view& index_string : absl::StrSplit(config, '#')) {
+    int64_t index;
+    if (!absl::SimpleAtoi(index_string, &index)) {
+      return InvalidArgument("Failed to parse operand_index %s", config);
+    }
+    operand_index.push_back(index);
+  }
+  return operand_index;
+}
+
+/*static*/ StatusOr<OverridePreferredPrefetchTime>
+OverridePreferredPrefetchTime::ParseOverridePreferredPrefetchTimeConfig(
+    std::string config) {
+  std::vector<std::string> override_config = absl::StrSplit(config, ':');
+  if (override_config.size() != 5) {
+    return InvalidArgument("Failed to parse config, insufficient filters %s",
+                           config);
+  }
+  auto instruction_name = override_config[0];
+  int64_t operand_number;
+  if (!absl::SimpleAtoi(override_config[1], &operand_number)) {
+    return InvalidArgument("Failed to parse operand number %s for config %s",
+                           override_config[1], config);
+  }
+  TF_ASSIGN_OR_RETURN(ShapeIndex operand_index,
+                      ParseOperandIndex(override_config[2]));
+  if (override_config[3] != "before" && override_config[3] != "after") {
+    return InvalidArgument("Failed to parse placement %s for config %s",
+                           override_config[3], config);
+  }
+  auto placement = override_config[3] == "before"
+                       ? memory_space_assignment::
+                             OverridePreferredPrefetchTime::Placement::kBefore
+                       : memory_space_assignment::
+                             OverridePreferredPrefetchTime::Placement::kAfter;
+  auto reference_instruction_name = override_config[4];
+  return OverridePreferredPrefetchTime(instruction_name, operand_number,
+                                       operand_index, placement,
+                                       reference_instruction_name);
 }
 
 bool MemorySpaceAssignment::Allocation::operator==(
@@ -1899,6 +2038,24 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           }
         }
         AllocationRequest request;
+
+        StatusOr<std::optional<int64_t>> overridden_preferred_prefetch_time =
+            GetOverriddenPreferredPrefetchTime(
+                options_.override_preferred_prefetch_times, hlo_use,
+                instruction_schedule);
+        TF_CHECK_OK(overridden_preferred_prefetch_time.status());
+        if (overridden_preferred_prefetch_time.value().has_value()) {
+          LOG(INFO) << "Overriding preferred prefetch for "
+                    << hlo_use.instruction->name() << " operand "
+                    << hlo_use.operand_number << " from "
+                    << (preferred_prefetch_time.has_value()
+                            ? preferred_prefetch_time.value()
+                            : -1)
+                    << " to "
+                    << overridden_preferred_prefetch_time.value().value();
+          preferred_prefetch_time = overridden_preferred_prefetch_time.value();
+        }
+
         // Rarely, (e.g., when conditional true and false parameters are the
         // same), definition time can be the time of the conditional and use
         // time is the parameter use, which is less.

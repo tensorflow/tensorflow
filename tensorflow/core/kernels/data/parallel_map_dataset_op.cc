@@ -129,14 +129,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64_t CardinalityInternal() const override {
-    if (preserve_cardinality_) {
-      return input_->Cardinality();
-    } else {
-      return kUnknownCardinality;
-    }
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     if (preserve_cardinality_) {
       return input_->Cardinality(options);
@@ -276,8 +268,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           &iter_ctx, this, prefix(), &input_impl_));
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -666,12 +662,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                              const std::string& prefix, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(absl::StrCat(prefix, "_", kErrorCode)),
+          writer->WriteScalar(prefix, absl::StrCat("_", kErrorCode),
                               static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
-            status.error_message()));
+            prefix, absl::StrCat("_", kErrorMessage), status.error_message()));
       }
       return OkStatus();
     }
@@ -680,15 +675,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                             const std::string& prefix, Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(absl::StrCat(prefix, "_", kErrorCode)), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix, absl::StrCat("_", kErrorCode), &code_int));
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
-            &error_message));
+            prefix, absl::StrCat("_", kErrorMessage), &error_message));
         *status = Status(code, error_message);
       } else {
         *status = OkStatus();

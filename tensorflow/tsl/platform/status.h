@@ -23,8 +23,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -52,11 +54,43 @@ class [[nodiscard]] Status;
 typedef SourceLocationImpl SourceLocation;
 
 namespace errors {
-typedef ::tensorflow::error::Code Code;
+typedef absl::StatusCode Code;
 }  // namespace errors
 namespace error {
 typedef ::tensorflow::error::Code Code;
 }  // namespace error
+}  // namespace tsl
+
+// Transparent comparison between tensorflow::error::Code protobuf enum and
+// absl::Status.
+//
+// The longer term objective is to delete these when we have done the transition
+// to absl::Status.
+namespace tensorflow::error {
+inline bool operator==(const ::tensorflow::error::Code& c1,
+                       const absl::StatusCode& c2) {
+  return static_cast<int>(c1) == static_cast<int>(c2);
+}
+
+inline bool operator!=(const ::tensorflow::error::Code& c1,
+                       const absl::StatusCode& c2) {
+  return static_cast<int>(c1) != static_cast<int>(c2);
+}
+}  // namespace tensorflow::error
+
+namespace absl {
+inline bool operator==(const ::absl::StatusCode& c1,
+                       const ::tensorflow::error::Code& c2) {
+  return static_cast<int>(c1) == static_cast<int>(c2);
+}
+
+inline bool operator!=(const ::absl::StatusCode& c1,
+                       const ::tensorflow::error::Code& c2) {
+  return static_cast<int>(c1) != static_cast<int>(c2);
+}
+}  // namespace absl
+
+namespace tsl {
 
 /// @ingroup core
 /// Denotes success or failure of a call in Tensorflow.
@@ -68,6 +102,14 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
+  Status(absl::StatusCode code, absl::string_view msg,
+         SourceLocation loc = SourceLocation::current());
+  // Deprecated constructor using the Tensorflow protobuf enum error code.
+#ifndef SWIG
+  ABSL_DEPRECATED(
+      "Use `Status(absl::StatusCode, ...) instead of Status(tsl::errors::Code, "
+      "...).")
+#endif
   Status(tsl::error::Code code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
 
@@ -82,9 +124,10 @@ class Status {
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
 
-  tsl::error::Code code() const {
-    return ok() ? tensorflow::error::OK : state_->code;
+  absl::StatusCode code() const {
+    return ok() ? absl::StatusCode::kOk : state_->code;
   }
+  int raw_code() const { return static_cast<int>(code()); }
 
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
@@ -176,17 +219,8 @@ class Status {
   // any time and any mutation on the same Status object during visitation is
   // forbidden and could result in undefined behavior.
   void ForEachPayload(
-      const std::function<void(absl::string_view, absl::string_view)>& visitor)
+      absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
       const;
-
-  // Sets the stack frame associated with this status object.
-  // Stack traces are only kept and returned via GetStackTrace() if
-  // !this->ok().
-  void SetStackTrace(std::vector<StackFrame>);
-
-  // Retrieve an associated stack frame for a non-OK status that was
-  // set via SetStackTrace().
-  std::vector<StackFrame> GetStackTrace() const;
 
   absl::Span<const SourceLocation> GetSourceLocations() const;
 
@@ -202,11 +236,10 @@ class Status {
     State(const State&) TF_ATTRIBUTE_NOINLINE = default;
     State& operator=(const State&) TF_ATTRIBUTE_NOINLINE = default;
 
-    tsl::error::Code code;
+    absl::StatusCode code;
     std::string msg;
     std::unordered_map<std::string, absl::Cord> payloads;
     absl::InlinedVector<SourceLocation, 4> source_locations;
-    std::vector<StackFrame> stack_trace;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -333,7 +366,8 @@ typedef std::function<void(const Status&)> StatusCallback;
 extern tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
                                              const char* msg);
 
-std::string error_name(error::Code code);
+// Prefer using `absl::StatusCodeToString`.
+std::string error_name(absl::StatusCode code);
 
 inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   if (v.ok()) return nullptr;

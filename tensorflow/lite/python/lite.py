@@ -18,6 +18,7 @@ import enum
 import functools
 import pprint
 import shutil
+import sys
 import tempfile
 import time
 import warnings
@@ -77,6 +78,7 @@ from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
 from tensorflow.python.eager import function as _function
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
@@ -587,6 +589,7 @@ class TFLiteConverterBase:
     self._experimental_allow_all_select_tf_ops = False
 
     self._experimental_variable_quantization = False
+    self._experimental_disable_fuse_mul_and_fc = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -705,6 +708,8 @@ class TFLiteConverterBase:
             self._experimental_guarantee_all_funcs_one_use,
         "allow_all_select_tf_ops":
             self._experimental_allow_all_select_tf_ops,
+        "disable_fuse_mul_and_fc":
+            self._experimental_disable_fuse_mul_and_fc,
     }
 
     if self.saved_model_dir:
@@ -2704,6 +2709,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
           except (_text_format.ParseError, DecodeError):
             raise IOError(
                 "Unable to parse input file '{}'.".format(graph_def_file))
+
+        if sys.byteorder == "big":
+          bst.swap_tensor_content_in_graph_node(graph_def, "little", "big")
 
         # Handles models with custom TFLite ops that cannot be resolved in
         # TensorFlow.

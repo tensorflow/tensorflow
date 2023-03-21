@@ -19,14 +19,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite::delegates::utils {
 
 TfLiteStatus ConvertToTfLiteStatus(absl::Status status) {
   if (!status.ok()) {
-    LOG(ERROR) << status;
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR, "%s",
+        status.ToString(absl::StatusToStringMode::kWithEverything).c_str());
     return kTfLiteError;
   }
   return kTfLiteOk;

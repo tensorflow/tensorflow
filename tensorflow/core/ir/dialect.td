@@ -172,7 +172,6 @@ def TFGraphDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let hasNonDefaultDestructor = 1;
   let hasOperationInterfaceFallback = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // TFG_DIALECT

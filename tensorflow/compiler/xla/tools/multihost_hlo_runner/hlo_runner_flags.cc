@@ -59,8 +59,8 @@ void MultiHostHloRunnerFlags::AppendFlags(std::vector<tsl::Flag>* flags) {
   flags->emplace_back(
       "hlo_argument_mode", &flag_values_.hlo_argument_mode,
       "Specify how arguments to the HLO module are generated. Accepted values: "
-      "use_device_id_as_input, use_random_inputs, use_shared_random_inputs or "
-      "use_zeros_as_input.");
+      "use_device_id_as_input, use_random_inputs, use_shared_random_inputs, "
+      "use_zeros_as_input or uninitialized.");
   flags->emplace_back("while_execution_count",
                       &flag_values_.while_execution_count,
                       "If set to a positive number, flatten all while loops to "

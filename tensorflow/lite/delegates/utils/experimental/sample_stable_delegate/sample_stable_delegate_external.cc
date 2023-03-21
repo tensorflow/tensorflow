@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/lite/core/shims/c/c_api_types.h"
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_interface.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
@@ -49,12 +49,15 @@ const TfLiteOpaqueDelegatePlugin sample_stable_delegate_plugin = {
     SampleStableDelegateCreateFunc, SampleStableDelegateDestroyFunc,
     SampleStableDelegateErrnoFunc};
 
+const TfLiteStableDelegate sample_stable_delegate = {
+    TFL_STABLE_DELEGATE_ABI_VERSION, tflite::example::kSampleStableDelegateName,
+    tflite::example::kSampleStableDelegateVersion,
+    &sample_stable_delegate_plugin};
+
 }  // namespace
 
 /**
  * A super simple test delegate for testing.
  */
-extern "C" const TfLiteStableDelegate TFL_TheStableDelegate = {
-    TFL_STABLE_DELEGATE_ABI_VERSION, tflite::example::kSampleStableDelegateName,
-    tflite::example::kSampleStableDelegateVersion,
-    &sample_stable_delegate_plugin};
+extern "C" const TfLiteStableDelegate TFL_TheStableDelegate =
+    sample_stable_delegate;

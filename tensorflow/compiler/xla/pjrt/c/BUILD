@@ -21,6 +21,20 @@ cc_library(
     ],
 )
 
+# TODO(269360974): remove this target after pjrt_c_api_client no longer needs
+# to access wrapped objects.
+cc_library(
+    name = "pjrt_c_api_wrapper_impl_header",
+    hdrs = ["pjrt_c_api_wrapper_impl.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
+    ],
+)
+
 cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
@@ -43,6 +57,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -56,9 +71,11 @@ cc_library(
         ":pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -72,6 +89,18 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_c_api_helpers_test",
+    srcs = ["pjrt_c_api_helpers_test.cc"],
+    deps = [
+        ":pjrt_c_api_helpers",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

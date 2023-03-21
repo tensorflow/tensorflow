@@ -71,6 +71,9 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
 RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     RegionBranchOpInterface op);
 
+Type getUnrankedMemrefType(Type ty);
+Type getUnrankedMemrefType(Value v);
+
 namespace detail {
 // An arbitrary deterministic Value order.
 struct ValueComparator {
@@ -107,11 +110,17 @@ struct ValueComparator {
     }
 
     // lhsRegion != rhsRegion, so if we look at their ancestor chain, they
-    // either have different heights or there's a spot where their region
-    // numbers differ.
+    // - have different heights
+    // - or there's a spot where their region numbers differ
+    // - or their parent regions are the same and their parent ops are
+    //   different.
     while (lhsRegion && rhsRegion) {
       if (lhsRegion->getRegionNumber() != rhsRegion->getRegionNumber()) {
         return lhsRegion->getRegionNumber() < rhsRegion->getRegionNumber();
+      }
+      if (lhsRegion->getParentRegion() == rhsRegion->getParentRegion()) {
+        return lhsRegion->getParentOp()->isBeforeInBlock(
+            rhsRegion->getParentOp());
       }
       lhsRegion = lhsRegion->getParentRegion();
       rhsRegion = rhsRegion->getParentRegion();

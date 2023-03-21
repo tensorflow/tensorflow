@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/platform/fingerprint.h"
@@ -93,10 +94,9 @@ class ConstValueNode {
 
 // The representation of tensors transferred to underlying devices and the
 // layout for the tensors.
-class TensorWithLayout {
+class TensorWithLayout
+    : public llvm::RTTIExtends<TensorWithLayout, llvm::RTTIRoot> {
  public:
-  virtual ~TensorWithLayout() = default;
-
   // Gets the layout for the tensors.
   virtual const Layout& layout() const = 0;
 
@@ -112,18 +112,6 @@ class TensorWithLayout {
 
   // Generates a key which can be used for SPMD lowering.
   virtual tensorflow::Fprint128 CacheKey() const = 0;
-
-  // Updates the layout for the tensors.
-  virtual void UpdateLayout(const Layout& new_layout, TF_Status* status) = 0;
-
-  // Updates the local shape and dtype of the tensors.
-  virtual void UpdateShapeAndDType(const TensorShapeProto& shape,
-                                   const DataType& dtype,
-                                   TF_Status* status) = 0;
-
-  // Updates the attributes for the tensors.
-  virtual void UpdateAttrs(const EmbeddingResourceAttrs& attrs,
-                           TF_Status* status) = 0;
 
   // Gets the tensor handle at position `index`. This makes sense only when the
   // implementation owns a list of tensor handles. Otherwise this returns
@@ -150,16 +138,13 @@ class TensorWithLayout {
   // encodes layout & local shape on each device.
   virtual std::vector<int64_t> global_shape() const = 0;
 
-  // Gets the local shape of the tensors.
-  virtual const std::vector<int64_t>& local_shape() const = 0;
-
-  // Gets the resource input attributes for embedding inputs.
-  virtual const std::optional<EmbeddingResourceAttrs>& attrs() const = 0;
-
   // Gets a `ConstValueNode` which can operate on a `NodeDef` representing a
   // small const tensor. If it is not null, it can be used in the SPMD
   // expansion, regardless of which runtime is being used.
   virtual ConstValueNode* const_value_node() const = 0;
+
+  // llvm::RTTIExtends ID.
+  static char ID;  // NOLINT
 };
 
 }  // namespace dtensor

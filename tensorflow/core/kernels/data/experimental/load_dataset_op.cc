@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -50,13 +51,13 @@ namespace experimental {
 /* static */ constexpr const char* const LoadDatasetOp::kReaderFuncOtherArgs;
 /* static */ constexpr const char* const LoadDatasetOp::kReaderFuncTarguments;
 
-class LoadDatasetOp::Dataset : public DatasetBase {
+class LoadDatasetOp::DatasetV1 : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const tstring& path,
-          SnapshotMetadataRecord metadata, const std::string& compression,
-          std::unique_ptr<CapturedFunction> captured_func,
-          const DataTypeVector& output_types,
-          const std::vector<PartialTensorShape>& output_shapes)
+  DatasetV1(OpKernelContext* ctx, const tstring& path,
+            SnapshotMetadataRecord metadata, const std::string& compression,
+            std::unique_ptr<CapturedFunction> captured_func,
+            const DataTypeVector& output_types,
+            const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         captured_func_(std::move(captured_func)),
         compression_(compression),
@@ -81,7 +82,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     return metadata_.num_elements();
   }
 
@@ -130,10 +131,10 @@ class LoadDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  class Iterator : public DatasetIterator<Dataset> {
+  class Iterator : public DatasetIterator<DatasetV1> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+        : DatasetIterator<DatasetV1>(params) {}
 
     ~Iterator() override {
       if (input_) {
@@ -231,6 +232,123 @@ class LoadDatasetOp::Dataset : public DatasetBase {
   const tstring path_;
 };
 
+class LoadDatasetOp::DatasetV2 : public DatasetBase {
+ public:
+  DatasetV2(OpKernelContext* ctx, const tstring& path,
+            DistributedSnapshotMetadata metadata,
+            std::unique_ptr<CapturedFunction> captured_func,
+            const DataTypeVector& output_types,
+            const std::vector<PartialTensorShape>& output_shapes)
+      : DatasetBase(DatasetContext(ctx)),
+        path_(path),
+        metadata_(std::move(metadata)),
+        captured_func_(std::move(captured_func)),
+        output_types_(output_types),
+        output_shapes_(output_shapes) {}
+
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override {
+    return std::make_unique<Iterator>(Iterator::Params{
+        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+  }
+
+  const DataTypeVector& output_dtypes() const override { return output_types_; }
+
+  const std::vector<PartialTensorShape>& output_shapes() const override {
+    return output_shapes_;
+  }
+
+  string DebugString() const override {
+    return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  Status CheckExternalState() const override { return OkStatus(); }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    Node* path_node = nullptr;
+    TF_RETURN_IF_ERROR(b->AddScalar(path_, &path_node));
+
+    std::vector<Node*> reader_func_other_args;
+    DataTypeVector reader_func_other_args_types;
+    TF_RETURN_IF_ERROR(captured_func_->AddToGraph(
+        ctx, b, &reader_func_other_args, &reader_func_other_args_types));
+
+    // Attr: compression
+    AttrValue compression_attr;
+    b->BuildAttrValue(metadata_.compression(), &compression_attr);
+
+    // Attr: reader_func
+    AttrValue reader_func_attr;
+    b->BuildAttrValue(captured_func_->func(), &reader_func_attr);
+
+    AttrValue reader_func_arguments_types_attr;
+    b->BuildAttrValue(reader_func_other_args_types,
+                      &reader_func_arguments_types_attr);
+
+    TF_RETURN_IF_ERROR(b->AddDataset(
+        this, {std::make_pair(0, path_node)},         // Single tensor inputs.
+        {std::make_pair(1, reader_func_other_args)},  // Tensor list inputs.
+        {std::make_pair(kCompression, compression_attr),
+         std::make_pair(kReaderFunc, reader_func_attr),
+         std::make_pair(kReaderFuncTarguments,
+                        reader_func_arguments_types_attr)},  // Attrs
+        output));
+    return OkStatus();
+  }
+
+ private:
+  class Iterator : public DatasetIterator<DatasetV2> {
+   public:
+    explicit Iterator(const Params& params)
+        : DatasetIterator<DatasetV2>(params) {}
+
+    Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func;
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func));
+
+      SnapshotReaderParams params{dataset()->path_, dataset()->metadata_,
+                                  dataset()->output_types_,
+                                  dataset()->output_shapes_, ctx->env()};
+      TF_ASSIGN_OR_RETURN(
+          core::RefCountPtr<DatasetBase> input,
+          MakeSnapshotReaderDataset(params, *instantiated_captured_func, ctx));
+      return input->MakeIterator(ctx, this, prefix(), &input_impl_);
+    }
+
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      mutex_lock l(mu_);
+      return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+    }
+
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      return errors::Unimplemented("Checkpointing is not currently supported.");
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      return errors::Unimplemented("Checkpointing is not currently supported.");
+    }
+
+   private:
+    mutex mu_;
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+  };
+
+  const tstring path_;
+  const DistributedSnapshotMetadata metadata_;
+  const std::unique_ptr<CapturedFunction> captured_func_;
+  const DataTypeVector output_types_;
+  const std::vector<PartialTensorShape> output_shapes_;
+};
+
 LoadDatasetOp::LoadDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kCompression, &compression_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
@@ -248,17 +366,26 @@ void LoadDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
       ctx, CapturedFunction::Create(ctx, func_metadata_, kReaderFuncOtherArgs,
                                     &captured_func));
 
-  bool metadata_file_exists;
-  experimental::SnapshotMetadataRecord metadata;
-  OP_REQUIRES_OK(ctx, snapshot_util::ReadMetadataFile(
-                          ctx->env(), path, &metadata, &metadata_file_exists));
+  experimental::DistributedSnapshotMetadata distributed_metadata;
+  if (Status s = ReadTextProto(ctx->env(), SnapshotMetadataFilePath(path),
+                               &distributed_metadata);
+      s.ok()) {
+    *output =
+        new DatasetV2(ctx, path, std::move(distributed_metadata),
+                      std::move(captured_func), output_types_, output_shapes_);
+    return;
+  }
 
+  bool metadata_file_exists;
+  experimental::SnapshotMetadataRecord nondistributed_metadata;
+  OP_REQUIRES_OK(ctx, snapshot_util::ReadMetadataFile(ctx->env(), path,
+                                                      &nondistributed_metadata,
+                                                      &metadata_file_exists));
   OP_REQUIRES(ctx, metadata_file_exists,
               errors::NotFound("Could not find metadata file [", path, "]"));
-
   *output =
-      new Dataset(ctx, path, std::move(metadata), compression_,
-                  std::move(captured_func), output_types_, output_shapes_);
+      new DatasetV1(ctx, path, std::move(nondistributed_metadata), compression_,
+                    std::move(captured_func), output_types_, output_shapes_);
 }
 
 namespace {

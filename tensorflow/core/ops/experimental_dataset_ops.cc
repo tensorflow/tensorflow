@@ -481,8 +481,6 @@ REGISTER_OP("GetElementAtIndex")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
-                                                           "output_types"))
     .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("ExperimentalGroupByWindowDataset")

@@ -1,5 +1,6 @@
 """Definitions for targets that use the TFLite shims."""
 
+load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_copts_warnings",
@@ -7,6 +8,7 @@ load(
     "tflite_jni_binary",
 )
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def _concat(lists):
     """Concatenate a list of lists, without requiring the inner lists to be iterable.
@@ -142,10 +144,64 @@ def cc_library_with_tflite(
             name = name + "_opaque_delegate",
             srcs = srcs + tflite_jni_binaries,
             deps = deps + tflite_deps_renamed + _concat([select(map) for map in tflite_deps_selects_renamed]) + [
-                "//tensorflow/lite/core/shims:tflite_use_opaque_delegate",
+                clean_dep("//tensorflow/lite/core/shims:tflite_use_opaque_delegate"),
             ],
             **kwargs
         )
+
+def _label(target):
+    """Return a Label <https://bazel.build/rules/lib/Label#Label> given a string.
+
+    Args:
+      target: (string) a relative or absolute build target.
+    """
+    if target[0:2] == "//":
+        return Label(target)
+    if target[0] == ":":
+        return Label("//" + native.package_name() + target)
+    return Label("//" + native.package_name() + ":" + target)
+
+def cc_library_with_tflite_with_c_headers_test(name, hdrs, **kwargs):
+    """Defines a C++ library with C-compatible header files.
+
+    This generates a cc_library rule, but also generates
+    build tests that verify that each of the 'hdrs'
+    can be successfully built in a C (not C++!) compilation unit
+    that directly includes only that header file.
+
+    Args:
+      name: (string) as per cc_library.
+      hdrs: (list of string) as per cc_library.
+      **kwargs: Additional kwargs to pass to cc_library.
+    """
+    cc_library_with_tflite(name = name, hdrs = hdrs, **kwargs)
+
+    build_tests = []
+    for hdr in hdrs:
+        label = _label(hdr)
+        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        native.genrule(
+            name = "%s_gen" % basename,
+            outs = ["%s.c" % basename],
+            cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
+            visibility = ["//visibility:private"],
+            testonly = True,
+        )
+        cc_library_with_tflite(
+            name = "%s_lib" % basename,
+            srcs = ["%s.c" % basename],
+            deps = [":" + name],
+            copts = kwargs.get("copts", []),
+            visibility = ["//visibility:private"],
+            testonly = True,
+            tags = ["allow_undefined_symbols"],
+        )
+        build_test(
+            name = "%s_build_test" % basename,
+            visibility = ["//visibility:private"],
+            targets = ["%s_lib" % basename],
+        )
+        build_tests.append("%s_build_test" % basename)
 
 def cc_library_with_stable_tflite_abi(
         deps = [],
@@ -209,7 +265,7 @@ def java_library_with_tflite(
         exports = [],
         tflite_exports = [],
         **kwargs):
-    """Defines an java_library that uses the TFLite shims.
+    """Defines a java_library that uses the TFLite shims.
 
     This is a hook to allow applying different build flags (etc.)
     for targets that use the TFLite shims.
@@ -247,7 +303,7 @@ def java_test_with_tflite(
         tflite_deps = [],
         tflite_jni_binaries = [],
         **kwargs):
-    """Defines an java_library that uses the TFLite shims.
+    """Defines a java_library that uses the TFLite shims.
 
     This is a hook to allow applying different build flags (etc.)
     for targets that use the TFLite shims.
@@ -328,13 +384,13 @@ def custom_c_library_with_tflite(
 
     if experimental:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
-            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
-            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_experimental.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_opaque.h"),
         ]
     else:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
         ]
 
     cc_library_with_tflite(

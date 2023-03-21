@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -131,23 +132,6 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
   return ChooseFusionKind(*producer, *consumer);
-}
-
-std::vector<HloComputation*> GpuInstructionFusion::GetFusionComputations(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  std::vector<HloComputation*> computations =
-      InstructionFusion::GetFusionComputations(module, execution_threads);
-  computations.erase(
-      std::remove_if(
-          computations.begin(), computations.end(),
-          [](const HloComputation* c) {
-            return c->IsCustomCallComputation() &&
-                   (IsSoftmaxCustomCall(*c->CustomCallInstruction()) ||
-                    IsTritonCustomCall(*c->CustomCallInstruction()));
-          }),
-      computations.end());
-  return computations;
 }
 
 HloInstruction* GpuInstructionFusion::FuseInstruction(

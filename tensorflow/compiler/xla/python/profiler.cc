@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"

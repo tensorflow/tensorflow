@@ -7,6 +7,7 @@ package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
+        "//tensorflow_estimator:__subpackages__",
         "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],
@@ -148,8 +149,6 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
-        "noasan",  # b/144707533
-        "notsan",  # b/160824139
     ],
     deps = [
         ":convert",
@@ -329,13 +328,13 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

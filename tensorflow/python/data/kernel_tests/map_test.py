@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
@@ -44,7 +45,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
@@ -629,7 +631,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -640,7 +642,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -673,7 +675,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), divide),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -703,7 +705,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -714,7 +716,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     row = np.arange(6)
@@ -1337,6 +1339,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
     # Tensors of size 512M.
     dataset = from_list.from_list(
         [

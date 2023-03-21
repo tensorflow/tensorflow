@@ -42,6 +42,22 @@ ops = xla_client.ops
 xla_computation_to_mlir_module = (
     xla_client._xla.mlir.xla_computation_to_mlir_module)
 
+
+# pylint: disable=invalid-name
+def jax_array_convert_to_array(self):
+  return self._single_device_array_to_np_array()
+
+
+def jax_array_device(self):
+  return self._sharding._device
+
+
+Array = xla_client.ArrayImpl
+Array.__array__ = jax_array_convert_to_array
+Array.device = jax_array_device
+# pylint: enable=invalid-name
+
+
 FLAGS = flags.FLAGS
 
 # We choose to ignore pylint's complaints about complex comprehensions, which we
@@ -1714,6 +1730,18 @@ def TestFactory(xla_backend,
       expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
       np.testing.assert_allclose(g, expected, rtol=1e-4)
 
+    def testAllGather(self):
+      a = np.arange(9).astype(np.int32).reshape((3, 3))
+      c = self._NewComputation()
+      ops.AllGather(
+          operand=ops.Constant(c, a),
+          all_gather_dimension=0,
+          shard_count=1,
+          replica_groups=xla_client.make_replica_groups([[0]]),
+          use_global_device_ids=False)
+      [g] = self._Execute(c, ())
+      np.testing.assert_equal(g, a)
+
     def testFft(self):
       if self.backend.platform == "tpu":
         self.skipTest("TPU only supports 1D FFT")
@@ -2929,14 +2957,18 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
+      self.assertIsInstance(
+          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
+      )
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens([])
       self.assertLen(results, 1)
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
+      self.assertIsInstance(
+          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
+      )
 
     def testExecuteShardedOverloadBufferInput(self):
       arg = np.arange(12, dtype=np.int16).reshape(3, 4)
@@ -2955,7 +2987,9 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
+      self.assertIsInstance(
+          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
+      )
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
           [[buffer]])
@@ -2963,31 +2997,9 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(results[0][0], xla_client.Buffer)
-
-    def testExecuteShardedOverloadShardedBufferInput(self):
-      arg = np.arange(12, dtype=np.int16).reshape(3, 4)
-      c = self._NewComputation()
-      ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
-
-      options = xla_client.CompileOptions()
-      options.num_replicas = 1
-      compiled_c = self.backend.compile(
-          xla_computation_to_mlir_module(c.build()), compile_options=options)
-
-      sharded_buffer = xla_client.ShardedBuffer.create_sharded_buffer(
-          [self.backend.buffer_from_pyval(arg)])
-
-      results = compiled_c.execute_sharded_on_local_devices([sharded_buffer])
-      self.assertLen(results, 1)
-      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
-      results[0].block_until_ready()
-
-      results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
-          [sharded_buffer])
-      self.assertLen(results, 1)
-      self.assertIsInstance(results[0], xla_client.ShardedBuffer)
-      results[0].block_until_ready()
+      self.assertIsInstance(
+          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
+      )
 
   tests.append(ExecuteShardedOverloadTest)
 

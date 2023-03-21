@@ -335,6 +335,11 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
   auto hardware_cluster_ids_fb =
       builder.CreateVector<int32_t>(hardware_cluster_ids_std);
 
+  Offset<String> public_model_id = 0;
+  if (settings.has_public_model_id()) {
+    public_model_id = builder.CreateString(settings.public_model_id());
+  }
+
   return CreateEdgeTpuSettings(
       builder, ConvertEdgeTpuPowerState(settings.inference_power_state()),
       inactive_power_configs, settings.inference_priority(),
@@ -342,7 +347,7 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
       static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
           settings.float_truncation_type()),
       static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()),
-      hardware_cluster_ids_fb);
+      hardware_cluster_ids_fb, public_model_id);
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
@@ -403,6 +408,13 @@ Offset<MinibenchmarkSettings> ConvertMinibenchmarkSettings(
       builder, settings_to_test,
       ConvertModelFile(settings.model_file(), builder),
       ConvertBenchmarkStoragePaths(settings.storage_paths(), builder));
+}
+
+const TFLiteSettings* ConvertFromProto(
+    const proto::TFLiteSettings& proto_settings, FlatBufferBuilder* builder) {
+  Offset<TFLiteSettings> settings =
+      ConvertTfliteSettings(proto_settings, *builder);
+  return flatbuffers::GetTemporaryPointer(*builder, settings);
 }
 
 const ComputeSettings* ConvertFromProto(

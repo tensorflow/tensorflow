@@ -916,6 +916,7 @@ cc_library(
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1346,6 +1347,7 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1847,8 +1849,24 @@ tf_proto_library(
 tf_cc_fuzz_test(
     name = "tensor_shape_fuzz",
     srcs = ["tensor_shape_fuzz.cc"],
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tensor_fuzz",
+    srcs = ["tensor_fuzz.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":tensor_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
         "//tensorflow/tsl/lib/core:status_test_util",
     ],

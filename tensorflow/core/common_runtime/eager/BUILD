@@ -158,6 +158,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
+            "//tensorflow/core/framework:full_type_proto_cc",
             "//tensorflow/core:lib",
             "//tensorflow/c/eager:immediate_execution_context",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
@@ -181,6 +182,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:full_type_proto_cc",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/ops:resource_variable_ops_op_lib",
     ],
@@ -577,10 +579,13 @@ tf_cc_test(
     deps = [
         ":core",
         ":execute",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/lib/monitoring:cell_reader",
     ],
 )
 

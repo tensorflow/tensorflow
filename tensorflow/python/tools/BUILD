@@ -332,6 +332,7 @@ py_library(
         ":saved_model_utils",
         "@absl_py//absl/flags:argparse_flags",
         "//tensorflow/python",
+        "//tensorflow/python/client:session",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
     ] + if_google([
         "//tensorflow/core/tfrt/tfrt_session",
@@ -359,9 +360,6 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "noasan",  # asan disabled in b/222716501.
-    ],
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",

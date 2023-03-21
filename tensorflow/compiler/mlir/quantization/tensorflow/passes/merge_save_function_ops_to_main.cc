@@ -18,6 +18,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -33,17 +35,7 @@ using ::mlir::tf_executor::IslandOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
 
-// Name of the `IdentityOp` that outputs the checkpoint file prefix tensor. It
-// the op should also have control dependency to the `SaveV2Op` so that fetching
-// this op within the TensorFlow session will save the tensor values of the
-// variables.
-constexpr StringRef kTfQuantSaveOpName = "tf_quant__save_op";
-
 constexpr StringRef kTfEntryFunctionAttr = "tf.entry_function";
-
-// Name identifying that an argument accepts a file prefix string tensor, which
-// is the path to the checkpoint where the tensor values are saved.
-constexpr StringRef kTfFilePrefix = "__tf_file_prefix";
 
 class MergeSaveFunctionOpsToMainPass
     : public PassWrapper<MergeSaveFunctionOpsToMainPass,
@@ -101,7 +93,7 @@ func::FuncOp GetMainFunction(ModuleOp module_op) {
 
 func::FuncOp GetSaveFuncOp(ModuleOp module_op) {
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    if (func_op.getSymName() == "tf_quant__save") return func_op;
+    if (func_op.getSymName() == kTfQuantSaveFuncName) return func_op;
   }
 
   return nullptr;
@@ -145,8 +137,10 @@ BlockArgument CreateFilePrefixArg(func::FuncOp main_func_op) {
   for (NamedAttribute entry_function_attr_item : entry_function_attr) {
     if (entry_function_attr_item.getName() == "inputs") {
       auto inputs_attr = entry_function_attr_item.getValue().cast<StringAttr>();
-      auto new_inputs_value_attr =
-          Twine(inputs_attr.getValue()).concat("__tf_file_prefix:0");
+      const auto new_inputs_value_attr = Twine(inputs_attr.getValue())
+                                             .concat(kTfFilePrefix)
+                                             .concat(":0")
+                                             .str();
       new_entry_function_attr_items.emplace_back(
           builder.getNamedAttr(builder.getStringAttr("inputs"),
                                builder.getStringAttr(new_inputs_value_attr)));

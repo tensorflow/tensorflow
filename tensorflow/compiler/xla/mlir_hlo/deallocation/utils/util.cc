@@ -80,8 +80,11 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
                                  op->getOperands()[1], op->getOperands()[2],
                                  op->getOperands().drop_front(3));
   } else if (llvm::isa<scf::WhileOp>(op)) {
-    newOp = b.create<scf::WhileOp>(op.getLoc(), TypeRange{op->getOperands()},
-                                   op->getOperands());
+    newOp = b.create<scf::WhileOp>(
+        op.getLoc(),
+        TypeRange{op->getRegion(0).front().getTerminator()->getOperands()}
+            .drop_front(),
+        op->getOperands());
   } else if (llvm::isa<scf::IfOp>(op)) {
     newOp = b.create<scf::IfOp>(
         op.getLoc(),
@@ -91,12 +94,26 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     llvm_unreachable("unsupported");
   }
 
+  newOp->setAttrs(op->getAttrs());
   for (auto [oldRegion, newRegion] :
        llvm::zip(op->getRegions(), newOp->getRegions())) {
     newRegion.takeBody(oldRegion);
   }
 
   return newOp;
+}
+
+Type getUnrankedMemrefType(Type ty) {
+  if (ty.isa<UnrankedMemRefType>()) {
+    return ty;
+  }
+  MemRefType memRefTy = llvm::cast<MemRefType>(ty);
+  return UnrankedMemRefType::get(memRefTy.getElementType(),
+                                 memRefTy.getMemorySpace());
+}
+
+Type getUnrankedMemrefType(Value v) {
+  return getUnrankedMemrefType(v.getType());
 }
 
 }  // namespace deallocation

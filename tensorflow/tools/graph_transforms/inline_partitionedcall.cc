@@ -64,12 +64,12 @@ Status InlinePartitionedCall(const GraphDef& input_graph_def,
     if (node.op() == kPartitionedCallOpName) {
       if (node.attr().count(kFunctionAttrName) == 0) {
         return Status(
-            error::Code::NOT_FOUND,
+            absl::StatusCode::kNotFound,
             "Node " + node.name() + " has no attribute: " + kFunctionAttrName);
       }
 
       if (!node.attr().at(kFunctionAttrName).has_func()) {
-        return Status(error::Code::NOT_FOUND,
+        return Status(absl::StatusCode::kNotFound,
                       "Cannot figure out function name");
       }
       const std::string function_name =
@@ -77,7 +77,7 @@ Status InlinePartitionedCall(const GraphDef& input_graph_def,
       absl::optional<FunctionDef> function =
           GetFunctionByNameFromLibrary(input_graph_def, function_name);
       if (!function.has_value()) {
-        return Status(error::Code::NOT_FOUND,
+        return Status(absl::StatusCode::kNotFound,
                       "function " + function_name + " Not found");
       }
 
@@ -96,7 +96,7 @@ Status InlinePartitionedCall(const GraphDef& input_graph_def,
 
       const int kInputArgumentCount = function->signature().input_arg().size();
       if (node.input().size() != kInputArgumentCount) {
-        return Status(error::Code::INVALID_ARGUMENT,
+        return Status(absl::StatusCode::kInvalidArgument,
                       "Called function  " + function_name +
                           " has invalid input signature.");
       }

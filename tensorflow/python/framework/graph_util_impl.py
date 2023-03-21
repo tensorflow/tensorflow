@@ -24,15 +24,9 @@ from tensorflow.python.framework import _proto_comparators
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
 tf_export(v1=["GraphDef"])(graph_pb2.GraphDef)
-
-# A normal import here would generate circular dependencies.
-convert_to_constants = lazy_loader.LazyLoader(
-    "convert_to_constants", globals(),
-    "tensorflow.python.framework.convert_to_constants")
 
 _VARIABLE_OPS = {
     "Assign",
@@ -280,48 +274,6 @@ def tensor_shape_from_node_def_name(graph, input_name):
   tensor = graph.get_tensor_by_name(canonical_name)
   shape = tensor.get_shape()
   return shape
-
-
-# TODO(b/266958376): Remove once all references to this are moved to
-# convert_variables_to_constants.
-@deprecation.deprecated(
-    date=None,
-    instructions=_DEPRECATION_MSG)
-def convert_variables_to_constants(sess,
-                                   input_graph_def,
-                                   output_node_names,
-                                   variable_names_whitelist=None,
-                                   variable_names_blacklist=None):
-  """Replaces all the variables in a graph with constants of the same values.
-
-  If you have a trained graph containing Variable ops, it can be convenient to
-  convert them all to Const ops holding the same values. This makes it possible
-  to describe the network fully with a single GraphDef file, and allows the
-  removal of a lot of ops related to loading and saving the variables.
-
-  Args:
-    sess: Active TensorFlow session containing the variables.
-    input_graph_def: GraphDef object holding the network.
-    output_node_names: List of name strings for the result nodes of the graph.
-    variable_names_whitelist: The set of variable names to convert (by default,
-                              all variables are converted).
-    variable_names_blacklist: The set of variable names to omit converting
-                              to constants.
-
-  Returns:
-    GraphDef containing a simplified version of the original.
-
-  Raises:
-    RuntimeError: if a DT_RESOURCE op is found whose ancestor Variables are both
-      denylisted AND whitelisted for freezing.
-  """
-  return convert_to_constants.convert_variables_to_constants(
-      sess,
-      input_graph_def,
-      output_node_names,
-      variable_names_whitelist,
-      variable_names_blacklist,
-  )
 
 
 @deprecation.deprecated(

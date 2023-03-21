@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 
+#include <optional>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -42,15 +44,15 @@ CoreRTConverter::CoreRTConverter(
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::corert::OpHandlerType type) { return type; });
   addConversion([](tfrt::corert::TensorHandleType type) { return type; });
-  addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
     if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
-      return llvm::None;
+      return std::nullopt;
     return tensor_handle_type();
   });
-  addConversion([=](mlir::Type type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::Type type) -> std::optional<mlir::Type> {
     if (type == builder_.getI1Type()) return type;
-    return llvm::None;
+    return std::nullopt;
   });
 }
 
@@ -90,12 +92,12 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
 }
 
 // TODO(chky): Add support for multiple device instances.
-llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
+std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
     llvm::StringRef device_name) const {
   std::string tf_device_name = device_name.str();
 
   if (tf_device_name.empty()) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   ParseDeviceNameResult result;
@@ -104,10 +106,10 @@ llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
   // Parse the device name in format of the current tensorflow.
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(result.device_name, &parsed_name)) {
-    return llvm::None;
+    return std::nullopt;
   }
   if (!parsed_name.has_type) {
-    return llvm::None;
+    return std::nullopt;
   }
   result.device_type = parsed_name.type;
 
@@ -116,11 +118,11 @@ llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
   return result;
 }
 
-llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
+std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
     mlir::Operation *op) const {
   auto device_attr = op->getAttr("device");
   if (!device_attr) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto parsed_device_name =

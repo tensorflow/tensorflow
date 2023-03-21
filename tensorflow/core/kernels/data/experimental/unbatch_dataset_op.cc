@@ -80,8 +80,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
-    int64_t CardinalityInternal() const override {
-      int64_t n = input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      int64_t n = input_->Cardinality(options);
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }

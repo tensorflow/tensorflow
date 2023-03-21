@@ -20,11 +20,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -66,6 +68,44 @@ class PyShardedToken {
  private:
   std::vector<PjRtFuture<Status>> futures_;
 };
+
+class PyExecuteResults {
+ public:
+  PyExecuteResults(const std::shared_ptr<PyClient>& client,
+                   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
+                   int num_computations, PyShardedToken token);
+
+  std::vector<std::vector<PyArray>> DisassembleIntoSingleDeviceArrays();
+
+  std::vector<std::vector<PyArray>> DisassemblePrefixIntoSingleDeviceArrays(
+      size_t n);
+
+  std::vector<pybind11::object> ConsumeWithHandlers(
+      std::vector<std::variant<const PyArrayResultHandler*, pybind11::object>>
+          out_handlers);
+
+  std::vector<tsl::RCReference<ifrt::Array>> Consume();
+
+  PyShardedToken ConsumeToken();
+
+  size_t Size() const {
+    CheckNotDisassembled();
+    return ifrt_arrays_.size();
+  }
+
+  void CheckNotDisassembled() const;
+
+ private:
+  bool is_exploded_ = false;
+  bool token_consumed_ = false;
+  std::shared_ptr<PyClient> client_;
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays_;
+  int num_computations_;
+  PyShardedToken token_;
+};
+
+using ExecuteShardedArg =
+    std::variant<PyArray, std::vector<std::variant<PyBuffer::object, PyArray>>>;
 
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
@@ -118,21 +158,15 @@ class PyLoadedExecutable
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
   // args is [num_args x num_devices].
-  StatusOr<std::vector<std::vector<PyBuffer::object>>>
-  ExecuteShardedOnLocalDevices(
-      absl::Span<const std::vector<PyBuffer::object>> args);
+  StatusOr<std::vector<std::vector<PyArray>>> ExecuteShardedOnLocalDevices(
+      absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<
-      std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
+  StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<const std::vector<PyBuffer::object>> args);
+      absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<std::vector<PyShardedBuffer>> ExecuteShardedOnLocalDevices(
-      absl::Span<PyShardedBuffer* const> args);
-
-  StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
-  ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<PyShardedBuffer* const> args);
+  StatusOr<PyExecuteResults> ExecuteSharded(std::vector<ExecuteShardedArg> args,
+                                            bool with_tokens);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 

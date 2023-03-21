@@ -117,10 +117,6 @@ std::string DatasetsDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kDatasetsDir);
 }
 
-std::string DatasetKey(const std::string& dataset_id, uint64 fingerprint) {
-  return absl::StrCat("id_", dataset_id, "_fp_", fingerprint);
-}
-
 Status CreateWorkerStub(const std::string& address, const std::string& protocol,
                         std::unique_ptr<WorkerService::Stub>& stub) {
   ::grpc::ChannelArguments args;
@@ -371,8 +367,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(state_.ValidateWorker(worker_address));
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
-    update.mutable_register_worker()->set_transfer_address(
-        request->transfer_address());
+    *update.mutable_register_worker()->mutable_transfer_servers() =
+        request->transfer_servers();
     *update.mutable_register_worker()->mutable_worker_tags() =
         request->worker_tags();
     update.mutable_register_worker()->set_worker_uid(request->worker_uid());
@@ -501,46 +497,35 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  uint64 fingerprint;
   DatasetDef dataset_def = request->dataset();
   GraphDef* graph = dataset_def.mutable_graph();
   PrepareGraph(graph);
-  TF_RETURN_IF_ERROR(HashGraph(*graph, &fingerprint));
   VLogLines(/*log_level=*/4,
             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 
   mutex_lock l(mu_);
   TF_ASSIGN_OR_RETURN(std::optional<std::string> dataset_id,
-                      FindDataset(*request, fingerprint));
+                      FindDataset(*request));
   if (dataset_id.has_value()) {
     VLOG(3) << "RegisterDataset returns an existing dataset with ID = "
-            << *dataset_id << ", fingerprint = " << fingerprint << ".";
+            << *dataset_id;
     response->set_dataset_id(*dataset_id);
     return OkStatus();
   }
 
   std::string new_dataset_id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def,
-                                     request->metadata(), request->dataset_id(),
-                                     new_dataset_id));
+  TF_RETURN_IF_ERROR(RegisterDataset(dataset_def, request->metadata(),
+                                     request->dataset_id(), new_dataset_id));
   response->set_dataset_id(new_dataset_id);
   VLOG(3) << "Registered new dataset with id " << new_dataset_id;
   return OkStatus();
 }
 
 StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
-    const GetOrRegisterDatasetRequest& request, uint64 fingerprint)
+    const GetOrRegisterDatasetRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> existing_dataset;
-  Status status;
-  // TODO(b/236725000): Stop supporting fingerprint-based deduping. This becomes
-  // unreliable due to nondeterminism in the dataset graphdef generation. The
-  // users should provide a `dataset_id` to dedupe the dataset instead.
-  if (request.dataset_id().empty()) {
-    status = state_.DatasetFromFingerprint(fingerprint, existing_dataset);
-  } else {
-    status = state_.DatasetFromId(request.dataset_id(), existing_dataset);
-  }
+  Status status = state_.DatasetFromId(request.dataset_id(), existing_dataset);
 
   if (errors::IsNotFound(status)) {
     return std::optional<std::string>();
@@ -554,8 +539,7 @@ StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
 }
 
 Status DataServiceDispatcherImpl::RegisterDataset(
-    uint64 fingerprint, const DatasetDef& dataset,
-    const DataServiceMetadata& metadata,
+    const DatasetDef& dataset, const DataServiceMetadata& metadata,
     const std::string& requested_dataset_id, std::string& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = requested_dataset_id;
@@ -565,11 +549,8 @@ Status DataServiceDispatcherImpl::RegisterDataset(
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
-  register_dataset->set_fingerprint(fingerprint);
   *register_dataset->mutable_metadata() = metadata;
-  register_dataset->set_dedupe_by_dataset_id(!requested_dataset_id.empty());
-  TF_RETURN_IF_ERROR(
-      dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
+  TF_RETURN_IF_ERROR(dataset_store_->Put(dataset_id, dataset));
   return Apply(update);
 }
 
@@ -860,7 +841,8 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
                                   1);
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
-  create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_transfer_servers() = {worker->transfer_servers.begin(),
+                                              worker->transfer_servers.end()};
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
   create_task->set_worker_uid(worker->uid);
@@ -880,7 +862,8 @@ Status DataServiceDispatcherImpl::CreateTask(
   create_task->set_worker_address(worker_address);
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
-  create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_transfer_servers() = {worker->transfer_servers.begin(),
+                                              worker->transfer_servers.end()};
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
   create_task->set_worker_uid(worker->uid);
@@ -1032,7 +1015,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
-    task_info->set_transfer_address(task->transfer_address);
+    *task_info->mutable_transfer_servers() = {task->transfer_servers.begin(),
+                                              task->transfer_servers.end()};
     *task_info->mutable_worker_tags() = {task->worker_tags.begin(),
                                          task->worker_tags.end()};
     task_info->set_task_id(task->task_id);
@@ -1144,15 +1128,13 @@ Status DataServiceDispatcherImpl::PopulateTaskDef(
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(
       state_.DatasetFromId(task->iteration->job->dataset_id, dataset));
-  std::string dataset_key =
-      DatasetKey(dataset->dataset_id, dataset->fingerprint);
   if (config_.work_dir().empty()) {
     std::shared_ptr<const DatasetDef> dataset_def;
-    TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+    TF_RETURN_IF_ERROR(dataset_store_->Get(dataset->dataset_id, dataset_def));
     *task_def->mutable_dataset_def() = *dataset_def;
   } else {
     std::string path =
-        io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+        io::JoinPath(DatasetsDir(config_.work_dir()), dataset->dataset_id);
     task_def->set_path(path);
   }
   return OkStatus();
@@ -1296,8 +1278,7 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 Status DataServiceDispatcherImpl::GetDatasetDef(
     const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
-  return dataset_store_->Get(key, dataset_def);
+  return dataset_store_->Get(dataset.dataset_id, dataset_def);
 }
 
 DispatcherStateExport DataServiceDispatcherImpl::ExportState() const

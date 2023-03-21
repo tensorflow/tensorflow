@@ -122,15 +122,12 @@ class AvgPoolingOp : public UnaryOp<T> {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<double>("T"),
-    AvgPoolingOp<CPUDevice, double>);
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    AvgPoolingOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
-    AvgPoolingOp<CPUDevice, Eigen::half>);
+#define REGISTER_CPU_KERNEL_AVGPOOL(T)                           \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      AvgPoolingOp<CPUDevice, T>);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNEL_AVGPOOL);
+#undef REGISTER_CPU_KERNEL_AVGPOOL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
@@ -239,25 +236,16 @@ namespace functor {
       const Eigen::PaddingType& padding);                        \
   extern template struct SpatialAvgPooling<GPUDevice, T>;
 
-DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(Eigen::bfloat16);
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(double);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
-    AvgPoolingOp<GPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<Eigen::bfloat16>("T"),
-    AvgPoolingOp<GPUDevice, Eigen::bfloat16>);
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    AvgPoolingOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<double>("T"),
-    AvgPoolingOp<GPUDevice, double>);
+#define REGISTER_GPU_KERNEL_AVGPOOL(T)                           \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      AvgPoolingOp<GPUDevice, T>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL_AVGPOOL)
+#undef REGISTER_GPU_KERNEL_AVGPOOL
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // The operation to compute AvgPool gradients.
@@ -360,6 +348,16 @@ class AvgPoolingGradOp : public OpKernel {
         OP_REQUIRES_OK(context,
                        GetBroadcastSize(c, in_cols, window_cols, col_stride,
                                         pad_cols, &cindex, &csize));
+        int64_t input_max =
+            ((out_backprop_batch - 1) * in_rows + rindex + rsize - 1) *
+                in_cols +
+            cindex + csize - 1;
+        OP_REQUIRES(
+            context, input_max < output->NumElements(),
+            errors::InvalidArgument("Output only has ", output->NumElements(),
+                                    " elements but computation requested would "
+                                    "use element with index=",
+                                    input_max));
       }
     }
 
@@ -427,16 +425,14 @@ class AvgPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#define REGISTER_CPU_KERNEL(T)                                 \
+#define REGISTER_CPU_KERNEL_AVGPOOLGRAD(T)                     \
   REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                  \
                               .Device(DEVICE_CPU)              \
                               .TypeConstraint<T>("T")          \
                               .HostMemory("orig_input_shape"), \
                           AvgPoolingGradOp<CPUDevice, T>);
-
-TF_CALL_float(REGISTER_CPU_KERNEL);
-TF_CALL_double(REGISTER_CPU_KERNEL);
-TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNEL_AVGPOOLGRAD);
+#undef REGISTER_CPU_KERNEL_AVGPOOLGRAD
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -653,26 +649,14 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOpCustomGPUKernel<float>);
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<double>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOpCustomGPUKernel<double>);
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::half>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOpCustomGPUKernel<Eigen::half>);
-REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::bfloat16>("T")
-                            .HostMemory("orig_input_shape"),
-                        AvgPoolingGradOpCustomGPUKernel<Eigen::bfloat16>);
+#define REGISTER_GPU_KERNEL_AVGPOOLGRAD(T)                     \
+  REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                  \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .HostMemory("orig_input_shape"), \
+                          AvgPoolingGradOpCustomGPUKernel<T>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL_AVGPOOLGRAD);
+#undef REGISTER_GPU_KERNEL_AVGPOOLGRAD
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

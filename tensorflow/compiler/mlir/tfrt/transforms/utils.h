@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 
@@ -35,6 +36,10 @@ bool IsResultVariable(const mlir::Value &original_operand,
 std::optional<std::string> CanonicalizeTensorflowFunctionName(
     const mlir::SymbolTable &symbol_table, absl::string_view mlir_func_name,
     bool use_mlir_func_name = false);
+
+// Returns true if the function is a session initializer in tf_saved_model
+// dialect.
+bool IsSessionInitializer(mlir::func::FuncOp op);
 
 }  // namespace tensorflow
 

@@ -1095,7 +1095,7 @@ std::string ElementwiseOperationString(ElementwiseOperation op);
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
-  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+  explicit VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
   explicit VersionInfo(DnnVersionInfoProto proto)
       : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
@@ -1111,6 +1111,29 @@ class VersionInfo {
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
+
+  std::tuple<int, int, int> as_tuple() const {
+    return std::make_tuple(major_, minor_, patch_);
+  }
+
+  friend bool operator<(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() < b.as_tuple();
+  }
+  friend bool operator>(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() > b.as_tuple();
+  }
+  friend bool operator<=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() <= b.as_tuple();
+  }
+  friend bool operator>=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() >= b.as_tuple();
+  }
+  friend bool operator==(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() == b.as_tuple();
+  }
+  friend bool operator!=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() != b.as_tuple();
+  }
 
  private:
   int major_;
@@ -2120,7 +2143,7 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64_t seed,
                       ScratchAllocator* state_allocator, bool use_padded_io) {
-    return tsl::Status(tsl::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "createRnnDescriptor is unimplemented");
   }
 
@@ -2136,7 +2159,7 @@ class DnnSupport {
   virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return tsl::Status(tsl::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
@@ -2145,7 +2168,7 @@ class DnnSupport {
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major, dnn::DataType data_type) {
-    return tsl::Status(tsl::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
@@ -2154,7 +2177,7 @@ class DnnSupport {
   virtual tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return tsl::Status(tsl::error::UNIMPLEMENTED,
+    return tsl::Status(absl::StatusCode::kUnimplemented,
                        "createRnnStateTensorDescriptor is unimplemented");
   }
 

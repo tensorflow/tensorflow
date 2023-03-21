@@ -23,7 +23,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import subscribe
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
@@ -348,7 +348,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     x1 = math_ops.add(c1, c2)
     x2 = math_ops.multiply(c1, c2)
 
-    cond = control_flow_ops.cond(
+    cond = tf_cond.cond(
         x1 < x2,
         lambda: math_ops.add(c1, c2, name='then'),
         lambda: math_ops.subtract(c1, c2, name='else'),

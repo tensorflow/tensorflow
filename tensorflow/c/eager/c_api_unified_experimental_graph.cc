@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -79,6 +81,17 @@ class GraphTensor : public TracingTensorHandle {
     TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
 
     return OkStatus();
+  }
+
+  tensorflow::FullTypeDef FullType() const override {
+    const FullTypeDef* ft;
+    mutex_lock l(graph_->mu);
+    graph_->graph.NodeType(output_.oper->node.name(), &ft);
+    if (ft == nullptr) {
+      return FullTypeDef();
+    } else {
+      return *ft;
+    }
   }
 
   TF_Output output_;
@@ -192,7 +205,7 @@ class GraphOperation : public TracingOperation {
   Status SetAttrType(const char* const attr_name, DataType value) override {
     if (!op_) {
       return Status(
-          error::Code::FAILED_PRECONDITION,
+          absl::StatusCode::kFailedPrecondition,
           "op_type and op_name must be specified before specifying attrs.");
     }
     op_->node_builder.Attr(attr_name, value);

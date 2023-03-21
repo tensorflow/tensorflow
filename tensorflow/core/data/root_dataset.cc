@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -47,6 +48,7 @@ constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr char kRamBudget[] = "ram_budget_megabytes";
 constexpr char kRamUsage[] = "ram_usage_megabytes";
 constexpr char kMaxBufferBytes[] = "max_buffered_megabytes";
+constexpr char kWarmStart[] = "warm_start";
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
 inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
@@ -83,7 +85,7 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   }
 }
 
-void AddTraceMetadata(const RootDataset::Params& params,
+void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
                       TraceMeMetadata* trace_metadata) {
   if (params.autotune) {
     trace_metadata->push_back(std::make_pair(
@@ -115,6 +117,9 @@ void AddTraceMetadata(const RootDataset::Params& params,
     trace_metadata->push_back(
         std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
   }
+  trace_metadata->push_back(std::make_pair(
+      kWarmStart,
+      options.optimization_options().warm_start() ? "true" : "false"));
 }
 }  // namespace
 
@@ -307,7 +312,7 @@ RootDataset::RootDataset(const DatasetBase* input, const Params& params)
                                   name_utils::OpName(kDatasetType)})),
       input_(input),
       params_(std::move(params)) {
-  AddTraceMetadata(params_, &traceme_metadata_);
+  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
 RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
@@ -317,7 +322,7 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
       params_(std::move(params)) {
   owned_input_ = std::move(input);
   input_ = owned_input_.get();
-  AddTraceMetadata(params_, &traceme_metadata_);
+  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
 RootDataset::~RootDataset() = default;
@@ -338,10 +343,6 @@ const std::vector<PartialTensorShape>& RootDataset::output_shapes() const {
 
 string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
-}
-
-int64_t RootDataset::CardinalityInternal() const {
-  return input_->Cardinality();
 }
 
 int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {

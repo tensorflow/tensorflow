@@ -26,21 +26,21 @@ TEST(MetricsTest, TestSavedModelWrite) {
   SavedModelWriteApi("foo").IncrementBy(1);
   EXPECT_EQ(SavedModelWriteApi("foo").value(), 1);
 
-  EXPECT_EQ(SavedModelWrite("1").value(), 0);
-  SavedModelWrite("1").IncrementBy(1);
-  EXPECT_EQ(SavedModelWrite("1").value(), 1);
+  EXPECT_EQ(SavedModelWriteCount("1").value(), 0);
+  SavedModelWriteCount("1").IncrementBy(1);
+  EXPECT_EQ(SavedModelWriteCount("1").value(), 1);
 }
 
 TEST(MetricsTest, TestSavedModelRead) {
   SavedModelReadApi("bar").IncrementBy(1);
   EXPECT_EQ(SavedModelReadApi("bar").value(), 1);
-  SavedModelRead("2").IncrementBy(1);
-  EXPECT_EQ(SavedModelRead("2").value(), 1);
+  SavedModelReadCount("2").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadCount("2").value(), 1);
 
   SavedModelReadApi("baz").IncrementBy(1);
   EXPECT_EQ(SavedModelReadApi("baz").value(), 1);
-  SavedModelRead("2").IncrementBy(1);
-  EXPECT_EQ(SavedModelRead("2").value(), 2);
+  SavedModelReadCount("2").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadCount("2").value(), 2);
 }
 
 TEST(MetricsTest, TestCheckpointRead) {

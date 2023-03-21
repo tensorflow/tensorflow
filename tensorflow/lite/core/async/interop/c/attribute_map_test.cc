@@ -24,13 +24,13 @@ namespace {
 
 TEST(AttributeMapTest, AttributeMapCreateTypeCheckTest) {
   {
-    auto* attr = TfLiteAttributeMapCreate(kTfLiteBufferAttrMap);
+    auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
     EXPECT_TRUE(TfLiteAttributeMapIsBufferAttributeMap(attr));
     EXPECT_FALSE(TfLiteAttributeMapIsSyncAttributeMap(attr));
     TfLiteAttributeMapDelete(attr);
   }
   {
-    auto* attr = TfLiteAttributeMapCreate(kTfLiteSyncAttrMap);
+    auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeSync);
     EXPECT_FALSE(TfLiteAttributeMapIsBufferAttributeMap(attr));
     EXPECT_TRUE(TfLiteAttributeMapIsSyncAttributeMap(attr));
     TfLiteAttributeMapDelete(attr);
@@ -38,7 +38,38 @@ TEST(AttributeMapTest, AttributeMapCreateTypeCheckTest) {
 }
 
 TEST(AttributeMapTest, AttributeMapAccessor) {
-  auto* attr = TfLiteAttributeMapCreate(kTfLiteBufferAttrMap);
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
+  {
+    TfLiteAttributeMapSetSizeTBufferAttr(attr, kTfLiteBufferAttrKeyAlignment,
+                                         42);
+    size_t result = 0;
+    EXPECT_TRUE(TfLiteAttributeMapGetSizeTBufferAttr(
+        attr, kTfLiteBufferAttrKeyAlignment, &result));
+    EXPECT_EQ(42, result);
+    EXPECT_FALSE(TfLiteAttributeMapGetSizeTBufferAttr(
+        attr, kTfLiteBufferAttrKeyOffset, &result));
+  }
+  {
+    const char str[] = "some string";
+    // Overriding key 1.
+    TfLiteAttributeMapSetStringBufferAttr(
+        attr, kTfLiteBufferAttrKeyResourceTypeName, str);
+    const char* result = nullptr;
+    EXPECT_TRUE(TfLiteAttributeMapGetStringBufferAttr(
+        attr, kTfLiteBufferAttrKeyResourceTypeName, &result));
+    EXPECT_EQ(str, result);
+    EXPECT_FALSE(TfLiteAttributeMapGetStringBufferAttr(
+        attr, kTfLiteBufferAttrKeyAlignment, &result));
+    EXPECT_FALSE(TfLiteAttributeMapSetStringSyncAttr(
+        attr, kTfLiteSynchronizationAttrKeyObjectTypeName, str));
+    EXPECT_FALSE(TfLiteAttributeMapGetStringSyncAttr(
+        attr, kTfLiteSynchronizationAttrKeyObjectTypeName, &result));
+  }
+  TfLiteAttributeMapDelete(attr);
+}
+
+TEST(AttributeMapTest, UnCheckedAttributeMapAccessor) {
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
   {
     TfLiteAttributeMapSetSizeTAttr(attr, 1, 42);
     size_t result = 0;
@@ -65,8 +96,8 @@ TEST(AttributeMapTest, AttributeMapAccessor) {
   TfLiteAttributeMapDelete(attr);
 }
 
-TEST(AttributeMapTest, AttributeMapCustomAccessor) {
-  auto* attr = TfLiteAttributeMapCreate(kTfLiteBufferAttrMap);
+TEST(AttributeMapTest, UnCheckedAttributeMapCustomAccessor) {
+  auto* attr = TfLiteAttributeMapCreate(kTfLiteAttrMapTypeBuffer);
   {
     TfLiteAttributeMapSetCustomSizeTAttr(attr, "foo", 42);
     size_t result = 0;

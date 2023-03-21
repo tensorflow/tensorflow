@@ -38,6 +38,9 @@ class CpuLayoutAssignment : public LayoutAssignment {
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
+  // The CPU backend does not use memory spaces, so there is no need to
+  // propagate them.
+  Status PropagateMemorySpace(HloModule* module) override { return OkStatus(); }
 
   const TargetMachineFeatures& target_machine_features_;
 };

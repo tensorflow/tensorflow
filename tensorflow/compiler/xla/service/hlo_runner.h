@@ -56,7 +56,8 @@ class HloRunner : public HloRunnerInterface {
   ~HloRunner() override;
 
   // Transfers data between the host and device.
-  StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
+  StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal,
+                                                       int64_t param_no);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
       absl::Span<const Literal* const> literals);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
@@ -193,6 +194,8 @@ class HloRunner : public HloRunnerInterface {
   std::unique_ptr<Backend> backend_;
 
   DeviceShapeRepresentationFn device_shape_representation_fn_;
+
+  const ComputationLayout* entry_computation_layout_ = nullptr;
 };
 
 }  // namespace xla

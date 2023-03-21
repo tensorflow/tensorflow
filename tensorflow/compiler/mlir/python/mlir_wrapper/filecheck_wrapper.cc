@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "llvm/FileCheck/FileCheck.h"
 #include "llvm/Support/SourceMgr.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 

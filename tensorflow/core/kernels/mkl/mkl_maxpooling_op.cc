@@ -180,8 +180,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
                                   output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
                                   output_max_mkl_shape, this->native_format_);
-        output_min->flat<float>()(0) = min_input;
-        output_max->flat<float>()(0) = max_input;
+        output_min->scalar<float>()() = min_input;
+        output_max->scalar<float>()() = max_input;
       } else {
         MklDnnData<uint8> dnn_data_wksp(&cpu_engine_);
         AllocateWorkspaceTensor(context, *(pooling_fwd->GetPoolingFwdPd()),

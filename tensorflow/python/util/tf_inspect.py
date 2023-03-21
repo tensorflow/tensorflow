@@ -90,11 +90,19 @@ if hasattr(_inspect, 'getfullargspec'):
       from FullArgSpec.
     """
     fullargspecs = getfullargspec(target)
+
+    defaults = fullargspecs.defaults or ()
+    if fullargspecs.kwonlydefaults:
+      defaults += tuple(fullargspecs.kwonlydefaults.values())
+
+    if not defaults:
+      defaults = None
+
     argspecs = ArgSpec(
-        args=fullargspecs.args,
+        args=fullargspecs.args + fullargspecs.kwonlyargs,
         varargs=fullargspecs.varargs,
         keywords=fullargspecs.varkw,
-        defaults=fullargspecs.defaults,
+        defaults=defaults,
     )
     return argspecs
 else:

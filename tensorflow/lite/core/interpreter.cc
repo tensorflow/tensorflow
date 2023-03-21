@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -67,7 +68,7 @@ TfLiteQuantization GetQuantizationFromLegacy(
   TfLiteQuantization quantization;
   quantization.type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(1);
   affine_quantization->zero_point = TfLiteIntArrayCreate(1);
   affine_quantization->scale->data[0] = legacy_quantization.scale;

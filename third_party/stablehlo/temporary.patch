@@ -1,12 +1,15 @@
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2519,6 +2519,7 @@
- #define GET_ATTRDEF_LIST
- #include "stablehlo/dialect/StablehloAttrs.cpp.inc"
-       >();
-+  context->loadDialect<tensor::TensorDialect>();
- }
- 
- Type StablehloDialect::parseType(DialectAsmParser& parser) const {
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -17,3 +17,10 @@
+ # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
+ from ._stablehlo_ops_gen import *
+ from .._mlir_libs._stablehlo import *
++
++
++def get_earliest_forward_compatible_version():
++  """Return the earliest StableHLO version that the current StableHLO version
++    is still forward compatible with.
++  """
++  return "0.9.0"
 

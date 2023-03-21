@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
@@ -234,7 +235,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
-    placeholder = self._graph_placeholder(context_graph, name=name)
+    if placeholder_context.with_none_control_dependencies:
+      # Note: setting ops.control_dependencies(None) ensures we always put
+      # capturing placeholders outside of any control flow context.
+      with ops.control_dependencies(None):
+        placeholder = self._graph_placeholder(context_graph, name=name)
+    else:
+      placeholder = self._graph_placeholder(context_graph, name=name)
+
     if name is not None:
       # Record the requested/user-specified name in case it's different than
       # the uniquified name, for validation when exporting signatures.
@@ -250,6 +258,16 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
           and handle_data.is_set
           and handle_data.shape_and_type):
         handle_data_util.set_handle_data(placeholder, handle_data)
+
+    # Record the composite device as an attribute to the placeholder.
+    # This attribute would be propagated into the arg_attr of the FunctionDef.
+    # Currently, a packed eager tensor is always placed on a CompositeDevice.
+    if placeholder_context.composite_device_name is not None:
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_composite_device",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(
+              placeholder_context.composite_device_name)))
+
     return placeholder
 
   def _graph_placeholder(self, graph, name=None):
@@ -297,16 +315,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       return self
 
     value = ops.convert_to_tensor(value, self.dtype)
-    value_spec = self.from_tensor(value, self.name)
-    if self.name is None:
-      value_spec._name = None  # pylint: disable=protected-access
+    value_spec = TensorSpec(value.shape, value.dtype, self.name)
 
-    if casting_context.allow_supertype_tensors:
-      check_fn = lambda v: v.is_subtype_of(self) or self.is_subtype_of(v)
-    else:
-      check_fn = lambda v: v.is_subtype_of(self)
+    if not value_spec.is_subtype_of(self):
+      if self.is_subtype_of(value_spec):
+        gen_array_ops.ensure_shape(value, self.shape)
+      else:
+        raise AssertionError(f"Can not cast {value_spec!r} to {self!r}")
 
-    assert check_fn(value_spec), f"Can not cast {value_spec!r} to {self!r}"
     return value
 
   @classmethod
@@ -405,6 +421,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       return TensorSpec(self.shape, self.dtype)
 
 trace_type.register_serializable(TensorSpec)
+trace_type.register_tensor_type(TensorSpec)
 
 
 class _TensorSpecCodec:

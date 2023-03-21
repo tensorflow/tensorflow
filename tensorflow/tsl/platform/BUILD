@@ -159,6 +159,7 @@ cc_library(
         ":str_util",
         ":strcat",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
     ],
@@ -272,11 +273,25 @@ cc_library(
         ":types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ] + tf_platform_deps("status"),
+)
+
+cc_library(
+    name = "status_to_from_proto",
+    srcs = [
+        "status_to_from_proto.cc",
+    ],
+    hdrs = ["status_to_from_proto.h"],
+    deps = [
+        ":status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
     ] + tf_platform_deps("status"),
 )
 
@@ -1024,6 +1039,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//third_party/eigen3",
+        "@com_google_absl//absl/numeric:bits",
     ],
 )
 
@@ -1328,9 +1344,14 @@ tsl_cc_test(
     srcs = ["status_test.cc"],
     deps = [
         ":errors",
+        ":stack_frame",
         ":status",
+        ":status_matchers",
+        ":status_to_from_proto",
         ":test",
         ":test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
@@ -1526,12 +1547,7 @@ tsl_cc_test(
     name = "setround_test",
     size = "small",
     srcs = ["setround_test.cc"],
-    tags = [
-        "noasan",
-        "noclang",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["noclang"],
     deps = [
         ":setround",
         ":test",

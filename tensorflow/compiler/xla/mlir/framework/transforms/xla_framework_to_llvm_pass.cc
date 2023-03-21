@@ -22,14 +22,15 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Constants.h"
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -39,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 
 namespace mlir {
-namespace mhlo {
+namespace xla_framework {
 namespace {
 
 // Create a memref descriptor given a pointer and memref type information.
@@ -235,7 +236,10 @@ class LegalizeXLAFrameworkToLLVMPass
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    LLVMTypeConverter type_converter(ctx);
+    // TODO(b/267828330): Migrate to opaque pointers.
+    LowerToLLVMOptions options(&getContext());
+    options.useOpaquePointers = false;
+    LLVMTypeConverter type_converter(ctx, options);
     type_converter.addConversion([&](::mlir::xla_framework::BufferType) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
@@ -270,5 +274,5 @@ CreateLegalizeXLAFrameworkToLLVMPass() {
   return std::make_unique<LegalizeXLAFrameworkToLLVMPass>();
 }
 
-}  // namespace mhlo
+}  // namespace xla_framework
 }  // namespace mlir

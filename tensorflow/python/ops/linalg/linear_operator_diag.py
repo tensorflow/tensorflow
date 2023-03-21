@@ -15,6 +15,7 @@
 """`LinearOperator` acting like a diagonal matrix."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -254,7 +255,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     return array_ops.matrix_set_diag(x, new_diag)
 
   def _eigvals(self):
-    return ops.convert_to_tensor_v2_with_dispatch(self.diag)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(self.diag)
 
   def _cond(self):
     abs_diag = math_ops.abs(self.diag)

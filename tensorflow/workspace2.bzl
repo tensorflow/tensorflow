@@ -1,6 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 # Import third party config rules.
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
@@ -58,6 +59,7 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
+    bazel_skylib_workspace()
     benchmark()
     dlpack()
     eigen3()
@@ -141,9 +143,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "0a7ad183dcb4db36e82c4c24376a28281c30e986bd2d71311e624405229a7618",
-        strip_prefix = "XNNPACK-659147817805d17c7be2d60bd7bbca7e780f9c82",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/659147817805d17c7be2d60bd7bbca7e780f9c82.zip"),
+        sha256 = "4d047b1ba16e00740aa32f95cc80b40329524bfa175844f9fc61891acc912982",
+        strip_prefix = "XNNPACK-06b2705f1b3e1ba0f161dd2979e2901ce93014e3",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/06b2705f1b3e1ba0f161dd2979e2901ce93014e3.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -172,9 +174,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "3c7b842cd67989810955b220fa1116e7e2ed10660a8cfb632118146a64992c30",
-        strip_prefix = "cudnn-frontend-0.7.3",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.7.3.zip"),
+        sha256 = "bfcf778030831f325cfc13ae5995388cc834fbff2995a297ba580d9ec65ca3b6",
+        strip_prefix = "cudnn-frontend-0.8",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.8.zip"),
     )
 
     tf_http_archive(
@@ -212,7 +214,11 @@ def _tf_repositories():
         sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
         strip_prefix = "ComputeLibrary-22.11",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_openmp_fix.patch"],
+        patch_file = [
+            "//third_party/compute_library:compute_library.patch",
+            "//third_party/compute_library:acl_fixed_format_kernels_striding.patch",
+            "//third_party/compute_library:acl_openmp_fix.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
     )
 
@@ -301,10 +307,10 @@ def _tf_repositories():
         name = "png",
         build_file = "//third_party:png.BUILD",
         patch_file = ["//third_party:png_fix_rpi.patch"],
-        sha256 = "d4160037fa5d09fa7cff555037f2a7f2fefc99ca01e21723b19bfcda33015234",
-        strip_prefix = "libpng-1.6.38",
+        sha256 = "a00e9d2f2f664186e4202db9299397f851aea71b36a35e74910b8820e380d441",
+        strip_prefix = "libpng-1.6.39",
         system_build_file = "//third_party/systemlibs:png.BUILD",
-        urls = tf_mirror_urls("https://github.com/glennrp/libpng/archive/v1.6.38.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/glennrp/libpng/archive/v1.6.39.tar.gz"),
     )
 
     tf_http_archive(
@@ -500,10 +506,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "8a063d664d1c23d35526b87a2bf15514962ffdd8ef7fd40519191b3c23e39548",
-        strip_prefix = "curl-7.87.0",
+        sha256 = "dfb8582a05a893e305783047d791ffef5e167d295cf8d12b9eb9cfa0991ca5a9",
+        strip_prefix = "curl-7.88.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.87.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -549,15 +555,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "lmdb",
-        build_file = "//third_party:lmdb.BUILD",
-        sha256 = "22054926b426c66d8f2bc22071365df6e35f3aacf19ad943bc6167d4cae3bebb",
-        strip_prefix = "lmdb-LMDB_0.9.29/libraries/liblmdb",
-        system_build_file = "//third_party/systemlibs:lmdb.BUILD",
-        urls = tf_mirror_urls("https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_0.9.29.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "jsoncpp_git",
         sha256 = "f409856e5920c18d0c2fb85276e24ee607d2a09b5e7d5f0a371368903c275da2",
         strip_prefix = "jsoncpp-1.9.5",
@@ -567,10 +564,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "boringssl",
-        sha256 = "534fa658bd845fd974b50b10f444d392dfd0d93768c4a51b61263fd37d851c40",
-        strip_prefix = "boringssl-b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
+        sha256 = "9dc53f851107eaf87b391136d13b815df97ec8f76dadb487b58b2fc45e624d2c",
+        strip_prefix = "boringssl-c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc",
         system_build_file = "//third_party/systemlibs:boringssl.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/boringssl/archive/b9232f9e27e5668bc0414879dcdedb2a59ea75f2.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/boringssl/archive/c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc.tar.gz"),
     )
 
     # Note: if you update this, you have to update libpng too. See cl/437813808
@@ -606,9 +603,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "7f7c738511a8876403fc574d13d48e7c250d934d755598d82e14bab12236fc64",
-        strip_prefix = "nccl-2.16.2-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.16.2-1.tar.gz"),
+        sha256 = "0e3d7b6295beed81dc15002e88abf7a3b45b5c686b13b779ceac056f5612087f",
+        strip_prefix = "nccl-2.16.5-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.16.5-1.tar.gz"),
     )
 
     java_import_external(
@@ -876,8 +873,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "pybind11_protobuf",
         urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
-        sha256 = "",
+        sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
         strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
+        patch_file = ["//third_party/pybind11_protobuf:remove_license.patch"],
     )
 
     tf_http_archive(
