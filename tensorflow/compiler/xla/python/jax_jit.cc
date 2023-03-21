@@ -123,13 +123,6 @@ bool GetEnableX64() {
   return thread_local_state.enable_x64.value_or(*global_state.enable_x64);
 }
 
-bool GetEnableJaxArray() {
-  auto& global_state = GlobalJitState();
-  auto& thread_local_state = ThreadLocalJitState();
-  CHECK(global_state.jax_array.has_value());
-  return thread_local_state.jax_array.value_or(*global_state.jax_array);
-}
-
 std::optional<py::object> GetDefaultDevice() {
   auto& global_state = GlobalJitState();
   auto& thread_local_state = ThreadLocalJitState();
@@ -178,7 +171,6 @@ std::string CallSignature::DebugString() const {
       "device: %s\n"
       "default_device: %s\n"
       "jax_enable_x64: %d\n"
-      "jax_array: %d\n"
       "global_extra_jit_context: %s\n"
       "thread_local_extra_jit_context: %s\n",
       absl::StrJoin(static_args, ",", py_object_formatter),
@@ -189,7 +181,7 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
       device != nullptr ? device->DebugString() : "nullptr",
-      OptionalDebugString(default_device), jax_enable_x64, jax_array,
+      OptionalDebugString(default_device), jax_enable_x64,
       OptionalDebugString(global_extra_jit_context),
       OptionalDebugString(thread_local_extra_jit_context));
 }
@@ -198,12 +190,12 @@ bool CallSignature::operator==(const CallSignature& other) const {
   // TODO(chky): Consider implementing hashing and equality for sharding in cpp
   // instead of hashing and checking sharding's pointer values.
   return std::tie(dynamic_arg_treedefs, dynamic_arg_names,
-                  dynamic_arg_signatures, device, jax_enable_x64, jax_array,
+                  dynamic_arg_signatures, device, jax_enable_x64,
                   static_arg_names, committed_args) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
                       other.dynamic_arg_signatures, other.device,
-                      other.jax_enable_x64, other.jax_array,
-                      other.static_arg_names, other.committed_args) &&
+                      other.jax_enable_x64, other.static_arg_names,
+                      other.committed_args) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
                     other.dynamic_arg_shardings.begin(),
@@ -1008,7 +1000,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
 
   bool jax_enable_x64 = GetEnableX64();
   arguments.signature.jax_enable_x64 = jax_enable_x64;
-  arguments.signature.jax_array = GetEnableJaxArray();
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
   status =
@@ -1493,7 +1484,6 @@ void BuildJaxjitSubmodule(py::module& m) {
   py::class_<JitState> jit_state_(jitlib, "JitState");
   jit_state_.def_readwrite("disable_jit", &JitState::disable_jit);
   jit_state_.def_readwrite("enable_x64", &JitState::enable_x64);
-  jit_state_.def_readwrite("jax_array", &JitState::jax_array);
   jit_state_.def_readwrite("default_device", &JitState::default_device);
   jit_state_.def_readwrite("extra_jit_context", &JitState::extra_jit_context);
   jit_state_.def_readwrite("post_hook", &JitState::post_hook);

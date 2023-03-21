@@ -35,11 +35,6 @@ try:
 except ImportError:
   custom_call_for_test = None
 
-xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
-    lambda: None
-)
-xla_client._xla.jax_jit.global_state().jax_array = True
-
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
 float8_e5m2 = xla_client.float8_e5m2
