@@ -21,6 +21,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 
+#define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                        \
+  do {                                                                        \
+    if (DebugDataDumper::Global()->ShouldDump(name))                          \
+      DebugDataDumper::Global()->DumpOpCreationStackTraces(name, tag, graph); \
+  } while (false)
+
 #define DUMP_GRAPH(name, tag, graph)                          \
   do {                                                        \
     if (DebugDataDumper::Global()->ShouldDump(name))          \
@@ -40,10 +46,12 @@ class Graph;
 ////////////////////////////////////////////////////////////////////////////////
 // This class is responsible for dumping debugging data (e.g., GraphDef, MLIR).
 //
-// To use DebugDataDumper, take the following steps:
+// To dump GraphDef/MLIRs, take the following steps:
 // * Set envvar TF_DUMP_GRAPH_PREFIX to your target dump directory.
 // * Set envvar TF_DUMP_GRAPH_NAME_FILTER to '*' to dump all graphs,
 //   or a name filter to dump graphs with a name containing it.
+// * Set envvar TF_DUMP_OP_CREATION_STACKTRACES to anything if you
+//   would like to dump the op creation stacktraces.
 //
 // The dumped graphs then can be found in your target dump directory.
 // The filename of the dump looks like this:
@@ -78,6 +86,10 @@ class DebugDataDumper {
   //    2.3. bypass_name_filter is true.
   bool ShouldDump(const std::string& name,
                   bool bypass_name_filter = false) const;
+
+  // Dump op creation callstacks, if ShouldDump returns true.
+  void DumpOpCreationStackTraces(const std::string& name,
+                                 const std::string& tag, const Graph* graph);
 
   // Dump a graph, if ShouldDump returns true.
   void DumpGraph(const std::string& name, const std::string& tag,

@@ -55,6 +55,58 @@ bool DebugDataDumper::ShouldDump(const std::string& name,
   return true;
 }
 
+void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
+                                                const std::string& tag,
+                                                const Graph* graph) {
+  const char* dump_stacktraces = getenv("TF_DUMP_OP_CREATION_STACKTRACES");
+  if (dump_stacktraces == nullptr) {
+    VLOG(1) << "Skip dumping op creation stacktraces for '" << name
+            << "', because TF_DUMP_OP_CREATION_STACKTRACES is not set";
+    return;
+  }
+
+  // Construct the dump filename.
+  std::string dump_filename = GetDumpFileBasename(name, tag);
+
+  // Dump module txt to file.
+  DumpToFile(dump_filename, "", ".csv", "StackTrace",
+             [&graph, &dump_filename](WritableFile* file) {
+               auto status = file->Append("node_id,node_name,stackframes\n");
+               if (!status.ok()) {
+                 LOG(WARNING) << "error writing to file to " << dump_filename
+                              << ": " << status.error_message();
+                 return status;
+               }
+
+               for (Node* node : graph->nodes()) {
+                 auto stack_trace = node->GetStackTrace();
+                 if (stack_trace == nullptr) continue;
+
+                 int node_id = node->id();
+                 std::string node_name = node->name();
+                 std::vector<std::string> stackframes;
+
+                 for (auto& frame : stack_trace->ToFrames()) {
+                   stackframes.push_back(
+                       absl::StrFormat("%s(%d): %s", frame.file_name,
+                                       frame.line_number, frame.function_name));
+                 }
+
+                 status = file->Append(
+                     absl::StrFormat("%d,%s,%s\n", node_id, node_name,
+                                     absl::StrJoin(stackframes, ";")));
+
+                 if (!status.ok()) {
+                   LOG(WARNING) << "error writing to file to " << dump_filename
+                                << ": " << status.error_message();
+                   return status;
+                 }
+               }
+
+               return file->Close();
+             });
+}
+
 void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
                                 const Graph* graph) {
   // Construct the dump filename.
