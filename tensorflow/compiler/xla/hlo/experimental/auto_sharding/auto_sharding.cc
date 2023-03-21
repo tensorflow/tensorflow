@@ -43,11 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -263,9 +263,9 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
           src_strategies->leaf_vector[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
           operand->shape(), input_sharding);
-      std::vector<int64> all_reduce_dims;
-      for (int64 op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
-        int64 mesh_dim = tensor_dim_to_mesh[op_dim];
+      std::vector<int64_t> all_reduce_dims;
+      for (int64_t op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
+        int64_t mesh_dim = tensor_dim_to_mesh[op_dim];
         // Replicates on this mesh dim.
         if (mesh_dim == -1) {
           continue;
@@ -3773,7 +3773,8 @@ StatusOr<bool> AutoSharding::Run(
   // sharding propagation pass after that before spmd partitioner.
   auto status_or_changed = ProcessShardingInstruction(
       module, execution_threads, /*replace_sharding_with_copy=*/true,
-      &unspecified_dims);
+      &unspecified_dims, /*saved_root_shardings=*/nullptr,
+      /*saved_parameter_shardings=*/nullptr);
   if (!status_or_changed.ok()) {
     return status_or_changed;
   }

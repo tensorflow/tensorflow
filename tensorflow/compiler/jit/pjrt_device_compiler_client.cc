@@ -52,6 +52,12 @@ PjRtDeviceCompilerClient::BuildExecutable(
   return std::move(executable);
 }
 
+StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
+    const xla::PjRtLoadedExecutable& executable) {
+  VLOG(1) << "Serializing xla::PjRtLoadedExecutable to string.";
+  return executable.SerializeExecutable();
+}
+
 StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {

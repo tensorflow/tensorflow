@@ -28,6 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace python_op_gen_internal {
 
+inline constexpr absl::string_view kKytheCorpus = "github.com/tensorflow/tensorflow";
+
 // Collects and builds the generated code metadata for Kythe indexing.
 class GeneratedCodeAnnotator {
  public:

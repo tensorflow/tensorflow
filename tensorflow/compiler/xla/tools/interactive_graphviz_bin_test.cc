@@ -31,8 +31,9 @@ TEST(InteractiveGraphviz, CPU) {
 
   // Make string containing "--hlo_text=path/to/tools/add.hlo"
   std::string hlo_text_flag = "--hlo_text=";
-  absl::StrAppend(&hlo_text_flag, tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                                                    "tools", "add.hlo"));
+  absl::StrAppend(&hlo_text_flag,
+                  tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "data",
+                                    "add.hlo"));
 
   // We need to specify the platform here to make sure that the binary can
   // compile the HLO. This makes sure everything necessary for compiling HLOs

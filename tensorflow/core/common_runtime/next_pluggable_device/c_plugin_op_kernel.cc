@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"

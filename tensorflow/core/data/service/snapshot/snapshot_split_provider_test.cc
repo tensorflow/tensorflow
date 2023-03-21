@@ -20,18 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/time/time.h"
-#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
-#include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
-#include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/lib/io/compression.h"
@@ -40,192 +35,154 @@ limitations under the License.
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::_;
 using testing::CreateDummyDistributedSnapshotMetadata;
-using ::testing::ElementsAre;
+using ::testing::DoAll;
 using ::testing::HasSubstr;
 using testing::LocalTempFilename;
-using testing::RangeDataset;
-using tsl::testing::IsOkAndHolds;
+using ::testing::Return;
+using ::testing::SetArgReferee;
+using tsl::testing::StatusIs;
 
-constexpr const char kProtocol[] = "grpc";
-
-class TestSnapshotCluster {
+class MockDispatcherClient : public DataServiceDispatcherClient {
  public:
-  explicit TestSnapshotCluster(int64_t num_workers) {
-    TestCluster::Config config;
-    config.num_workers = num_workers;
-    config.worker_heartbeat_interval_ms = 100;
-    test_cluster_ = std::make_unique<TestCluster>(config);
-    TF_CHECK_OK(test_cluster_->Initialize());
-    dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
-        test_cluster_->DispatcherAddress(), kProtocol);
-  }
+  explicit MockDispatcherClient()
+      : DataServiceDispatcherClient(/*address=*/"localhost",
+                                    /*protocol=*/"grpc") {}
 
-  Status RestartWorker(int64_t worker_index) {
-    int port = test_cluster_->WorkerBoundPort(0);
-    test_cluster_->StopWorker(0);
-    return test_cluster_->AddWorker(port);
-  }
-
-  std::string DispatcherAddress() const {
-    return test_cluster_->DispatcherAddress();
-  }
-
-  TestCluster& test_cluster() const { return *test_cluster_; }
-
-  DataServiceDispatcherClient& dispatcher() const {
-    return *dispatcher_client_;
-  }
-
- private:
-  std::unique_ptr<TestCluster> test_cluster_;
-  std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
+  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
+  // MOCK_METHOD<N> instead)
+  MOCK_METHOD7(GetSnapshotSplit,
+               Status(const std::string& worker_address,
+                      const std::string& base_path, int64_t stream_index,
+                      int64_t source_index, Tensor& split,
+                      int64_t& local_split_index, bool& end_of_splits));
+  // NOLINTEND
 };
 
-Status WaitUntilFileExists(const std::string& file_path) {
-  while (true) {
-    Status status = Env::Default()->FileExists(file_path);
-    if (!errors::IsNotFound(status)) {
-      TF_RETURN_IF_ERROR(status);
-    }
-    if (status.ok()) {
-      return OkStatus();
-    }
-    Env::Default()->SleepForMicroseconds(
-        absl::ToInt64Microseconds(absl::Seconds(1)));
-  }
-  return OkStatus();
+SnapshotTaskDef TestSnapshotTask() {
+  SnapshotTaskDef snapshot_task;
+  snapshot_task.set_base_path(LocalTempFilename());
+  snapshot_task.set_stream_index(0);
+  snapshot_task.set_num_sources(1);
+  *snapshot_task.mutable_metadata() = CreateDummyDistributedSnapshotMetadata();
+  return snapshot_task;
 }
 
-Status WaitUntilSnapshotComplete(const std::string& base_path) {
-  // TODO(b/258691097): Wait for the DONE in the snapshot base directory.
-  TF_RETURN_IF_ERROR(
-      WaitUntilFileExists(StreamDoneFilePath(base_path, /*stream_index=*/0)));
-  std::string streams_directory = StreamsDirectory(base_path);
-  std::vector<std::string> streams;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(streams_directory, &streams));
-  for (const std::string& stream : streams) {
-    std::string done_file =
-        tsl::io::JoinPath(streams_directory, stream, "DONE");
-    TF_RETURN_IF_ERROR(WaitUntilFileExists(done_file));
-  }
-  return OkStatus();
-}
-
-// Reads the records from a distributed tf.data snapshot written at `base_path`.
-template <class T>
-StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
-                                      const std::string& compression) {
-  experimental::DistributedSnapshotMetadata metadata;
-  metadata.set_compression(compression);
-  SnapshotReaderParams params{base_path, metadata, DataTypeVector{DT_INT64},
-                              Env::Default()};
-  SnapshotReader reader(params);
-  std::vector<T> result;
-  while (true) {
-    TF_ASSIGN_OR_RETURN(GetNextResult next, reader.GetNext());
-    if (next.end_of_sequence) {
-      return result;
-    }
-    result.push_back(next.tensors[0].unaligned_flat<T>().data()[0]);
-  }
-  return result;
-}
-
-Status ClearSnapshot(const std::string& base_path, int64_t stream_index,
-                     int64_t source_index, bool clear_split_files) {
-  int64_t undeleted_files, undeleted_dirs;
-  TF_RETURN_IF_ERROR(Env::Default()->DeleteRecursively(
-      CommittedChunksDirectory(base_path), &undeleted_files, &undeleted_dirs));
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
-      CommittedChunksDirectory(base_path)));
-  TF_RETURN_IF_ERROR(Env::Default()->DeleteRecursively(
-      CheckpointsDirectory(base_path, stream_index), &undeleted_files,
-      &undeleted_dirs));
-  TF_RETURN_IF_ERROR(
-      Env::Default()->DeleteFile(StreamDoneFilePath(base_path, stream_index)));
-  if (clear_split_files) {
-    TF_RETURN_IF_ERROR(Env::Default()->DeleteRecursively(
-        SourceDirectory(base_path, stream_index, source_index),
-        &undeleted_files, &undeleted_dirs));
-    TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
-        SourceDirectory(base_path, stream_index, source_index)));
+Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
+  std::string source_dir = SourceDirectory(
+      snapshot_task.base_path(), snapshot_task.stream_index(), /*source_id=*/0);
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(source_dir));
+  for (int64_t i = 0; i < num_splits; ++i) {
+    std::string split_filename = absl::StrCat("split_", i, "_", i);
+    std::string split_path = tsl::io::JoinPath(source_dir, split_filename);
+    Tensor split(int64_t{i});
+    TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+        split_path, {split}, tsl::io::compression::kNone, Env::Default()));
   }
   return OkStatus();
 }
 
 TEST(SnapshotSplitProviderTest, GetSplitFromDispatcher) {
-  TestSnapshotCluster data_service(/*num_workers=*/1);
-  DatasetDef dataset = RangeDataset(10);
-  experimental::DistributedSnapshotMetadata metadata =
-      CreateDummyDistributedSnapshotMetadata();
-  std::string snapshot_path = LocalTempFilename();
-  TF_ASSERT_OK(
-      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
-              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+  const SnapshotTaskDef snapshot_task = TestSnapshotTask();
+  Tensor split(int64_t{0});
+  auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
+  MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
+  // The dispatcher sends split 0 to the worker.
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<4>(split),
+                      SetArgReferee<5>(0),      // local_split_index
+                      SetArgReferee<6>(false),  // end_of_splits
+                      Return(OkStatus())));
+
+  Tensor result;
+  bool end_of_splits = false;
+  SnapshotSplitProvider split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::move(mock_dispatcher_ptr),
+      Env::Default());
+  TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+  test::ExpectTensorEqual<int64_t>(result, split);
+  EXPECT_FALSE(end_of_splits);
 }
 
-TEST(SnapshotSplitProviderTest, GetSplitFromFiles) {
-  // The first pass generates split files.
-  TestSnapshotCluster data_service(/*num_workers=*/1);
-  DatasetDef dataset = RangeDataset(10);
-  experimental::DistributedSnapshotMetadata metadata =
-      CreateDummyDistributedSnapshotMetadata();
-  std::string snapshot_path = LocalTempFilename();
-  TF_ASSERT_OK(
-      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
-              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+TEST(SnapshotSplitProviderTest, GetSplitFromFile) {
+  const SnapshotTaskDef snapshot_task = TestSnapshotTask();
+  Tensor split(int64_t{9});
+  auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
+  MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
+  // The dispatcher sends split 9 to the worker. The worker should get previous
+  // splits from the split files.
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<4>(split),
+                      SetArgReferee<5>(9),      // local_split_index
+                      SetArgReferee<6>(false),  // end_of_splits
+                      Return(OkStatus())));
+  TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/10));
 
-  // Clears the snapshot while keeping the split files. When the worker
-  // restarts, it will read the split files to get the splits.
-  TF_ASSERT_OK(ClearSnapshot(snapshot_path, /*stream_index=*/0,
-                             /*source_index=*/0,
-                             /*clear_split_files=*/false));
-  TF_ASSERT_OK(data_service.RestartWorker(0));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
-              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+  SnapshotSplitProvider split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::move(mock_dispatcher_ptr),
+      Env::Default());
+
+  for (int64_t i = 0; i < 10; ++i) {
+    Tensor result;
+    bool end_of_splits = false;
+    TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+    test::ExpectTensorEqual<int64_t>(result, Tensor(int64_t{i}));
+    EXPECT_FALSE(end_of_splits);
+  }
+}
+
+TEST(SnapshotSplitProviderTest, EndOfSplits) {
+  const SnapshotTaskDef snapshot_task = TestSnapshotTask();
+  auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
+  MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
+  // The dispatcher sends `end_of_splits` to the worker.
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(0),     // local_split_index
+                      SetArgReferee<6>(true),  // end_of_splits
+                      Return(OkStatus())));
+
+  SnapshotSplitProvider split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::move(mock_dispatcher_ptr),
+      Env::Default());
+  Tensor result;
+  bool end_of_splits = false;
+  TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+  EXPECT_TRUE(end_of_splits);
 }
 
 TEST(SnapshotSplitProviderTest, SplitNotFound) {
-  // The first pass generates split files.
-  TestSnapshotCluster data_service(/*num_workers=*/1);
-  DatasetDef dataset = RangeDataset(10);
-  experimental::DistributedSnapshotMetadata metadata =
-      CreateDummyDistributedSnapshotMetadata();
-  std::string snapshot_path = LocalTempFilename();
-  TF_ASSERT_OK(
-      data_service.dispatcher().Snapshot(dataset, snapshot_path, metadata));
-  TF_ASSERT_OK(WaitUntilSnapshotComplete(snapshot_path));
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, tsl::io::compression::kNone),
-              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+  const SnapshotTaskDef snapshot_task = TestSnapshotTask();
+  Tensor split(int64_t{10});
+  auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
+  MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
+  // The dispatcher sends split 10, but no splits are written.
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<4>(split),
+                      SetArgReferee<5>(10),     // local_split_index
+                      SetArgReferee<6>(false),  // end_of_splits
+                      Return(OkStatus())));
+  TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/0));
 
-  // Clears the snapshot and split files. The dispatcher replies with the last
-  // split, but the previous splits are not found in the source directory. In
-  // this case, the workers fail.
-  TF_ASSERT_OK(ClearSnapshot(snapshot_path, /*stream_index=*/0,
-                             /*source_index=*/0,
-                             /*clear_split_files=*/true));
-  TF_ASSERT_OK(data_service.RestartWorker(0));
-  std::string error_file_path = tsl::io::JoinPath(
-      StreamDirectory(snapshot_path, /*stream_index=*/0), "ERROR");
-  TF_ASSERT_OK(WaitUntilFileExists(error_file_path));
-  std::string error_message;
-  TF_ASSERT_OK(
-      ReadFileToString(Env::Default(), error_file_path, &error_message));
-  EXPECT_THAT(error_message,
-              HasSubstr("not all splits between [0, 9] are found"));
+  SnapshotSplitProvider split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::move(mock_dispatcher_ptr),
+      Env::Default());
+  Tensor result;
+  bool end_of_splits = false;
+  EXPECT_THAT(split_provider.GetNext(&result, &end_of_splits),
+              StatusIs(error::INTERNAL,
+                       HasSubstr("not all splits between [0, 10] are found")));
 }
 
 // TODO(b/266126556): Add a test for checkpointing the split provider.

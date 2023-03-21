@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/local_rendezvous.h"
 
+#include <memory>
+#include <utility>
+
+#include "absl/strings/str_format.h"
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -34,15 +39,17 @@ namespace tensorflow {
 struct LocalRendezvous::Item {
   enum Type { kSend = 0, kRecv = 1 };
 
-  Item(Rendezvous::Args send_args, const Tensor& value, bool is_dead)
-      : Item(send_args, kSend) {
+  Item(Rendezvous::Args send_args, const Tensor& value, bool is_dead,
+       activity_watcher::ActivityScope activity_scope)
+      : Item(send_args, kSend, std::move(activity_scope)) {
     send_state.value.Init(value);
     send_state.is_dead = is_dead;
   }
 
   Item(Rendezvous::Args recv_args, Rendezvous::DoneCallback waiter,
-       CancellationToken cancellation_token)
-      : Item(recv_args, kRecv) {
+       CancellationToken cancellation_token,
+       activity_watcher::ActivityScope activity_scope)
+      : Item(recv_args, kRecv, std::move(activity_scope)) {
     recv_state.waiter.Init(std::move(waiter));
     recv_state.cancellation_token = cancellation_token;
   }
@@ -77,8 +84,12 @@ struct LocalRendezvous::Item {
     } recv_state;
   };
 
+  activity_watcher::ActivityScope scope;
+
  private:
-  Item(Rendezvous::Args args, Type type) : args(args), type(type) {
+  Item(Rendezvous::Args args, Type type,
+       activity_watcher::ActivityScope activity_scope)
+      : args(args), type(type), scope(std::move(activity_scope)) {
     if (args.device_context) {
       args.device_context->Ref();
     }
@@ -154,7 +165,19 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     // TODO(b/143786186): Investigate moving the allocation of `Item` outside
     // the lock.
     DVLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
-    queue->push_back(new Item(send_args, val, is_dead));
+    activity_watcher::ActivityScope activity_scope(
+        [&]() {
+          return std::make_unique<activity_watcher::Activity>(
+              "LocalRendezvous::Send",
+              activity_watcher::ActivityCategory::kRendezvous,
+              activity_watcher::Activity::Attributes{
+                  {"Rendezvous", absl::StrFormat("%p", this)},
+                  {"key", std::string(key.FullKey())},
+              });
+        },
+        /*level=*/1);
+    queue->push_back(
+        new Item(send_args, val, is_dead, std::move(activity_scope)));
     bucket.mu.unlock();
     return OkStatus();
   }
@@ -299,6 +322,16 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
 
     // TODO(b/143786186): Investigate moving the allocation of `Item` outside
     // the lock.
+    activity_watcher::ActivityScope activity_scope(
+        [&]() {
+          return std::make_unique<activity_watcher::Activity>(
+              "LocalRendezvous::RecvAsync",
+              activity_watcher::ActivityCategory::kRendezvous,
+              activity_watcher::Activity::Attributes{
+                  {"Rendezvous", absl::StrFormat("%p", this)},
+                  {"key", std::string(key.FullKey())}});
+        },
+        /*level=*/1);
     if (cm != nullptr) {
       // NOTE(mrry): We must wrap `done` with code that deregisters the
       // cancellation callback before calling the `done` callback, because the
@@ -318,9 +351,10 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
             }
             done(s, send_args, recv_args, v, dead);
           },
-          token));
+          token, std::move(activity_scope)));
     } else {
-      queue->push_back(new Item(recv_args, std::move(done), token));
+      queue->push_back(new Item(recv_args, std::move(done), token,
+                                std::move(activity_scope)));
     }
 
     bucket.mu.unlock();

@@ -89,7 +89,7 @@ module attributes {tf_saved_model.semantics} {
 
   // CHECK-LABEL: func @handles_variables_in_while_loops
   func.func @handles_variables_in_while_loops(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf._user_specified_name = "arg0", tf.device = "/job:localhost/replica:0/task:0/device:CPU:0", tf_saved_model.index_path = []})
-    attributes {tf_saved_model.exported_names = ["lowers_variable_ops"]}
+    attributes {tf_saved_model.exported_names = ["handles_variables_in_while_loops"]}
   {
     // CHECK: stablehlo.while
     tf_executor.graph {
@@ -100,6 +100,19 @@ module attributes {tf_saved_model.semantics} {
       } : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
       tf_executor.fetch %c2 : !tf_executor.control
     }
+    return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  // CHECK: func @a
+  // CHECK: func @b
+  // CHECK: func @c
+  // CHECK-LABEL @expands_exported_names
+  func.func @expands_exported_names()
+      attributes {tf_saved_model.exported_names = ["a", "b", "c"]} {
     return
   }
 }

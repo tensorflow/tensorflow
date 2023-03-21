@@ -1781,6 +1781,13 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
               /*prefer_to_retain_reference=*/false, &buffers_to_release);
   return std::unique_ptr<PjRtBuffer>(std::move(pjrt_buffer));
 }
+
+bool IsAllZeros(const DeviceAssignment& assignment) {
+  return std::all_of(
+      assignment.begin(), assignment.end(),
+      [](const DeviceAssignment::value_type& v) { return v == 0; });
+}
+
 }  // namespace
 
 PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
@@ -1824,8 +1831,23 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
     VLOG(3) << "PjRtStreamExecutorExecutable device_assignment:\n"
             << device_assignment_->ToString();
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
-    CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
-        << "Inconsistent local device count.";
+
+    if ((device_assignment_->replica_count() > 1 ||
+         device_assignment_->computation_count() > 1) &&
+        IsAllZeros(*device_assignment_)) {
+      // This code path should only be triggered when we intentionally compile
+      // an HLO without having enough devices to actually run it. See the
+      // "--run=false" option in
+      // tensorflow/compiler/xla/tools/multihost_hlo_runner/hlo_runner_main.cc.
+      // That will help us debug the XLA compiler locally.
+      LOG(INFO)
+          << "A workaround is in effect to allow compiling multi-device "
+             "HLOs on machines with fewer devices. Don't run this executable.";
+    } else {
+      CHECK_LE(addressable_devices_.size(), client_->addressable_device_count())
+          << "Inconsistent local device count.";
+    }
+
     num_partitions = device_assignment_->computation_count();
   }
 
@@ -2826,6 +2848,10 @@ StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options) {
+  if (serialized.empty()) {
+    return InternalError("Serialized executable is empty");
+  }
+
   if (!options.has_value()) {
     return InvalidArgument(
         "PjRtStreamExecutorClient requires `CompileOptions` for "
@@ -2835,16 +2861,6 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
-
-  if (char* xla_flags = std::getenv("XLA_FLAGS")) {
-    std::string xla_flags_str(xla_flags);
-    if (!absl::StrContains(xla_flags_str,
-                           "--xla_gpu_enable_xla_runtime_executable=true")) {
-      return InternalError("Deserialization requires XLA Runtime enabled");
-    }
-  } else {
-    return InternalError("Deserialization requires XLA Runtime enabled");
-  }
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
   std::shared_ptr<DeviceAssignment>& device_assignment =

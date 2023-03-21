@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "pybind11/attr.h"
-#include "pybind11/cast.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl_bind.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl_bind.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -798,9 +798,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
-          &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
-          &ExecutableBuildOptions::
-              set_allow_spmd_sharding_propagation_to_output);
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_output().begin(),
+                options.allow_spmd_sharding_propagation_to_output().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_output(v);
+          });
 
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)

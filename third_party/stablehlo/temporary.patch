@@ -1,25 +1,15 @@
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
---- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
-@@ -349,7 +349,7 @@
- }
- 
- ParseResult parseDimSizes(AsmParser& parser,
--                          FailureOr<SmallVector<int64_t>>& dimSizes) {
-+                          SmallVectorImpl<int64_t>& dimSizes) {
-   auto failOrDimSizes = parseDimSizes(parser);
-   if (failed(failOrDimSizes)) {
-     return failure();
-diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
---- stablehlo/stablehlo/dialect/AssemblyFormat.h
-+++ stablehlo/stablehlo/dialect/AssemblyFormat.h
-@@ -186,7 +186,7 @@
- 
- FailureOr<SmallVector<int64_t>> parseDimSizes(AsmParser& parser);
- ParseResult parseDimSizes(AsmParser& parser,
--                          FailureOr<SmallVector<int64_t>>& dimSizes);
-+                          SmallVectorImpl<int64_t>& dimSizes);
- 
- // ExponentMantissa - Abbreviated printing of exponent and mantissa as e#m#.
- //
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -17,3 +17,10 @@
+ # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
+ from ._stablehlo_ops_gen import *
+ from .._mlir_libs._stablehlo import *
++
++
++def get_earliest_forward_compatible_version():
++  """Return the earliest StableHLO version that the current StableHLO version
++    is still forward compatible with.
++  """
++  return "0.9.0"
 

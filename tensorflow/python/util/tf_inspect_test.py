@@ -51,6 +51,12 @@ def test_decorated_function_with_defaults(a, b=2, c='Hello'):
 
 
 @test_decorator('decorator')
+def test_decorated_function_with_varargs_and_kwonlyargs(*args, b=2, c='Hello'):
+  """Test Decorated Function With both varargs and keyword args."""
+  return [args, b, c]
+
+
+@test_decorator('decorator')
 class TestDecoratedClass(object):
   """Test Decorated Class."""
 
@@ -97,10 +103,18 @@ class TfInspectTest(test.TestCase):
         annotations={},
     )
 
-    inner_decorator = tf_decorator.TFDecorator('', test_undecorated_function,
-                                               '', argspec)
+    inner_decorator = tf_decorator.TFDecorator(
+        '', test_undecorated_function, '', argspec
+    )
     outer_decorator = tf_decorator.TFDecorator('', inner_decorator)
     self.assertEqual(argspec, tf_inspect.getargspec(outer_decorator))
+
+  def testGetArgSpecThatContainsVarargsAndKwonlyArgs(self):
+    argspec = tf_inspect.getargspec(
+        test_decorated_function_with_varargs_and_kwonlyargs
+    )
+    self.assertEqual(['b', 'c'], argspec.args)
+    self.assertEqual((2, 'Hello'), argspec.defaults)
 
   def testGetArgSpecReturnsOutermostDecoratorThatChangesArgspec(self):
     outer_argspec = tf_inspect.FullArgSpec(

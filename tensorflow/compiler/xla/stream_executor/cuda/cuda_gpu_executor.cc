@@ -29,6 +29,7 @@ limitations under the License.
 #include <unistd.h>
 #endif
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -745,7 +746,7 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
     return ::tsl::OkStatus();
   } else {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("error recording waiting for CUDA event on stream %p",
                         stream));
   }

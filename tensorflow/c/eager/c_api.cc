@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -279,7 +280,7 @@ void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   tensorflow::profiler::TraceMe activity(
       "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
   if (h) {
-    tensorflow::unwrap(h)->Release();
+    tensorflow::unwrap(h)->Unref();
   }
 }
 
@@ -345,7 +346,8 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     return nullptr;
   }
 
-  return tensorflow::wrap(tensorflow::unwrap(h)->Copy());
+  tensorflow::unwrap(h)->Ref();
+  return h;
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
@@ -425,7 +427,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TF_Status status;
     TFE_TensorHandle* result_handle = device_.copy_tensor_to_device(
         context_, tensorflow::wrap(handle), &status, info_);
-    handle->Release();
+    handle->Unref();
     if (!status.status.ok()) return status.status;
     *result = tensorflow::unwrap(result_handle);
     (*result)->Ref();
@@ -442,7 +444,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
         context_, tensorflow::wrap(handle), target_device_name.c_str(), &status,
         info_);
-    handle->Release();
+    handle->Unref();
     if (!status.status.ok()) return status.status;
     *result = tensorflow::unwrap(result_handle);
     (*result)->Ref();
@@ -930,9 +932,32 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  AnnotateEagerRuntimeConstructionContext(function->fdef);
+  auto fdef_or = function->record->mutable_fdef();
+  if (!fdef_or.ok()) {
+    status->status = fdef_or.status();
+    return;
+  }
+
+  AnnotateEagerRuntimeConstructionContext(*fdef_or.value());
   status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithStackTraces(
-      function->fdef, function->stack_traces);
+      *fdef_or.value(), function->record->stack_traces());
+}
+
+TF_Function* TFE_ContextGetFunction(TFE_Context* ctx, const char* name,
+                                    TF_Status* status) {
+  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> record =
+      tensorflow::unwrap(ctx)->FindRecord(name);
+
+  if (record == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find Function with name: ", name);
+    return nullptr;
+  }
+
+  TF_Function* result = new TF_Function();
+  record->Ref();
+  result->record = record.get();
+  return result;
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,

@@ -77,7 +77,8 @@ StatusOr<Layout> VerifySliceLayout(
   auto num_shards = layout.num_shards();
 
   LayoutProto proposed_proto;
-  *proposed_proto.mutable_mesh_config() = layout.mesh().ToProto();
+  TF_ASSIGN_OR_RETURN(*proposed_proto.mutable_mesh_config(),
+                      layout.mesh().ToProto());
   for (int64_t i = 0; i < rank; ++i) {
     // Slice performed on replicated dimension translates to local expansion.
     if (num_shards[i] == 1) {

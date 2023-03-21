@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/async_op_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -91,7 +91,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
 
   std::unique_ptr<HloComputation> CreateR0F32UnaryOpComputation(
       HloOpcode opcode) {
-    HloComputation::Builder builder(TestName() + "." + HloOpcodeString(opcode));
+    HloComputation::Builder builder(
+        absl::StrCat(TestName(), ".", HloOpcodeString(opcode)));
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
     builder.AddInstruction(

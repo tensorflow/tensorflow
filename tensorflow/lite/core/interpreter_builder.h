@@ -130,7 +130,7 @@ class InterpreterBuilder {
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
       const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-      Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info);
+      Subgraph* subgraph);
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,

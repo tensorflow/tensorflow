@@ -41,7 +41,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -107,7 +107,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     def case_fn(x):
       branch_index = constant_op.constant(1)
       branches = [lambda: x, lambda: x + 1]
-      case_out = control_flow_ops.switch_case(branch_index, branches)
+      case_out = control_flow_switch_case.switch_case(branch_index, branches)
       return case_out
 
     root.f = def_function.function(

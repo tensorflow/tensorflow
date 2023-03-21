@@ -20,8 +20,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -77,11 +77,12 @@ Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
 
 void NormalizeInputInPlace(ImplicitLocOpBuilder& b, Value tensor,
                            ArrayRef<int64_t> layout) {
-  if (!tensor.getType().isa<ShapedType>() || IsDefaultLayout(layout)) {
+  auto typedTensor = tensor.dyn_cast<TypedValue<ShapedType>>();
+  if (!typedTensor || IsDefaultLayout(layout)) {
     return;
   }
 
-  Value normalized = NormalizeTensor(b, tensor, layout, /*isInput=*/true);
+  Value normalized = NormalizeTensor(b, typedTensor, layout, /*isInput=*/true);
   tensor.replaceAllUsesExcept(
       normalized, normalized.getDefiningOp()->getOperand(0).getDefiningOp());
 }
@@ -162,7 +163,9 @@ struct RewriteReturnArgs : OpRewritePattern<func::ReturnOp> {
       results.push_back(
           IsDefaultLayout(layout)
               ? result
-              : NormalizeTensor(b, result, layout, /*isInput=*/false));
+              : NormalizeTensor(b, result.cast<TypedValue<ShapedType>>(),
+                                layout,
+                                /*isInput=*/false));
     }
 
     func->removeAttr("xla_entry_computation_result_layout");
@@ -229,8 +232,9 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
       for (const auto& [index, operand] : llvm::enumerate(op.getOperands())) {
         const auto& layout = operand_layouts[index];
         if (!IsDefaultLayout(layout)) {
-          Value normalized = NormalizeTensor(b, op.getOperand(index), layout,
-                                             /*isInput=*/false);
+          Value normalized = NormalizeTensor(
+              b, op.getOperand(index).cast<TypedValue<ShapedType>>(), layout,
+              /*isInput=*/false);
           op.setOperand(index, normalized);
         }
       }

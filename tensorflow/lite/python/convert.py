@@ -43,7 +43,8 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 def _is_quantized_input_stats_required(
-    conversion_flags: _conversion_flags_pb2.TocoFlags()) -> bool:
+    conversion_flags: _conversion_flags_pb2.TocoFlags(),
+) -> bool:
   """Checks if the `quantized_input_stats` flag is required for conversion.
 
   Args:
@@ -53,17 +54,19 @@ def _is_quantized_input_stats_required(
     True, if the `inference_type` or the `inference_input_type` is a quantized
     type and it is not post training quantization, else False.
   """
-  quantized_inference_types = ([
-      _types_pb2.QUANTIZED_UINT8, _types_pb2.QUANTIZED_INT8
-  ])
-  return ((conversion_flags.inference_type in quantized_inference_types or
-           conversion_flags.inference_input_type in quantized_inference_types)
-          and not conversion_flags.post_training_quantize)
+  quantized_inference_types = [
+      _types_pb2.QUANTIZED_UINT8,
+      _types_pb2.QUANTIZED_INT8,
+  ]
+  return (
+      conversion_flags.inference_type in quantized_inference_types
+      or conversion_flags.inference_input_type in quantized_inference_types
+  ) and not conversion_flags.post_training_quantize
 
 
-def convert_tensor_tf_type_to_tflite_type(tf_type: dtypes.DType,
-                                          usage: str = ""
-                                         ) -> _types_pb2.IODataType:
+def convert_tensor_tf_type_to_tflite_type(
+    tf_type: dtypes.DType, usage: str = ""
+) -> _types_pb2.IODataType:
   """Convert tensor type from tf type to tflite type.
 
   Args:
@@ -97,15 +100,17 @@ def convert_tensor_tf_type_to_tflite_type(tf_type: dtypes.DType,
   if tflite_type is None:
     raise ValueError(
         "Unsupported TensorFlow type `{0}` provided for the {1}".format(
-            tf_type, usage))
+            tf_type, usage
+        )
+    )
   return tflite_type
 
 
 # Only a few restricted tensor types are allowed for explicitly setting
 # inference/input/output types.
-def convert_inference_tf_type_to_tflite_type(tf_type: dtypes.DType,
-                                             usage: str = ""
-                                            ) -> _types_pb2.IODataType:
+def convert_inference_tf_type_to_tflite_type(
+    tf_type: dtypes.DType, usage: str = ""
+) -> _types_pb2.IODataType:
   """Convert inference type from tf type to tflite type.
 
   Args:
@@ -128,7 +133,9 @@ def convert_inference_tf_type_to_tflite_type(tf_type: dtypes.DType,
   if tflite_type is None:
     raise ValueError(
         "Unsupported TensorFlow type `{0}` provided for the {1}".format(
-            tf_type, usage))
+            tf_type, usage
+        )
+    )
   return tflite_type
 
 
@@ -138,14 +145,15 @@ if lite_constants.EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
   _deprecated_conversion_binary = ""
 else:
   _deprecated_conversion_binary = _resource_loader.get_path_to_datafile(
-      "../toco/python/toco_from_protos")
+      "../toco/python/toco_from_protos"
+  )
   if not _os.path.exists(_deprecated_conversion_binary):
     _deprecated_conversion_binary = "toco_from_protos"
 
 
 def _try_convert_to_unicode(output):
   if output is None:
-    return u""
+    return ""
 
   if isinstance(output, bytes):
     try:
@@ -161,6 +169,7 @@ class OpsSet(enum.Enum):
 
   WARNING: Experimental interface, subject to change.
   """
+
   # Convert model using TensorFlow Lite builtin ops.
   TFLITE_BUILTINS = "TFLITE_BUILTINS"
 
@@ -185,7 +194,8 @@ class OpsSet(enum.Enum):
   # They are only compatible with CPU execution, and have not been optimized for
   # production.
   EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = (
-      "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8")
+      "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+  )
 
   # Convert model using only stablehlo ops.
   # This option can not be combined with other OpsSets.
@@ -205,17 +215,19 @@ class OpsSet(enum.Enum):
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
-def mlir_quantize(input_data_str,
-                  disable_per_channel=False,
-                  fully_quantize=False,
-                  inference_type=_types_pb2.QUANTIZED_INT8,
-                  input_data_type=dtypes.float32,
-                  output_data_type=dtypes.float32,
-                  enable_numeric_verify=False,
-                  enable_whole_model_verify=False,
-                  denylisted_ops=None,
-                  denylisted_nodes=None,
-                  enable_variable_quantization=False):
+def mlir_quantize(
+    input_data_str,
+    disable_per_channel=False,
+    fully_quantize=False,
+    inference_type=_types_pb2.QUANTIZED_INT8,
+    input_data_type=dtypes.float32,
+    output_data_type=dtypes.float32,
+    enable_numeric_verify=False,
+    enable_whole_model_verify=False,
+    denylisted_ops=None,
+    denylisted_nodes=None,
+    enable_variable_quantization=False,
+):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -246,11 +258,18 @@ def mlir_quantize(input_data_str,
     inputs and outputs.
   """
   return wrap_toco.wrapped_experimental_mlir_quantize(
-      input_data_str, disable_per_channel, fully_quantize, inference_type,
+      input_data_str,
+      disable_per_channel,
+      fully_quantize,
+      inference_type,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
-      enable_numeric_verify, enable_whole_model_verify, denylisted_ops,
-      denylisted_nodes, enable_variable_quantization)
+      enable_numeric_verify,
+      enable_whole_model_verify,
+      denylisted_ops,
+      denylisted_nodes,
+      enable_variable_quantization,
+  )
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
@@ -279,11 +298,13 @@ def register_custom_opdefs(custom_opdefs_list):
   return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
 
 
-def convert(model_flags_str,
-            conversion_flags_str,
-            input_data_str,
-            debug_info_str=None,
-            enable_mlir_converter=True):
+def convert(
+    model_flags_str,
+    conversion_flags_str,
+    input_data_str,
+    debug_info_str=None,
+    enable_mlir_converter=True,
+):
   """Converts `input_data_str` to a TFLite model.
 
   Args:
@@ -310,10 +331,13 @@ def convert(model_flags_str,
   # pipeline surfaces errors instead, and can be safely run in-process.
   if enable_mlir_converter or not _deprecated_conversion_binary:
     try:
-      model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
-                                                 conversion_flags_str,
-                                                 input_data_str, debug_info_str,
-                                                 enable_mlir_converter)
+      model_str = wrap_toco.wrapped_toco_convert(
+          model_flags_str,
+          conversion_flags_str,
+          input_data_str,
+          debug_info_str,
+          enable_mlir_converter,
+      )
       return model_str
     except Exception as e:
       converter_error = ConverterError(str(e))
@@ -321,17 +345,18 @@ def convert(model_flags_str,
         converter_error.append_error(error_data)
       raise converter_error
 
-  return _run_deprecated_conversion_binary(model_flags_str,
-                                           conversion_flags_str, input_data_str,
-                                           debug_info_str)
+  return _run_deprecated_conversion_binary(
+      model_flags_str, conversion_flags_str, input_data_str, debug_info_str
+  )
 
 
-@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
-               SubComponent.CONVERT_GRAPHDEF_USING_DEPRECATED_CONVERTER)
-def _run_deprecated_conversion_binary(model_flags_str,
-                                      conversion_flags_str,
-                                      input_data_str,
-                                      debug_info_str=None):
+@convert_phase(
+    Component.CONVERT_TF_TO_TFLITE_MODEL,
+    SubComponent.CONVERT_GRAPHDEF_USING_DEPRECATED_CONVERTER,
+)
+def _run_deprecated_conversion_binary(
+    model_flags_str, conversion_flags_str, input_data_str, debug_info_str=None
+):
   """Convert `input_data_str` using deprecated conversion binary.
 
   Args:
@@ -364,16 +389,23 @@ Alternative, use virtualenv.""")
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
   # make the temporaries and close and delete them explicitly.
-  conversion_filename, model_filename, input_filename, output_filename = (None,
-                                                                          None,
-                                                                          None,
-                                                                          None)
+  conversion_filename, model_filename, input_filename, output_filename = (
+      None,
+      None,
+      None,
+      None,
+  )
   try:
     # Build all input files
-    with _tempfile.NamedTemporaryFile(delete=False) as fp_conversion, \
-             _tempfile.NamedTemporaryFile(delete=False) as fp_model, \
-             _tempfile.NamedTemporaryFile(delete=False) as fp_input, \
-             _tempfile.NamedTemporaryFile(delete=False) as fp_debug:
+    with _tempfile.NamedTemporaryFile(
+        delete=False
+    ) as fp_conversion, _tempfile.NamedTemporaryFile(
+        delete=False
+    ) as fp_model, _tempfile.NamedTemporaryFile(
+        delete=False
+    ) as fp_input, _tempfile.NamedTemporaryFile(
+        delete=False
+    ) as fp_debug:
       conversion_filename = fp_conversion.name
       input_filename = fp_input.name
       model_filename = fp_model.name
@@ -416,7 +448,8 @@ Alternative, use virtualenv.""")
         shell=True,
         stdout=_subprocess.PIPE,
         stderr=_subprocess.STDOUT,
-        close_fds=not is_windows)
+        close_fds=not is_windows,
+    )
     stdout, stderr = proc.communicate()
     exitcode = proc.returncode
     if exitcode == 0:
@@ -429,7 +462,10 @@ Alternative, use virtualenv.""")
   finally:
     # Must manually cleanup files.
     for filename in [
-        conversion_filename, input_filename, model_filename, output_filename
+        conversion_filename,
+        input_filename,
+        model_filename,
+        output_filename,
     ]:
       try:
         _os.unlink(filename)
@@ -437,13 +473,15 @@ Alternative, use virtualenv.""")
         pass
 
 
-def build_model_flags(change_concat_input_ranges=False,
-                      allow_nonexistent_arrays=False,
-                      saved_model_dir=None,
-                      saved_model_version=0,
-                      saved_model_tags=None,
-                      saved_model_exported_names=None,
-                      **_):
+def build_model_flags(
+    change_concat_input_ranges=False,
+    allow_nonexistent_arrays=False,
+    saved_model_dir=None,
+    saved_model_version=0,
+    saved_model_tags=None,
+    saved_model_exported_names=None,
+    **_
+):
   """Builds the model flags object from params.
 
   Args:
@@ -481,40 +519,43 @@ def build_model_flags(change_concat_input_ranges=False,
   return model_flags
 
 
-def build_conversion_flags(inference_type=dtypes.float32,
-                           inference_input_type=None,
-                           input_format=lite_constants.TENSORFLOW_GRAPHDEF,
-                           output_format=lite_constants.TFLITE,
-                           default_ranges_stats=None,
-                           drop_control_dependency=True,
-                           reorder_across_fake_quant=False,
-                           allow_custom_ops=False,
-                           post_training_quantize=False,
-                           quantize_to_float16=False,
-                           dump_graphviz_dir=None,
-                           dump_graphviz_video=False,
-                           target_ops=None,
-                           conversion_summary_dir=None,
-                           select_user_tf_ops=None,
-                           allow_all_select_tf_ops=False,
-                           enable_tflite_resource_variables=True,
-                           unfold_batchmatmul=True,
-                           lower_tensor_list_ops=True,
-                           default_to_single_batch_in_tensor_list_ops=False,
-                           accumulation_type=None,
-                           allow_bfloat16=False,
-                           unfold_large_splat_constant=False,
-                           supported_backends=None,
-                           disable_per_channel_quantization=False,
-                           enable_mlir_dynamic_range_quantizer=False,
-                           tf_quantization_mode=None,
-                           disable_infer_tensor_range=False,
-                           use_fake_quant_num_bits=False,
-                           enable_dynamic_update_slice=False,
-                           preserve_assert_op=False,
-                           guarantee_all_funcs_one_use=False,
-                           enable_mlir_variable_quantization=False,
-                           **_):
+def build_conversion_flags(
+    inference_type=dtypes.float32,
+    inference_input_type=None,
+    input_format=lite_constants.TENSORFLOW_GRAPHDEF,
+    output_format=lite_constants.TFLITE,
+    default_ranges_stats=None,
+    drop_control_dependency=True,
+    reorder_across_fake_quant=False,
+    allow_custom_ops=False,
+    post_training_quantize=False,
+    quantize_to_float16=False,
+    dump_graphviz_dir=None,
+    dump_graphviz_video=False,
+    target_ops=None,
+    conversion_summary_dir=None,
+    select_user_tf_ops=None,
+    allow_all_select_tf_ops=False,
+    enable_tflite_resource_variables=True,
+    unfold_batchmatmul=True,
+    lower_tensor_list_ops=True,
+    default_to_single_batch_in_tensor_list_ops=False,
+    accumulation_type=None,
+    allow_bfloat16=False,
+    unfold_large_splat_constant=False,
+    supported_backends=None,
+    disable_per_channel_quantization=False,
+    enable_mlir_dynamic_range_quantizer=False,
+    tf_quantization_mode=None,
+    disable_infer_tensor_range=False,
+    use_fake_quant_num_bits=False,
+    enable_dynamic_update_slice=False,
+    preserve_assert_op=False,
+    guarantee_all_funcs_one_use=False,
+    enable_mlir_variable_quantization=False,
+    disable_fuse_mul_and_fc=False,
+    **_
+):
   """Builds protocol buffer describing a conversion of a model.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -602,6 +643,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
       is a variable freezing pass, but some variables may not be fully frozen by
       it. This flag enables quantization of those residual variables in the MLIR
       graph.
+    disable_fuse_mul_and_fc: Disable fusing input multiplication with
+      fullyconnected operations. Useful when quantizing weights.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -610,11 +653,14 @@ def build_conversion_flags(inference_type=dtypes.float32,
   """
   conversion_flags = _conversion_flags_pb2.TocoFlags()
   conversion_flags.inference_type = convert_inference_tf_type_to_tflite_type(
-      inference_type, usage="inference_type flag")
+      inference_type, usage="inference_type flag"
+  )
   if inference_input_type:
     conversion_flags.inference_input_type = (
         convert_inference_tf_type_to_tflite_type(
-            inference_input_type, usage="inference_input_type flag"))
+            inference_input_type, usage="inference_input_type flag"
+        )
+    )
   else:
     conversion_flags.inference_input_type = conversion_flags.inference_type
   conversion_flags.input_format = input_format
@@ -638,30 +684,36 @@ def build_conversion_flags(inference_type=dtypes.float32,
     if OpsSet.EXPERIMENTAL_STABLEHLO_OPS in target_ops:
       conversion_flags.convert_to_stablehlo = True
     if OpsSet.EXPERIMENTAL_STABLEHLO_OPS in target_ops and len(target_ops) > 1:
-      raise ValueError("StableHLO Ops set can not be specified with other Ops "
-                       "set together")
+      raise ValueError(
+          "StableHLO Ops set can not be specified with other Ops set together"
+      )
   if conversion_summary_dir:
     conversion_flags.conversion_summary_dir = conversion_summary_dir
   if select_user_tf_ops:
     conversion_flags.select_user_tf_ops.extend(select_user_tf_ops)
   conversion_flags.allow_all_select_tf_ops = allow_all_select_tf_ops
   conversion_flags.enable_tflite_resource_variables = (
-      enable_tflite_resource_variables)
+      enable_tflite_resource_variables
+  )
   conversion_flags.unfold_batchmatmul = unfold_batchmatmul
   conversion_flags.lower_tensor_list_ops = lower_tensor_list_ops
   conversion_flags.default_to_single_batch_in_tensor_list_ops = (
-      default_to_single_batch_in_tensor_list_ops)
+      default_to_single_batch_in_tensor_list_ops
+  )
   if accumulation_type:
     conversion_flags.accumulation_type = convert_tensor_tf_type_to_tflite_type(
-        accumulation_type, usage="accumulation_type flag")
+        accumulation_type, usage="accumulation_type flag"
+    )
   conversion_flags.allow_bfloat16 = allow_bfloat16
   conversion_flags.unfold_large_splat_constant = unfold_large_splat_constant
   if supported_backends:
     conversion_flags.supported_backends.extend(supported_backends)
   conversion_flags.disable_per_channel_quantization = (
-      disable_per_channel_quantization)
+      disable_per_channel_quantization
+  )
   conversion_flags.enable_mlir_dynamic_range_quantizer = (
-      enable_mlir_dynamic_range_quantizer)
+      enable_mlir_dynamic_range_quantizer
+  )
   conversion_flags.enable_dynamic_update_slice = enable_dynamic_update_slice
   conversion_flags.preserve_assert_op = preserve_assert_op
   conversion_flags.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use
@@ -670,15 +722,22 @@ def build_conversion_flags(inference_type=dtypes.float32,
   conversion_flags.disable_infer_tensor_range = disable_infer_tensor_range
   conversion_flags.use_fake_quant_num_bits = use_fake_quant_num_bits
   conversion_flags.enable_mlir_variable_quantization = (
-      enable_mlir_variable_quantization)
+      enable_mlir_variable_quantization
+  )
+  conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
   return conversion_flags
 
 
-@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
-               SubComponent.CONVERT_GRAPHDEF)
-def convert_graphdef_with_arrays(input_data, input_arrays_with_shape,
-                                 output_arrays, control_output_arrays,
-                                 **kwargs):
+@convert_phase(
+    Component.CONVERT_TF_TO_TFLITE_MODEL, SubComponent.CONVERT_GRAPHDEF
+)
+def convert_graphdef_with_arrays(
+    input_data,
+    input_arrays_with_shape,
+    output_arrays,
+    control_output_arrays,
+    **kwargs
+):
   """Convert a frozen GraphDef that can't be loaded in TF.
 
   Conversion can be customized by providing arguments that are forwarded to
@@ -714,13 +773,15 @@ def convert_graphdef_with_arrays(input_data, input_arrays_with_shape,
     input_array = model_flags.input_arrays.add()
     if _is_quantized_input_stats_required(conversion_flags):
       if quantized_input_stats:
-        input_array.mean_value, input_array.std_value = (
-            quantized_input_stats[idx])
+        input_array.mean_value, input_array.std_value = quantized_input_stats[
+            idx
+        ]
       else:
         raise ValueError(
             "The `quantized_input_stats` flag must be defined when either "
             "`inference_type` flag or `inference_input_type` flag is set to "
-            "tf.int8 or tf.uint8.")
+            "tf.int8 or tf.uint8."
+        )
     input_array.name = name
     input_array.shape.dims.extend(list(map(int, shape)))
 
@@ -736,12 +797,14 @@ def convert_graphdef_with_arrays(input_data, input_arrays_with_shape,
       conversion_flags.SerializeToString(),
       input_data.SerializeToString(),
       debug_info_str=None,
-      enable_mlir_converter=enable_mlir_converter)
+      enable_mlir_converter=enable_mlir_converter,
+  )
   return data
 
 
-@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
-               SubComponent.CONVERT_GRAPHDEF)
+@convert_phase(
+    Component.CONVERT_TF_TO_TFLITE_MODEL, SubComponent.CONVERT_GRAPHDEF
+)
 def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
   """Convert a frozen GraphDef model using the TF Lite converter.
 
@@ -777,17 +840,21 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
     else:
       input_array.name = util.get_tensor_name(input_tensor)
     input_array.data_type = convert_tensor_tf_type_to_tflite_type(
-        input_tensor.dtype, usage="input type of the TensorFlow model")
+        input_tensor.dtype, usage="input type of the TensorFlow model"
+    )
 
     if _is_quantized_input_stats_required(conversion_flags):
       if quantized_input_stats:
-        input_array.mean_value, input_array.std_value = (
-            quantized_input_stats[idx])
+        input_array.mean_value, input_array.std_value = quantized_input_stats[
+            idx
+        ]
       else:
         # We should ideally raise an error here, but we don't as it would break
         # several models/projects that depend on this workflow.
-        warnings.warn("Statistics for quantized inputs were expected, but not "
-                      "specified; continuing anyway.")
+        warnings.warn(
+            "Statistics for quantized inputs were expected, but not "
+            "specified; continuing anyway."
+        )
 
     if input_shapes is None:
       shape = input_tensor.shape
@@ -798,8 +865,9 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
       # Create shapes with -1 for unknown dimensions.
       dims = []
       for dim in shape:
-        if (dim is None or
-            (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
+        if dim is None or (
+            isinstance(dim, tensor_shape.Dimension) and dim.value is None
+        ):
           dims.append(-1)
         else:
           dims.append(int(dim))
@@ -819,12 +887,14 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
       conversion_flags.SerializeToString(),
       input_data.SerializeToString(),
       debug_info_str=debug_info.SerializeToString() if debug_info else None,
-      enable_mlir_converter=enable_mlir_converter)
+      enable_mlir_converter=enable_mlir_converter,
+  )
   return data
 
 
-@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
-               SubComponent.CONVERT_SAVED_MODEL)
+@convert_phase(
+    Component.CONVERT_TF_TO_TFLITE_MODEL, SubComponent.CONVERT_SAVED_MODEL
+)
 def convert_saved_model(**kwargs):
   """Converts a SavedModel using TF Lite converter."""
   model_flags = build_model_flags(**kwargs)
@@ -834,12 +904,14 @@ def convert_saved_model(**kwargs):
       conversion_flags.SerializeToString(),
       input_data_str=None,
       debug_info_str=None,
-      enable_mlir_converter=True)
+      enable_mlir_converter=True,
+  )
   return data
 
 
-@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
-               SubComponent.CONVERT_JAX_HLO)
+@convert_phase(
+    Component.CONVERT_TF_TO_TFLITE_MODEL, SubComponent.CONVERT_JAX_HLO
+)
 def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
   """Converts a Jax hlo-based model using TFLite converter."""
   model_flags = _model_flags_pb2.ModelFlags()
@@ -860,7 +932,8 @@ def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
       conversion_flags.SerializeToString(),
       input_data_str=input_content,
       debug_info_str=None,
-      enable_mlir_converter=True)
+      enable_mlir_converter=True,
+  )
   return data
 
 
@@ -888,8 +961,9 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
     Defined in `convert`.
   """
   kwargs["enable_mlir_converter"] = kwargs.get("enable_mlir_converter", False)
-  return convert_graphdef(input_data, input_tensors, output_tensors, *args,
-                          **kwargs)
+  return convert_graphdef(
+      input_data, input_tensors, output_tensors, *args, **kwargs
+  )
 
 
 def deduplicate_readonly_buffers(tflite_model):
@@ -927,8 +1001,10 @@ def deduplicate_readonly_buffers(tflite_model):
         # Ignore mutable tensors.
         if op.mutatingVariableInputs is not None:
           # Ignore invalid tensors.
-          if (i < len(op.mutatingVariableInputs) and
-              op.mutatingVariableInputs[i]):
+          if (
+              i < len(op.mutatingVariableInputs)
+              and op.mutatingVariableInputs[i]
+          ):
             continue
         # Ignore variable tensors.
         if subgraph.tensors[input_tensor_idx].isVariable:
@@ -958,9 +1034,11 @@ def deduplicate_readonly_buffers(tflite_model):
 
   # Ignore invalid negative index or zero-sized buffers.
   for buffer_idx in read_only_buffer_indices.copy():
-    if (buffer_idx < 0 or (model.buffers[buffer_idx].data is None or
-                           isinstance(model.buffers[buffer_idx].data, list) or
-                           model.buffers[buffer_idx].data.size == 0)):
+    if buffer_idx < 0 or (
+        model.buffers[buffer_idx].data is None
+        or isinstance(model.buffers[buffer_idx].data, list)
+        or model.buffers[buffer_idx].data.size == 0
+    ):
       read_only_buffer_indices.discard(buffer_idx)
 
   class BufferIndex:
@@ -974,16 +1052,20 @@ def deduplicate_readonly_buffers(tflite_model):
   read_only_buffers = list(
       map(
           lambda index: BufferIndex(  # pylint: disable=g-long-lambda
-              index, model.buffers[index].data.size,
-              hashlib.md5(model.buffers[index].data.data.tobytes()).hexdigest()
+              index,
+              model.buffers[index].data.size,
+              hashlib.md5(model.buffers[index].data.data.tobytes()).hexdigest(),
           ),
-          read_only_buffer_indices))
+          read_only_buffer_indices,
+      )
+  )
 
   # Sort read_only_buffers by buffer size & hash in descending order.
   read_only_buffers = sorted(
       read_only_buffers,
       key=lambda buffer: (buffer.size, buffer.hash_value),
-      reverse=True)
+      reverse=True,
+  )
 
   # Create a map of duplicate buffers (same size and same type).
   # eg: In [1, 2, 3, 4, 5, 6] if (1, 4, 6) and (2, 5) are each, groups of buffer
@@ -995,7 +1077,7 @@ def deduplicate_readonly_buffers(tflite_model):
       continue
     # This buffer is unique. Scan rest of the list to find duplicates
     # of this buffer and mark them accordingly.
-    for buffer_j in read_only_buffers[i + 1:]:
+    for buffer_j in read_only_buffers[i + 1 :]:
       if buffer_j.idx in duplicate_buffer_map:
         continue
       if buffer_i.size != buffer_j.size:
@@ -1013,8 +1095,9 @@ def deduplicate_readonly_buffers(tflite_model):
       for input_tensor in op.inputs:
         buffer_idx = subgraph.tensors[input_tensor].buffer
         if buffer_idx in duplicate_buffer_map:
-          subgraph.tensors[input_tensor].buffer = (
-              duplicate_buffer_map[buffer_idx])
+          subgraph.tensors[input_tensor].buffer = duplicate_buffer_map[
+              buffer_idx
+          ]
 
   # Nullify the unused buffers.
   for idx in duplicate_buffer_map:

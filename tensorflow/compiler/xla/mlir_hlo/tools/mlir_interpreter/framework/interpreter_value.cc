@@ -48,6 +48,11 @@ struct InterpreterValuePrinter {
 
   template <typename T>
   void operator()(const TensorOrMemref<T>& t) {
+    if (!t.buffer) {
+      os << "Memref: null";
+      return;
+    }
+
     if (t.view.isVector) {
       os << "vector<";
     } else {
@@ -305,7 +310,7 @@ bool Tuple::operator==(const Tuple& other) const {
   return true;
 }
 
-std::shared_ptr<Buffer> InterpreterValue::buffer() {
+std::shared_ptr<Buffer> InterpreterValue::buffer() const {
   return std::visit(
       [](const auto& it) -> std::shared_ptr<Buffer> {
         if constexpr (is_tensor_or_memref_v<decltype(it)>) {
@@ -339,6 +344,17 @@ uint64_t InterpreterValue::asUInt() const {
       }
     } else {
       llvm_unreachable("only integral types can be converted to ints");
+    }
+  };
+  return std::visit(visit, storage);
+}
+
+double InterpreterValue::asDouble() const {
+  auto visit = [](auto value) -> int64_t {
+    if constexpr (std::is_floating_point_v<decltype(value)>) {
+      return static_cast<double>(value);
+    } else {
+      llvm_unreachable("only float types can be converted to ints");
     }
   };
   return std::visit(visit, storage);

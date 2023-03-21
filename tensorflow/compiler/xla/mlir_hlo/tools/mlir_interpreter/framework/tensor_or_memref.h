@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 #define MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 
+#include <math.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -25,7 +27,9 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace interpreter {
@@ -44,11 +48,12 @@ struct BufferView {
 
   // Removes the dimension from the view. If you need to keep it, use the
   // overload below with dimSize = 1.
-  void slice(int64_t dimIndex, int64_t dimOffset);
-  void slice(int64_t dimIndex, int64_t dimOffset, int64_t dimSize,
-             int64_t dimStride = 1);
-  bool subview(ArrayRef<int64_t> subviewoffsets, ArrayRef<int64_t> subviewsizes,
-               ArrayRef<int64_t> subviewstrides);
+  LogicalResult slice(int64_t dimIndex, int64_t dimOffset);
+  LogicalResult slice(int64_t dimIndex, int64_t dimOffset, int64_t dimSize,
+                      int64_t dimStride = 1);
+  LogicalResult subview(ArrayRef<int64_t> subviewoffsets,
+                        ArrayRef<int64_t> subviewsizes,
+                        ArrayRef<int64_t> subviewstrides);
   int64_t getNumElements(bool includeVectorDims = false) const;
 
   class LogicalIndexView {
@@ -134,7 +139,9 @@ struct BufferView {
     bool includeVectorDims;
   };
 
-  int64_t getPhysicalIndex(llvm::ArrayRef<int64_t> viewindices) const;
+  // Returns nullopt if the index is out of bounds.
+  std::optional<int64_t> getPhysicalIndex(
+      llvm::ArrayRef<int64_t> viewIndices) const;
   LogicalIndexView indices(bool includeVectorDims = false) const {
     return LogicalIndexView{this, includeVectorDims};
   }
@@ -159,14 +166,30 @@ class Buffer {
     return std::make_shared<Buffer>(Dummy{}, size, sizeof(T));
   }
 
-  char* at(int64_t idx, int64_t elementSize) {
+  char* at(std::optional<int64_t> idx, int64_t elementSize) {
+    if (!idx || isDeallocated) {
+      setFailure("out of bounds access");
+      return &storage.data()[0];
+    }
+    if (isDeallocated) {
+      setFailure("use-after-free");
+      return &storage.data()[0];
+    }
     assert(!isDeallocated && "accessing deallocated buffer");
-    return &storage.data()[idx * elementSize];
+    return &storage.data()[*idx * elementSize];
   }
 
-  const char* at(int64_t idx, int64_t elementSize) const {
+  const char* at(std::optional<int64_t> idx, int64_t elementSize) const {
+    if (!idx || isDeallocated) {
+      setFailure("out of bounds access");
+      return &storage.data()[0];
+    }
+    if (isDeallocated) {
+      setFailure("use-after-free");
+      return &storage.data()[0];
+    }
     assert(!isDeallocated && "accessing deallocated buffer");
-    return &storage.data()[idx * elementSize];
+    return &storage.data()[*idx * elementSize];
   }
 
   Buffer(Dummy, size_t numElements, size_t elementSize)
@@ -174,13 +197,28 @@ class Buffer {
 
   int64_t getByteSize() const { return storage.size(); }
 
-  void deallocate() { isDeallocated = true; }
+  void deallocate() {
+    if (isAlloca) {
+      setFailure("deallocated stack buffer");
+    } else if (isDeallocated) {
+      setFailure("double-free");
+    } else {
+      isDeallocated = true;
+    }
+  }
 
   bool deallocated() const { return isDeallocated; }
+
+  void setFailure(llvm::StringRef failure) const { this->failure = failure; }
+  llvm::StringRef getFailure() const { return failure; }
+
+  void setIsAlloca() { isAlloca = true; }
 
  private:
   llvm::SmallVector<char> storage;
   bool isDeallocated = false;
+  bool isAlloca = false;
+  mutable llvm::StringRef failure;
 };
 
 template <typename T>
@@ -211,23 +249,25 @@ struct TensorOrMemref {
   }
 
   const T& at(ArrayRef<int64_t> indices) const {
-    assert(view.inBounds(indices) && "out of bounds");
     return *reinterpret_cast<const T*>(
         buffer->at(view.getPhysicalIndex(indices), sizeof(T)));
   }
 
   T& at(ArrayRef<int64_t> indices) {
-    assert(view.inBounds(indices) && "out of bounds");
     return *reinterpret_cast<T*>(
         buffer->at(view.getPhysicalIndex(indices), sizeof(T)));
   }
 
   TensorOrMemref vectorAt(ArrayRef<int64_t> indices) const {
-    assert(view.inBounds(indices) && "out of bounds");
+    auto offset = view.getPhysicalIndex(indices);
     BufferView subview;
     subview.strides = {view.strides.begin() + view.rank(), view.strides.end()};
     subview.sizes = {view.sizes.begin() + view.rank(), view.sizes.end()};
-    subview.offset = view.getPhysicalIndex(indices);
+    if (offset) {
+      subview.offset = *offset;
+    } else {
+      buffer->setFailure("out of bounds access");
+    }
     subview.isVector = true;
     subview.numVectorDims = std::nullopt;
     return {buffer, subview};

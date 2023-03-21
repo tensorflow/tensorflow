@@ -94,14 +94,17 @@ cc_library(
     name = "c_api_headers",
     hdrs = [
         "c_api.h",
-        "c_api_macros.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros_hdrs",
         ":tf_attrtype",
-        ":tf_buffer",
-        ":tf_datatype",
+        ":tf_buffer_hdrs",
+        ":tf_datatype_hdrs",
         ":tf_status_headers",
+        ":tf_tensor_hdrs",
+        # TODO: Only include tf_tstring_hdrs. Don't expose the implementation of TF_TString to API
+        # users.
         ":tf_tstring",
     ],
 )
@@ -162,6 +165,14 @@ filegroup(
 cc_library(
     name = "tf_attrtype",
     hdrs = ["tf_attrtype.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "c_api_macros_hdrs",
+    hdrs = [
+        "c_api_macros.h",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -380,7 +391,7 @@ cc_library(
     hdrs = ["tf_status.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/tsl/c:tsl_status",
+        "//tensorflow/tsl/c:tsl_status_headers",
     ],
 )
 
@@ -390,15 +401,15 @@ cc_library(
         "tf_tstring.cc",
     ],
     hdrs = [
-        "c_api_macros.h",
-        "tf_datatype.h",
-        "tf_status.h",
-        "tf_tensor.h",
         "tf_tstring.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros_hdrs",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+        ":tf_tensor_hdrs",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/tsl/c:tsl_status",
@@ -427,6 +438,11 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_datatype_hdrs",
+    hdrs = ["tf_datatype.h"],
+)
+
+cc_library(
     name = "tf_datatype",
     srcs = ["tf_datatype.cc"],
     hdrs = ["tf_datatype.h"],
@@ -441,6 +457,17 @@ cc_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_tensor_hdrs",
+    hdrs = ["tf_tensor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_macros_hdrs",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+    ],
 )
 
 cc_library(
@@ -491,6 +518,13 @@ tf_cuda_library(
             "//tensorflow/core/platform:casts",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_buffer_hdrs",
+    hdrs = [
+        "tf_buffer.h",
+    ],
 )
 
 cc_library(
@@ -652,10 +686,10 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":c_api_internal",
-        ":tf_datatype",
-        ":tf_status",
-        ":tf_tensor",
+        ":c_api_headers",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+        ":tf_tensor_hdrs",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
     ],
 )
@@ -812,7 +846,6 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
-        "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
@@ -867,10 +900,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/149031034
-        "notsan",  # b/149031034
-    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [
@@ -942,7 +971,6 @@ tf_cuda_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [
@@ -988,7 +1016,6 @@ tf_cc_test(
     linkopts = select({
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [

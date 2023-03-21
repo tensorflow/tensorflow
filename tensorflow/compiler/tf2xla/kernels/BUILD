@@ -8,6 +8,7 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
+    "tf_cc_test",
     "tf_cuda_library",
 )
 
@@ -174,6 +175,7 @@ tf_kernel_library(
         ":tensor_list_utils",
         ":while_op",
         ":xla_call_module_op",
+        ":rng_converter_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -245,7 +247,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
@@ -382,7 +383,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -404,8 +404,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/tsl/platform:regexp",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -413,6 +415,9 @@ tf_kernel_library(
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:vhlo_ops",
     ],
 )
 
@@ -507,4 +512,27 @@ tf_proto_library(
     srcs = ["callback.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
+)
+
+cc_library(
+    name = "rng_converter_utils",
+    srcs = ["rng_converter_utils.cc"],
+    hdrs = ["rng_converter_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "rng_converter_utils_test",
+    srcs = ["rng_converter_utils_test.cc"],
+    deps = [
+        ":rng_converter_utils",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

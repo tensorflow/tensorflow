@@ -2,7 +2,7 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "internal_create_sanitizer_settings", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -16,6 +16,7 @@ package(
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/py/jax_tpu_embedding:__subpackages__",
+        "//third_party/py/lingvo:__subpackages__",
         "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],
@@ -235,14 +236,57 @@ py_library(
 )
 
 pytype_library(
+    name = "tensor_tracer",
+    srcs = [
+        "tensor_tracer.py",
+        "tensor_tracer_flags.py",
+        "tensor_tracer_report.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_replication",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
+        "//tensorflow/python:control_flow_case",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_analytics",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/summary",
+        "//tensorflow/python/tpu:tensor_tracer_proto_py",
+        "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/training:training_util",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+    ],
+)
+
+pytype_library(
     name = "tpu_lib",
     srcs = [
         "__init__.py",
         "bfloat16.py",
         "session_support.py",
-        "tensor_tracer.py",
-        "tensor_tracer_flags.py",
-        "tensor_tracer_report.py",
         "tpu_optimizer.py",
         "tpu_strategy_util.py",
         "training_loop.py",
@@ -252,6 +296,7 @@ pytype_library(
         ":datasets",
         ":device_assignment",
         ":functional",
+        ":tensor_tracer",
         ":topology",
         ":tpu_feed",
         ":tpu_function",
@@ -278,12 +323,12 @@ pytype_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/ops/losses",
-        "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/tpu/profiler",
     ],
@@ -294,6 +339,7 @@ pytype_library(
     srcs = ["tpu.py"],
     deps = [
         ":device_assignment",
+        ":tensor_tracer",
         ":tpu_feed",
         ":tpu_function",
         ":tpu_name_util",
@@ -301,9 +347,11 @@ pytype_library(
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:cond",
         "//tensorflow/python:config",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device",
@@ -384,6 +432,7 @@ pytype_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -603,12 +652,20 @@ pytype_library(
     srcs = ["tpu_embedding_v2_utils.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/framework:device_spec",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -618,16 +675,36 @@ pytype_library(
     srcs_version = "PY3",
     deps = [
         ":tpu_embedding_v2_utils",
-        ":tpu_lib",
         ":tpu_py",
-        ":tpu_replication",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -652,6 +729,7 @@ pytype_strict_library(
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
@@ -734,7 +812,9 @@ tpu_py_test(
     tags = ["no_oss"],
     deps = [
         ":tpu_lib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
@@ -767,3 +847,5 @@ tf_proto_library(
 #     deps = [":tensor_tracer_proto"],
 # )
 # copybara:uncomment_end
+
+internal_create_sanitizer_settings()

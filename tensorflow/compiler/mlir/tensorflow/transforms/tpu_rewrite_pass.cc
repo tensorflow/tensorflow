@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <type_traits>
 
 #include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -116,7 +118,8 @@ LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
-    Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
+    std::optional<SymbolTable::UseRange> uses =
+        SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
       func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
@@ -206,6 +209,15 @@ LogicalResult SetMetadataProtoArgs(
   // Set args metadata in proto.
   mlir::StringAttr replication_attr_name = mlir::StringAttr::get(
       op.getContext(), "mhlo.is_same_data_across_replicas");
+
+  auto dynamic_arg_idx = op->getAttrOfType<ArrayAttr>(TF::kDynamicArgIndexAttr);
+  llvm::SmallSet<int, 4> dynamic_arg_idx_set;
+  if (dynamic_arg_idx) {
+    for (auto idx : dynamic_arg_idx.getValue()) {
+      dynamic_arg_idx_set.insert(idx.dyn_cast<IntegerAttr>().getInt());
+    }
+  }
+
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();
@@ -246,6 +258,10 @@ LogicalResult SetMetadataProtoArgs(
     mlir::UnitAttr attr = op.getFuncOp().getArgAttrOfType<mlir::UnitAttr>(
         index, replication_attr_name);
     arg->set_is_same_data_across_replicas(attr != nullptr);
+
+    // Currently only support first dimension to be bounded dynamic.
+    arg->mutable_is_bounded_dynamic_dim()->Add(
+        dynamic_arg_idx_set.contains(index));
   }
 
   return success();
@@ -284,7 +300,7 @@ LogicalResult SetMetadataProtoRetvals(
 // TODO(lyandy): Support session handle and guaranteed consts.
 LogicalResult SetMetadataProtoFromClusterFuncOp(
     tf_device::ClusterFuncOp op, int num_replicas, int num_cores_per_replica,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   if (auto options_attr =
           op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
@@ -337,7 +353,7 @@ tf_device::LaunchOp WrapOpInLaunch(OpBuilder* builder, Location loc,
 Operation* BuildCompileOp(
     tf_device::ClusterFuncOp cluster_func, int num_replicas,
     int num_cores_per_replica, llvm::StringRef compilation_device,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;

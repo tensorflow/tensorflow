@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
@@ -32,19 +32,12 @@ namespace acceleration {
 constexpr int kMaxAttempts = 2;
 
 ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
-    : storage_(options.storage_path, options.error_reporter),
+    : storage_path_(options.storage_path),
+      storage_(options.storage_path, options.error_reporter),
       error_reporter_(options.error_reporter) {
-  std::string model_path;
-  if (!options.model_path.empty()) {
-    model_path = options.model_path;
-  } else if (options.model_fd >= 0) {
-    model_path = absl::StrCat("fd:", options.model_fd, ":",
-                              options.model_offset, ":", options.model_size);
-  }
-
   validator_runner_impl_ = std::make_unique<ValidatorRunnerImpl>(
-      model_path, options.storage_path, options.data_directory_path,
-      options.per_test_timeout_ms,
+      CreateModelLoaderPath(options), options.storage_path,
+      options.data_directory_path, options.per_test_timeout_ms,
       options.custom_input_data.empty()
           ? nullptr
           : std::make_unique<CustomValidationEmbedder>(
@@ -109,7 +102,8 @@ int ValidatorRunner::TriggerMissingValidation(
     to_be_run->emplace_back(std::move(copy));
   }
   int to_be_run_count = to_be_run->size();
-  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run));
+  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run),
+                                                 storage_path_);
   return to_be_run_count;
 }
 

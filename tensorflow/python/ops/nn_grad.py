@@ -22,6 +22,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -1105,7 +1106,8 @@ def _TopKGrad(op, grad, _):
       math_ops.cast(ind_shape, dtypes.int64),
       array_ops.size(ind_shape) - 1)
   # Flatten indices to 2D.
-  ind_2d = array_ops.reshape(op.outputs[1], array_ops.stack([-1, ind_lastdim]))
+  ind_2d = array_ops.reshape(
+      op.outputs[1], array_ops_stack.stack([-1, ind_lastdim]))
 
   in_lastdim = array_ops.gather(
       math_ops.cast(in_shape, dtypes.int64),
@@ -1220,7 +1222,7 @@ def _MeanAggregator(inputs, segments):
         inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
     result.append(
         array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
-  return array_ops.stack(result, axis=0)
+  return array_ops_stack.stack(result, axis=0)
 
 
 # We have to register the gradients for these ops so that tensorflow will know

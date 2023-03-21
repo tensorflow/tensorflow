@@ -39,6 +39,10 @@ static constexpr char kDefaultLayoutAttr[] = "_default_layout";
 // `tf` prefix attached in MLIR importer for dialect requirements.
 static constexpr char kCustomDeviceAttr[] = "tf._layout";
 
+// Indicates a default mesh provided by the user as fallback during mesh
+// propagation. `tf` prefix attached in MLIR importer for dialect requirements.
+static constexpr char kCustomDefaultMeshAttr[] = "tf._default_mesh";
+
 // Attribute attached on _Arg node for the mesh config.
 static constexpr char kMeshAttr[] = "_mesh";
 

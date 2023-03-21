@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/synchronization/mutex.h"
-#include "pybind11/cast.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"

@@ -164,7 +164,7 @@ class Comparison {
   // Returns a comparison operator: (T, T) -> bool for this Comparison's
   // Direction.
   template <typename T>
-  std::function<bool(T, T)> GetComparator() const {
+  inline std::function<bool(T, T)> GetComparator() const {
     switch (GetDirection()) {
       case Direction::kEq:
         return std::equal_to<T>();
@@ -184,8 +184,8 @@ class Comparison {
   // Applies the comparison from this Comparison's direction and ordering for
   // integral types.
   template <typename T, absl::enable_if_t<std::is_integral<T>::value, int> = 0>
-  bool Compare(const T a, const T b) const {
-    CHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
+  inline bool Compare(const T a, const T b) const {
+    DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
     return GetComparator<T>()(a, b);
   }
 
@@ -195,8 +195,8 @@ class Comparison {
             absl::enable_if_t<std::is_floating_point<T>::value ||
                                   std::is_same<T, xla::bfloat16>::value,
                               int> = 0>
-  bool Compare(const T a, const T b) const {
-    CHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
+  inline bool Compare(const T a, const T b) const {
+    DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
     if (IsTotalOrder()) {
       //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
       // Reference:
@@ -247,6 +247,18 @@ StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order);
 template <typename KeyFn>
 auto LessThanByKey(KeyFn&& key_fn) {
   return [=](const auto& a, const auto& b) { return key_fn(a) < key_fn(b); };
+}
+
+// Two comparisons are equivalent iff they have the same direction, precision,
+// and ordering.
+inline bool operator==(const Comparison& a, const Comparison& b) {
+  return a.GetDirection() == b.GetDirection() &&
+         a.GetPrimitiveType() == b.GetPrimitiveType() &&
+         a.GetOrder() == b.GetOrder();
+}
+
+inline bool operator!=(const Comparison& a, const Comparison& b) {
+  return !(a == b);
 }
 
 }  // namespace xla

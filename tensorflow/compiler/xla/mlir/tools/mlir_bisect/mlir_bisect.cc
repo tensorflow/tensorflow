@@ -38,8 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/deallocation/IR/deallocation_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
@@ -68,11 +68,21 @@ struct Options {
       llvm::cl::desc("If set, print all reductions for the given strategy and "
                      "exit. For testing."),
       llvm::cl::init("")};
+  llvm::cl::opt<std::string> expected_error{
+      "expected-error",
+      llvm::cl::desc("If set, expect the given error message after applying "
+                     "the pass instead of a successful execution."),
+      llvm::cl::init("")};
   llvm::cl::opt<int64_t> max_steps_per_run{
       "max-steps-per-run",
       llvm::cl::desc("Maximum number of steps to execute for each attempt."),
       llvm::cl::init(100000)};
   mlir::PassPipelineCLParser pass_pipeline{"", "Passes to run"};
+  llvm::cl::opt<bool> canonicalize{
+      "enable-canonicalization",
+      llvm::cl::desc("If set, canonicalize candidates before trying them. Set "
+                     "to false if you're bisecting --canonicalize."),
+      llvm::cl::init(true)};
 };
 
 namespace mlir {
@@ -141,13 +151,29 @@ LogicalResult Run(ModuleOp module, interpreter::ExecutionTrace* trace,
 
   SymbolTable symbol_table_after{*clone};
   interpreter_options.listener = nullptr;
+  bool found_expected_error = false;
+  if (!options.expected_error.empty()) {
+    auto original_handler = interpreter_options.errorHandler;
+    interpreter_options.errorHandler = [&](llvm::StringRef failure) {
+      found_expected_error |=
+          failure.find(options.expected_error) != std::string::npos;
+      original_handler(failure);
+    };
+  }
+
   auto results_after_pass = interpreter::runInterpreter(
       symbol_table_after,
       llvm::cast<func::FuncOp>(symbol_table_after.lookup("main")), {},
       interpreter_options);
 
   if (!succeeded(results_after_pass)) {
+    if (found_expected_error) {
+      return success();
+    }
     llvm::errs() << "Interpreter failed\n";
+    return failure();
+  } else if (!options.expected_error.empty()) {
+    llvm::errs() << "Expected error not seen\n";
     return failure();
   }
 
@@ -182,7 +208,10 @@ OwningOpRef<ModuleOp> ReduceModule(OwningOpRef<ModuleOp> module,
     for (auto it = strategies.begin(); it != strategies.end(); ++it) {
       for (auto& candidate :
            detail::GetCandidates(it->second, state, *module)) {
-        if (!Canonicalize(*candidate).succeeded()) {
+        if (!mlir::verify(*candidate).succeeded()) {
+          continue;
+        }
+        if (options.canonicalize && !Canonicalize(*candidate).succeeded()) {
           continue;
         }
 
@@ -243,6 +272,8 @@ void ReplaceArgsWithConstants(ModuleOp module,
 }  // namespace mlir
 
 int main(int argc, char* argv[]) {
+  llvm::errs().tie(&llvm::outs());
+  llvm::outs().tie(&llvm::errs());
   int dummy_argc = 1;
   tsl::port::InitMain("", &dummy_argc, &argv);
 
@@ -258,10 +289,10 @@ int main(int argc, char* argv[]) {
   mlir::thlo::registerAllThloPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
-  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
 
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::gml_st::GmlStDialect,
+                  mlir::deallocation::DeallocationDialect,
                   mlir::thlo::THLODialect, xla::runtime::RuntimeDialect>();
 
   mlir::MLIRContext context(registry);

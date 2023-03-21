@@ -8,6 +8,7 @@ TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"
 TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"
 GPU_2DEVS_BACKEND = "2gpus"
 PATHWAYS = "pw"
+PATHWAYS_V3_DONUT_BACKEND = "pw_v3_2x2"
 # LINT.ThenChange(
 #     python/tests/test_backend_name.py:backend_name,
 #     python/tests/test_backend_name.oss.py:backend_name
@@ -38,13 +39,15 @@ def _get_configurations(
         ],
         PATHWAYS: [
         ],
+        PATHWAYS_V3_DONUT_BACKEND: [
+        ],
     }
     configurations = [
         dict(suffix = "cpu", backend = "cpu", tags = [], flags = [], env = {}, deps = []),
         dict(
             suffix = "gpu",
             backend = "gpu",
-            tags = ["requires-gpu-nvidia", "gpu"],
+            tags = ["requires-gpu", "gpu"],
             flags = [],
             env = {},
             deps = [],
@@ -55,7 +58,7 @@ def _get_configurations(
             dict(
                 suffix = GPU_2DEVS_BACKEND,
                 backend = GPU_2DEVS_BACKEND,
-                tags = ["requires-gpu-nvidia:2", "gpu", "specialbackend", GPU_2DEVS_BACKEND],
+                tags = ["requires-gpu:2", "gpu"],
                 flags = [],
                 env = {
                 },

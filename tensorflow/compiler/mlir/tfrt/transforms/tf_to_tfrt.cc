@@ -237,7 +237,13 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
         // called by a TPUPartitionedCall op and will be compiled in
         // TPUPartitionedCall op via FunctionLibraryRuntime and not be processed
         // by BEFExecutor.
-        is_tpu_op) {
+        //
+        // We also avoid creating tfrt_fallback_async.createop for all GPU ops
+        // except for tf.XlaLaunch. This is correct as long as we only run XLA
+        // clusters on GPU and all other ops on CPU.
+        is_tpu_op ||
+        (parsed_device_name->device_type == DEVICE_GPU &&
+         op->getName().getStringRef().str() != "tf.XlaLaunch")) {
       return ConvertToCoreRTExecuteOp(
           op, operands, parsed_device_name->op_handler_name, op_attrs,
           op_func_attrs, op_name, rewriter);
@@ -331,8 +337,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
     // be relatively cheap for the host.
     cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
   } else {
-    cost = rewriter.getI64IntegerAttr(
-        cost_analysis_.GetCost(op, fallback_key.getInt()));
+    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
   }
 
   // For now, we only consider GPU XLA clusters in the form of XlaLaunch for
@@ -864,6 +869,12 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
   LogicalResult matchAndRewrite(
       CallOp op, typename CallOp::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
+    if (auto xla_must_compile =
+            op->template getAttrOfType<mlir::BoolAttr>("_XlaMustCompile");
+        xla_must_compile && xla_must_compile.getValue()) {
+      return mlir::failure();
+    }
+
     auto callee =
         op.getCallableForCallee().template dyn_cast<mlir::SymbolRefAttr>();
     if (!callee) return failure();
@@ -1562,6 +1573,7 @@ class TfToTfrtConversionPass
     tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
     use_tpu_host_allocator_for_inputs_ =
         options.use_tpu_host_allocator_for_inputs;
+    tpu_allow_unpadded_batch_ = options.tpu_allow_unpadded_batch;
     cost_threshold_ = options.cost_threshold;
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
@@ -1591,7 +1603,8 @@ class TfToTfrtConversionPass
           &target, &patterns, &context, &corert_converter, &fallback_converter,
           TfrtTpuExecuteOpConversionOptions{
               tpu_use_core_selector_, tpu_use_bundled_transfer_,
-              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_},
+              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_,
+              tpu_allow_unpadded_batch_},
           tpu_lower_to_fallback_);
 
     if (target_gpu_) {
@@ -1815,6 +1828,18 @@ class TfToTfrtConversionPass
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
+
+  Option<TfrtCompileOptions::TpuAllowUnpaddedBatch> tpu_allow_unpadded_batch_{
+      *this, "tpu-allow-unpadded-batch",
+      llvm::cl::desc("To allow unpadded batch for TPU execution."),
+      llvm::cl::values(
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled,
+                     "disabled", "Disable this feature."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kAuto, "auto",
+                     "Enable this feature when in-graph batching is detected."),
+          clEnumValN(TfrtCompileOptions::TpuAllowUnpaddedBatch::kEnforced,
+                     "enforced", "Force to enable this feature.")),
+      llvm::cl::init(TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled)};
 
   Option<bool> target_gpu_{
       *this, "target-gpu",
@@ -2127,8 +2152,8 @@ static std::unique_ptr<Pass> CreateOutlineJitRtClustersPass() {
 
 // -------------------------------------------------------------------------- //
 
-void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
-                                  const TfrtPipelineOptions &options) {
+static void CreateTFExecutorToTFPipelineHelper(
+    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
   // Due to b/191304670, functionalized while ops might not have the
   // shape_invariant attribute set correctly, which leads to failure in shape
   // inference. As a workaround, we conservatively (e.g., we place less
@@ -2154,6 +2179,8 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
       mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
 
   AddTfDeviceAssignmentPasses(pm, options);
+
+  pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.
@@ -2302,10 +2329,8 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }
 
-void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
-                                          const TfrtPipelineOptions &options) {
-  CreateTFExecutorToTFPipeline(pm, options);
-
+void CreateTfToTfrtPipeline(mlir::OpPassManager &pm,
+                            const TfrtPipelineOptions &options) {
   pm.addPass(CreateTfToTfrtConversionPass(options));
 
   pm.addPass(CreateRemoveDeviceAttributePass());
@@ -2318,6 +2343,12 @@ void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
     pm.addNestedPass<mlir::func::FuncOp>(
         tfrt_compiler::CreateInsertFallbackTensorCopyPass());
   }
+}
+
+static void CreateTfExecutorToTfrtPipelineHelper(
+    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
+  CreateTFExecutorToTFPipelineHelper(pm, options);
+  CreateTfToTfrtPipeline(pm, options);
 }
 
 Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
@@ -2335,6 +2366,13 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
 // export TF_DUMP_GRAPH_PREFIX=/tmp/mlir
 Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
                                       const TfrtPipelineOptions &options) {
+  TF_RETURN_IF_ERROR(CreateTFExecutorToTFPipeline(pm, options));
+  CreateTfToTfrtPipeline(pm, options);
+  return OkStatus();
+}
+
+Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
+                                    const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(ValidateTfrtPipelineOptions(options));
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass, which requires disabling
@@ -2343,7 +2381,7 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
     pm.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
         /*print_module_scope=*/true));
   }
-  CreateTfExecutorToTfrtPipelineHelper(pm, options);
+  CreateTFExecutorToTFPipelineHelper(pm, options);
   return OkStatus();
 }
 

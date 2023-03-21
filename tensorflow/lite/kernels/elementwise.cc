@@ -76,6 +76,14 @@ inline void SetRsqrtOutputMultiplier(const float input_scale,
   QuantizeMultiplier(scale, multiplier, shift);
 }
 
+size_t MultiplyNonChannelDims(TfLiteIntArray* shape) {
+  size_t batch_size = 1;
+  for (int i = 0; i < shape->size - 1; ++i) {
+    batch_size *= shape->data[i];
+  }
+  return batch_size;
+}
+
 typedef bool (*IsSupportedType)(TfLiteType);
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node,
                             IsSupportedType is_supported_type,

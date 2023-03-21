@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -65,12 +65,10 @@ const char kOpKernelRunnerCacheResourceName[] =
 namespace {
 
 using ::tensorflow::tfrt_stub::OpKernelRunner;
-using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
 using ::tensorflow::tfrt_stub::OpKernelRunState;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
-using ::tfrt::OpAttrsRef;
 using ::tfrt::RCReference;
 using ::tfrt::string_view;
 
@@ -103,19 +101,14 @@ void KernelFallbackEmitError(
   if (op_chain) *op_chain = std::move(error);
 }
 
-std::function<void(std::function<void()>)>* GetDefaultRunner() {
-  static auto* const default_runner =
-      new std::function<void(std::function<void()>)>(
-          [](const std::function<void()>& f) { f(); });
-  return default_runner;
-}
-
 }  // namespace
 
 Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner,
@@ -123,14 +116,8 @@ Status SetUpKernelFallbackCompatRequestContext(
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
-
-  auto* runner_table =
-      builder->resource_context()->GetOrCreateResource<OpKernelRunnerTable>(
-          kOpKernelRunnerTableResourceName);
-
-  auto* resource_array =
-      builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
-          kFallbackResourceArray);
+  DCHECK(runner_table);
+  DCHECK(resource_array);
 
   auto& fallback_request_state =
       builder->context_data().emplace<KernelFallbackCompatRequestState>(
@@ -139,45 +126,6 @@ Status SetUpKernelFallbackCompatRequestContext(
           model_metadata, pflr);
 
   fallback_request_state.set_cost_recorder(cost_recorder);
-
-  return OkStatus();
-}
-
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder, OpKernelRunnerTable* runner_table,
-    tensorflow::EagerContext* eager_context,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata) {
-  auto* resource_array =
-      builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
-          kFallbackResourceArray);
-
-  if (runner_table == nullptr)
-    runner_table =
-        builder->resource_context()->GetOrCreateResource<OpKernelRunnerTable>(
-            kOpKernelRunnerTableResourceName);
-
-  auto step_id = builder->id();
-
-  Rendezvous::Factory creator = eager_context->RendezvousFactory();
-  Rendezvous* rendezvous;
-  TF_RETURN_IF_ERROR(
-      creator(step_id, eager_context->local_device_mgr(), &rendezvous));
-
-  // TODO(hhb): Clean up rendezvous from factory after run.
-
-  auto& fallback_request_state =
-      builder->context_data().emplace<KernelFallbackCompatRequestState>(
-          GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
-          tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
-              eager_context->StepContainer()},
-          eager_context->GetCollectiveExecutorHandle(),
-          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(rendezvous),
-          runner_table, resource_array, user_intra_op_threadpool,
-          model_metadata, eager_context->pflr());
-
-  fallback_request_state.set_log_device_placement(
-      eager_context->LogDevicePlacement());
 
   return OkStatus();
 }
@@ -995,7 +943,7 @@ void BatchFunction(
         op_attr_array, /*op_func_attr_array*/ {}, attr_value_map));
     // Pass in a BEF function pointer with a I64 attribute.
     int64_t ptr_value = absl::bit_cast<int64_t>(&f.get());
-    (*attr_value_map)["tfrt_bef_func"].set_i(ptr_value);
+    (*attr_value_map)["opaque_function_handle"].set_i(ptr_value);
     return OkStatus();
   };
   auto kernel_runner_or_status = runner_cache->GetOrCreate(

@@ -19,9 +19,8 @@ func.func @select(%pred : tensor<i1>, %a : tensor<?x2x3xf32>, %b : tensor<1x?x3x
     -> tensor<1x2x3xindex> {
   %0 = "mhlo.select"(%pred, %a, %b)
       : (tensor<i1>, tensor<?x2x3xf32>, tensor<1x?x3xf32>) -> tensor<*xf32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<*xf32>) -> tensor<1x2x3xindex>
-  // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 2, 3], element_type0 = f32} : (tensor<*xf32>) -> tensor<1x2x3xindex>
+  // CHECK: types0 = tensor<1x2x3xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<1x2x3xindex>
   func.return %1 : tensor<1x2x3xindex>
 }
 
@@ -31,9 +30,8 @@ func.func @select(%pred : tensor<i1>, %a : tensor<?x2x3xf32>, %b : tensor<1x?x3x
 func.func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xindex> {
   %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction NE>}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<2x2xi1>) -> tensor<2x2xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 2], element_type0 = i1} : (tensor<2x2xi1>) -> tensor<2x2xindex>
+  // CHECK: types0 = tensor<2x2xi1>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<2x2xi1>) -> tensor<2x2xindex>
   func.return %1 : tensor<2x2xindex>
 }
 
@@ -43,9 +41,8 @@ func.func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xind
 func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xindex> {
   %0 = "mhlo.broadcast"(%a) {broadcast_sizes = dense<[1, 2]> : tensor<2xi64>}
       : (tensor<3xi32>) -> tensor<1x2x3xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<1x2x3xi32>) -> tensor<1x2x3xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 2, 3], element_type0 = i32} : (tensor<1x2x3xi32>) -> tensor<1x2x3xindex>
+  // CHECK: types0 = tensor<1x2x3xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<1x2x3xi32>) -> tensor<1x2x3xindex>
   func.return %1 : tensor<1x2x3xindex>
 }
 
@@ -63,9 +60,8 @@ func.func @broadcast(%a : tensor<3xi32>) -> tensor<1x2x3xi32> {
 // CHECK-LABEL: @dynamic_slice
 func.func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xindex> {
   %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<1x4xi32>) -> tensor<1x4xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 4], element_type0 = i32} : (tensor<1x4xi32>) -> tensor<1x4xindex>
+  // CHECK: types0 = tensor<1x4xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<1x4xi32>) -> tensor<1x4xindex>
   func.return %1 : tensor<1x4xindex>
 }
 
@@ -78,8 +74,8 @@ func.func @pad(%arg0: tensor<1x2x3xf16>, %arg1: tensor<f16>) -> tensor<2x4x7xind
     edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
     interior_padding = dense<[0, 0, 1]> : tensor<3xi64>
   } : (tensor<1x2x3xf16>, tensor<f16>) -> tensor<2x4x7xf16>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
-// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
+  // CHECK: types0 = tensor<2x4x7xf16>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<2x4x7xf16>) -> tensor<2x4x7xindex>
   func.return %1 : tensor<2x4x7xindex>
 }
 
@@ -92,8 +88,8 @@ func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #mhlo.type_extensions<bounds
     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
   } : (tensor<3x?x?xf16, #mhlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xf16>) -> tensor<*xindex>
-  // CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xf16>) -> tensor<*xindex>
+  // CHECK: types0 = tensor<7x?x?xf16, #mhlo.type_extensions<bounds = [?, 7, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
 
@@ -106,7 +102,7 @@ func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #mhlo.type
     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
   } : (tensor<3x?x?xf16, #mhlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xf16>) -> tensor<*xindex>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
 
@@ -115,8 +111,8 @@ func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #mhlo.type
 // CHECK-LABEL: @cholesky
 func.func @cholesky(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2xindex> {
   %0 = "mhlo.cholesky"(%arg0) { lower = true } : (tensor<1x2x2xf32>) -> tensor<1x2x2xf32>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
-  // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 2, 2], element_type0 = f32} : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
+  // CHECK: types0 = tensor<1x2x2xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<1x2x2xf32>) -> tensor<1x2x2xindex>
   func.return %1: tensor<1x2x2xindex>
 }
 
@@ -130,9 +126,8 @@ func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xindex> {
     split_count = 4 : i64,
     replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<16x4xf32>) -> tensor<16x4xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [16, 4], element_type0 = f32} : (tensor<16x4xf32>) -> tensor<16x4xindex>
+  // CHECK: types0 = tensor<16x4xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<16x4xf32>) -> tensor<16x4xindex>
   func.return %1 : tensor<16x4xindex>
 }
 
@@ -156,9 +151,8 @@ func.func @alltoall_bounds(%data: tensor<16x?xf32, #mhlo.type_extensions<bounds 
 // CHECK-LABEL: func @abs
 func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
   %0 = "mhlo.abs"(%arg0) {} : (tensor<1x2xf32>) -> tensor<1x2xf32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<1x2xf32>) -> tensor<1x2xindex>
-// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2xf32>) -> tensor<1x2xindex>
+  // CHECK: types0 = tensor<1x2xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<1x2xf32>) -> tensor<1x2xindex>
   func.return %1: tensor<1x2xindex>
 }
 
@@ -167,9 +161,8 @@ func.func @abs(%arg0: tensor<1x2xf32>) -> tensor<1x2xindex> {
 // CHECK-LABEL: @concat
 func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<3xindex> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<3xi32>) -> tensor<3xindex>
-// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<3xi32>) -> tensor<3xindex>
+  // CHECK: types0 = tensor<3xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<3xi32>) -> tensor<3xindex>
   func.return %1 : tensor<3xindex>
 }
 
@@ -324,6 +317,62 @@ func.func @concat_bounds_unranked_c1(
 
 // -----
 
+// This test covers all cases (except "error out") of inferBranchedDimAndBound()
+// CHECK-LABEL: func @if_bounds
+func.func @if_bounds(%pred : tensor<i1>,
+    %true_branch_operand : tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>,
+    %false_branch_operand : tensor<2x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 5, 7]>>) -> tensor<*xindex> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%true_branch_operand) : (
+        tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>) -> ()
+    }, {
+      "mhlo.return"(%false_branch_operand) : (
+        tensor<2x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, 5, 7]>>) -> ()
+    }) : (tensor<i1>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<2x?x?x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 4, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+func.func @if_bounds_unranked(%pred : tensor<i1>,
+    %true_branch_operand : tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>,
+    %false_branch_operand : tensor<*xf32>) -> tensor<*xindex> {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%true_branch_operand) : (
+        tensor<2x3x4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, ?, ?, 6]>>) -> ()
+    }, {
+      "mhlo.return"(%false_branch_operand) : (
+        tensor<*xf32>) -> ()
+    }) : (tensor<i1>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<*xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// This test covers only a few cases of inferBranchedDimAndBound() with more branches
+// as test "if_bounds" above covers all cases
+// CHECK-LABEL: func @case_bounds
+func.func @case_bounds(%index : tensor<i32>,
+    %branch_0_operand : tensor<2xf32, #mhlo.type_extensions<bounds = [?]>>,
+    %branch_2_operand : tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>) -> tensor<*xindex> {
+  %0 = "mhlo.case"(%index) ({
+      "mhlo.return"(%branch_0_operand) : (tensor<2xf32, #mhlo.type_extensions<bounds = [?]>>) -> ()
+  }, {
+      "mhlo.return"(%branch_0_operand) : (tensor<2xf32, #mhlo.type_extensions<bounds = [?]>>) -> ()
+  }, {
+      "mhlo.return"(%branch_2_operand) : (tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>) -> ()
+  }) : (tensor<i32>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: while_bounds
 func.func @while_bounds(
   %while_arg_1: tensor<2x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>,
@@ -356,10 +405,32 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
     indices_are_sorted = false,
     slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
   } : (tensor<2x4x9xi32>, tensor<1x5x2xi32>) -> tensor<1x5x8xi32>
-  %1 = "mhlo_test.get_return_type_components"(%res)
-      : (tensor<1x5x8xi32>) -> tensor<1x5x8xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1, 5, 8], element_type0 = i32} : (tensor<1x5x8xi32>) -> tensor<1x5x8xindex>
+  // CHECK: types0 = tensor<1x5x8xi32>
+  %1 = "mhlo_test.get_return_types"(%res) : (tensor<1x5x8xi32>) -> tensor<1x5x8xindex>
   func.return %1 : tensor<1x5x8xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @gather_bounds
+func.func @gather_bounds(%operand : tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [2, 4, 8]>>,
+    %start_indices : tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [16, 32, 64]>>)
+    -> tensor<*xindex> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 0,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [2, 4, 8]>>, tensor<?x?x?xi32, #mhlo.type_extensions<bounds = [16, 32, 64]>>)
+  -> tensor<?x?x8xi32>
+
+  // CHECK: types0 = tensor<?x?x8xi32, #mhlo.type_extensions<bounds = [32, 64, ?]>>
+  %1 = "mhlo_test.get_return_types"(%res) : (tensor<?x?x8xi32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
 }
 
 // -----
@@ -368,9 +439,8 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 func.func @rng_normal(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<7xindex> {
   %0 = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
   %1 = "mhlo.rng"(%arg0, %arg1, %0) {rng_distribution = #mhlo.rng_distribution<NORMAL>} : (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<7xf32>
-  %2 = "mhlo_test.get_return_type_components"(%1)
-      : (tensor<7xf32>) -> tensor<7xindex>
-// CHECK: %2 = "mhlo_test.return_type_components"(%1) {dims0 = [7], element_type0 = f32} : (tensor<7xf32>) -> tensor<7xindex>
+  // CHECK: types0 = tensor<7xf32>
+  %2 = "mhlo_test.get_return_types"(%1) : (tensor<7xf32>) -> tensor<7xindex>
   func.return %2 : tensor<7xindex>
 }
 
@@ -380,9 +450,8 @@ func.func @rng_normal(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<7xindex>
 func.func @rng_uniform(%a: tensor<f32>, %b: tensor<f32>) -> tensor<2x3x5xindex> {
   %0 = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   %1 = "mhlo.rng"(%a, %b, %0) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
-  %2 = "mhlo_test.get_return_type_components"(%1)
-      : (tensor<2x3x5xf32>) -> tensor<2x3x5xindex>
-// CHECK: %2 = "mhlo_test.return_type_components"(%1) {dims0 = [2, 3, 5], element_type0 = f32} : (tensor<2x3x5xf32>) -> tensor<2x3x5xindex>
+  // CHECK: types0 = tensor<2x3x5xf32>
+  %2 = "mhlo_test.get_return_types"(%1) : (tensor<2x3x5xf32>) -> tensor<2x3x5xindex>
   func.return %2 : tensor<2x3x5xindex>
 }
 
@@ -391,9 +460,8 @@ func.func @rng_uniform(%a: tensor<f32>, %b: tensor<f32>) -> tensor<2x3x5xindex> 
 // CHECK-LABEL: func @slice
 func.func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xindex> {
   %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x2xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<1x2xi32>) -> tensor<1x2xindex>
-// CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<1x2xi32>) -> tensor<1x2xindex>
+  // CHECK: types0 = tensor<1x2xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<1x2xi32>) -> tensor<1x2xindex>
   func.return %1 : tensor<1x2xindex>
 }
 
@@ -402,8 +470,8 @@ func.func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xindex> {
 // CHECK-LABEL: func @slice_with_bounds
 func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
   %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
-  // CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+  // CHECK: types0 = tensor<1x2x2xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
 
@@ -412,7 +480,7 @@ func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #mhlo.type_extensions<boun
 func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
   // expected-error@+1 {{limit index 5 is larger than dimension bound 4 in dimension 1}}
   %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
 
@@ -421,9 +489,8 @@ func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #mhlo
 // CHECK-LABEL: func @clamp
 func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xindex> {
   %0 = "mhlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<1xi32>) -> tensor<1xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [1], element_type0 = i32} : (tensor<1xi32>) -> tensor<1xindex>
+  // CHECK: types0 = tensor<1xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<1xi32>) -> tensor<1xindex>
   func.return %1 : tensor<1xindex>
 }
 
@@ -432,9 +499,8 @@ func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xindex> {
 // CHECK: func @uniform_dequantize
 func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xindex> {
   %0 = mhlo.uniform_dequantize %arg : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<16x16xf32>) -> tensor<16x16xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [16, 16], element_type0 = f32} : (tensor<16x16xf32>) -> tensor<16x16xindex>
+  // CHECK: types0 = tensor<16x16xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<16x16xf32>) -> tensor<16x16xindex>
   func.return %1 : tensor<16x16xindex>
 }
 
@@ -443,9 +509,8 @@ func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>
 // CHECK-LABEL: func @fft
 func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex> {
   %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT> } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [3, 9], element_type0 = complex<f32>} : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
+  // CHECK: types0 = tensor<3x9xcomplex<f32>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex>
   func.return %1 : tensor<3x9xindex>
 }
 
@@ -567,8 +632,8 @@ func.func @map(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xind
     %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
-  // CHECK: (tensor<4x5xf32>) -> tensor<4x5xindex>
-  %2 = "mhlo_test.get_return_type_components"(%0) : (tensor<4x5xf32>) -> tensor<4x5xindex>
+  // CHECK: types0 = tensor<4x5xf32>
+  %2 = "mhlo_test.get_return_types"(%0) : (tensor<4x5xf32>) -> tensor<4x5xindex>
   func.return %2 : tensor<4x5xindex>
 }
 
@@ -577,8 +642,8 @@ func.func @map(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xind
 // CHECK-LABEL: func @triangular_solve
 func.func @triangular_solve(%arg0: tensor<10x5x4x4xf32>, %arg1: tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex> {
   %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #mhlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<10x5x4x4xf32>, tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xf32>
-  // CHECK: (tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex>
+  // CHECK: types0 = tensor<10x5x4x4xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex>
   func.return %1 : tensor<10x5x4x4xindex>
 }
 
@@ -591,8 +656,8 @@ func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>, %wrong_type :
     }, {
       "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
     }) : (tensor<i1>) -> tensor<2xf32>
-  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2xf32>) -> tensor<2xindex>
+  // CHECK: types0 = tensor<2xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<2xf32>) -> tensor<2xindex>
   func.return %1 : tensor<2xindex>
 }
 
@@ -605,25 +670,23 @@ func.func @case(%index : tensor<i32>, %branch_operand : tensor<2xf32>) -> tensor
   }, {
       "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
   }) : (tensor<i32>) -> tensor<2xf32>
-  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2xf32>) -> tensor<2xindex>
+  // CHECK: types0 = tensor<2xf32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<2xf32>) -> tensor<2xindex>
   func.return %1 : tensor<2xindex>
 }
 
 // -----
 
 // CHECK-LABEL: func @sort
-func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) -> (tensor<16x16xindex>, tensor<16x16xindex>) {
+func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) -> tensor<16x16xindex> {
   %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  // CHECK: (tensor<16x16xf32>) -> tensor<16x16xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<16x16xf32>) -> tensor<16x16xindex>
-  // CHECK: (tensor<16x16xi32>) -> tensor<16x16xindex>
-  %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<16x16xi32>) -> tensor<16x16xindex>
-  func.return %1, %2 : tensor<16x16xindex>, tensor<16x16xindex>
+  // CHECK: types0 = tensor<16x16xf32>, types1 = tensor<16x16xi32>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<16x16xf32>) -> tensor<16x16xindex>
+  func.return %1 : tensor<16x16xindex>
 }
 
 // -----
@@ -653,8 +716,8 @@ func.func @outfeed(%arg0: tensor<3x3x3xi32>, %arg1: !mhlo.token) -> !mhlo.token 
   %0 = "mhlo.outfeed"(%arg0, %arg1) {
     outfeed_config = ""
   } : (tensor<3x3x3xi32>, !mhlo.token) -> !mhlo.token
+  // CHECK: types0 = !mhlo.token
   %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = !mhlo.token} : (!mhlo.token) -> !mhlo.token
   func.return %1 : !mhlo.token
 }
 
@@ -675,12 +738,8 @@ func.func @while(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %
     %3 = mhlo.add %arg9, %cst_0 : tensor<i32>
     "mhlo.return"(%3, %arg10, %arg11) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
   }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
-  // CHECK: (tensor<i32>) -> tensor<index>
-  %4 = "mhlo_test.get_return_type_components"(%1#0) : (tensor<i32>) -> tensor<index>
-  // CHECK: (tensor<i32>) -> tensor<index>
-  %5 = "mhlo_test.get_return_type_components"(%1#1) : (tensor<i32>) -> tensor<index>
-  // CHECK: (tensor<i32>) -> tensor<index>
-  %6 = "mhlo_test.get_return_type_components"(%1#2) : (tensor<i32>) -> tensor<index>
+  // CHECK: types0 = tensor<i32>, types1 = tensor<i32>, types2 = tensor<i32>
+  %4 = "mhlo_test.get_return_types"(%1#0) : (tensor<i32>) -> tensor<index>
   func.return %4 : tensor<index>
 }
 
@@ -689,8 +748,8 @@ func.func @while(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %
 // CHECK-LABEL: func @get_dimension_size
 func.func @get_dimension_size(%arg0: tensor<4x2xf32>) -> tensor<index> {
   %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<4x2xf32>) -> tensor<i32>
+  // CHECK: types0 = tensor<i32>
   %1 = "mhlo_test.get_return_types"(%0) : (tensor<i32>) -> tensor<index>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<i32>} : (tensor<i32>) -> tensor<index>
   func.return %1 : tensor<index>
 }
 
@@ -699,8 +758,8 @@ func.func @get_dimension_size(%arg0: tensor<4x2xf32>) -> tensor<index> {
 // CHECK-LABEL: @dynamic_update_slice
 func.func @dynamic_update_slice(%arg0: tensor<4x4xi32>, %arg1: tensor<2x2xi32>, %arg2: tensor<i64>, %arg3: tensor<i64>) -> tensor<4x4xindex> {
   %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xi32>, tensor<2x2xi32>, tensor<i64>, tensor<i64>) -> tensor<4x4xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<4x4xi32>) -> tensor<4x4xindex>
-  // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [4, 4], element_type0 = i32} : (tensor<4x4xi32>) -> tensor<4x4xindex>
+  // CHECK: types0 = tensor<4x4xi32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<4x4xi32>) -> tensor<4x4xindex>
   func.return %1 : tensor<4x4xindex>
 }
 
@@ -719,8 +778,8 @@ func.func @dynamic_update_slice_with_bounds(%input: tensor<3x?x?xi64, #mhlo.type
 // CHECK-LABEL: func @create_token
 func.func @create_token() -> !mhlo.token {
   %0 = "mhlo.create_token"() : () -> !mhlo.token
+  // CHECK: types0 = !mhlo.token
   %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = !mhlo.token} : (!mhlo.token) -> !mhlo.token
   func.return %1 : !mhlo.token
 }
 
@@ -768,8 +827,8 @@ func.func @select_and_scatter(
     window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>
   } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
         tensor<10x24x24x64xf32>
+  // CHECK: types0 = tensor<10x24x24x64xf32>
   %3 = "mhlo_test.get_return_types"(%1) : (tensor<10x24x24x64xf32>) -> tensor<10x24x24x64xindex>
-   // CHECK: %2 = "mhlo_test.return_types"(%1) {types0 = tensor<10x24x24x64xf32>} : (tensor<10x24x24x64xf32>) -> tensor<10x24x24x64xindex>
   func.return %3 : tensor<10x24x24x64xindex>
 }
 
@@ -794,8 +853,8 @@ func.func @scatter(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
+  // CHECK: types0 = tensor<200x100x300xf32>
   %1 = "mhlo_test.get_return_types"(%0) : (tensor<200x100x300xf32>) -> tensor<200x100x300xindex>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<200x100x300xf32>} : (tensor<200x100x300xf32>) -> tensor<200x100x300xindex>
   func.return %1 : tensor<200x100x300xindex>
 }
 
@@ -821,8 +880,8 @@ func.func @scatter_bounds(%input_tensor: tensor<200x?x?xf32, #mhlo.type_extensio
   } : (tensor<200x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 301]>>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x?x?xf32>
 
-  %1 = "mhlo_test.get_return_types"(%0) : (tensor<200x?x?xf32>) -> tensor<*xindex>
   // CHECK: types0 = tensor<200x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 301]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<200x?x?xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
 
@@ -839,9 +898,8 @@ func.func @scatter_bounds(%input_tensor: tensor<200x?x?xf32, #mhlo.type_extensio
 // CHECK-LABEL: @tanh_sparsity
 func.func @tanh_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
   %0 = "mhlo.tanh"(%arg0) : (tensor<10x10xf32, #CSR>) -> tensor<10x10xf32>
-  %1 = "mhlo_test.get_return_types"(%0)
-      : (tensor<10x10xf32>) -> tensor<10x10xindex>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: types0 = tensor<10x10xf32, {{.*}}>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -854,9 +912,8 @@ func.func @tanh_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> 
 // CHECK-LABEL: @abs_sparsity
 func.func @abs_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x10xf32, #CSR>) -> tensor<10x10xf32>
-  %1 = "mhlo_test.get_return_types"(%0)
-      : (tensor<10x10xf32>) -> tensor<10x10xindex>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: types0 = tensor<10x10xf32, {{.*}}>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -869,9 +926,8 @@ func.func @abs_sparsity(%arg0: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
 // CHECK-LABEL: @real_sparsity
 func.func @real_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xindex> {
   %0 = "mhlo.real"(%arg0) : (tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xf32>
-  %1 = "mhlo_test.get_return_types"(%0)
-      : (tensor<10x10xf32>) -> tensor<10x10xindex>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: types0 = tensor<10x10xf32, {{.*}}>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -884,9 +940,8 @@ func.func @real_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x1
 // CHECK-LABEL: @imag_sparsity
 func.func @imag_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xindex> {
   %0 = "mhlo.imag"(%arg0) : (tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x10xf32>
-  %1 = "mhlo_test.get_return_types"(%0)
-      : (tensor<10x10xf32>) -> tensor<10x10xindex>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xf32, {{.*}}>} : (tensor<10x10xf32>) -> tensor<10x10xindex>
+  // CHECK: types0 = tensor<10x10xf32, {{.*}}>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<10x10xf32>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -899,9 +954,8 @@ func.func @imag_sparsity(%arg0: tensor<10x10xcomplex<f32>, #CSR>) -> tensor<10x1
 // CHECK-LABEL: @complex_sparsity
 func.func @complex_sparsity(%arg0: tensor<10x10xf32, #CSR>, %arg1: tensor<10x10xf32, #CSR>) -> tensor<10x10xindex> {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<10x10xf32, #CSR>, tensor<10x10xf32, #CSR>) -> tensor<10x10xcomplex<f32>>
-  %1 = "mhlo_test.get_return_types"(%0)
-      : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
-  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<10x10xcomplex<f32>, {{.*}}>} : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
+  // CHECK: types0 = tensor<10x10xcomplex<f32>, {{.*}}>}
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<10x10xcomplex<f32>>) -> tensor<10x10xindex>
   func.return %1 : tensor<10x10xindex>
 }
 
@@ -911,17 +965,13 @@ func.func @complex_sparsity(%arg0: tensor<10x10xf32, #CSR>, %arg1: tensor<10x10x
 func.func @reduce(%arg0: tensor<7x5xf32>, %arg1 : tensor<5xf32>)
     -> (tensor<5xindex>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
-
   ^bb0(%arg2: tensor<5xf32>, %arg3: tensor<5xf32> ):
     %1 = "mhlo.add"(%arg2, %arg3) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
     "mhlo.return"(%1) : (tensor<5xf32>) -> ()
-
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<7x5xf32>, tensor<5xf32>) -> tensor<5xf32>
 
-  // CHECK: {dims0 = [5], element_type0 = f32}
-  %2 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<5xf32>) -> tensor<5xindex>
-
+  // CHECK: types0 = tensor<5xf32>
+  %2 = "mhlo_test.get_return_types"(%0) : (tensor<5xf32>) -> tensor<5xindex>
   func.return %2: tensor<5xindex>
 }
 
@@ -953,17 +1003,13 @@ func.func @reduce_with_bounds(%arg0: tensor<?x?x5xf32, #mhlo.type_extensions<bou
 func.func @unranked_reduce(%arg0: tensor<*xf32>, %arg1 : tensor<f32>)
    -> (tensor<*xindex>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
-
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32> ):
     %1 = "mhlo.add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
-
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
 
-  // CHECK: {element_type0 = f32}
-  %2 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<*xf32>) -> tensor<*xindex>
-
+  // CHECK: types0 = tensor<*xf32>
+  %2 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %2: tensor<*xindex>
 }
 
@@ -971,8 +1017,7 @@ func.func @unranked_reduce(%arg0: tensor<*xf32>, %arg1 : tensor<f32>)
 
 // CHECK-LABEL: func @reduce_window
 func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
-                    %init0: tensor<f32>, %init1: tensor<i32>) ->
-                      (tensor<2x2xindex>, tensor<2x2xindex>) {
+                    %init0: tensor<f32>, %init1: tensor<i32>) -> tensor<2x2xindex> {
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -985,13 +1030,9 @@ func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  // CHECK: %1 = "mhlo_test.return_type_components"(%0#0) {dims0 = [2, 2], dims1 = [2, 2], element_type0 = f32, element_type1 = i32} : (tensor<2x2xf32>) -> tensor<2x2xindex>
-  %1 = "mhlo_test.get_return_type_components"(%0#0)
-      : (tensor<2x2xf32>) -> tensor<2x2xindex>
-  // CHECK: "mhlo_test.return_type_components"(%0#1) {dims0 = [2, 2], dims1 = [2, 2], element_type0 = f32, element_type1 = i32} : (tensor<2x2xi32>) -> tensor<2x2xindex>
-  %2 = "mhlo_test.get_return_type_components"(%0#1)
-      : (tensor<2x2xi32>) -> tensor<2x2xindex>
-  func.return %1, %2 : tensor<2x2xindex>, tensor<2x2xindex>
+  // CHECK: types0 = tensor<2x2xf32>, types1 = tensor<2x2xi32>
+  %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<2x2xf32>) -> tensor<2x2xindex>
+  func.return %1 : tensor<2x2xindex>
 }
 
 // -----
@@ -1398,4 +1439,89 @@ func.func @reduce_window_bound(%arg0: tensor<4x?x?x?xf32, #mhlo.type_extensions<
   // CHECK: types0 = tensor<4x?x?x?xf32, #mhlo.type_extensions<bounds = [?, ?, 2, 2]>>
   %1 = "mhlo_test.get_return_types"(%0#0) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1: tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @triangular_solve_bounds
+func.func @triangular_solve_bounds(
+    %arg0: tensor<10x5x?x4xf32, #mhlo_test.type_extensions<bounds = [?, ?, 5, ?]>>,
+    %arg1: tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>) -> tensor<*xindex> {
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {
+    left_side = false,
+    lower = true,
+    transpose_a = #mhlo<transpose NO_TRANSPOSE>,
+    unit_diagonal = true
+  } : (tensor<10x5x?x4xf32, #mhlo_test.type_extensions<bounds = [?, ?, 5, ?]>>,
+       tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<10x5x?x?xf32, #mhlo_test.type_extensions<bounds = [?, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+//-----
+
+// CHECK-LABEL: func @fft_bound
+func.func @fft_bound(%arg0: tensor<?x9xcomplex<f32>, #mhlo.type_extensions<bounds = [3, ?]>>) -> tensor<*xindex> {
+  %0 = "mhlo.fft"(%arg0) {
+    fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT>
+  } : (tensor<?x9xcomplex<f32>, #mhlo.type_extensions<bounds = [3, ?]>>) -> tensor<*xcomplex<f32>>
+  // CHECK: types0 = tensor<?x9xcomplex<f32>, #mhlo.type_extensions<bounds = [3, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xcomplex<f32>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @rfft_with_bound
+func.func @rfft_with_bound(%arg0: tensor<3x?x?xf32, #mhlo.type_extensions<bounds = [?, 3, 10]>>) -> tensor<*xindex> {
+  %0 = "mhlo.fft"(%arg0) {
+    fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>
+  } : (tensor<3x?x?xf32, #mhlo.type_extensions<bounds = [?, 3, 10]>>) -> tensor<*xcomplex<f32>>
+  // CHECK: types0 = tensor<3x?x5xcomplex<f32>, #mhlo.type_extensions<bounds = [?, 3, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xcomplex<f32>>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @irfft_with_bound
+func.func @irfft_with_bound(%arg0: tensor<3x?x?xcomplex<f32>, #mhlo.type_extensions<bounds = [?, 3, 17]>>) -> tensor<*xindex> {
+  %0 = "mhlo.fft"(%arg0) {
+    fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type IRFFT>
+  } : (tensor<3x?x?xcomplex<f32>, #mhlo.type_extensions<bounds = [?, 3, 17]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<3x?x9xf32, #mhlo.type_extensions<bounds = [?, 3, ?]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @select
+func.func @select(%pred : tensor<i1>,
+    %a : tensor<?x2x3x?xf32, #mhlo.type_extensions<bounds = [5, ?, ?, 7]>>,
+    %b : tensor<1x?x3x?xf32, #mhlo.type_extensions<bounds = [?, 6, ?, 8]>>) -> tensor<*xindex> {
+  %0 = "mhlo.select"(%pred, %a, %b) : (tensor<i1>,
+      tensor<?x2x3x?xf32, #mhlo.type_extensions<bounds = [5, ?, ?, 7]>>,
+      tensor<1x?x3x?xf32, #mhlo.type_extensions<bounds = [?, 6, ?, 8]>>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<1x2x3x?xf32, #mhlo.type_extensions<bounds = [?, ?, ?, 7]>>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @dynamic_gather
+func.func @dynamic_gather(%arg0: tensor<?x4xf32>, %arg1: tensor<1xi64>) -> tensor<*xindex> {
+  %0 = mhlo.constant dense<[1, 2]> : tensor<2xi32>
+  %1 = "mhlo.dynamic_gather"(%arg0, %arg1, %0) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [0, 1],
+      start_index_map = [1]
+    >,
+    indices_are_sorted = true
+  } : (tensor<?x4xf32>, tensor<1xi64>, tensor<2xi32>) -> tensor<*xf32>
+  // CHECK: types0 = tensor<1x2xf32>
+  %2 = "mhlo_test.get_return_types"(%1) : (tensor<*xf32>) -> tensor<*xindex>
+  func.return %2 : tensor<*xindex>
 }

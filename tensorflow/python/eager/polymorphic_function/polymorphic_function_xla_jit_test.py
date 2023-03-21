@@ -28,7 +28,8 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -363,10 +365,10 @@ class FunctionTest(xla_test.XLATestCase):
         x = ops.convert_to_tensor(x)
 
         def body(i, a):
-          return i + 1, control_flow_ops.cond(i > 2, lambda: a + (x**2),
-                                              lambda: a + 3)
+          return i + 1, cond.cond(i > 2, lambda: a + (x**2),
+                                  lambda: a + 3)
 
-        return control_flow_ops.while_loop(
+        return while_loop.while_loop(
             lambda i, *_: i < 10,
             body, (constant_op.constant(0), constant_op.constant(3.)),
             maximum_iterations=10)[1]
@@ -397,7 +399,7 @@ class FunctionTest(xla_test.XLATestCase):
       @polymorphic_function.function(
           input_signature=signature, jit_compile=True)
       def g(x):
-        return control_flow_ops.while_loop_v2(
+        return while_loop.while_loop_v2(
             lambda *_: True,
             lambda y, shp: (y + random_ops.random_normal(shp)**2, shp),
             (x, array_ops.shape(x)),
@@ -417,14 +419,14 @@ class FunctionTest(xla_test.XLATestCase):
           return z + random_ops.random_normal(shp)**2, shp
 
         def outer(y, shp):
-          y, shp = control_flow_ops.while_loop_v2(
+          y, shp = while_loop.while_loop_v2(
               lambda *_: True, inner, (y, shp), maximum_iterations=3)
           y, shp = array_ops.identity_n([y, shp])
-          return control_flow_ops.while_loop_v2(
+          return while_loop.while_loop_v2(
               lambda *_: True, inner, (y, shp), maximum_iterations=5)
 
         shp = array_ops.shape(x, name='x_shp')
-        return control_flow_ops.while_loop_v2(
+        return while_loop.while_loop_v2(
             lambda *_: True, outer, (x, shp), maximum_iterations=4)[0]
 
       self.assertAllGreater(g(array_ops.zeros([7])), 0.)
@@ -443,17 +445,17 @@ class FunctionTest(xla_test.XLATestCase):
           return z + random_ops.random_normal(shp)**2, shp
 
         def outer(y, shp):
-          y, shp = control_flow_ops.while_loop_v2(
+          y, shp = while_loop.while_loop_v2(
               lambda *_: True, inner, (y, shp), maximum_iterations=3)
-          return control_flow_ops.while_loop_v2(
+          return while_loop.while_loop_v2(
               lambda *_: True, inner, (y, shp), maximum_iterations=4)
 
         shp = array_ops.shape(x, name='x_shp')
-        x = control_flow_ops.while_loop_v2(
+        x = while_loop.while_loop_v2(
             lambda *_: True, outer, (x, shp), maximum_iterations=5)[0]
 
         shp2 = array_ops.shape(x, name='x_shp_after')[1:]
-        w = control_flow_ops.while_loop_v2(
+        w = while_loop.while_loop_v2(
             lambda *_: True,
             outer, (array_ops.zeros_like(x[0]), shp2),
             maximum_iterations=6)[0]
@@ -1035,7 +1037,7 @@ class FunctionTest(xla_test.XLATestCase):
 
       @polymorphic_function.function(jit_compile=True)
       def f(x):
-        control_flow_ops.Assert(x == 1, ['Wrong value'])
+        control_flow_assert.Assert(x == 1, ['Wrong value'])
 
       f(constant_op.constant(1))
 
@@ -1151,7 +1153,7 @@ class FunctionTest(xla_test.XLATestCase):
 
         @polymorphic_function.function(jit_compile=True, autograph=False)
         def f(x):
-          return control_flow_ops.cond(
+          return cond.cond(
               math_ops.reduce_all(x > 1), lambda: 1. / x, lambda: x)
 
         v = variables.Variable([[2.]])

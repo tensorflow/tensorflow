@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -162,7 +161,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        IRMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
-    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+    return isa<IfRegionOp, CaseRegionOp, WhileRegionOp>(dest->getParentOp()) &&
            llvm::hasSingleElement(*src);
   }
 

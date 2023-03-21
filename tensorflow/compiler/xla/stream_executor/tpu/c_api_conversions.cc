@@ -104,7 +104,7 @@ SE_DeviceMemoryAllocator ToC(
     if (!allocation.ok()) {
       auto status = allocation.status();
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.code(), status.error_message().data(),
+          se_status, status.raw_code(), status.error_message().data(),
           status.error_message().size());
     } else {
       auto& scoped_memory = allocation.value();
@@ -119,7 +119,7 @@ SE_DeviceMemoryAllocator ToC(
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.code(), status.error_message().data(),
+          se_status, status.raw_code(), status.error_message().data(),
           status.error_message().size());
     }
   };
@@ -477,8 +477,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
-  hlo_config.allow_spmd_sharding_propagation_to_output =
-      config.allow_spmd_sharding_propagation_to_output();
+  CreateVector(config.allow_spmd_sharding_propagation_to_output(),
+               &hlo_config.allow_spmd_sharding_propagation_to_output);
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
                &hlo_config.auto_spmd_partitioning_mesh_shape);
   CreateVector(config.auto_spmd_partitioning_mesh_ids(),
@@ -526,7 +526,7 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
   config.set_allow_spmd_sharding_propagation_to_output(
-      c_config.allow_spmd_sharding_propagation_to_output);
+      MakeSpan(c_config.allow_spmd_sharding_propagation_to_output));
   absl::Span<const int64_t> mesh_shape_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
   std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),

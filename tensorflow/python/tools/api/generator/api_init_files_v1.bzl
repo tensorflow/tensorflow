@@ -4,6 +4,9 @@
 TENSORFLOW_API_INIT_FILES_V1 = [
     # BEGIN GENERATED FILES
     "__init__.py",
+    "__internal__/__init__.py",
+    "__internal__/types/__init__.py",
+    "__internal__/types/data/__init__.py",
     "app/__init__.py",
     "audio/__init__.py",
     "autograph/__init__.py",
@@ -163,6 +166,4 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/regularizers/__init__.py",
     "keras/utils/__init__.py",
     "keras/utils/legacy/__init__.py",
-    "keras/wrappers/__init__.py",
-    "keras/wrappers/scikit_learn/__init__.py",
 ]

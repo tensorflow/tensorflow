@@ -60,8 +60,6 @@ typedef struct TF_VariableInfo TF_VariableInfo;
 // but in theory every this is a C API for every kind of device.
 TF_CAPI_EXPORT extern TF_Device* TF_GetDevice(TF_OpKernelContext* ctx);
 
-TF_CAPI_EXPORT extern size_t TF_GetDeviceOrdinal(TF_Device* device);
-
 // --------------------------  Resource  ---------------------------------------
 // Create a `tensorflow::PluginResource` to the ResourceMgr provided by the
 // `ctx`. The `tensorflow::PluginResource` wraps a resource by plugin (as a
@@ -127,8 +125,14 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
     const char* key, TF_CoordinationServiceAgent* agent, TF_Status* status);
 
 // ----------------------------  PJRT  -----------------------------------------
+// Passes the pointer to a vector of PJRT_NamedValue and number of optiosn to
+// set options for creating a PJRT client. Passes nullptr for create_options and
+// 0 for num_options if no options need to be set. You can use
+// ConvertToPjRtNamedValueList in
+// tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h to generate the options.
 TF_CAPI_EXPORT extern void TF_CreateAndSetPjRtCApiClient(
-    const char* device_type, TF_Status* status);
+    const char* device_type, TF_Status* status, PJRT_NamedValue* create_options,
+    int num_options);
 
 // Gets the `PJRT_Client*` stored in TF global ResourceManager.
 TF_CAPI_EXPORT extern PJRT_Client* TF_GetPjRtCClient(const char* device_type,

@@ -24,6 +24,7 @@ pytype_strict_library(
     srcs = [
         "__init__.py",
         "core.py",
+        "data.py",
         "distribute.py",
         "internal.py",
         "trace.py",

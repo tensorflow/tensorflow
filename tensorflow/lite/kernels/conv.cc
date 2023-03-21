@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 // Only use multi-threaded Eigen if ruy is disabled.
@@ -749,47 +750,42 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     effective_kernel_type = kReference;
   }
 
-  if (filter->type == kTfLiteInt4) {
-    effective_kernel_type = kReference;
-  }
   // Grouped convolution is right now only supported on reference kernel.
   if (data->groups != 1) {
     effective_kernel_type = kReference;
   }
 
+  const int8_t* filter_data;
+  const size_t bytes_unpacked = filter->bytes * 2;
+  auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+
+  if (filter->type == kTfLiteInt4) {
+    tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else {
+    filter_data = GetTensorData<int8>(filter);
+  }
+
   switch (effective_kernel_type) {
     case kReference: {
       switch (filter->type) {
-        case kTfLiteInt4: {
-          const size_t bytes_unpacked = filter->bytes * 2;
-          // container variable packed filter data is unpacked into in
-          // ConvPerChannelWithPackedInt4Weights before op is used on the data
-          int8_t* unpacked_filter_data =
-              new int8_t[bytes_unpacked / sizeof(int8_t)];
-          reference_integer_ops::ConvPerChannelWithPackedInt4Weights(
-              op_params, data->per_channel_output_multiplier.data(),
-              data->per_channel_output_shift.data(), GetTensorShape(input),
-              GetTensorData<int8>(input), GetTensorShape(filter),
-              GetTensorData<int8>(filter), unpacked_filter_data,
-              GetTensorShape(bias), GetTensorData<int32>(bias),
-              GetTensorShape(output), GetTensorData<int8>(output));
-          delete[] unpacked_filter_data;
-          break;
-        }
+        case kTfLiteInt4:
         case kTfLiteInt8: {
           reference_integer_ops::ConvPerChannel(
               op_params, data->per_channel_output_multiplier.data(),
               data->per_channel_output_shift.data(), GetTensorShape(input),
-              GetTensorData<int8>(input), GetTensorShape(filter),
-              GetTensorData<int8>(filter), GetTensorShape(bias),
-              GetTensorData<int32>(bias), GetTensorShape(output),
-              GetTensorData<int8>(output));
+              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output));
           break;
         }
 
         default: {
-          printf("Weight type %s (%d) not supported.",
-                 TfLiteTypeGetName(filter->type), filter->type);
+          TF_LITE_KERNEL_LOG(context,
+                             "Weight type %s (%d) not supported for filter.",
+                             TfLiteTypeGetName(filter->type), filter->type);
           break;
         }
       }
@@ -797,18 +793,27 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     }
     case kGenericOptimized:
     case kMultithreadOptimized:
-    case kCblasOptimized: {
-      optimized_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int8>(input), GetTensorShape(filter),
-          GetTensorData<int8>(filter), GetTensorShape(bias),
-          GetTensorData<int32>(bias), GetTensorShape(output),
-          GetTensorData<int8>(output), GetTensorShape(im2col),
-          GetTensorData<int8>(im2col),
-          CpuBackendContext::GetFromContext(context));
-      break;
-    }
+    case kCblasOptimized:
+      switch (filter->type) {
+        case kTfLiteInt4:
+        case kTfLiteInt8: {
+          optimized_integer_ops::ConvPerChannel(
+              op_params, data->per_channel_output_multiplier.data(),
+              data->per_channel_output_shift.data(), GetTensorShape(input),
+              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output),
+              GetTensorShape(im2col), GetTensorData<int8>(im2col),
+              CpuBackendContext::GetFromContext(context));
+          break;
+        }
+        default: {
+          TF_LITE_KERNEL_LOG(context,
+                             "Weight type %s (%d) not supported for filter.",
+                             TfLiteTypeGetName(filter->type), filter->type);
+          break;
+        }
+      }
   }
 }
 

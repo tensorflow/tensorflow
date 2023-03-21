@@ -94,7 +94,6 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -301,6 +300,10 @@ cc_library(
 cc_library(
     name = "thread_pool",
     hdrs = ["thread_pool.h"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//smartass/brain/server:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:threadpool_interface",

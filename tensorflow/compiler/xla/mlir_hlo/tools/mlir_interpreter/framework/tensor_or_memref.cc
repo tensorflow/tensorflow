@@ -26,10 +26,12 @@ limitations under the License.
 namespace mlir {
 namespace interpreter {
 
-int64_t BufferView::getPhysicalIndex(
+std::optional<int64_t> BufferView::getPhysicalIndex(
     llvm::ArrayRef<int64_t> viewIndices) const {
   int64_t result = offset;
-  assert(inBounds(viewIndices) && "index out of bounds");
+  if (!inBounds(viewIndices)) {
+    return std::nullopt;
+  }
   for (int64_t i = 0; i < viewIndices.size(); ++i) {
     result += viewIndices[i] * strides[i];
   }
@@ -66,35 +68,51 @@ SmallVector<int64_t> BufferView::getStridesForLayout(ArrayRef<int64_t> sizes,
   return result;
 }
 
-void BufferView::slice(int64_t dimIndex, int64_t dimOffset) {
+LogicalResult BufferView::slice(int64_t dimIndex, int64_t dimOffset) {
   llvm::SmallVector<int64_t> offsets(rank(), 0);
   offsets[dimIndex] = dimOffset;
-  offset = getPhysicalIndex(offsets);
+  if (auto newOffset = getPhysicalIndex(offsets)) {
+    offset = *newOffset;
+  } else {
+    return failure();
+  }
   if (dimIndex >= rank()) --*numVectorDims;
   strides.erase(strides.begin() + dimIndex);
   sizes.erase(sizes.begin() + dimIndex);
+  return success();
 }
 
-void BufferView::slice(int64_t dimIndex, int64_t dimOffset, int64_t dimSize,
-                       int64_t dimStride) {
+LogicalResult BufferView::slice(int64_t dimIndex, int64_t dimOffset,
+                                int64_t dimSize, int64_t dimStride) {
   llvm::SmallVector<int64_t> offsets(rank(), 0);
   offsets[dimIndex] = dimOffset;
-  offset = getPhysicalIndex(offsets);
+  if (dimSize == 0) {
+    offset = 0;
+  } else if (auto newOffset = getPhysicalIndex(offsets)) {
+    offset = *newOffset;
+  } else {
+    return failure();
+  }
   sizes[dimIndex] = dimSize;
   strides[dimIndex] *= dimStride;
+  return success();
 }
 
-bool BufferView::subview(ArrayRef<int64_t> subviewOffsets,
-                         ArrayRef<int64_t> subviewSizes,
-                         ArrayRef<int64_t> subviewStrides) {
-  offset = getPhysicalIndex(subviewOffsets);
+LogicalResult BufferView::subview(ArrayRef<int64_t> subviewOffsets,
+                                  ArrayRef<int64_t> subviewSizes,
+                                  ArrayRef<int64_t> subviewStrides) {
+  if (auto newOffset = getPhysicalIndex(subviewOffsets)) {
+    offset = *newOffset;
+  } else {
+    return failure();
+  }
 
   for (auto [inSize, subview_offset, subview_size, subview_stride] :
        llvm::zip(sizes, subviewOffsets, subviewSizes, subviewStrides)) {
     int64_t limitIndex = subview_offset + (subview_size - 1) * subview_stride;
     if (subview_offset < 0 || subview_offset >= inSize || limitIndex < 0 ||
         limitIndex >= inSize) {
-      return false;
+      return failure();
     }
   }
 
@@ -102,7 +120,7 @@ bool BufferView::subview(ArrayRef<int64_t> subviewOffsets,
     in_stride *= subview_stride;
   }
   sizes = llvm::to_vector(subviewSizes);
-  return true;
+  return success();
 }
 
 int64_t BufferView::getNumElements(bool includeVectorDims) const {

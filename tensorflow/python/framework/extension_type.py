@@ -16,8 +16,10 @@
 
 import abc
 import typing
+import warnings
 import typing_extensions
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type_field
@@ -28,6 +30,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -107,22 +110,24 @@ class ExtensionType(
   contains type annotations for all instance variables.  The following type
   annotations are supported:
 
-  Type                 | Example
-  -------------------- | --------------------------------------------
-  Python integers      | `i: int`
-  Python floats        | `f: float`
-  Python strings       | `s: str`
-  Python booleans      | `b: bool`
-  Python None          | `n: None`
-  Tensors              | `t: tf.Tensor`
-  Composite Tensors    | `rt: tf.RaggedTensor`
-  Extension Types      | `m: MyMaskedTensor`
-  Tensor shapes        | `shape: tf.TensorShape`
-  Tensor dtypes        | `dtype: tf.DType`
-  Type unions          | `length: typing.Union[int, float]`
-  Tuples               | `params: typing.Tuple[int, float, int, int]`
-  Tuples w/ Ellipsis   | `lengths: typing.Tuple[int, ...]`
-  Mappings             | `tags: typing.Mapping[str, str]`
+  Type                      | Example
+  ------------------------- | --------------------------------------------
+  Python integers           | `i: int`
+  Python floats             | `f: float`
+  Python strings            | `s: str`
+  Python booleans           | `b: bool`
+  Python None               | `n: None`
+  Python tuple              | `params: tuple[int, float, int, int]`
+  Python tuple w/ Ellipsis  | `lengths: tuple[int, ...]`
+  Tensors                   | `t: tf.Tensor`
+  Composite Tensors         | `rt: tf.RaggedTensor`
+  Extension Types           | `m: MyMaskedTensor`
+  Tensor shapes             | `shape: tf.TensorShape`
+  Tensor dtypes             | `dtype: tf.DType`
+  Type unions               | `length: typing.Union[int, float]`
+  Tuples                    | `params: typing.Tuple[int, float, int, int]`
+  Tuples w/ Ellipsis        | `lengths: typing.Tuple[int, ...]`
+  Mappings                  | `tags: typing.Mapping[str, str]`
 
   Fields annotated with `typing.Mapping` will be stored using an immutable
   mapping type.
@@ -276,7 +281,7 @@ class ExtensionType(
       conditions.append(
           math_ops.reduce_all(
               gen_math_ops.equal(t1, t2, incompatible_shape_error=False)))
-    return math_ops.reduce_all(array_ops.stack(conditions))
+    return math_ops.reduce_all(array_ops_stack.stack(conditions))
 
   def __ne__(self, other):
     eq = self.__eq__(other)
@@ -523,6 +528,67 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
     copy = _create_object_from_type_and_dict(type(self), self.__dict__)
     copy.__dict__['_tf_extension_type_is_packed'] = value
     return copy
+
+
+class _ExtensionTypeSpecCodec:
+  """Codec for `tf.ExtensionTypeSpec`."""
+
+  def can_encode(self, pyobj):
+    """Returns true if `pyobj` can be encoded as an ExtensionTypeSpec."""
+    if isinstance(pyobj, ExtensionTypeSpec):
+      try:
+        type_spec_registry.get_name(type(pyobj))
+        return True
+      except ValueError:
+        return False
+    return False
+
+  def do_encode(self, extension_type_spec_value, encode_fn):
+    """Returns an encoded proto for the given `tf.ExtensionTypeSpec`."""
+    type_spec_class_name = type_spec_registry.get_name(
+        type(extension_type_spec_value))
+
+    type_state = extension_type_spec_value._serialize()  # pylint: disable=protected-access
+    num_flat_components = len(
+        nest.flatten(
+            extension_type_spec_value._component_specs, expand_composites=True))  # pylint: disable=protected-access
+    encoded_type_spec = struct_pb2.StructuredValue()
+    encoded_type_spec.type_spec_value.CopyFrom(
+        struct_pb2.TypeSpecProto(
+            type_spec_class=struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC,
+            type_state=encode_fn(type_state),
+            type_spec_class_name=type_spec_class_name,
+            num_flat_components=num_flat_components))
+    return encoded_type_spec
+
+  def can_decode(self, value):
+    """Returns true if `value` can be decoded into a `tf.ExtensionTypeSpec`."""
+    if value.HasField('type_spec_value'):
+      type_spec_class_enum = value.type_spec_value.type_spec_class
+      return (
+          type_spec_class_enum == struct_pb2.TypeSpecProto.EXTENSION_TYPE_SPEC)
+    return False
+
+  def do_decode(self, value, decode_fn):
+    """Returns the `tf.TypeSpec` encoded by the proto `value`."""
+    type_spec_proto = value.type_spec_value
+    class_name = type_spec_proto.type_spec_class_name
+
+    try:
+      type_spec_class = type_spec_registry.lookup(class_name)
+    except ValueError:
+      type_spec_class = AnonymousExtensionTypeSpec
+      warnings.warn(
+          f"The type '{class_name}' has not been registered. "
+          'Falling back to using AnonymousExtensionTypeSpec '
+          'instead.'
+      )
+
+    # pylint: disable=protected-access
+    return type_spec_class._deserialize(decode_fn(type_spec_proto.type_state))
+
+
+nested_structure_coder.register_codec(_ExtensionTypeSpecCodec())
 
 
 @tf_export('experimental.ExtensionTypeBatchEncoder')

@@ -26,34 +26,39 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-
 add_mlir_library(GmlStPasses
-  collapse_materialize_ops/collapse_materialize_ops.cc
+  add_debug_info/add_debug_info.cc
   collapse_shape/collapse_shape.cc
+  collect_stats/collect_stats.cc
+  compose_extract_insert_slice/compose_extract_insert_slice.cc
+  copy_removal/copy_removal.cc
+  cpu_tiling/cpu_tiling_pipeline.cc
+  cpu_tiling/fusion_outlining.cc
+  cpu_tiling/fusion_planning_for_cpu.cc
+  cpu_tiling/pack_matmul.cc
+  cpu_tiling/transform_conv_for_cpu.cc
+  cpu_tiling/transform_dot_for_cpu.cc
+  cpu_tiling/transform_map_for_cpu.cc
+  cpu_tiling/transform_matmul_for_cpu.cc
+  cpu_tiling/transform_mmt4d_for_cpu.cc
+  cpu_tiling/transform_pack_for_cpu.cc
+  cpu_tiling/transform_reduce_for_cpu.cc
+  cpu_tiling/transform_reverse_for_cpu.cc
+  cpu_tiling/transform_scatter_for_cpu.cc
+  cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
-  gml_st_simtfy/gml_st_simtfy.cc
-  gml_st_to_scf/gml_st_to_scf.cc
-  gml_st_to_gpu/gml_st_to_gpu.cc
-  greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc
+  passes.cc
   peeling/peeling.cc
+  rewrite_from_elements_op/rewrite_from_elements_op.cc
+  rewrite_scf_forall/rewrite_scf_forall.cc
   scalarization/scalarization.cc
+  tiling/tile_by_one.cc
   tiling/tiling.cc
-  tiling_cwise/tiling_cwise.cc
-  tiling_gpu_warp/tiling_gpu_warp.cc
   tiling_softmax/tiling_softmax.cc
-  transform_map_for_cpu/transform_map_for_cpu.cc
-  transform_matmul_for_cpu/transform_matmul_for_cpu.cc
-  transform_matmul_for_triton/transform_matmul_for_triton.cc
-  transform_reduce_for_cpu/transform_reduce_for_cpu.cc
-  transform_reverse_for_cpu/transform_reverse_for_cpu.cc
-  transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc
-  transform_transpose_for_cpu/transform_transpose_for_cpu.cc
-  transform_scatter_for_cpu/transform_scatter_for_cpu.cc
-  transform_sort_for_cpu/transform_sort_for_cpu.cc
-  rewrite_vector_ops/rewrite_vector_contract.cc
-  rewrite_vector_ops/rewrite_vector_multi_reduction.cc
-  rewrite_vector_ops/rewrite_vector_transpose.cc
+  vectorization/lower_vectors.cc
   vectorization/vectorization.cc
+  vectorization/vectorize_copy.cc
+  vectorization/vectorize_for_cpu.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -63,13 +68,11 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  MLIRDestinationStyleOpInterface
-  MhloDialect
-  MLIRDialectUtils
   MLIRAffineDialect
   MLIRArithDialect
+  MLIRDestinationStyleOpInterface
+  MLIRDialectUtils
   MLIRFuncDialect
-  MLIRGPUOps
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms
@@ -78,6 +81,9 @@ add_mlir_library(GmlStPasses
   MLIRSCFUtils
   MLIRSupport
   MLIRVectorDialect
+  MLIRVectorToSCF
+  MLIRX86VectorTransforms
+  MhloDialect
 )
 
 add_mlir_library(GmlStTransforms
@@ -103,7 +109,6 @@ add_mlir_library(GmlStTestPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStBufferizableOpInterface
   GmlStDialect
   GmlStTransforms
   MLIRPass

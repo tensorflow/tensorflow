@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -124,6 +124,10 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
   return std::make_pair(std::move(arg_shardings), std::move(retval_shardings));
 }
 
+// Due to the wonkiness with Resource Cleanup, changing how resources are
+// cleaned up here need to change how resources are cleaned up in
+// graph_compiler_test.
+// LINT.IfChange(ExecuteGraph)
 Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
                     XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
                     int64_t step_id) {
@@ -150,6 +154,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   step_container.reset();
   return status;
 }
+// LINT.ThenChange(//tensorflow/compiler/tf2xla/graph_compiler_test.cc)
 
 // Builds the XLA computation.
 // - `args` is the list of input arguments
@@ -779,7 +784,7 @@ Status XlaCompiler::CompileSingleOp(
     return mlir_result;
   }
 
-  VLOG(2) << "Failed second phase of the MLIR bridge. Will "
+  VLOG(1) << "Failed second phase of the MLIR bridge. Will "
              "retry with the old bridge. MLIR bridge compilation status: "
           << mlir_result;
   return compile_with_old_bridge();

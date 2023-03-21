@@ -89,6 +89,15 @@ class GrpcDataServerBase {
   std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> server_options_;
 };
 
+// A wrapper for `SnapshotStreamInfo` for use with pybind.
+struct SnapshotStreamInfoWrapper {
+  SnapshotStreamInfoWrapper() = default;
+  explicit SnapshotStreamInfoWrapper(const SnapshotStreamInfo& info)
+      : index(info.index()), state(info.state()) {}
+  int64_t index;
+  int64_t state;
+};
+
 class DispatchGrpcDataServer : public GrpcDataServerBase {
  public:
   explicit DispatchGrpcDataServer(
@@ -101,6 +110,9 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   // Returns the number of active (non-finished) iterations running on the
   // dispatcher.
   size_t NumActiveIterations();
+  // Returns information about all the streams for the snapshot at `path`.
+  Status SnapshotStreams(const std::string& path,
+                         std::vector<SnapshotStreamInfoWrapper>* streams);
 
   ServerStateExport ExportState() const override;
 
@@ -147,6 +159,12 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   void StopServiceInternal() override;
 
  private:
+  // If an alternative data transfer protocol is configured, tries to start a
+  // transfer server for it, adding an entry to `transfer_servers` if
+  // successful.
+  void MaybeStartAlternativeDataTransferServer(
+      std::vector<DataTransferServerInfo>& transfer_servers);
+
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;

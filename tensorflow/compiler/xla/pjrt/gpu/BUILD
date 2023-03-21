@@ -33,60 +33,38 @@ cc_library(
     ],
 )
 
-SHARED_GPU_CLIENT_DEPS = [
-    ":gpu_helpers",
-    "@com_google_absl//absl/strings",
-    "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
-    "@com_google_absl//absl/base:core_headers",
-    "@com_google_absl//absl/container:flat_hash_map",
-    "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
-    "//tensorflow/compiler/xla:statusor",
-    "//tensorflow/compiler/xla/client:client_library",
-    "//tensorflow/compiler/xla/pjrt/distributed:client",
-    "//tensorflow/compiler/xla/service:platform_util",
-    "//tensorflow/compiler/xla:util",
-    "//tensorflow/tsl/framework:bfc_allocator",
-    "//tensorflow/tsl/framework:device_id",
-    "//tensorflow/tsl/framework:device_id_impl",
-    "//tensorflow/tsl/platform:env",
-    "//tensorflow/tsl/platform:errors",
-    "//tensorflow/tsl/util:env_var",
-    "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
-    "//tensorflow/compiler/xla/stream_executor:device_memory",
-    "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
-]
-
 cc_library(
     name = "se_gpu_pjrt_client",
     srcs = ["se_gpu_pjrt_client.cc"],
     hdrs = ["se_gpu_pjrt_client.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
-    deps = SHARED_GPU_CLIENT_DEPS + if_cuda([
+    deps = [
+        ":gpu_helpers",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+        "//tensorflow/tsl/framework:bfc_allocator",
+        "//tensorflow/tsl/framework:device_id",
+        "//tensorflow/tsl/framework:device_id_impl",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/util:env_var",
+    ] + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-    ]) + if_rocm([
-        ":nccl_id_store_rocm",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
-)
-
-# TODO(b/265435743): this is a short term solution. Figure out whether we can
-# let downstream references of se_gpu_pjrt_client depends on cuda_platform
-# directly.
-cc_library(
-    name = "se_gpu_pjrt_client_no_cudamallocasync_allocator",
-    srcs = ["se_gpu_pjrt_client.cc"],
-    hdrs = ["se_gpu_pjrt_client.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
-    deps = SHARED_GPU_CLIENT_DEPS + if_cuda([
-        ":nccl_id_store_cuda",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
     ]) + if_rocm([
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
@@ -122,9 +100,9 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
     ] + if_nccl(["@local_config_nccl//:nccl"]),
@@ -139,9 +117,9 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
     ] + if_nccl(["@local_config_nccl//:nccl"]),

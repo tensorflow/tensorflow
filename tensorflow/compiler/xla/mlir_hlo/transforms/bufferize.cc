@@ -75,7 +75,8 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     if (allSameElems)
       value = makeConstant(elementsAttr.getSplatValue<mlir::Attribute>(),
                            elementType);
-    for (auto &en : llvm::enumerate(elementsAttr.getValues<Attribute>())) {
+    for (const auto &en :
+         llvm::enumerate(elementsAttr.getValues<Attribute>())) {
       if (!allSameElems) value = makeConstant(en.value(), elementType);
       Value index = rewriter.create<arith::ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);

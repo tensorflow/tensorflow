@@ -29,8 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -71,6 +76,8 @@ namespace tensorflow {
 namespace {
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+using PjRtDeviceCompiler =
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
 auto* xla_launch_counter = monitoring::Counter<1>::New(
     "/tensorflow/core/xla_launch_counter",
@@ -230,21 +237,19 @@ GetXlaCompilerArgsAndSnapshotVariables(
   return result;
 }
 
-}  // namespace
+XlaCompiler::CompileOptions GenerateCompileOptions(
+    bool has_ref_vars, bool may_alias_resource_update) {
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+  compile_options.alias_resource_update =
+      !has_ref_vars && may_alias_resource_update;
+  return compile_options;
+}
 
-XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
-                                       const std::vector<int>& constants,
-                                       const std::vector<int>& resources,
-                                       const NameAttrList& function,
-                                       bool has_ref_vars)
-    : AsyncOpKernel(ctx),
-      constants_(constants),
-      resources_(resources),
-      function_(function),
-      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
-      has_ref_vars_(has_ref_vars) {}
-
-static Status CompileToLocalExecutable(
+Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
     const std::vector<XlaCompiler::Argument>& args,
@@ -285,18 +290,75 @@ static Status CompileToLocalExecutable(
       *xla_device_compiler, *ctx->function_library(), ctx->device(),
       GetStream(ctx), platform_info, has_ref_vars);
 
-  XlaCompiler::CompileOptions compile_options;
-  compile_options.is_entry_computation = true;
-  // Optimization: where possible, have the computation return a naked array
-  // rather than a one-element tuple.
-  compile_options.always_return_tuple = false;
-  compile_options.alias_resource_update =
-      !has_ref_vars && may_alias_resource_update;
+  XlaCompiler::CompileOptions compile_options =
+      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
 
   return xla_device_compiler->CompileIfNeeded(
       options, function, args, compile_options, compile_mode, profiler,
       compilation_result, executable);
 }
+
+Status CompileToPjRtLoadedExecutable(
+    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    const NameAttrList& function,
+    const std::vector<XlaCompiler::Argument>& args,
+    DeviceCompileMode compile_mode, bool has_ref_vars,
+    bool may_alias_resource_update,
+    const XlaCompiler::CompilationResult** compilation_result,
+    xla::PjRtClient** client, xla::PjRtLoadedExecutable** executable) {
+  // We store information about the JIT-compiled XLA computation
+  // in the ResourceMgr.
+  ResourceMgr* rm = ctx.resource_manager();
+  if (!rm) {
+    return errors::Internal("No resource manager.");
+  }
+
+  PjRtDeviceCompiler* pjrt_device_compiler;
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
+      rm->default_container(), "pjrt_device_compiler", &pjrt_device_compiler,
+      [&](PjRtDeviceCompiler** pjrt_device_compiler) {
+        return BuildPjRtDeviceCompiler(platform_info, ctx.function_library(),
+                                       pjrt_device_compiler);
+      }));
+  DeviceCompilationProfiler* profiler;
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
+      rm->default_container(), "pjrt_device_compilation_profiler", &profiler,
+      [](DeviceCompilationProfiler** profiler) {
+        *profiler = new DeviceCompilationProfiler();
+        return OkStatus();
+      }));
+  // Hold the reference to the PJRT device compiler and profiler during
+  // evaluation. (We could probably free them sooner because the ResourceMgr
+  // will retain references, but this is more obviously correct.)
+  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+  core::ScopedUnref profiler_ref(profiler);
+
+  *client = pjrt_device_compiler->client();
+
+  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
+      *ctx.function_library(), ctx.device(), platform_info);
+
+  XlaCompiler::CompileOptions compile_options =
+      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
+
+  return pjrt_device_compiler->CompileIfNeeded(
+      options, function, args, compile_options, compile_mode, profiler,
+      compilation_result, executable);
+}
+
+}  // namespace
+
+XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
+                                       const std::vector<int>& constants,
+                                       const std::vector<int>& resources,
+                                       const NameAttrList& function,
+                                       bool has_ref_vars)
+    : AsyncOpKernel(ctx),
+      constants_(constants),
+      resources_(resources),
+      function_(function),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
+      has_ref_vars_(has_ref_vars) {}
 
 // Get-or-create thread pool for a given collective.
 static thread::ThreadPool* GetOrCreateThreadPoolForCollective(
@@ -325,10 +387,14 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       ->IncrementBy(1);
 
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
-  xla::LocalClient* client;
-  const XlaCompiler::CompilationResult* compilation_result;
-  xla::LocalExecutable* executable;
   std::vector<XlaCompiler::Argument> xla_compiler_args;
+  const XlaCompiler::CompilationResult* compilation_result;
+
+  xla::LocalClient* client;          // Not owned.
+  xla::LocalExecutable* executable;  // Not owned.
+
+  xla::PjRtClient* pjrt_client;                // Not owned.
+  xla::PjRtLoadedExecutable* pjrt_executable;  // Not owned.
 
   // Note that here we assume the shape of the variables don't change between
   // compilation and execution. The locks on the variables are released before
@@ -354,6 +420,31 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     OP_REQUIRES_OK_ASYNC(ctx, status_or_xla_compiler_args.status(), done);
     xla_compiler_args = std::move(status_or_xla_compiler_args.value());
   }
+
+  if (UsePjRtForSingleDeviceCompilation()) {
+    VLOG(2) << "Compiling using PJRT";
+    Status status = CompileToPjRtLoadedExecutable(
+        *ctx, platform_info_, function_, xla_compiler_args,
+        DeviceCompileMode::kStrict, has_ref_vars_,
+        /*may_alias_resource_update=*/true, &compilation_result, &pjrt_client,
+        &pjrt_executable);
+    OP_REQUIRES_OK_ASYNC(ctx, status, done);
+
+    VLOG(2) << "Compiled using PJRT: " << status;
+    VLOG(2) << "pjrt_executable != nullptr: " << (pjrt_executable != nullptr);
+    VLOG(2) << "compilation_result != nullptr: "
+            << (compilation_result != nullptr);
+    VLOG(2) << "Execution using PJRT is unimplemented.";
+
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        errors::Unimplemented(
+            "Execution using Device API (PjRt) is unimplemented."),
+        done);
+
+    done();
+  }
+
   Status status = CompileToLocalExecutable(
       ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
       xla_compiler_args, DeviceCompileMode::kStrict,
@@ -479,6 +570,13 @@ NameAttrList FunctionAttr(OpKernelConstruction* ctx) {
   return *func;
 }
 
+std::vector<int> VectorAttr(OpKernelConstruction* ctx,
+                            absl::string_view attr_name) {
+  std::vector<int> vec;
+  OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(), ctx->GetAttr(attr_name, &vec));
+  return vec;
+}
+
 bool MustCompileAttr(OpKernelConstruction* ctx) {
   bool must_compile;
   OP_REQUIRES_OK_RETURN(ctx, false,
@@ -492,6 +590,14 @@ bool HasRefVars(OpKernelConstruction* ctx) {
                         ctx->GetAttr(kXlaHasReferenceVarsAttr, &has_ref_vars));
   return has_ref_vars;
 }
+
+class XlaLaunchV2Op : public XlaLocalLaunchBase {
+ public:
+  explicit XlaLaunchV2Op(OpKernelConstruction* ctx)
+      : XlaLocalLaunchBase(ctx, VectorAttr(ctx, "constants"),
+                           VectorAttr(ctx, "resources"), FunctionAttr(ctx),
+                           /*has_ref_vars=*/true) {}
+};
 
 }  // namespace
 
@@ -684,6 +790,8 @@ void XlaMergeOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
+
+REGISTER_KERNEL_BUILDER(Name("XlaLaunchV2").Device(DEVICE_CPU), XlaLaunchV2Op);
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
                             .Device(DEVICE_GPU)

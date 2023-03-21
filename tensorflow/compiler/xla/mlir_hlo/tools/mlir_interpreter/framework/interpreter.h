@@ -52,6 +52,14 @@ class InterpreterListener {
   virtual void leaveRegion(ArrayRef<InterpreterValue> terminatorArgs) {}
 };
 
+struct InterpreterStats {
+  // Memrefs only.
+  int64_t heapSize = 0;
+  int64_t peakHeapSize = 0;
+  int64_t numAllocations = 0;
+  int64_t numDeallocations = 0;
+};
+
 struct InterpreterOptions {
   InterpreterListener* listener = nullptr;
   std::optional<int64_t> maxSteps = std::nullopt;
@@ -59,6 +67,11 @@ struct InterpreterOptions {
   // trigger an assertion. This flag disables all alloctions, which can be
   // useful when debugging IR that includes a use-after-free bug.
   bool disableDeallocations = false;
+  std::function<void(llvm::StringRef)> errorHandler =
+      [](llvm::StringRef failure) {
+        llvm::errs() << "Interpreter failure: " << failure << "\n";
+      };
+  InterpreterStats* stats = nullptr;
 };
 
 class InterpreterState {
@@ -75,6 +88,12 @@ class InterpreterState {
   }
   void addFailure(llvm::StringRef failure);
   bool hasFailure() const { return failed; }
+  void checkSuccess(LogicalResult result, llvm::StringRef failure) {
+    if (!result.succeeded()) {
+      addFailure(failure);
+    }
+  }
+
   InterpreterScope* getTopScope() { return topScope; }
   const mlir::SymbolTable& getSymbols() const { return symbols; }
   const InterpreterOptions& getOptions() { return options; }
@@ -106,18 +125,24 @@ class InterpreterScope {
       : state(state), parentScope(state.topScope) {
     state.topScope = this;
   }
-  ~InterpreterScope() { state.topScope = parentScope; }
+  ~InterpreterScope();
 
   void Set(Value v, InterpreterValue iv) { values[v] = std::move(iv); }
 
   const InterpreterValue& Get(Value v) {
     auto ret = values.find(v);
     if (ret == values.end()) {
+      if (!parentScope) {
+        v.dump();
+      }
+
       assert(parentScope && "value not found");
       return parentScope->Get(v);
     }
     return ret->second;
   }
+
+  void verify() const;
 
   // Retrieves the side channel of the given type in this scope or one of its
   // ancestor scopes. If `optional` is set, returns nullptr if not found,
@@ -141,6 +166,8 @@ class InterpreterScope {
   void setSideChannel(std::shared_ptr<InterpreterSideChannel> sideChannel) {
     sideChannels.push_back(std::move(sideChannel));
   }
+
+  InterpreterScope* getParentScope() const { return parentScope; }
 
  private:
   DenseMap<Value, InterpreterValue> values;

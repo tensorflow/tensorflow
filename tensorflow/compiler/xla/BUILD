@@ -209,6 +209,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "types_test",
+    size = "small",
+    srcs = ["types_test.cc"],
+    visibility = [":friends"],
+    deps = [
+        ":test",
+        ":types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "service_interface",
     srcs = [],
@@ -233,6 +246,7 @@ cc_library(
         ":types",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:stacktrace",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -549,7 +563,6 @@ cc_library(
         "//tensorflow/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -571,6 +584,7 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -594,6 +608,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
@@ -618,6 +633,7 @@ cc_library(
         ":error_spec",
         ":literal",
         ":literal_util",
+        ":shape_util",
         ":util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:float8",
@@ -1149,6 +1165,7 @@ cc_library(
     hdrs = ["printer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
     ],

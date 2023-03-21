@@ -39,10 +39,10 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -1396,7 +1396,7 @@ class StridedArrayViewBase {
   //
   // `index` should have the same size as `shape`.
   // Each value `dim` in `index` should be in [0, shape[dim]).
-  static llvm::Optional<SmallVector<int64_t>> NextTensorIndex(
+  static std::optional<SmallVector<int64_t>> NextTensorIndex(
       SmallVector<int64_t> index, ArrayRef<int64_t> shape, int64_t fixed_axis) {
 #ifndef NDEBUG
     assert(shape.size() == index.size());
@@ -1518,7 +1518,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
   if (reduce_dim < 0) reduce_dim += iota_type.getRank();
 
   auto index =
-      llvm::Optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
+      std::optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
   while (index.has_value()) {
     StridedArrayView<DenseIntElementsAttr> array_view(
         iota_const_attr, iota_shape, *index, reduce_dim);
@@ -2578,8 +2578,9 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
           window_strides, "VALID", rewriter);
     }
 
+    Value actual_divisor = recursivelyWalkUpDivisor(div_op.getRhs());
     auto rw_rhs =
-        dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.getRhs().getDefiningOp());
+        dyn_cast_or_null<mhlo::ReduceWindowOp>(actual_divisor.getDefiningOp());
     if (rw_rhs && rw_rhs.getNumResults() == 1) {
       // Check that RHS is a sum-reduce-window.
       if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.getBody())))
@@ -2638,6 +2639,18 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       return success();
     }
     return failure();
+  }
+
+  // Walks up the divisor and ignore all precedding reshape/broadcast op.
+  // Returns the first producer op which is neither reshape nor broadcast.
+  Value recursivelyWalkUpDivisor(Value divisor) const {
+    while (llvm::isa_and_nonnull<mhlo::BroadcastInDimOp, mhlo::ReshapeOp>(
+        divisor.getDefiningOp())) {
+      Operation* producer = divisor.getDefiningOp();
+      divisor = producer->getOperand(/*idx=*/0);
+    }
+
+    return divisor;
   }
 };
 
@@ -3366,6 +3379,25 @@ Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
                                   padding_op, pad_op.getPaddingValue());
 }
 
+class ConvertPopulationCountOp
+    : public OpConversionPattern<mhlo::PopulationCountOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::PopulationCountOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto output_type = op.getType().clone(
+        rewriter.getIntegerType(/*width=*/8, /*isSigned=*/false));
+    auto pop_cnt = rewriter.create<TF::PopulationCountOp>(
+        op.getLoc(), output_type, op.getOperand());
+    auto cast_or_pop_cnt =
+        rewriter.createOrFold<TF::CastOp>(op.getLoc(), op.getType(), pop_cnt);
+    rewriter.replaceOp(op, {cast_or_pop_cnt});
+    return success();
+  }
+};
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3433,13 +3465,13 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
       ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
       ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
       ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
-      ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
-      ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
-      ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
-      ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
-      ConvertLoweredCumProdOp>(context);
+      ConvertMaxPoolOp, ConvertPopulationCountOp, ConvertScatterAddOp,
+      ConvertScatterMaxOp, ConvertScatterMinOp, ConvertScatterSubOp,
+      ConvertScatterUpdateOp, ConvertSliceOp, ConvertReduceOpToTfArgmax,
+      ConvertReduceOpToTfArgmin, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+      ConvertReduceOpToTfAll, ConvertReduceOpToTfAny, ConvertReduceOpToTfSum,
+      ConvertSortToTfTopk, ConvertIotaOpToTfRange, ConvertWhileOp,
+      ConvertLoweredCumSumOp, ConvertLoweredCumProdOp>(context);
   populateWithGenerated(*patterns);
 }
 

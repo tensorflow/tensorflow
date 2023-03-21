@@ -1,6 +1,5 @@
 // RUN: tf-quant-opt %s -quant-insert-quantized-functions | FileCheck %s
 // RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=ptq target-opset=UNIFORM_QUANTIZED' | FileCheck --check-prefix=UQ-CHECK %s
-// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=weight_only target-opset=XLA' | FileCheck --check-prefix=WEIGHTONLY %s
 
 // Empty module
 module {
@@ -54,10 +53,3 @@ module {
 // UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu6_fn
 // UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu_fn
 // UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu6_fn
-
-// WEIGHTONLY: func private @quantized_conv2d
-// WEIGHTONLY: func private @quantized_depthwise_conv2d
-// WEIGHTONLY: func private @quantized_matmul
-// WEIGHTONLY: func private @quantized_conv3d
-// WEIGHTONLY: func private @quantized_batch_matmul
-// WEIGHTONLY: func private @dequantize_i8

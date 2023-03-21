@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -851,7 +851,7 @@ static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
   }
   proto.set_phase_index(2);
 
-  proto.set_allow_spmd_sharding_propagation_to_output(true);
+  proto.add_allow_spmd_sharding_propagation_to_output(true);
   for (int idx = 1; idx <= 3; ++idx) {
     int64_t allowance = 35 * idx;
     proto.mutable_analysis_allowance_map()->insert(

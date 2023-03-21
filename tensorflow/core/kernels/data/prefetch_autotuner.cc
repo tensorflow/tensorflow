@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
-#include <algorithm>
-#include <optional>
-
 #include "tensorflow/core/framework/model.h"
 
 namespace tensorflow {
@@ -39,8 +36,7 @@ namespace {
 size_t kBufferLimitThreshold = 2048;
 }  // namespace
 
-void PrefetchAutotuner::RecordConsumption(
-    size_t current_buffer_size, std::optional<int64_t> free_memory_bytes) {
+void PrefetchAutotuner::RecordConsumption(size_t current_buffer_size) {
   switch (mode_) {
     case Mode::kDisabled:
       return;
@@ -52,29 +48,9 @@ void PrefetchAutotuner::RecordConsumption(
     case Mode::kDownswing:
       if (current_buffer_size == 0) {
         if (buffer_limit_ >= static_cast<int64_t>(kBufferLimitThreshold)) {
-          VLOG(3) << "Increasing buffer limit from " << buffer_limit_ << " by "
-                  << kBufferLimitThreshold << " to "
-                  << buffer_limit_ + kBufferLimitThreshold;
           buffer_limit_ += kBufferLimitThreshold;
         } else {
-          VLOG(3) << "Increasing buffer limit from " << buffer_limit_ << " to "
-                  << buffer_limit_ * 2;
           buffer_limit_ *= 2;
-        }
-        // Use the element size and the free memory to compute the maximum
-        // buffer size.
-        if (free_memory_bytes.has_value() && element_size_bytes_.has_value() &&
-            free_memory_bytes.value() > 0 && element_size_bytes_.value() > 0) {
-          int64_t max_buffer_size =
-              free_memory_bytes.value() / element_size_bytes_.value();
-          if (buffer_limit_ > max_buffer_size) {
-            VLOG(3) << "Increasing buffer limit to " << buffer_limit_
-                    << " would result in memory usage that can exceed the free "
-                       "memory value of "
-                    << free_memory_bytes.value() << " bytes. Lowering it to "
-                    << max_buffer_size << " elements.";
-            buffer_limit_ = max_buffer_size;
-          }
         }
         mode_ = Mode::kUpswing;
       }

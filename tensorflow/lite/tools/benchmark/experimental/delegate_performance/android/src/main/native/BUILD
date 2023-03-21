@@ -3,6 +3,7 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
+load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_deps", "latency_benchmark_extra_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,7 +12,7 @@ package(
 )
 
 tflite_jni_binary(
-    name = "libtensorflowlite_delegate_performance_benchmark.so",
+    name = "libdelegate_performance_benchmark.so",
     srcs = ["delegate_performance_benchmark_jni.cc"],
     deps = [
         ":accuracy_benchmark",
@@ -34,15 +35,15 @@ cc_library(
     srcs = ["latency_benchmark.cc"],
     hdrs = ["latency_benchmark.h"],
     deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_cc_proto",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + latency_benchmark_extra_deps(),
 )
 
 cc_library(
@@ -72,10 +73,10 @@ cc_library(
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
         ],
         "//conditions:default": [],
-    }),
+    }) + accuracy_benchmark_extra_deps(),
 )
 
 cc_library(
-    name = "tensorflowlite_delegate_performance_benchmark_native",
-    srcs = ["libtensorflowlite_delegate_performance_benchmark.so"],
+    name = "benchmark_native",
+    srcs = ["libdelegate_performance_benchmark.so"],
 )

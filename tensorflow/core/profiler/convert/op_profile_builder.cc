@@ -109,7 +109,7 @@ void SortAndPruneChildren(int k, int level, Node* root) {
     } else {
       *root->mutable_children() =
           TopKChildren(root, k, [](const Node* a, const Node* b) {
-            return a->metrics().time() > b->metrics().time();
+            return a->metrics().raw_time() > b->metrics().raw_time();
           }).children();
     }
   }
@@ -190,9 +190,6 @@ void PopulateOpMetricsNode(
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
 
-  // "time" is the op or category fraction of total time.
-  metrics->set_time(SafeDivide(op_metrics.time_ps(), total_time_ps));
-
   // Hack to approximate utilization for INT8/4 convolution HLOs:
   // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
   // by the computation size
@@ -203,9 +200,10 @@ void PopulateOpMetricsNode(
   }
   double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
                                         peak_gigaflops_per_second_per_core);
-  // The UI expects flops_utilization = flops / time. See:
+  // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
-  metrics->set_flops(flops_utilization * metrics->time());
+  const double time_fraction = SafeDivide(op_metrics.time_ps(), total_time_ps);
+  metrics->set_flops(flops_utilization * time_fraction);
 
   // Capture both on-chip and off-chip memory utilization.
   const double hbm_gibibytes_per_second =
@@ -259,7 +257,6 @@ void PopulateOpMetricsNode(
 void SetTotalTime(uint64_t total_time_ps, Node* root) {
   Metrics* metrics = root->mutable_metrics();
   metrics->set_raw_time(total_time_ps);
-  metrics->set_time(1.0);
 }
 
 // Recursively insert "fused instruction" nodes (with raw flops).

@@ -26,7 +26,7 @@ cc_library(
     hdrs = ["stream_executor.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:tf_status_headers",
     ],
 )
@@ -68,7 +68,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ],
 )
 

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 
+#include <vector>
+
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -162,6 +164,106 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForIncompatibleTypes) {
                     .value();
 
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).value());
+}
+
+TEST_F(HorizontalLoopFusionTest, FusingIntoKLoopAndKInputTogether) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule FusingIntoKLoopAndKInputTogether
+
+ fused_computation.1 {
+   arg.1 = f16[129, 2048]{1, 0} parameter(0)
+   arg.2 = f16[129, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[129,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[129, 2048]{1, 0} parameter(0)
+   arg.2 = f16[129, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[129,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.3 {
+   arg.1 = f16[130, 2048]{1, 0} parameter(0)
+   arg.2 = f16[130, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[130,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.4 {
+   arg.1 = f16[130, 2048]{1, 0} parameter(0)
+   arg.2 = f16[130, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[130,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.5 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT add.1 = f16[123]{0} add(arg.1, arg.2)
+ }
+
+ fused_computation.6 {
+   arg.1 = f16[128]{0} parameter(0)
+   arg.2 = f16[128]{0} parameter(1)
+   ROOT add.1 = f16[128]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[129, 2048]{1, 0} parameter(0)
+   arg.2 = f16[129, 2048]{1, 0} parameter(1)
+   arg.3 = f16[129, 2048]{1, 0} parameter(2)
+   arg.4 = f16[129, 2048]{1, 0} parameter(3)
+   arg.5 = f16[130, 2048]{1, 0} parameter(4)
+   arg.6 = f16[130, 2048]{1, 0} parameter(5)
+   arg.7 = f16[130, 2048]{1, 0} parameter(6)
+   arg.8 = f16[130, 2048]{1, 0} parameter(7)
+   arg.9 = f16[123]{0} parameter(8)
+   arg.10 = f16[123]{0} parameter(9)
+   arg.11 = f16[128]{0} parameter(10)
+   arg.12 = f16[128]{0} parameter(11)
+
+   // fusion.1 and fusion.2 will be fused into kLoop fusion
+   // fusion.3 and fusion.4 will be fused into another kLoop fusion
+   // fusion.5 and fusion.6 will be fused into kInput fusion
+
+   fusion.1 = f16[129,2048]{1, 0}
+      fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+
+   fusion.2 = f16[129,2048]{1, 0}
+      fusion(arg.3, arg.4), kind=kLoop, calls=fused_computation.2
+
+   fusion.3 = f16[130,2048]{1, 0}
+      fusion(arg.5, arg.6), kind=kLoop, calls=fused_computation.3
+
+   fusion.4 = f16[130,2048]{1, 0}
+      fusion(arg.7, arg.8), kind=kLoop, calls=fused_computation.4
+
+   fusion.5 = f16[123]{0}
+      fusion(arg.9, arg.10), kind=kLoop, calls=fused_computation.5
+
+   fusion.6 = f16[128]{0}
+      fusion(arg.11, arg.12), kind=kLoop, calls=fused_computation.6
+
+   ROOT tuple.1 = (f16[129,2048]{1, 0}, f16[129,2048]{1, 0},
+                   f16[130,2048]{1, 0}, f16[130,2048]{1, 0},
+                   f16[123]{0}, f16[128]{0})
+      tuple(fusion.1, fusion.2, fusion.3, fusion.4, fusion.5, fusion.6)
+ }
+)")
+                    .value();
+
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+
+  int input_fusion_count = 0;
+  int loop_fusion_count = 0;
+  for (auto inst : module->entry_computation()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kFusion) {
+      input_fusion_count +=
+          (inst->fusion_kind() == HloInstruction::FusionKind::kInput) ? 1 : 0;
+      loop_fusion_count +=
+          (inst->fusion_kind() == HloInstruction::FusionKind::kLoop) ? 1 : 0;
+    }
+  }
+  EXPECT_EQ(input_fusion_count, 1);
+  EXPECT_EQ(loop_fusion_count, 2);
 }
 
 TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {

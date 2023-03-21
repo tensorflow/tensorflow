@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -218,6 +219,7 @@ bool CanInferShape(HloOpcode code) {
 class HloParserImpl : public HloParser {
  public:
   using LocTy = HloLexer::LocTy;
+  using BoolList = absl::InlinedVector<bool, 1>;
 
   explicit HloParserImpl(absl::string_view str) : lexer_(str) {}
 
@@ -233,6 +235,7 @@ class HloParserImpl : public HloParser {
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
+  StatusOr<BoolList> ParseBooleanListOrSingleBooleanOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
   StatusOr<PaddingConfig> ParsePaddingConfigOnly();
@@ -259,6 +262,7 @@ class HloParserImpl : public HloParser {
     kConvolutionDimensionNumbers,
     kSharding,
     kFrontendAttributes,
+    kBracedBoolListOrBool,
     kParameterReplication,
     kInstructionList,
     kSliceRanges,
@@ -462,6 +466,7 @@ class HloParserImpl : public HloParser {
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
+  bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
 
   // Parses the metadata behind a kDOmain instruction.
@@ -937,6 +942,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
+  BoolList allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
@@ -946,6 +952,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["entry_computation_layout"] = {/*required=*/false,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
+  attrs["allow_spmd_sharding_propagation_to_output"] = {
+      /*required=*/false, AttrTy::kBracedBoolListOrBool,
+      &allow_spmd_sharding_propagation_to_output};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -976,17 +985,22 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
 
   module->set_name(name);
 
-  if (is_scheduled.has_value() && *is_scheduled) {
+  if (is_scheduled.value_or(false)) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
   bool default_config = true;
-  if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
+  if (alias_passthrough_params.value_or(false)) {
     config.set_alias_passthrough_params(true);
     default_config = false;
   }
   if (entry_computation_layout.has_value()) {
     *config.mutable_entry_computation_layout() = *entry_computation_layout;
+    default_config = false;
+  }
+  if (!allow_spmd_sharding_propagation_to_output.empty()) {
+    config.set_allow_spmd_sharding_propagation_to_output(
+        allow_spmd_sharding_propagation_to_output);
     default_config = false;
   }
   if (!default_config) {
@@ -1614,7 +1628,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+                   << opcode;
       }
       if (operands.size() != 4) {
         TokenError(
@@ -1636,7 +1650,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                     "CollectivePermuteStart, but got "
-                 << HloOpcodeString(opcode);
+                 << opcode;
     }
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1669,8 +1683,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               !is_async_shape_correct(operands[0]->shape())) {
             TokenError(
                 "AsyncUpdate and AsyncDone expect a single operand in the form "
-                "of "
-                "((async-operands), async-outputs, state).");
+                "of ((async-operands), async-outputs, state).");
             return nullptr;
           }
           async_wrapped_operand_shapes =
@@ -1706,7 +1719,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         computations_.emplace_back(async_wrapped_builder.Build(root));
         async_computation = computations_.back().get();
-
       } else {
         attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
                           &async_computation};
@@ -3246,6 +3258,47 @@ bool HloParserImpl::ParseParameterReplication(
                     "expected '}' to end parameter_replication attribute");
 }
 
+// boolean_list ::=
+//   ('true' | 'false') | ('{' ('true' | 'false')* (',' ('true' | 'false'))*
+//   '}')
+bool HloParserImpl::ParseBooleanListOrSingleBoolean(BoolList* boolean_list) {
+  if (lexer_.GetKind() != TokKind::kLbrace &&
+      lexer_.GetKind() != TokKind::kw_true &&
+      lexer_.GetKind() != TokKind::kw_false) {
+    TokenError("Expected list of booleans or true/false value");
+    return false;
+  }
+  auto parse_boolean = [this, boolean_list]() {
+    if (lexer_.GetKind() == TokKind::kw_true) {
+      boolean_list->push_back(true);
+      lexer_.Lex();
+      return true;
+    } else if (lexer_.GetKind() == TokKind::kw_false) {
+      boolean_list->push_back(false);
+      lexer_.Lex();
+      return true;
+    }
+    return false;
+  };
+  if (parse_boolean()) {
+    return true;
+  }
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start boolean list attribute")) {
+    return false;
+  }
+  if (lexer_.GetKind() != TokKind::kRbrace) {
+    do {
+      if (!parse_boolean()) {
+        return false;
+      }
+    } while (EatIfPresent(TokKind::kComma));
+  }
+
+  return ParseToken(TokKind::kRbrace,
+                    "expected '}' to end boolean list attribute");
+}
+
 // replica_groups ::='{' int64_tlist_elements '}'
 // int64_tlist_elements
 //   ::= /*empty*/
@@ -4166,6 +4219,13 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<bool>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kBracedBoolListOrBool: {
+        if (!ParseBooleanListOrSingleBoolean(
+                static_cast<BoolList*>(attr_out_ptr))) {
+          return false;
+        }
         return true;
       }
       case AttrTy::kInt64: {
@@ -6002,6 +6062,19 @@ StatusOr<std::vector<bool>> HloParserImpl::ParseParameterReplicationOnly() {
       parameter_replication.replicated_at_leaf_buffers().end());
 }
 
+StatusOr<HloParserImpl::BoolList>
+HloParserImpl::ParseBooleanListOrSingleBooleanOnly() {
+  lexer_.Lex();
+  BoolList booleans;
+  if (!ParseBooleanListOrSingleBoolean(&booleans)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after boolean list");
+  }
+  return booleans;
+}
+
 StatusOr<std::vector<ReplicaGroup>> HloParserImpl::ParseReplicaGroupsOnly() {
   lexer_.Lex();
   std::vector<ReplicaGroup> replica_groups;
@@ -6137,6 +6210,12 @@ StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str) {
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseParameterReplicationOnly();
+}
+
+StatusOr<HloParserImpl::BoolList> ParseBooleanListOrSingleBoolean(
+    absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseBooleanListOrSingleBooleanOnly();
 }
 
 StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(

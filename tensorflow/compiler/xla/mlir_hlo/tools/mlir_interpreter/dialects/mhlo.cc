@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -57,6 +58,21 @@ InterpreterValue getTupleElement(InterpreterState&, mhlo::GetTupleElementOp get,
   return *std::get<Tuple>(tuple.storage).values[get.getIndex()];
 }
 
+InterpreterValue bitcastConvert(InterpreterState&, mhlo::BitcastConvertOp op,
+                                const InterpreterValue& in) {
+  ShapedType ty = op->getResultTypes()[0];
+  auto result = dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
+    TensorOrMemref<decltype(dummy)> result;
+    result.view = {};
+    result.buffer = in.clone().buffer();
+    return {result};
+  });
+  auto& outView = result.view();
+  outView.strides = BufferView::getDefaultStrides(ty.getShape());
+  outView.sizes = llvm::to_vector(ty.getShape());
+  return result;
+}
+
 InterpreterValue broadcastInDim(InterpreterState&,
                                 mhlo::BroadcastInDimOp broadcast,
                                 InterpreterValue in) {
@@ -75,20 +91,57 @@ InterpreterValue broadcastInDim(InterpreterState&,
   return out;
 }
 
+InterpreterValue concatenate(InterpreterState&, mhlo::ConcatenateOp concat,
+                             ArrayRef<InterpreterValue> vals) {
+  uint64_t dim = concat.getDimension();
+  auto sizes = vals[0].view().sizes;
+  sizes[dim] = 0;
+  for (const auto& val : vals) {
+    sizes[dim] += val.view().sizes[dim];
+  }
+
+  auto result = vals[0].typedAlike(sizes);
+  int64_t offset = 0;
+  for (const auto& val : vals) {
+    for (auto index : val.view().indices()) {
+      auto item = val.extractElement(index);
+      index[dim] += offset;
+      result.insertElement(index, item);
+    }
+    offset += val.view().sizes[dim];
+  }
+  return result;
+}
+
 InterpreterValue reshape(InterpreterState&, mhlo::ReshapeOp reshape,
                          const InterpreterValue& in) {
   auto ty = reshape->getResultTypes()[0].cast<mlir::ShapedType>();
   return reshapeTensor(in, ty.getShape());
 }
 
+llvm::SmallVector<int64_t> clampStarts(ArrayRef<int64_t> starts,
+                                       ArrayRef<int64_t> sliceSizes,
+                                       ArrayRef<int64_t> tensorSizes) {
+  llvm::SmallVector<int64_t> result;
+  for (auto [start, sliceSize, tensorSize] :
+       llvm::zip(starts, sliceSizes, tensorSizes)) {
+    result.push_back(
+        std::max(int64_t{0}, std::min(tensorSize - sliceSize, start)));
+  }
+  return result;
+}
+
 InterpreterValue dynamicSlice(InterpreterState&, mhlo::DynamicSliceOp slice,
-                              InterpreterValue in, ArrayRef<int64_t> starts) {
+                              const InterpreterValue& in,
+                              ArrayRef<int64_t> starts) {
   auto result = in.typedAlike(
       llvm::to_vector(slice.getSliceSizes().getValues<int64_t>()));
+  auto clampedStarts =
+      clampStarts(starts, result.view().sizes, in.view().sizes);
   // TODO(jreiffers): Skip the copy.
   result.fill([&](llvm::ArrayRef<int64_t> outIndices) {
     llvm::SmallVector<int64_t> inIndices;
-    for (auto [start, index] : llvm::zip(starts, outIndices)) {
+    for (auto [start, index] : llvm::zip(clampedStarts, outIndices)) {
       inIndices.push_back(start + index);
     }
     return in.extractElement(inIndices);
@@ -96,20 +149,22 @@ InterpreterValue dynamicSlice(InterpreterState&, mhlo::DynamicSliceOp slice,
   return result;
 }
 
-InterpreterValue dynamicUpdateSlice(MutableArrayRef<InterpreterValue> args) {
-  auto result = args[0].clone();
-  const auto& vals = args[1];
-  auto starts = llvm::to_vector(llvm::map_range(
-      args.drop_front(2),
-      [](const InterpreterValue& v) { return v.extractElement({}).asInt(); }));
-  for (auto inIndices : vals.view().indices(false)) {
+InterpreterValue dynamicUpdateSlice(InterpreterState&,
+                                    mhlo::DynamicUpdateSliceOp,
+                                    const InterpreterValue& in,
+                                    const InterpreterValue& updates,
+                                    ArrayRef<int64_t> starts) {
+  auto result = in.clone();
+  auto clampedStarts =
+      clampStarts(starts, updates.view().sizes, result.view().sizes);
+  for (auto inIndices : updates.view().indices()) {
     llvm::SmallVector<int64_t> outIndices;
-    for (auto [start, index] : llvm::zip(starts, inIndices)) {
+    for (auto [start, index] : llvm::zip(clampedStarts, inIndices)) {
       outIndices.push_back(start + index);
     }
-    result.insertElement(outIndices, vals.extractElement(inIndices));
+    result.insertElement(outIndices, updates.extractElement(inIndices));
   }
-  return {result};
+  return result;
 }
 
 InterpreterValue slice(InterpreterState&, mhlo::SliceOp slice,
@@ -528,6 +583,57 @@ llvm::SmallVector<InterpreterValue> reduce(InterpreterState& state,
   return results;
 }
 
+SmallVector<InterpreterValue> sort(InterpreterState& state, mhlo::SortOp op,
+                                   ArrayRef<InterpreterValue> inputs) {
+  const auto& shape = inputs.front().view().sizes;
+  uint64_t dim =
+      op.getDimension() < shape.size() ? op.getDimension() : shape.size() - 1;
+  SmallVector<int64_t> indices(shape[dim]);
+
+  auto iterView = inputs.front().view();
+  iterView.sizes[dim] = 1;
+  SmallVector<InterpreterValue> results;
+  for (const auto& input : inputs) {
+    results.push_back(input.typedAlike(input.view().sizes));
+  }
+  for (const auto& offset : iterView.indices()) {
+    std::iota(indices.begin(), indices.end(), 0);
+    auto comparator = [&](int64_t a, int64_t b) {
+      if (state.hasFailure()) {
+        return false;
+      }
+      SmallVector<InterpreterValue> args;
+      auto indexA = offset;
+      indexA[dim] = a;
+      auto indexB = offset;
+      indexB[dim] = b;
+      for (const auto& input : inputs) {
+        args.push_back(input.extractElement(indexA).asUnitTensor());
+        args.push_back(input.extractElement(indexB).asUnitTensor());
+      }
+      auto result = interpret(state, op.getComparator(), args);
+      return !state.hasFailure() && result[0].extractElement({}).asInt() != 0;
+    };
+
+    if (op.getIsStable()) {
+      std::stable_sort(indices.begin(), indices.end(), comparator);
+    } else {
+      std::sort(indices.begin(), indices.end(), comparator);
+    }
+
+    auto copy = offset;
+    for (auto [dst, src] : llvm::enumerate(indices)) {
+      for (auto [input, result] : llvm::zip(inputs, results)) {
+        copy[dim] = src;
+        auto elem = input.extractElement(copy);
+        copy[dim] = static_cast<int64_t>(dst);
+        result.insertElement(copy, elem);
+      }
+    }
+  }
+  return results;
+}
+
 SmallVector<InterpreterValue> mhloCase(InterpreterState& state, mhlo::CaseOp op,
                                        int64_t index) {
   if (index < 0 || index >= op->getNumResults()) {
@@ -728,31 +834,34 @@ InterpreterValue computeReshapeShape(InterpreterState&,
 
 // TODO(jreiffers): Migrate remaining ops to the safer signature.
 REGISTER_MLIR_INTERPRETER_OP("mhlo.dynamic_gather", gather);
-REGISTER_MLIR_INTERPRETER_OP("mhlo.dynamic_update_slice", dynamicUpdateSlice);
 REGISTER_MLIR_INTERPRETER_OP("mhlo.gather", gather);
 REGISTER_MLIR_INTERPRETER_OP("mhlo.return", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP("mhlo.tuple", makeTuple);
+REGISTER_MLIR_INTERPRETER_OP(bitcastConvert);
 REGISTER_MLIR_INTERPRETER_OP(broadcastInDim);
 REGISTER_MLIR_INTERPRETER_OP(compare);
 REGISTER_MLIR_INTERPRETER_OP(computeReshapeShape);
+REGISTER_MLIR_INTERPRETER_OP(concatenate);
 REGISTER_MLIR_INTERPRETER_OP(constant);
 REGISTER_MLIR_INTERPRETER_OP(convert);
 REGISTER_MLIR_INTERPRETER_OP(copy);
 REGISTER_MLIR_INTERPRETER_OP(dot);
 REGISTER_MLIR_INTERPRETER_OP(dotGeneral);
 REGISTER_MLIR_INTERPRETER_OP(dynamicSlice);
+REGISTER_MLIR_INTERPRETER_OP(dynamicUpdateSlice);
 REGISTER_MLIR_INTERPRETER_OP(fusion);
-REGISTER_MLIR_INTERPRETER_OP(mhloCase);
 REGISTER_MLIR_INTERPRETER_OP(getTupleElement);
 REGISTER_MLIR_INTERPRETER_OP(iota);
+REGISTER_MLIR_INTERPRETER_OP(mhloCase);
+REGISTER_MLIR_INTERPRETER_OP(mhloWhile);
 REGISTER_MLIR_INTERPRETER_OP(pad);
 REGISTER_MLIR_INTERPRETER_OP(reduce);
 REGISTER_MLIR_INTERPRETER_OP(reshape);
 REGISTER_MLIR_INTERPRETER_OP(scatter);
 REGISTER_MLIR_INTERPRETER_OP(select);
 REGISTER_MLIR_INTERPRETER_OP(slice);
+REGISTER_MLIR_INTERPRETER_OP(sort);
 REGISTER_MLIR_INTERPRETER_OP(transpose);
-REGISTER_MLIR_INTERPRETER_OP(mhloWhile);
 
 }  // namespace
 }  // namespace interpreter

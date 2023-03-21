@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/strings/str_cat.h"
-#include "pybind11/chrono.h"
-#include "pybind11/complex.h"
-#include "pybind11/detail/common.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/chrono.h"  // from @pybind11
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -52,6 +52,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
              tensorflow::Status status = server->NumWorkers(&num_workers);
              tensorflow::MaybeRaiseFromStatus(status);
              return num_workers;
+           })
+      .def("snapshot_streams",
+           [](tensorflow::data::DispatchGrpcDataServer* server,
+              const std::string& path)
+               -> std::vector<tensorflow::data::SnapshotStreamInfoWrapper> {
+             std::vector<tensorflow::data::SnapshotStreamInfoWrapper> streams;
+             tensorflow::Status status =
+                 server->SnapshotStreams(path, &streams);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return streams;
            });
 
   py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer")
@@ -160,5 +170,20 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
           [](const tensorflow::data::SnapshotTaskProgressWrapper&
                  snapshot_task_progress_wrapper) -> int {
             return snapshot_task_progress_wrapper.snapshot_task_stream_index;
+          });
+  py::class_<tensorflow::data::SnapshotStreamInfoWrapper>
+      snapshot_stream_info_wrapper(m, "SnapshotStreamInfoWrapper");
+  snapshot_stream_info_wrapper.def(py::init<>())
+      .def_property_readonly(
+          "index",
+          [](const tensorflow::data::SnapshotStreamInfoWrapper&
+                 snapshot_stream_info_wrapper) -> int {
+            return snapshot_stream_info_wrapper.index;
+          })
+      .def_property_readonly(
+          "state",
+          [](const tensorflow::data::SnapshotStreamInfoWrapper&
+                 snapshot_stream_info_wrapper) -> int {
+            return snapshot_stream_info_wrapper.state;
           });
 };

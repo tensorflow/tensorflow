@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -26,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
@@ -627,12 +628,26 @@ int64_t GatherPartitionMethodCostModel(
     auto operand_passthrough_sharding = hlo_sharding_util::
         GatherOutputShardingFromOperandOperandPassthroughDimensions(
             operand.base_shape(), operand.sharding(), *gather, slice_sizes);
-    return !operand_passthrough_sharding
-               ? INT64_MAX
-               : ShapeSizeInBytes(operand.hlo()->shape()) +
-                     ShapeSizeInBytes(MakePartitionedShape(
-                         output_shape, *operand_passthrough_sharding)) +
-                     ShapeSizeInBytes(indices.base_shape());
+    if (!operand_passthrough_sharding) {
+      return INT64_MAX;
+    }
+    // Consider the potential cost of having to rematerialize the output if the
+    // sharding is not compatible.
+    const int64_t max_potential_output_shape_size =
+        hlo_sharding_util::IsSubTilingOrEqualSharding(
+            output_shape, output_sharding, *operand_passthrough_sharding) ||
+                hlo_sharding_util::IsSubTilingOrEqualSharding(
+                    output_shape, *operand_passthrough_sharding,
+                    output_sharding)
+            ? ShapeSizeInBytes(MakePartitionedShape(
+                  output_shape, *operand_passthrough_sharding))
+            : ShapeSizeInBytes(output_shape);
+
+    return std::max(ShapeSizeInBytes(operand.hlo()->shape()) +
+                        ShapeSizeInBytes(MakePartitionedShape(
+                            output_shape, *operand_passthrough_sharding)) +
+                        ShapeSizeInBytes(indices.base_shape()),
+                    max_potential_output_shape_size);
   }
   if (partition_method == PartitionGatherTrivialSlicedOperandDimensions) {
     auto trivial_slice_dims =
@@ -648,12 +663,24 @@ int64_t GatherPartitionMethodCostModel(
     const HloSharding index_passthrough_sharding = hlo_sharding_util::
         GatherOutputShardingFromIndexIndexPassthroughDimensions(
             indices.sharding(), gather);
-    return index_passthrough_sharding.IsTileMaximal()
-               ? INT64_MAX
-               : ShapeSizeInBytes(operand.base_shape()) +
-                     ShapeSizeInBytes(MakePartitionedShape(
-                         output_shape, index_passthrough_sharding)) +
-                     ShapeSizeInBytes(indices.hlo()->shape());
+    if (index_passthrough_sharding.IsTileMaximal()) {
+      return INT64_MAX;
+    }
+    // Consider the potential cost of having to rematerialize the output if the
+    // sharding is not compatible.
+    const int64_t max_potential_output_shape_size =
+        hlo_sharding_util::IsSubTilingOrEqualSharding(
+            output_shape, output_sharding, index_passthrough_sharding) ||
+                hlo_sharding_util::IsSubTilingOrEqualSharding(
+                    output_shape, index_passthrough_sharding, output_sharding)
+            ? ShapeSizeInBytes(MakePartitionedShape(output_shape,
+                                                    index_passthrough_sharding))
+            : ShapeSizeInBytes(output_shape);
+    return std::max(ShapeSizeInBytes(operand.base_shape()) +
+                        ShapeSizeInBytes(MakePartitionedShape(
+                            output_shape, index_passthrough_sharding)) +
+                        ShapeSizeInBytes(indices.hlo()->shape()),
+                    max_potential_output_shape_size);
   }
   return INT64_MAX;
 }
@@ -957,6 +984,7 @@ StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
       pscatter->set_sharding(HloSharding::Single(
           pscatter->shape(),
           hlo_sharding_util::UngroupSharding(output_grouped)));
+      VLOG(5) << "[Scatter partitioning]: Partitioned as index parallel";
       return PartitionedHlo(pscatter, output_shape, operands[0].state())
           .Reshard(output_sharding)
           .hlo();
@@ -1180,6 +1208,7 @@ StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
             operands[0].state().collective_ops_creator, scatter->to_apply());
     all_reduce->set_sharding(
         hlo_sharding_util::UngroupSharding(output_grouped));
+    VLOG(5) << "[Scatter partitioning]: Partitioned as index passthrough";
     return PartitionedHlo(all_reduce, output_shape, operands[0].state())
         .Reshard(output_sharding)
         .hlo();
@@ -1285,6 +1314,8 @@ StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
       pscatter->set_sharding(HloSharding::Single(
           pscatter->shape(),
           hlo_sharding_util::UngroupSharding(output_grouped)));
+      VLOG(5)
+          << "[Scatter partitioning]: Partitioned as trivially sliced operand";
       return PartitionedHlo(pscatter, output_shape, operands[0].state())
           .Reshard(output_sharding)
           .hlo();
@@ -1317,12 +1348,30 @@ int64_t ScatterPartitionMethodCostModel(
           ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
               operands[0].base_shape(), operands[0].sharding(), *scatter,
               slice_sizes);
-      return !operand_passthrough_sharding
-                 ? INT64_MAX
-                 : ShapeSizeSum(operands) +
-                       BaseShapeSizeSum(updates,
-                                        *operand_passthrough_sharding) +
-                       ShapeSizeInBytes(indices.base_shape());
+      if (!operand_passthrough_sharding) {
+        return INT64_MAX;
+      }
+      // Consider the possibility of having to fully rematerialize the update
+      // if the sharding is incompatible.
+      const int64_t max_potential_updates_shape_size =
+          absl::c_all_of(
+              updates,
+              [&operand_passthrough_sharding](const PartitionedHlo& phlo) {
+                return hlo_sharding_util::IsSubTilingOrEqualSharding(
+                           phlo.base_shape(), phlo.sharding(),
+                           *operand_passthrough_sharding) ||
+                       hlo_sharding_util::IsSubTilingOrEqualSharding(
+                           phlo.base_shape(), *operand_passthrough_sharding,
+                           phlo.sharding());
+              })
+              ? BaseShapeSizeSum(updates, *operand_passthrough_sharding)
+              : BaseShapeSizeSum(updates);
+
+      return std::max(
+          ShapeSizeSum(operands) +
+              BaseShapeSizeSum(updates, *operand_passthrough_sharding) +
+              ShapeSizeInBytes(indices.base_shape()),
+          max_potential_updates_shape_size);
     }
     if (partition_method == PartitionScatterTrivialSlicedOperandDimensions) {
       auto trivial_slice_dims =
@@ -1340,11 +1389,29 @@ int64_t ScatterPartitionMethodCostModel(
       const HloSharding index_passthrough_sharding = hlo_sharding_util::
           ScatterUpdateShardingFromIndexIndexPassthroughDimensions(
               indices.sharding(), scatter);
-      return index_passthrough_sharding.IsTileMaximal()
-                 ? INT64_MAX
-                 : BaseShapeSizeSum(operands) +
-                       BaseShapeSizeSum(updates, index_passthrough_sharding) +
-                       ShapeSizeInBytes(indices.hlo()->shape());
+      if (index_passthrough_sharding.IsTileMaximal()) {
+        return INT64_MAX;
+      }
+      // Consider the possibility of having to fully rematerialize the update
+      // if the sharding is incompatible.
+      const int64_t max_potential_updates_shape_size =
+          absl::c_all_of(
+              updates,
+              [&index_passthrough_sharding](const PartitionedHlo& phlo) {
+                return hlo_sharding_util::IsSubTilingOrEqualSharding(
+                           phlo.base_shape(), phlo.sharding(),
+                           index_passthrough_sharding) ||
+                       hlo_sharding_util::IsSubTilingOrEqualSharding(
+                           phlo.base_shape(), index_passthrough_sharding,
+                           phlo.sharding());
+              })
+              ? BaseShapeSizeSum(updates, index_passthrough_sharding)
+              : BaseShapeSizeSum(updates);
+      return std::max(
+          BaseShapeSizeSum(operands) +
+              BaseShapeSizeSum(updates, index_passthrough_sharding) +
+              ShapeSizeInBytes(indices.hlo()->shape()),
+          max_potential_updates_shape_size);
     }
     return INT64_MAX;
 }

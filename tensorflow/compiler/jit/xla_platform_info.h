@@ -90,12 +90,27 @@ class XlaPlatformInfo {
 StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
-// Returns created XLA compilation cache.
+// Builds a DeviceCompiler that uses xla::LocalClient using `platform_info` and
+// sets *xla_device_compiler to point to it. Uses flags from
+// `MarkForCompilationPassFlags` for configuring the persistor used in the
+// DeviceCompiler.
 Status BuildXlaDeviceCompiler(
     DeviceBase* dev, FunctionLibraryRuntime* flr,
     const XlaPlatformInfo& platform_info,
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
         xla_device_compiler);
+
+// Builds a DeviceCompiler that uses xla::PjRtClient using an appropriate
+// PjRtClient for `platform_info.device_type()` and sets *pjrt_device_compiler
+// to point to it. Uses flags from `MarkForCompilationPassFlags` for configuring
+// the persistor used in the DeviceCompiler. Please note that non-XLA devices
+// aren't supported yet. This is because:
+// 1. PjRtClient doesn't support data transfer for non-XLA devices yet
+// 2. Fetching the PjRtClient for non-XLA devices is also not supported yet
+Status BuildPjRtDeviceCompiler(
+    const XlaPlatformInfo& platform_info, FunctionLibraryRuntime* flr,
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
+        pjrt_device_compiler);
 
 // Returns information about the platform from kernel context.
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
@@ -110,21 +125,6 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
 std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info);
-
-// Returns created options for the XLA compiler, and writes the used allocator
-// into `tf_allocator_adapter`.
-XlaCompiler::Options GenerateCompilerOptions(
-    const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
-        xla_device_compiler,
-    const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars);
-
-// Returns created options for XLA compiler when TFRT-TPU is used.
-XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
-    const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>&
-        xla_device_compiler,
-    const FunctionLibraryRuntime& function_library);
 
 }  // namespace tensorflow
 

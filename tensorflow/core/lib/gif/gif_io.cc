@@ -74,11 +74,17 @@ uint8* Decode(const void* srcdata, int datasize,
                                  GifErrorStringNonNull(error_code));
     return nullptr;
   }
+
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));
-    return nullptr;
+    // Only stop load if no images are detected.
+    if (gif_file->ImageCount <= 0) {
+      return nullptr;
+    }
+    LOG(WARNING) << *error_string;
   }
+
   if (gif_file->ImageCount <= 0) {
     *error_string = "gif file does not contain any image";
     return nullptr;

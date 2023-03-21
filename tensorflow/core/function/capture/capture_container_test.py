@@ -26,6 +26,92 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
 
 
+class CachedCaptureDict(test.TestCase, parameterized.TestCase):
+
+  def _prepare_dict(self):
+    container_1 = capture_container.CaptureContainer(
+        1, constant_op.constant(1), "1")
+    container_2 = capture_container.CaptureContainer(
+        2, constant_op.constant(2), "2")
+    container_3 = capture_container.CaptureContainer(
+        3, constant_op.constant(3), "3")
+
+    d = dict({
+        "a": container_1,
+        "b": container_2,
+        "c": container_3})
+
+    capture_d = capture_container.CachedCaptureDict({
+        "a": container_1,
+        "b": container_2,
+        "c": container_3})
+
+    return d, capture_d
+
+  def _compare_capture_container(self, x, y):
+    if isinstance(
+        x, capture_container.CaptureContainer) and isinstance(
+            y, capture_container.CaptureContainer):
+      for attr in ["external", "internal", "idf", "is_by_ref"]:
+        if getattr(x, attr) != getattr(y, attr):
+          return False
+      return True
+    else:
+      return x == y
+
+  @parameterized.parameters(
+      ("__contains__", "a"),
+      ("__contains__", "not_exist"),
+      ("__len__", None),
+      ("__getitem__", "a"))
+  def test_same_behavior_with_normal_dict(self, method, arg):
+    d, capture_d = self._prepare_dict()
+    d_method = getattr(d, method)
+    capture_d_method = getattr(capture_d, method)
+    if arg is None:
+      result = self._compare_capture_container(
+          d_method(),
+          capture_d_method())
+    else:
+      result = self._compare_capture_container(
+          d_method(arg),
+          capture_d_method(arg))
+    self.assertTrue(result)
+
+  def _extract_tuple_cache_external(self, tpl):
+    return [i[0] for i in tpl]
+
+  @parameterized.parameters(
+      ("pop",),
+      ("__delitem__",))
+  def test_pop_and_del(self, method):
+    _, capture_d = self._prepare_dict()
+    fn = getattr(capture_d, method)
+    fn("b")
+    cache = capture_d.tuple_cache
+    self.assertLen(cache, 2)
+    externals = self._extract_tuple_cache_external(cache)
+    self.assertSequenceEqual(externals, [1, 3])
+
+  def test_set_item(self):
+    _, capture_d = self._prepare_dict()
+    container_4 = capture_container.CaptureContainer(
+        4, constant_op.constant(4), "4")
+    capture_d["d"] = container_4
+    cache = capture_d.tuple_cache
+    self.assertLen(cache, 4)
+    externals = self._extract_tuple_cache_external(cache)
+    self.assertSequenceEqual(externals, [1, 2, 3, 4])
+
+  def test_tuple_cache(self):
+    _, capture_d = self._prepare_dict()
+    cache = capture_d.tuple_cache
+    for ele in cache:
+      self.assertLen(ele, 2)
+    externals = self._extract_tuple_cache_external(cache)
+    self.assertSequenceEqual(externals, [1, 2, 3])
+
+
 class CaptureContainerTest(test.TestCase, parameterized.TestCase):
 
   def _prepare_function_captures(self):

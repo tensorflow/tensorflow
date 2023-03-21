@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -64,6 +65,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::xla::runtime::CpuEvent;
 
 // A RAII helper class used to set an AsyncValueRef<CpuEvent> to a ready state
 // upon destruction. In many cases in PjRt implementation, there will be
@@ -434,7 +437,9 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   // Run Hlo Passes
-  cpu::CpuCompiler compiler;
+  bool allow_sparse_shapes =
+      hlo_module->config().debug_options().xla_cpu_use_xla_runtime();
+  cpu::CpuCompiler compiler(allow_sparse_shapes);
   xla::Compiler::CompileOptions dummy;
   TF_ASSIGN_OR_RETURN(hlo_module,
                       compiler.RunHloPasses(std::move(hlo_module),
@@ -1832,6 +1837,9 @@ TfrtCpuExecutable::Execute(
     const int replica = addressable_device_logical_ids_[0].replica;
     const int partition = addressable_device_logical_ids_[0].partition;
 
+    // Dump once before running, in case there's a crash.
+    MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
+                         {});
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
         /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),

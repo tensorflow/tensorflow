@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>  // NOLINT
 #include <utility>     // NOLINT
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -95,6 +96,31 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> InlineScfWhile(BisectState&,
   return result;
 }
 
+SmallVector<OwningOpRef<ModuleOp>> ReduceScfForallBounds(
+    BisectState&, scf::ForallOp forall_op) {
+  SmallVector<OwningOpRef<ModuleOp>> result;
+  SmallVector<OpFoldResult> newUpperBound{forall_op.getMixedUpperBound()};
+  OpBuilder b(forall_op);
+  for (auto& ub : newUpperBound) {
+    auto constantOr = mlir::getConstantIntValue(ub);
+    if (!constantOr.has_value()) continue;
+
+    ub = b.getIndexAttr(*constantOr - 1);
+  }
+  auto [module, op] = CloneModuleFor(forall_op);
+  b.setInsertionPoint(op);
+  SmallVector<Value> dynamicUpperBound;
+  SmallVector<int64_t> staticUpperBound;
+  dispatchIndexOpFoldResults(newUpperBound, dynamicUpperBound,
+                             staticUpperBound);
+  op.getDynamicUpperBoundMutable().assign(dynamicUpperBound);
+  op.setStaticUpperBound(staticUpperBound);
+
+  result.push_back(std::move(module));
+  return result;
+}
+
+REGISTER_MLIR_REDUCE_STRATEGY(ReduceScfForallBounds);
 REGISTER_MLIR_REDUCE_STRATEGY(InlineScfWhile);
 
 }  // namespace

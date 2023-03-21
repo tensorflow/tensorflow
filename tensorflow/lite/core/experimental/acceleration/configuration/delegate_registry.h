@@ -98,7 +98,7 @@ class DelegatePluginRegistry {
 
 #define TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION_VNAME(name, f) \
   static auto* g_delegate_plugin_##name##_ =                     \
-      new DelegatePluginRegistry::Register(#name, f);
+      new tflite::delegates::DelegatePluginRegistry::Register(#name, f);
 #define TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(name, f) \
   TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION_VNAME(name, f);
 

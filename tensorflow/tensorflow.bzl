@@ -70,7 +70,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.12.0"
+VERSION = "2.13.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -932,7 +932,7 @@ def _create_symlink(src, dest, visibility = None):
         outs = [src],
         srcs = [dest],
         output_to_bindir = 1,
-        cmd = "ln -sf $$(basename $<) $@",
+        cmd = "ln -sf $$(realpath --relative-to=$(RULEDIR) $<) $@",
         visibility = visibility,
     )
 
@@ -1397,7 +1397,7 @@ def tf_gen_op_wrapper_py(
         pygen_args.append("--hidden_op_list_filename=$(location " + hidden_file + ")")
         extra_srcs.append(hidden_file)
     elif op_allowlist:
-        pygen_args.append("--op_allowlist=" + ",".join(op_allowlist))
+        pygen_args.append("--op_allowlist=" + ",".join(["'%s'" % op for op in op_allowlist]))
 
     # Prepare ApiDef directories to pass to the genrule.
     if api_def_srcs:
@@ -2142,8 +2142,10 @@ def _check_deps_impl(ctx):
         for disallowed_dep in disallowed_deps:
             if sets.contains(collected_deps, disallowed_dep.label):
                 fail(
-                    _dep_label(input_dep) + " cannot depend on " +
-                    _dep_label(disallowed_dep),
+                    "{src} cannot depend on {dep}. See: bazel query 'somepath(//{src}, //{dep})'".format(
+                        src = _dep_label(input_dep),
+                        dep = _dep_label(disallowed_dep),
+                    ),
                 )
         for required_dep in required_deps:
             if not sets.contains(collected_deps, required_dep.label):
@@ -2350,7 +2352,7 @@ def pywrap_tensorflow_macro_opensource(
     )
 
     # We need pybind11 to export the shared object PyInit symbol only in OSS.
-    extra_deps = ["@pybind11"]
+    extra_deps = [clean_dep("@pybind11")]
 
     if not version_script:
         version_script = select({
@@ -2449,13 +2451,24 @@ def pywrap_tensorflow_macro_opensource(
         cmd = "touch $@",
     )
 
+    # TODO(b/271333181): This should be done more generally on Windows for every dll dependency
+    # (there is only one currently) that is not in the same directory, otherwise Python will fail to
+    # link the pyd (which is just a dll) because of missing dependencies.
+    _create_symlink("bfloat16.so", "//tensorflow/tsl/python/lib/core:bfloat16.so")
+
     native.py_library(
         name = name,
         srcs = [":" + name + ".py"],
         srcs_version = "PY3",
         data = select({
-            clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
-            "//conditions:default": [":" + cc_shared_library_name],
+            clean_dep("//tensorflow:windows"): [
+                ":" + cc_library_pyd_name,
+                ":bfloat16.so",
+                "//tensorflow/tsl/python/lib/core:bfloat16.so",
+            ],
+            "//conditions:default": [
+                ":" + cc_shared_library_name,
+            ],
         }),
     )
 
@@ -2495,6 +2508,11 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs
         exec_properties = exec_properties,
         **kwargs
     )
+
+register_extension_info(
+    extension = py_test,
+    label_regex_for_dep = "{extension_name}",
+)
 
 # Similar to py_test above, this macro is used to exclude dependencies for some py_binary
 # targets in order to reduce the size of //tensorflow/tools/pip_package:simple_console_windows.
@@ -2619,6 +2637,11 @@ def tf_py_test(
             deps = depset(deps + xla_test_true_list),
             **kwargs
         )
+
+register_extension_info(
+    extension = tf_py_test,
+    label_regex_for_dep = "{extension_name}(_tfrt)?",
+)
 
 def gpu_py_test(
         name,
@@ -2913,7 +2936,7 @@ def pybind_library(
         deps = [],
         **kwargs):
     # Mark common dependencies as required for build_cleaner.
-    tags = tags + ["req_dep=@pybind11", "req_dep=@local_config_python//:python_headers"]
+    tags = tags + ["req_dep=" + clean_dep("//third_party/pybind11"), "req_dep=@local_config_python//:python_headers"]
 
     native.cc_library(
         name = name,
@@ -2923,7 +2946,7 @@ def pybind_library(
             "-parse_headers",
         ],
         tags = tags,
-        deps = deps + ["@pybind11", "@local_config_python//:python_headers"],
+        deps = deps + [clean_dep("//third_party/pybind11"), "@local_config_python//:python_headers"],
         **kwargs
     )
 
@@ -3198,7 +3221,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@llvm_openmp//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",

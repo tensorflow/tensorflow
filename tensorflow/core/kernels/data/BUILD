@@ -79,7 +79,6 @@ tf_cc_test(
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -876,6 +875,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1004,7 +1004,6 @@ tf_cc_test(
         ":iterator_ops",
         ":range_dataset_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1183,7 +1182,6 @@ tf_cc_test(
         ":iterator_ops",
         ":range_dataset_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

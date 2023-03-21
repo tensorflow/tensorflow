@@ -16,7 +16,7 @@ limitations under the License.
 #include <numeric>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/tests/hexagon_delegate_op_model.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"

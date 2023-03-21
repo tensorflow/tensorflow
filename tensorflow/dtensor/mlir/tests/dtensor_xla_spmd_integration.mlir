@@ -1,4 +1,4 @@
-// RUN: dtensor-opt %s -split-input-file -dtensor-set-hlo-sharding='check_layout_use_xla_spmd=true' -dtensor-replace-auxiliary-layout-op -dtensor-remove-dtensorlayout | FileCheck %s
+// RUN: dtensor-opt %s -split-input-file -dtensor-set-hlo-sharding='check_layout_use_xla_spmd=true' -dtensor-replace-auxiliary-layout-op -dtensor-layout-to-xla-sharding-op -verify-diagnostics | FileCheck %s
 
 // Check after XLA SPMD integration, all inputs, outputs, and operations have sharding attributes.
 //  And all "tf.DTensorLayout" are removed.
@@ -6,9 +6,10 @@
 // CHECK-SAME: (%arg0: tensor<8x8xi32> {mhlo.sharding = "", tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> (tensor<8x8xi32> {mhlo.sharding = ""})
 func.func @check_layouts_are_converted_to_xla_sharding_attributes(
   %arg0: tensor<8x8xi32> {tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd"}) -> (tensor<8x8xi32>) {
-  // CHECK:      "tf.Identity"
-  // CHECK-SAME: mhlo.sharding = ""
-  // CHECK-NEXT: return
+  // CHECK:      [[tensor2:%[0-9]+]] = "tf.Identity"(%arg0)
+  // CHECK:      [[tensor3:%[0-9]+]] = "tf.XlaSharding"([[tensor2]])
+  // CHECK-SAME: _XlaSharding = ""
+  // CHECK: return [[tensor3]]
   %1 = "tf.DTensorLayout"(%arg0) {global_shape = #tf_type.shape<8x8>, layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd>} : (tensor<8x8xi32>) -> tensor<8x8xi32>
   %2 = "tf.Identity"(%1) {_global_shape = [#tf_type.shape<8x8>], device = ""} : (tensor<8x8xi32>) -> tensor<8x8xi32>
   %3 = "tf.DTensorLayout"(%2) {global_shape = #tf_type.shape<8x8>, layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=1|0|0|/job:localhost/replica:0/task:0/device:CPU:0|use_xla_spmd>} : (tensor<8x8xi32>) -> tensor<8x8xi32>

@@ -42,10 +42,20 @@ def _get_time_or_placeholder(value):
 
 @tf_export("data.experimental.service.DispatcherConfig")
 class DispatcherConfig(
-    collections.namedtuple("DispatcherConfig", [
-        "port", "protocol", "work_dir", "fault_tolerant_mode",
-        "worker_addresses", "job_gc_check_interval_ms", "job_gc_timeout_ms"
-    ])):
+    collections.namedtuple(
+        "DispatcherConfig",
+        [
+            "port",
+            "protocol",
+            "work_dir",
+            "fault_tolerant_mode",
+            "worker_addresses",
+            "job_gc_check_interval_ms",
+            "job_gc_timeout_ms",
+            "worker_timeout_ms",
+        ],
+    )
+):
   """Configuration class for tf.data service dispatchers.
 
   Fields:
@@ -77,25 +87,38 @@ class DispatcherConfig(
       longer with no consumers. This is useful if there is a large gap in
       time between when consumers read from the job. A lower value will reduce
       the time it takes to reclaim the resources from expired jobs.
+    worker_timeout_ms: How long to wait for a worker to heartbeat before
+      considering it missing. If not set, the runtime will select a reasonable
+      default.
   """
 
-  def __new__(cls,
-              port=0,
-              protocol=None,
-              work_dir=None,
-              fault_tolerant_mode=False,
-              worker_addresses=None,
-              job_gc_check_interval_ms=None,
-              job_gc_timeout_ms=None):
+  def __new__(
+      cls,
+      port=0,
+      protocol=None,
+      work_dir=None,
+      fault_tolerant_mode=False,
+      worker_addresses=None,
+      job_gc_check_interval_ms=None,
+      job_gc_timeout_ms=None,
+      worker_timeout_ms=None,
+  ):
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     job_gc_check_interval_ms = _get_time_or_placeholder(
         job_gc_check_interval_ms)
     job_gc_timeout_ms = _get_time_or_placeholder(job_gc_timeout_ms)
-    return super(DispatcherConfig,
-                 cls).__new__(cls, port, protocol, work_dir,
-                              fault_tolerant_mode, worker_addresses,
-                              job_gc_check_interval_ms, job_gc_timeout_ms)
+    return super().__new__(
+        cls,
+        port,
+        protocol,
+        work_dir,
+        fault_tolerant_mode,
+        worker_addresses,
+        job_gc_check_interval_ms,
+        job_gc_timeout_ms,
+        worker_timeout_ms,
+    )
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -168,7 +191,9 @@ class DispatchServer:
           fault_tolerant_mode=config.fault_tolerant_mode,
           worker_addresses=config.worker_addresses,
           job_gc_check_interval_ms=config.job_gc_check_interval_ms,
-          job_gc_timeout_ms=config.job_gc_timeout_ms)
+          job_gc_timeout_ms=config.job_gc_timeout_ms,
+          worker_timeout_ms=config.worker_timeout_ms,
+      )
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config_proto.SerializeToString())
     if start:
@@ -251,6 +276,10 @@ class DispatchServer:
     """Returns the number of workers registered with the dispatcher."""
     return self._server.num_workers()
 
+  def _snapshot_streams(self, path):
+    """Returns information about all the streams for a snapshot."""
+    return self._server.snapshot_streams(path)
+
 
 @tf_export("data.experimental.service.WorkerConfig")
 class WorkerConfig(
@@ -296,9 +325,6 @@ class WorkerConfig(
       worker_address = "localhost:%port%"
     if protocol is None:
       protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
-    if data_transfer_protocol is None:
-      data_transfer_protocol = (
-          _pywrap_utils.TF_DATA_DefaultDataTransferProtocol())
     if data_transfer_address is None:
       data_transfer_address = "localhost:%port%"
     heartbeat_interval_ms = _get_time_or_placeholder(heartbeat_interval_ms)

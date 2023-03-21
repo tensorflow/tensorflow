@@ -97,6 +97,8 @@ class KernelFallbackCompatRequestState {
       const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
+  int64_t step_id() const { return step_id_; }
+
   // Returns the user-specified custom device corresponding to the given device.
   // It is currently only used for configure per-request intra op threadpool.
   tensorflow::Device* custom_device(const tensorflow::Device* device) const {
@@ -104,6 +106,8 @@ class KernelFallbackCompatRequestState {
     if (it == custom_device_.end()) return nullptr;
     return it->second.get();
   }
+
+  tensorflow::Device* cpu_device() const { return cpu_device_; }
 
   ScopedStepContainer* step_container() const { return step_container_.get(); }
 
@@ -150,12 +154,15 @@ class KernelFallbackCompatRequestState {
   }
 
  private:
+  int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
   std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
   absl::flat_hash_map<const tensorflow::Device*,
                       std::unique_ptr<tensorflow::Device>>
       custom_device_;
+  std::unique_ptr<tensorflow::Device> custom_cpu_device_;
+  tensorflow::Device* cpu_device_ = nullptr;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;

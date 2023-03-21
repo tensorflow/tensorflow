@@ -40,7 +40,7 @@ using tensorflow::ProfileResponse;
 
 inline Status FromGrpcStatus(const ::grpc::Status& s) {
   return s.ok() ? OkStatus()
-                : Status(static_cast<error::Code>(s.error_code()),
+                : Status(static_cast<absl::StatusCode>(s.error_code()),
                          s.error_message());
 }
 

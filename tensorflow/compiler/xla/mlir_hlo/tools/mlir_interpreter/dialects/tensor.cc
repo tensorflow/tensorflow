@@ -86,21 +86,35 @@ llvm::SmallVector<InterpreterValue> extractSlice(
 
   int64_t numDropped = 0;
   auto& outView = out.view();
-  auto droppedDims = extract.getDroppedDims();
-  for (int64_t bit : droppedDims.set_bits()) {
-    assert(outView.sizes[bit - numDropped] == 1 && "Can only drop unit dims");
-    outView.sizes.erase(outView.sizes.begin() + (bit - numDropped));
-    outView.strides.erase(outView.strides.begin() + (bit - numDropped));
-    ++numDropped;
+
+  // TODO(jreiffers): Figure out why getDroppedDims fails here when there's
+  // no rank reduction and the output has a dynamic shape.
+  int64_t dim = 0;
+  const auto& resultSizes = extract.getResultType().getShape();
+  const auto& staticSizes = extract.getStaticSizes();
+  while (dim < outView.rank()) {
+    if (staticSizes[numDropped + dim] == 1 &&
+        (dim >= resultSizes.size() || resultSizes[dim] != 1)) {
+      outView.sizes.erase(outView.sizes.begin() + dim);
+      outView.strides.erase(outView.strides.begin() + dim);
+      ++numDropped;
+    } else {
+      ++dim;
+    }
   }
+
   return {out};
 }
 
+template <typename Op>
 llvm::SmallVector<InterpreterValue> insertSlice(
-    InterpreterState&, tensor::InsertSliceOp insert, InterpreterValue src,
-    InterpreterValue dest, ArrayRef<int64_t> dynamicOffsets,
-    ArrayRef<int64_t> dynamicSizes, ArrayRef<int64_t> dynamicStrides) {
-  dest = dest.clone();
+    InterpreterState&, Op insert, InterpreterValue src, InterpreterValue dest,
+    ArrayRef<int64_t> dynamicOffsets, ArrayRef<int64_t> dynamicSizes,
+    ArrayRef<int64_t> dynamicStrides) {
+  // parallel_insert_slice actually writes to its destination.
+  if (insert->getNumResults() == 1) {
+    dest = dest.clone();
+  }
   auto v = extractOffsetsSizesStrides(dynamicOffsets, dynamicSizes,
                                       dynamicStrides, insert);
 
@@ -109,7 +123,7 @@ llvm::SmallVector<InterpreterValue> insertSlice(
   auto& srcView = src.view();
   auto* srcSizeIt = srcView.sizes.begin();
   for (auto [dim, size] : llvm::enumerate(staticSizes)) {
-    if (srcSizeIt == srcView.sizes.end() || *srcSizeIt != size) {
+    if (srcSizeIt == srcView.sizes.end() || (*srcSizeIt != size && size >= 0)) {
       assert(size == 1 && "Can only insert unit dims");
       insertedDims.push_back(dim);
     } else {
@@ -129,7 +143,10 @@ llvm::SmallVector<InterpreterValue> insertSlice(
     }
     dest.insertElement(dstIndices, src.extractElement(srcIndices));
   }
-  return {dest};
+  if (insert->getNumResults() == 1) {
+    return {dest};
+  }
+  return {};
 }
 
 InterpreterValue generate(InterpreterState& state, tensor::GenerateOp generate,
@@ -199,7 +216,8 @@ REGISTER_MLIR_INTERPRETER_OP(extractSlice);
 REGISTER_MLIR_INTERPRETER_OP(fromElements);
 REGISTER_MLIR_INTERPRETER_OP(generate);
 REGISTER_MLIR_INTERPRETER_OP(insert);
-REGISTER_MLIR_INTERPRETER_OP(insertSlice);
+REGISTER_MLIR_INTERPRETER_OP(insertSlice<tensor::InsertSliceOp>);
+REGISTER_MLIR_INTERPRETER_OP(insertSlice<tensor::ParallelInsertSliceOp>);
 REGISTER_MLIR_INTERPRETER_OP(pad);
 REGISTER_MLIR_INTERPRETER_OP(tensorReshape<tensor::CollapseShapeOp>);
 REGISTER_MLIR_INTERPRETER_OP(tensorReshape<tensor::ExpandShapeOp>);

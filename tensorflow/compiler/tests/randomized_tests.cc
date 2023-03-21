@@ -505,12 +505,6 @@ OpTest::OpTest() {
                 "results of this test, pass flag --tf_xla_random_seed="
              << seed;
   generator_.reset(new std::mt19937(seed));
-
-  // Create a session with an empty graph.
-  SessionOptions session_options;
-  session_.reset(NewSession(session_options));
-  GraphDef def;
-  TF_CHECK_OK(session_->Create(def));
 }
 
 namespace {
@@ -1518,9 +1512,12 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
     return kInvalid;
   }
 
-  status = session_->Extend(graph);
+  // Create a session with the corresponding graph.
+  SessionOptions session_options;
+  session_.reset(NewSession(session_options));
+  status = session_->Create(graph);
   if (!status.ok()) {
-    LOG(ERROR) << "Session::Extend() failed: " << status;
+    LOG(ERROR) << "Session::Create() failed: " << status;
     return kFatalError;
   }
 

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,7 +61,7 @@ enum TfLiteGpuExperimentalFlags {
   // Enforces execution with the provided backend.
   TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY = 1 << 1,
   TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY = 1 << 2,
-  // Enable serialization of GPU kernels & model data. Speeds up initilization
+  // Enable serialization of GPU kernels & model data. Speeds up initialization
   // at the cost of space on disk.
   // Delegate performs serialization the first time it is applied with a new
   // model or inference params. Later initializations are fast.

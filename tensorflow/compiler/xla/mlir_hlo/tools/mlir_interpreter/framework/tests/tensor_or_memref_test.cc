@@ -59,8 +59,7 @@ std::optional<int64_t> getCollapsedStrideNaive(llvm::ArrayRef<int64_t> dims,
     for (auto [dim, index] : llvm::zip(dims, indices)) {
       viewIndices[dim] = index;
     }
-    int64_t index = view.getPhysicalIndex(viewIndices);
-    v[index] = true;
+    v[*view.getPhysicalIndex(viewIndices)] = true;
   }
 
   if (v.count() != f.getNumElements()) return std::nullopt;
@@ -96,7 +95,7 @@ TEST(TensorOrMemrefTest, CollapsedStride) {
   };
 
   checkAll();
-  view.slice(3, 0);
+  ASSERT_TRUE(view.slice(3, 0).succeeded());
   checkAll();
 }
 

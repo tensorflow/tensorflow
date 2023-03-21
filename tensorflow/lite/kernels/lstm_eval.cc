@@ -1200,7 +1200,9 @@ inline void LstmStepHybrid(
           aux_input_to_cell_weights_ptr, aux_input_to_output_weights_ptr,
           recurrent_to_input_weights_ptr, recurrent_to_forget_weights_ptr,
           recurrent_to_cell_weights_ptr, recurrent_to_output_weights_ptr,
-          projection_weights_ptr, use_cifg, aux_input_ptr);
+          projection_weights_ptr, use_cifg, aux_input_ptr,
+          recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+          recurrent_to_cell_is_diag, recurrent_to_output_is_diag);
       *compute_row_sums = false;
     }
   }

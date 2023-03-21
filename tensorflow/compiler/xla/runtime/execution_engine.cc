@@ -130,17 +130,10 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   bb->insertInto(callee);
   builder.SetInsertPoint(bb);
 
-  // We collect all load instructions that load arguments from a single pointer,
-  // and duplicate them into the basic blocks where the value is used. We do it
-  // to avoid creating massive entry block with potentially tens of thousands of
-  // loads, which puts a lot of pressure on instruction scheduling.
-  //
-  // TODO(ezhulenev): Currently we do it only for loads with a single use, we
-  // should consider doing it for all loads with small number of uses.
-  llvm::SmallVector<std::pair<llvm::LoadInst *, llvm::LoadInst *>> args;
+  llvm::SmallVector<llvm::Value *> args;
   args.reserve(llvm::size(func->args()));
 
-  for (auto &indexed_arg : llvm::enumerate(func->args())) {
+  for (const auto &indexed_arg : llvm::enumerate(func->args())) {
     llvm::Type *art_ty = indexed_arg.value().getType();
 
     llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(
@@ -149,13 +142,11 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
         builder.CreateLoad(builder.getPtrTy(), arg_ptr_gep);
     llvm::LoadInst *arg_load = builder.CreateLoad(art_ty, arg_ptr_load);
 
-    args.emplace_back(arg_ptr_load, arg_load);
+    args.emplace_back(arg_load);
   }
 
   // Call the implementation function with the extracted arguments.
-  llvm::SmallVector<llvm::Value *> args_values;
-  for (auto &[_, arg] : args) args_values.push_back(arg);
-  auto *call = builder.CreateCall(func, args_values);
+  auto *call = builder.CreateCall(func, args);
   builder.CreateRetVoid();
 
   // Make sure that we do not keep exported function in the binary if we do not
@@ -172,26 +163,6 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   bool is_coro = func->isPresplitCoroutine();
   if (auto inlined = llvm::InlineFunction(*call, ifi); inlined.isSuccess()) {
     if (is_coro) callee->setPresplitCoroutine();
-  }
-
-  // Clean up loads from the packed argument pointer.
-  for (auto &[ptr_load, arg_load] : args) {
-    // Dead argument elimination after inlining.
-    if (arg_load->use_empty()) {
-      arg_load->eraseFromParent();
-      ptr_load->eraseFromParent();
-      continue;
-    }
-
-    // Move loads used only once into the entry block where they are used.
-    if (!arg_load->hasOneUser()) continue;
-
-    for (llvm::User *user : arg_load->users()) {
-      auto *inst = cast<llvm::Instruction>(user);
-      if (llvm::isa<llvm::PHINode>(inst)) continue;
-      arg_load->moveBefore(inst);
-      ptr_load->moveBefore(arg_load);
-    }
   }
 
   // Always keep the frame pointer inside jit-compiled modules, so that we can
@@ -247,6 +218,8 @@ std::unique_ptr<llvm::MemoryBuffer> ExecutionEngineObjectCache::stealObject(
 
 // -------------------------------------------------------------------------- //
 
+// llvm_ir::DumpToString() is not used here, because we don't want to add too
+// many dependencies to the runtime.
 std::string ToString(const llvm::Error &err) {
   std::string str;
   llvm::raw_string_ostream(str) << err;

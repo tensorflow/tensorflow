@@ -125,6 +125,8 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
+  params.id_registry = captured_state->id_registry();
+  params.warm_start = dataset->options().optimization_options().warm_start();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -207,6 +209,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
       SymbolicCheckpointEnabled(input_dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
+  params.id_registry = new_state->id_registry();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -245,6 +248,8 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
+  params.id_registry = new_state->id_registry();
+  params.warm_start = dataset->options().optimization_options().warm_start();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -272,8 +277,8 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  tf_dataz_metrics_collector_ =
-      std::make_shared<TfDatazMetricsCollector>(env_, iterator.get());
+  tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
+      env_, iterator_state_->iterator());
   TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
   return OkStatus();
 }

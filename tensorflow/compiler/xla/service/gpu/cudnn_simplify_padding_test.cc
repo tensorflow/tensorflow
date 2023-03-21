@@ -53,7 +53,10 @@ class CudnnSimplifyPaddingTest : public HloTestBase {
         RunHloPass(CudnnPadForConvolutions(cc), module).status());
 
     TF_RETURN_IF_ERROR(
-        RunHloPass(CudnnVectorizeConvolutions(cc), module).status());
+        RunHloPass(CudnnVectorizeConvolutions(
+                       cc, /*cudnn_version=*/se::dnn::VersionInfo{8, 3, 0}),
+                   module)
+            .status());
     VLOG(1) << "after vectorizing convs:\n" << module->ToString();
 
     TF_RETURN_IF_ERROR(RunHloPass(CallInliner(), module).status());
@@ -714,6 +717,44 @@ ENTRY main.26 {
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunJustThisPass(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(CudnnSimplifyPaddingTest, Int8FilterReorderedOutputFirst) {
+  // Test feature dimension calculation from reordering transpose (oi01)
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    conv.1 = (s8[1,63,80,80], u8[0]) custom-call(
+        s8[1,112,80,80] parameter(0), s8[63,112,3,3] parameter(1)),
+      window={size=3x3}, dim_labels=bf01_oi01->bf01,
+      custom_call_target="__cudnn$convForward"
+    gte.1 = s8[1,63,80,80] get-tuple-element(conv.1), index=0
+    const.0 = s8[] constant(0)
+    ROOT pad.1 = s8[1,64,80,80] pad(gte.1, const.0), padding=0_0x0_1x0_0x0_0
+  })")
+                    .value();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunEndToEnd({7, 5}, module.get()));
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(CudnnSimplifyPaddingTest, Int8FilterReorderedOutputLast) {
+  // Test feature dimension calculation from reordering transpose (01io)
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    conv.1 = (s8[1,63,80,80], u8[0]) custom-call(
+        s8[1,112,80,80] parameter(0), s8[3,3,112,63] parameter(1)),
+      window={size=3x3}, dim_labels=bf01_01io->bf01,
+      custom_call_target="__cudnn$convForward"
+    gte.1 = s8[1,63,80,80] get-tuple-element(conv.1), index=0
+    const.0 = s8[] constant(0)
+    ROOT pad.1 = s8[1,64,80,80] pad(gte.1, const.0), padding=0_0x0_1x0_0x0_0
+  })")
+                    .value();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunEndToEnd({7, 5}, module.get()));
+  EXPECT_TRUE(changed);
 }
 
 }  // anonymous namespace

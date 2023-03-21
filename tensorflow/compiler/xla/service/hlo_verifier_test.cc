@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -2640,14 +2643,14 @@ TEST_F(HloVerifierTest, InconsistentConditionSharding) {
       HasSubstr("Inconsistent conditional sharding among instructions"));
 }
 
-TEST_F(HloVerifierTest, InvalidF8Usage) {
+TEST_F(HloVerifierTest, InvalidS4Usage) {
   const char* const hlo = R"(
   HloModule Module
 
   ENTRY entry {
-    param0 = f32[] parameter(0)
-    x = f8e5m2[] convert(param0)
-    ROOT add = f8e5m2[] add(x, x)
+    param0 = s32[] parameter(0)
+    x = s4[] convert(param0)
+    ROOT add = s4[] add(x, x)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
@@ -2655,9 +2658,25 @@ TEST_F(HloVerifierTest, InvalidF8Usage) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.error_message(),
-      HasSubstr("FP8 is currently only supported in convert, bitcast, tuple, "
-                "get-tuple-element, transpose, dot, fusion, reshape and copy "
-                "instructions as well as Custom Calls"));
+      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
+TEST_F(HloVerifierTest, InvalidU4Usage) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = u32[] parameter(0)
+    x = u4[] convert(param0)
+    ROOT add = u4[] add(x, x)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
 }
 
 }  // namespace

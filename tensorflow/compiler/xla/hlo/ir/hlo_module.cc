@@ -57,6 +57,16 @@ namespace xla {
 HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : HloModule(name, config, std::make_unique<CompilationEnvironments>()) {}
 
+HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs)
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(std::move(config)),
+      unique_id_(next_unique_module_id_++),
+      metadata_(tsl::Env::Default()),
+      comp_envs_(std::move(comp_envs)) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
+
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
@@ -163,6 +173,27 @@ HloComputation* HloModule::AddEmbeddedComputation(
                                 /*preserve_entry_layouts=*/false);
 }
 
+void HloModule::MarkFusionDuplications(
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
+  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        auto rep =
+            replacements.find(instruction->fused_instructions_computation());
+        if (rep != replacements.end()) {
+          xla::HloComputation* new_comp = rep->second;
+          if (new_comp->IsFusionComputation()) {
+            auto& dedup_name = new_comp->FusionInstruction()->name();
+            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
+                dedup_name);
+            instruction->set_metadata_deduplicated_name(dedup_name);
+          }
+        }
+      }
+    }
+  }
+}
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
@@ -259,8 +290,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     entry_computation_layout().Print(printer);
     printer->Append("}");
   }
-  if (config_.allow_spmd_sharding_propagation_to_output()) {
-    printer->Append(", allow_spmd_sharding_propagation_to_output=true");
+  if (config_.allow_spmd_sharding_propagation_to_output().size() != 1 ||
+      config_.allow_spmd_sharding_propagation_to_output().back()) {
+    printer->Append(", allow_spmd_sharding_propagation_to_output={");
+    AppendJoin(printer, config_.allow_spmd_sharding_propagation_to_output(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
   }
   printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()
@@ -557,8 +594,11 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
-    module_config.set_allow_spmd_sharding_propagation_to_output(
-        execution_options->allow_spmd_sharding_propagation_to_output());
+    if (!execution_options->allow_spmd_sharding_propagation_to_output()
+             .empty()) {
+      module_config.set_allow_spmd_sharding_propagation_to_output(
+          execution_options->allow_spmd_sharding_propagation_to_output());
+    }
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -952,7 +992,8 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config());
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config(),
+      std::make_unique<CompilationEnvironments>(*comp_envs_));
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);
   std::vector<HloComputation*> to_remove;
@@ -994,16 +1035,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
-}
-
-HloModule::HloModule(const std::string& name, HloModuleConfig config,
-                     std::unique_ptr<CompilationEnvironments> comp_envs)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
-      unique_id_(next_unique_module_id_++),
-      metadata_(tsl::Env::Default()),
-      comp_envs_(std::move(comp_envs)) {
-  metadata_.set_canonical_module_id(unique_id_);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

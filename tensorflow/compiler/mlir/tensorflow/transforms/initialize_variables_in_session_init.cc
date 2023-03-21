@@ -34,8 +34,6 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 
-using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
-
 void InitializeVariable(TF::VarHandleOp var_handle_op,
                         tensorflow::Tensor* tensor,
                         func::FuncOp session_init_func, OpBuilder builder) {
@@ -90,35 +88,23 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module);
   if (!session_init_op) return CreateSessionInitFunc(module);
 
-  SymbolTable symbol_table(module);
-
-  // Find the init function that has tf_saved_model.initializer_type ==
-  // "restore_op".
-  for (auto init_sym :
-       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
-    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
-
-    const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
-        kTfSavedModelInitializerTypeAttr);
-    if (init_type_attr &&
-        init_type_attr == kTfSavedModelInitializerRestoreType) {
-      return init_func_op;
-    }
-  }
-
-  // When the init function with type "restore_op" is not found, fall back to
-  // taking the init function corresponding to the first symbol in the
-  // initializers list to be backwards-compatible, before
-  // tf_saved_model.initializer_type attribute was introduced.
-  if (!session_init_op.getInitializers().empty()) {
-    auto init_func_op =
-        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
-                                              .cast<FlatSymbolRefAttr>()
-                                              .getValue());
+  auto init_func_op = GetInitializerFunction(
+      module, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
+  if (init_func_op) {
     return init_func_op;
+  } else if (!session_init_op.getInitializers().empty()) {
+    // When the init function with type "restore_op" is not found, fall back to
+    // taking the init function corresponding to the first symbol in the
+    // initializers list to be backwards-compatible, before
+    // tf_saved_model.initializer_type attribute was introduced.
+    SymbolTable symbol_table(module);
+    return symbol_table.lookup<func::FuncOp>(
+        session_init_op.getInitializers()[0]
+            .cast<FlatSymbolRefAttr>()
+            .getValue());
+  } else {
+    return CreateSessionInitFunc(module);
   }
-
-  return CreateSessionInitFunc(module);
 }
 
 }  // namespace

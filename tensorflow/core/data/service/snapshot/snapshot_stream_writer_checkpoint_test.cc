@@ -57,6 +57,9 @@ StatusOr<int64_t> NumCheckpoints(const std::string& snapshot_path,
   std::string checkpoints_directory =
       CheckpointsDirectory(snapshot_path, stream_index);
   std::vector<std::string> checkpoint_filenames;
+  if (!Env::Default()->FileExists(checkpoints_directory).ok()) {
+    return 0;
+  }
   TF_RETURN_IF_ERROR(Env::Default()->GetChildren(checkpoints_directory,
                                                  &checkpoint_filenames));
   return checkpoint_filenames.size();
@@ -65,7 +68,7 @@ StatusOr<int64_t> NumCheckpoints(const std::string& snapshot_path,
 using SnapshotStreamWriterParameterizedTest =
     ::testing::TestWithParam<std::string>;
 
-TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoints) {
+TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoint) {
   const int64_t range = 10;
   const std::string compression = GetParam();
   const DatasetDef dataset = testing::RangeDataset(range);
@@ -90,6 +93,37 @@ TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoints) {
   EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
               IsOkAndHolds(UnorderedElementsAre(6, 7, 8, 9)));
+}
+
+TEST_P(SnapshotStreamWriterParameterizedTest,
+       SaveAndRestoreFromEndOfSequenceCheckpoint) {
+  const int64_t range = 5;
+  const std::string compression = GetParam();
+  const DatasetDef dataset = testing::RangeDataset(range);
+  const int64_t stream_index = 0;
+  TF_ASSERT_OK_AND_ASSIGN(const std::string snapshot_path,
+                          CreateSnapshotDirectory());
+  TF_ASSERT_OK_AND_ASSIGN(testing::PartialSnapshotWriter partial_writer,
+                          testing::PartialSnapshotWriter::Create(
+                              dataset, snapshot_path, stream_index, compression,
+                              /*max_chunk_size_bytes=*/16));
+
+  // Each chunk contains 2 elements. There are 3 chunks. The third checkpoint is
+  // for the iterator that has reached the end of sequence.
+  TF_ASSERT_OK(partial_writer.WriteCheckpoints({2}));
+
+  SnapshotWriterParams writer_params{snapshot_path,
+                                     /*stream_index=*/0, compression,
+                                     Env::Default()};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          testing::TestIterator(dataset));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+
+  // Since the end-of-sequence iterator is checkpointed, no more elements are
+  // written here.
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
+              IsOkAndHolds(UnorderedElementsAre()));
 }
 
 INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
@@ -149,6 +183,30 @@ TEST(SnapshotStreamWriterCheckpointTest, WithCheckpoint) {
   // DONE
   EXPECT_THAT(NumCheckpoints(snapshot_path, /*stream_index=*/0),
               IsOkAndHolds(3));
+}
+
+TEST(SnapshotStreamWriterCheckpointTest, CleanupCheckpoint) {
+  int64_t range = 5;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          testing::TestIterator(testing::RangeDataset(range)));
+
+  const std::string compression = tsl::io::compression::kSnappy;
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{snapshot_path,
+                                     /*stream_index=*/0,
+                                     compression,
+                                     Env::Default(),
+                                     /*max_chunk_size_bytes=*/20,
+                                     /*test_only_keep_temp_files=*/false};
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
+              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4)));
+
+  // If test_only_keep_temp_files is false (default), the checkpoints should be
+  // removed once the snapshot is complete.
+  EXPECT_THAT(NumCheckpoints(snapshot_path, /*stream_index=*/0),
+              IsOkAndHolds(0));
 }
 
 TEST(SnapshotStreamWriterCheckpointTest, SyncCheckpointsWithChunksByRenaming) {

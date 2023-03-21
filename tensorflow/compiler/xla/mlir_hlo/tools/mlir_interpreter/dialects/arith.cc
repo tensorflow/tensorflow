@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
 #include <type_traits>  // NOLINT
+#include <variant>      // NOLINT
 
 #include "llvm/Support/ErrorHandling.h"
 #include "tools/mlir_interpreter/dialects/comparators.h"
@@ -28,6 +29,29 @@ limitations under the License.
 namespace mlir {
 namespace interpreter {
 namespace {
+
+InterpreterValue bitcast(InterpreterState&, arith::BitcastOp op,
+                         const InterpreterValue& in) {
+  Type ty = op->getResultTypes()[0];
+  auto shapedTy = ty.dyn_cast<ShapedType>();
+  auto result = dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
+    TensorOrMemref<decltype(dummy)> result;
+    result.view = {};
+    if (shapedTy) {
+      result.buffer = in.clone().buffer();
+    } else {
+      result.buffer = in.asUnitTensor().buffer();
+    }
+    return {result};
+  });
+  if (!shapedTy) {
+    return result.extractElement({});
+  }
+  auto& outView = result.view();
+  outView.strides = BufferView::getDefaultStrides(shapedTy.getShape());
+  outView.sizes = llvm::to_vector(shapedTy.getShape());
+  return result;
+}
 
 InterpreterValue constant(InterpreterState&, arith::ConstantOp constant) {
   auto ty = constant->getResultTypes()[0];
@@ -66,8 +90,7 @@ InterpreterValue intCast(InterpreterState&, Op op,
   if (arg.isTensor()) {
     return dispatchScalarType(
         op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
-          auto result =
-              TensorOrMemref<decltype(dummy)>::empty(arg.view().sizes);
+          auto result = TensorOrMemref<decltype(dummy)>::emptyLike(arg.view());
           for (const auto& index : result.view.indices()) {
             result.at(index) =
                 static_cast<decltype(dummy)>(arg.extractElement(index).asInt());
@@ -82,6 +105,27 @@ InterpreterValue intCast(InterpreterState&, Op op,
       });
 }
 
+template <typename Op>
+InterpreterValue floatCast(InterpreterState&, Op op,
+                           const InterpreterValue& arg) {
+  if (arg.isTensor()) {
+    return dispatchScalarType(
+        op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
+          auto result = TensorOrMemref<decltype(dummy)>::emptyLike(arg.view());
+          for (const auto& index : result.view.indices()) {
+            result.at(index) = static_cast<decltype(dummy)>(
+                arg.extractElement(index).asDouble());
+          }
+          return {result};
+        });
+  }
+
+  return dispatchScalarType(
+      op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
+        return {static_cast<decltype(dummy)>(arg.asDouble())};
+      });
+}
+
 llvm::SmallVector<InterpreterValue> uiToFP(
     MutableArrayRef<InterpreterValue> args, mlir::Operation* op,
     InterpreterState&) {
@@ -89,7 +133,8 @@ llvm::SmallVector<InterpreterValue> uiToFP(
     auto ty = op->getResultTypes()[0].cast<ShapedType>();
     return {dispatchScalarType(
         ty.getElementType(), [&](auto dummy) -> InterpreterValue {
-          auto result = TensorOrMemref<decltype(dummy)>::empty(ty.getShape());
+          auto result =
+              TensorOrMemref<decltype(dummy)>::emptyLike(args[0].view());
           for (const auto& index : result.view.indices()) {
             result.at(index) = static_cast<decltype(dummy)>(
                 args[0].extractElement(index).asUInt());
@@ -178,11 +223,27 @@ InterpreterValue cmpF(InterpreterState&, arith::CmpFOp compare,
   }
 }
 
-InterpreterValue select(InterpreterState&, arith::SelectOp,
+InterpreterValue select(InterpreterState& state, arith::SelectOp,
                         const InterpreterValue& cond,
                         const InterpreterValue& trueValue,
                         const InterpreterValue& falseValue) {
-  return std::get<bool>(cond.storage) ? trueValue : falseValue;
+  if (std::holds_alternative<bool>(cond.storage)) {
+    return std::get<bool>(cond.storage) ? trueValue : falseValue;
+  }
+
+  if (!cond.isTensor() || !cond.view().isVector) {
+    llvm::errs() << cond.toString();
+    state.addFailure("select requires a scalar or vector argument");
+    return {};
+  }
+
+  auto ret = trueValue.clone();
+  for (const auto& index : cond.view().indices()) {
+    if (cond.extractElement(index).asInt() == 0) {
+      ret.insertElement(index, falseValue.extractElement(index));
+    }
+  }
+  return ret;
 }
 
 template <typename R>
@@ -208,10 +269,15 @@ REGISTER_MLIR_INTERPRETER_OP("arith.extui", uiToFP);
 REGISTER_MLIR_INTERPRETER_OP("arith.maxf", applyCwiseBinaryMap<Max>);
 REGISTER_MLIR_INTERPRETER_OP("arith.minf", applyCwiseBinaryMap<Min>);
 REGISTER_MLIR_INTERPRETER_OP("arith.mulf", applyCwiseBinaryMap<Multiply>);
+REGISTER_MLIR_INTERPRETER_OP("arith.negf", applyCwiseMap<Neg>);
 REGISTER_MLIR_INTERPRETER_OP("arith.ori", applyCwiseBinaryMap<BitOr>);
+REGISTER_MLIR_INTERPRETER_OP("arith.remf", applyCwiseBinaryMap<Remainder>);
 REGISTER_MLIR_INTERPRETER_OP("arith.subf", applyCwiseBinaryMap<Minus>);
 REGISTER_MLIR_INTERPRETER_OP("arith.uitofp", uiToFP);
 REGISTER_MLIR_INTERPRETER_OP("arith.xori", applyCwiseBinaryMap<BitXor>);
+REGISTER_MLIR_INTERPRETER_OP("arith.shrui",
+                             applyCwiseBinaryMap<ShiftRightLogical>);
+REGISTER_MLIR_INTERPRETER_OP("arith.shli", applyCwiseBinaryMap<ShiftLeft>);
 
 // The float implementations support ints too.
 REGISTER_MLIR_INTERPRETER_OP("arith.addi", "arith.addf");
@@ -221,13 +287,16 @@ REGISTER_MLIR_INTERPRETER_OP("arith.minsi", "arith.minf");
 REGISTER_MLIR_INTERPRETER_OP("arith.muli", "arith.mulf");
 REGISTER_MLIR_INTERPRETER_OP("arith.subi", "arith.subf");
 
+REGISTER_MLIR_INTERPRETER_OP(bitcast);
 REGISTER_MLIR_INTERPRETER_OP(cmpF);
 REGISTER_MLIR_INTERPRETER_OP(cmpI);
 REGISTER_MLIR_INTERPRETER_OP(constant);
 REGISTER_MLIR_INTERPRETER_OP(extF);
+REGISTER_MLIR_INTERPRETER_OP(floatCast<arith::FPToSIOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::ExtSIOp>);
 REGISTER_MLIR_INTERPRETER_OP(intCast<arith::IndexCastOp>);
-REGISTER_MLIR_INTERPRETER_OP(intCast<arith::TruncIOp>);
 REGISTER_MLIR_INTERPRETER_OP(intCast<arith::SIToFPOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::TruncIOp>);
 REGISTER_MLIR_INTERPRETER_OP(select);
 
 }  // namespace
