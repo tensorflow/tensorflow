@@ -130,6 +130,11 @@
         as part of efforts to consolidate the C++ and Python source
         code with pybind11. Most notably, Layout.serialized_string is removed.
 
+*   `tf.experimental.ExtensionType`:
+
+    *   `tf.experimental.ExtensionType` now supports Python `tuple` as
+        the type annotation of its fields.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
