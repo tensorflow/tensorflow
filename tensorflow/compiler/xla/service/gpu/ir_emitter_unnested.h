@@ -27,11 +27,12 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/reusable_kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -371,13 +372,8 @@ class IrEmitterUnnested : public IrEmitter {
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-  // Builds the prototype of the IR kernel for `inst` and adds it to the module.
-  // This kernel takes as arguments pointers to the given buffer allocations.
-  llvm::Function* BuildKernelPrototype(
-      absl::string_view name, absl::Span<const BufferAllocation* const> args);
-
-  // An argument descriptor for "reusable kernels".
-  struct ReusableKernelArgument {
+  // An argument descriptor for kernels.
+  struct KernelArgument {
     mlir::Value value;
     Shape shape;
     BufferAllocation::Slice slice;
@@ -389,15 +385,15 @@ class IrEmitterUnnested : public IrEmitter {
     std::optional<int> first_with_same_slice;
   };
 
-  // The return type of BuildReusableKernelPrototype.
+  // The return type of BuildKernelPrototype.
   struct KernelAndIrArrays {
     llvm::Function* kernel = nullptr;
     std::vector<llvm_ir::IrArray> ir_arrays;
   };
 
-  KernelAndIrArrays BuildReusableKernelPrototype(
+  KernelAndIrArrays BuildKernelPrototype(
       absl::string_view suggested_name,
-      absl::Span<const ReusableKernelArgument> arguments,
+      absl::Span<const KernelArgument> arguments,
       const LaunchDimensions& launch_dimensions);
 
   // Helper for writing extra outputs from inside a reduce kernel.
@@ -707,32 +703,21 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<int64_t const> dimensions_major_to_minor,
       absl::string_view buffer_name = "");
 
-  struct KernelArgument {
-    int order;
-    mlir::Value value;
-    BufferSlice slice;
-  };
-
-  StatusOr<KernelArgument> ValueToKernelArgument(mlir::Value operand, int order,
+  StatusOr<KernelArgument> ValueToKernelArgument(mlir::Value operand,
                                                  bool is_written);
 
-  // Build a kernel thunk, add it to list of thunks, and return IrArrays backing
-  // kernel arguments.
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkImpl(
-      absl::string_view name, Thunk::ThunkInfo thunk_info,
-      std::vector<KernelArgument> kernel_arguments,
-      const LaunchDimensions& launch_dimensions);
+  // Calculate some KernelArgument attributes which are needed for generating
+  // the kernel thunk.
+  static void ProcessKernelArguments(
+      absl::Span<KernelArgument> kernel_arguments);
 
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, mlir::ValueRange operands,
-      const LaunchDimensions& launch_dimensions);
-
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
-
-  // Generates the argument descriptors for a "reusable kernel".
-  StatusOr<std::vector<ReusableKernelArgument>> GetReusableKernelArguments(
+  // Generates the kernel argument descriptors for a fusion operation.
+  StatusOr<std::vector<KernelArgument>> GetKernelArgumentsForFusion(
       mlir::lmhlo::FusionOp fusion_op);
+
+  // Generates the kernel argument descriptors for a non-fusion operation.
+  StatusOr<std::vector<KernelArgument>> GetKernelArgumentsForNonFusionOp(
+      mlir::Operation* op, mlir::ValueRange needed_operands);
 
   // Calculates a fingerprint of the kernel arguments, which can be used for
   // checking reusability.
@@ -747,7 +732,7 @@ class IrEmitterUnnested : public IrEmitter {
   // the 1st argument is the same as the 0th and the 3rd is the same as the 2nd.
   // These duplicated parameters are passed to the kernel only once.
   static std::string GetArgumentFingerprint(
-      absl::Span<const ReusableKernelArgument> kernel_arguments);
+      absl::Span<const KernelArgument> kernel_arguments);
 
   // Calculates the fingerprint of a (fused_computation, kernel_arguments,
   // discriminator) tuple.
@@ -759,20 +744,20 @@ class IrEmitterUnnested : public IrEmitter {
   // generated for the first computation.
   static std::string GetFingerprint(
       const HloComputation* fused_computation,
-      absl::Span<const ReusableKernelArgument> kernel_arguments,
+      absl::Span<const KernelArgument> kernel_arguments,
       absl::string_view discriminator = "");
 
   // Removes some unneeded defining operations from the calculation of `value`,
-  // before passing it to a ReusableKernelThunk.
+  // before passing it to a KernelThunk.
   static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
 
-  // Creates a ReusableKernelThunk.
-  StatusOr<ReusableKernelThunk*> BuildReusableKernelThunkImpl(
+  // Creates a KernelThunk.
+  StatusOr<KernelThunk*> BuildKernelThunkImpl(
       absl::string_view kernel_name,
-      absl::Span<const ReusableKernelArgument> kernel_arguments,
+      absl::Span<const KernelArgument> kernel_arguments,
       Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions);
 
-  // Builds a thunk that calls a new or a reused "reusable kernel".
+  // Builds a thunk that calls a new or reused kernel for a fusion operation.
   //
   // The caller must specify the same launch dimensions for fusions which have
   // the same computation.
@@ -789,7 +774,7 @@ class IrEmitterUnnested : public IrEmitter {
   // ```
   // TF_ASSIGN_OR_RETURN(
   //   std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
-  //   BuildReusableKernelThunk(fusion_op, launch_dimensions));
+  //   BuildKernelThunkForFusion(fusion_op, launch_dimensions));
   // if (!opt_ir_arrays.has_value()) {
   //   // The kernel was reused, no need to emit code.
   //   return OkStatus();
@@ -798,13 +783,27 @@ class IrEmitterUnnested : public IrEmitter {
   //
   // EmitYourSpecificKernelCode(ir_arrays);
   // ```
-  //
-  // TODO(tdanyluk): Consider also using reusable kernels for kernel generating
-  // operations which are not fusions.
   StatusOr<std::optional<std::vector<llvm_ir::IrArray>>>
-  BuildReusableKernelThunk(mlir::lmhlo::FusionOp fusion_op,
-                           const LaunchDimensions& launch_dimensions,
-                           absl::string_view discriminator = "");
+  BuildKernelThunkForFusion(mlir::lmhlo::FusionOp fusion_op,
+                            const LaunchDimensions& launch_dimensions,
+                            absl::string_view discriminator = "");
+
+  // Builds a kernel thunk for a non-fusion operation, without reuse.
+  //
+  // All input and output tensors of `op` are passed to the kernel.
+  //
+  // TODO(tdanyluk): Consider also reusing non-fusion kernels.
+  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
+      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
+
+  // Builds a kernel thunk for a non-fusion operation, without reuse.
+  //
+  // Only the tensors specified in `needed_operands` are passed to the kernel.
+  //
+  // TODO(tdanyluk): Consider also reusing non-fusion kernels.
+  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
+      mlir::Operation* op, mlir::ValueRange needed_operands,
+      const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
@@ -830,7 +829,7 @@ class IrEmitterUnnested : public IrEmitter {
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
   StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-      const int64_t loop_limit);
+      int64_t loop_limit);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
@@ -909,8 +908,8 @@ class IrEmitterUnnested : public IrEmitter {
   GpuElementalIrEmitter elemental_emitter_;
 
   // Maps computation fingerprints generated by GetFingerprint() to the first
-  // ReusableKernelThunk generated for them.
-  absl::flat_hash_map<std::string, ReusableKernelThunk*> kernel_reuse_cache_;
+  // KernelThunk generated for them.
+  absl::flat_hash_map<std::string, KernelThunk*> kernel_reuse_cache_;
 };
 
 }  // namespace gpu
