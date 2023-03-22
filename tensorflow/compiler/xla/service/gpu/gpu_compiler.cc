@@ -867,8 +867,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
-        compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-      pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
+        std::holds_alternative<se::CudaComputeCapability>(gpu_target_config.gpu_version)) {      
+      auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
+                                    gpu_target_config.gpu_version);
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)){
+        pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
+      }      
     }
     pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
 

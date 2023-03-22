@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -67,7 +68,7 @@ class DotFusionAnalysis {
 // that target Triton-based matmul emitter.
 class GemmRewriterTriton : public HloModulePass {
  public:
-  explicit GemmRewriterTriton(se::CudaComputeCapability cc)
+  explicit GemmRewriterTriton(GpuVersion gpu_version)
       : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 

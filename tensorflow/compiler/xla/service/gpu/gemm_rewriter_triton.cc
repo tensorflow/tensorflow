@@ -72,6 +72,8 @@ int64_t FirstContractingDimensionIndex(const HloInstruction& dot,
 // Data types that are tested to work in the triton GEMM emitter.
 bool IsTritonSupportedInputType(
     PrimitiveType t, GpuVersion gpu_version) {
+    auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
   switch (t) {
     case PRED:
     case S8:
@@ -80,7 +82,7 @@ bool IsTritonSupportedInputType(
     case F32:
       return true;
     case BF16:
-      return gpu_version.IsAtLeast(
+      return cuda_compute_capability.IsAtLeast(
           stream_executor::CudaComputeCapability::AMPERE);
     default:
       return false;
@@ -566,14 +568,15 @@ bool IsTritonHandledGEMM(
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
-
   auto supported_output_type = [&](const PrimitiveType t) {
+    auto cuda_compute_capability =
+      std::get<se::CudaComputeCapability>(gpu_version);
     switch (t) {
       case F16:
       case F32:
         return true;
       case BF16:
-        return gpu_version.IsAtLeast(
+        return cuda_compute_capability.IsAtLeast(
             stream_executor::CudaComputeCapability::AMPERE);
       default:
         return false;
@@ -603,11 +606,14 @@ bool IsTritonHandledGEMM(
 
   // Traverse HLO graph part checking that it both can be fused
   // and is worth fusing.
-  auto has_triton_fusible_inputs = [&](const HloInstruction* input,
-                                       int64_t batch_dimension_index,
-                                       int64_t contracting_dimension_index) {
-    DimensionOrder dim_order(input, batch_dimension_index,
-                             contracting_dimension_index);
+  auto has_triton_fusible_inputs = [&](const int operand_number) {
+    const HloInstruction* input = dot.operand(operand_number);
+    DimensionOrder dim_order(
+        input, FirstBatchDimensionForOperand(dot, operand_number),
+        GetNonContractingDims(
+            input->shape(), BatchDimensionsForOperand(dot, operand_number),
+            {FirstContractingDimensionIndex(dot, operand_number)})
+            .value()[0]);
     while (TryToFuse(input, dim_order, gpu_version).ok()) {
       if (input->opcode() == HloOpcode::kConvert ||
           input->opcode() == HloOpcode::kTranspose) {

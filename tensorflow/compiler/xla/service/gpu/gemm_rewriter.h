@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 
 namespace xla {
 namespace gpu {
@@ -43,7 +44,7 @@ namespace gpu {
 // stored in the backend config.
 class GemmRewriter : public HloModulePass {
  public:
-  explicit GemmRewriter(se::CudaComputeCapability cuda_compute_capability);
+  explicit GemmRewriter(GpuVersion gpu_version);
   absl::string_view name() const override { return "cublas-gemm-rewriter"; }
 
   using HloPassInterface::Run;
@@ -52,7 +53,7 @@ class GemmRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::CudaComputeCapability cuda_compute_capability_;
+  GpuVersion gpu_version_;
 };
 
 }  // namespace gpu
