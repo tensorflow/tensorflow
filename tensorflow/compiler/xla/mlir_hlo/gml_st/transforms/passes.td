@@ -99,6 +99,10 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";
+  let options = [
+    Option<"scalarizeAllThlo", "scalarize-all-thlo", "bool", /*default=*/"true",
+           "Enable scalarization of thlo.concatenate/gather/scatter.">,
+  ];
 }
 
 def PackMatmulPass : Pass<"xla-cpu-pack-matmul", "mlir::func::FuncOp"> {

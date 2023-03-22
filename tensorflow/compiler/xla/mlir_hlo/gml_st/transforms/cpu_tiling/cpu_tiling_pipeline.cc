@@ -116,6 +116,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   using func::FuncOp;
 
   pm.addNestedPass<FuncOp>(createCollectStatsPass(options.statsDetailLevel));
+  pm.addNestedPass<FuncOp>(createScalarizationPass(false));
 
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
