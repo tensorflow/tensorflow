@@ -200,10 +200,10 @@ class OpPropertyHelper : public OpCatHelper {
     }
   }
 
-  // Currently GPU does not supprt contraction + bias_add
+  // Currently GPU does not support contraction + bias_add
   bool IsGpuCompatible(const ContractionBiasAdd&) const { return false; }
 
-  // Currently GPU does not supprt contraction + squeeze + bias_add
+  // Currently GPU does not support contraction + squeeze + bias_add
   bool IsGpuCompatible(const ContractionWithSqueezeAndBiasAdd&) const {
     return false;
   }
