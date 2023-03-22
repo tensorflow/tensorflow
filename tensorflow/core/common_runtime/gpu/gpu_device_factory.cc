@@ -245,6 +245,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
         }
       }
     }
+
     return OkStatus();
   }
 };

@@ -706,6 +706,7 @@ class OpKernelContext {
     // For access to distributed coordination service.
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
 
+    // To hold some CPU tensors until session run finish
     TensorHolder* tensor_holder = nullptr;
   };
 

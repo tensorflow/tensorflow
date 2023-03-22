@@ -109,16 +109,14 @@ GPURuntimeCache::GPUFunction GPURuntimeCache::LookupOrGetFunction(
   GPUFunction &function =
       gpu_function_by_module_and_name_[{module, kernel_name}];
 
-#if GOOGLE_CUDA
   if (!function) {
+#if GOOGLE_CUDA
     GPU_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, kernel_name));
-  }
 #endif
 #if TENSORFLOW_USE_ROCM
-  if (!function) {
     GPU_REPORT_IF_ERROR(hipModuleGetFunction(&function, module, kernel_name));
-  }
 #endif
+  }
 
   return function;
 }

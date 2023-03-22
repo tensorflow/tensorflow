@@ -115,3 +115,5 @@ If you set `number_of_threadpool` larger than 0, TF will create several thread p
 Furthermore, Set `number_of_threads_in_one_threadpool` to specify how many threads there are in each thread pool. Otherwise, TF will create as many threads as the number of CPU cores.
 
 Set `TF_GPU_THREAD_MODE=gpu_private` and `TF_GPU_THREAD_COUNT=N` to use `N` additional threads for every stream group to launch kernels, instead of using the threads from the thread pool. Set `TF_GPU_THREAD_MODE=gpu_shared` to let all the stream groups share `N` additional threads.
+
+See the **Best Practice** section in the [document](https://docs.google.com/document/d/1yL3lWk_iFKqLTyekkuaiKXZ78I0lPmD5kM1fghHRs4Y/edit?usp=sharing) for more information.

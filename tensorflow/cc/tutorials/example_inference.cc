@@ -92,14 +92,11 @@ DataType getNodeType(const GraphDef &graph_def, const std::string name) {
 void RandomInitialize(Tensor &t) {
   int num_elements = t.NumElements();
   if (t.dtype() == DT_HALF) {
-    LOG(WARNING) << "Unsupported data type.";
-    /*
     auto *data = t.flat<Eigen::half>().data();
     for (int i = 0; i < num_elements; i++) {
       float value = static_cast<float>(rand() % 101 - 50) / 100.0f;
-      data[i] = __float2half(value);
+      data[i] = static_cast<Eigen::half>(value);
     }
-    */
   } else if (t.dtype() == DT_FLOAT) {
     float *data = t.flat<float>().data();
     for (int i = 0; i < num_elements; i++) {
@@ -159,8 +156,7 @@ void PrintTensorData(Tensor &t) {
   for (int i = 0; i < size; i++) {
     float value;
     if (t.dtype() == DT_HALF) {
-      LOG(WARNING) << "Unsupported data type!";
-      // value = __half2float(static_cast<__half *>(data)[i]);
+      value = static_cast<float>(static_cast<Eigen::half *>(data)[i]);
     } else if (t.dtype() == DT_INT32) {
       value = static_cast<int *>(data)[i];
     } else if (t.dtype() == DT_BOOL) {
@@ -285,7 +281,8 @@ Status Test(GraphDef &graph_def, std::vector<std::string> &input_names,
 
   // init run
   // the first session run is slow due to resource initialization
-  TFRun(session.get(), 1000, &inputs_tf, &output_names, &output_tensors_tf[0]);
+  TFRun(session.get(), num_infers_per_thread, &inputs_tf, &output_names,
+        &output_tensors_tf[0]);
   sleep(1);
 
   // the seconed session run can be used to compare single thread runing

@@ -83,7 +83,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
           }
         }
         return tsl::Status(
-            tsl::error::NOT_FOUND,
+            absl::StatusCode::kNotFound,
             absl::StrFormat("No executors own stream %p", config.gpu_stream));
       }
     }
@@ -93,7 +93,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
       entry = &it->second;
     } else {
       return tsl::Status(
-          tsl::error::NOT_FOUND,
+          absl::StatusCode::kNotFound,
           absl::StrFormat("No executors registered for ordinal %d, stream %d",
                           config.ordinal, config.stream_id));
     }
@@ -101,7 +101,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
   absl::ReaderMutexLock lock{&entry->configurations_mutex};
   if (entry->configurations.empty()) {
     return tsl::Status(
-        tsl::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrFormat("No executors registered for ordinal %d, stream %d",
                         config.ordinal, config.stream_id));
   }
@@ -113,7 +113,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
       return iter.second.get();
     }
   }
-  return tsl::Status(tsl::error::NOT_FOUND,
+  return tsl::Status(absl::StatusCode::kNotFound,
                      "No executor found with a matching config.");
 }
 

@@ -132,14 +132,14 @@ class CreatedContexts {
     static const auto use_cuda_malloc_async = [] {
       const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
       auto result = allocator_env != nullptr &&
-                std::strcmp(allocator_env, "cuda_malloc_async") == 0;
+                    std::strcmp(allocator_env, "cuda_malloc_async") == 0;
 #if CUDA_VERSION >= 11020
       return result;
 #else
       return false;
 #endif
     }();
-    if (use_cuda_malloc_async) { return nullptr; }
+    if (use_cuda_malloc_async) return nullptr;
     CUcontext context;
     CUresult result =
         cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT,
