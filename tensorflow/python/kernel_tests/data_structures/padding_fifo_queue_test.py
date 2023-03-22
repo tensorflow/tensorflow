@@ -1676,7 +1676,7 @@ class GPUCompatiblePaddingFIFOQueueTests(test.TestCase):
       b = a + 1
     with test_util.use_gpu():
       c = array_ops.identity(b)
-      q = data_flow_ops.GPUCompatiblePaddingFIFOQueue(1, tf.int32, ((),))
+      q = data_flow_ops.GPUCompatiblePaddingFIFOQueue(1, dtypes_lib.int32, ((),))
       self.evaluate(q.enqueue(c))  # MemcpyH2D: CPU b to GPU c pinned in queue
       self.assertAllEqual(self.evaluate(q.dequeue()), 2)  # MemcpyD2H: return
 
