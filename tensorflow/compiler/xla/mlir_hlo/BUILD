@@ -1519,7 +1519,6 @@ cc_library(
         "gml_st/transforms/tiling/tiling.h",
         "gml_st/transforms/vectorization/vectorization.h",
         "gml_st/utils/linalg_utils.h",
-        "gml_st/utils/tensor_utils.h",
     ],
     strip_include_prefix = ".",
     deps = [

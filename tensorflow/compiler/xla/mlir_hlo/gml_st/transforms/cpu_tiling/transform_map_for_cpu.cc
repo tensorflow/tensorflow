@@ -21,7 +21,6 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/transforms.h"
-#include "gml_st/utils/tensor_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -54,10 +53,6 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
     }
 
     auto fuseFilterFn = [](Operation *op) {
-      if (auto reshapeOp = dyn_cast<tensor::CollapseShapeOp>(op))
-        return isDegenerateReshapeOp(reshapeOp);
-      if (auto reshapeOp = dyn_cast<tensor::ExpandShapeOp>(op))
-        return isDegenerateReshapeOp(reshapeOp);
       return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
     };
 
