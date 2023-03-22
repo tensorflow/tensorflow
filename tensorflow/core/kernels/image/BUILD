@@ -340,8 +340,8 @@ tf_cc_tests(
     }),
     deps = [
         ":image",
-        ":sampling_kernels",
         ":mirror_pad_op",
+        ":sampling_kernels",
     ] + IMAGE_TEST_DEPS,
 )
 
