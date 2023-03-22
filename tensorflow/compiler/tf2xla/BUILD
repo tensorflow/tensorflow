@@ -42,6 +42,7 @@ package_group(
     name = "friends",
     includes = [":internal"],
     packages = [
+        "//platforms/performance/automl/...",
         "//tensorflow/...",
         "//tensorflow_federated/cc/core/impl/executors/...",
         "//tensorflow_models/...",
