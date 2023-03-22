@@ -40,8 +40,8 @@ void FuzzEndToEnd(
   TF_CHECK_OK(tsl::WriteBinaryProto(tensorflow::Env::Default(),
                                     export_dir + kSavedModelFilenamePb, model));
 
-  Status status = LoadSavedModel(session_options, run_options, export_dir,
-                                 {kSavedModelTagServe}, &bundle);
+  Status status =
+      LoadSavedModel(session_options, run_options, export_dir, {}, &bundle);
   if (!status.ok()) {
     return;
   }
