@@ -275,12 +275,7 @@ std::unordered_set<string> PopulateRealValueOpSet(
 // We set the builtin option quantized_bias_type for
 // CONV_2D/FULLY_CONNECTED/TRANSPOSE_CONV, to ensure the correct
 // accumulator is set even if no bias is used.
-void SetOperatorPropertyBiasType(ModelT* model, const TensorType& bias_type,
-                                 const TensorType& input_type) {
-  if (input_type != TensorType_INT16) {
-    // This is needed only in case of int16 inputs.
-    return;
-  }
+void SetOperatorPropertyBiasType(ModelT* model, const TensorType& bias_type) {
   for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -1961,7 +1956,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   TF_LITE_ENSURE_STATUS(ApplyConstraints(model, operator_names,
                                          real_value_op_set, activations_type,
                                          error_reporter));
-  SetOperatorPropertyBiasType(model, bias_type, input_type);
+  SetOperatorPropertyBiasType(model, bias_type);
   TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, real_value_op_set,
                                        activations_type, bias_type,
                                        disable_per_channel, error_reporter));

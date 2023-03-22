@@ -1218,7 +1218,7 @@ TEST_F(QuantizeFCTest, VerifyFCFor16x8) {
   EXPECT_THAT(model_.operator_codes, SizeIs(1));
   EXPECT_THAT(GetBuiltinCode(model_.operator_codes[0].get()),
               Eq(BuiltinOperator_FULLY_CONNECTED));
-  ASSERT_THAT(model_.operator_codes[0]->version, Eq(5));
+  ASSERT_THAT(model_.operator_codes[0]->version, Eq(11));
 
   // Check the scale value. The scale value will be smaller than the int8 scale
   // since the scale is calculated by dividing by 2^bit_num.
