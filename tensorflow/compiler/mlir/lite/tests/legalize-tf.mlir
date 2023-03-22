@@ -2338,6 +2338,24 @@ func.func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi6
 // CHECK:  return
 }
 
+func.func @mul_i16(%arg0: tensor<14xi16>, %arg1: tensor<14xi16>) -> tensor<14xi16> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xi16>, tensor<14xi16>) -> tensor<14xi16>
+  func.return %0: tensor<14xi16>
+
+// CHECK-LABEL: mul_i16
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi16>
+// CHECK:  return
+}
+
+func.func @mul_ui32(%arg0: tensor<14xui32>, %arg1: tensor<14xui32>) -> tensor<14xui32> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xui32>, tensor<14xui32>) -> tensor<14xui32>
+  func.return %0: tensor<14xui32>
+
+// CHECK-LABEL: mul_ui32
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xui32>
+// CHECK:  return
+}
+
 func.func @mul_complex32(%arg0: tensor<14xcomplex<f32>>, %arg1: tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>> {
   %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xcomplex<f32>>, tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>>
   func.return %0: tensor<14xcomplex<f32>>

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -282,6 +282,11 @@ bool IsI32Type(Type element_type) {
   return element_type.isInteger(32) && !element_type.isUnsignedInteger();
 }
 
+// Return true when the given element_type is UI32.
+bool IsUI32Type(Type element_type) {
+  return element_type.isInteger(32) && element_type.isUnsignedInteger();
+}
+
 // Return true when the given element_type is I64.
 bool IsI64Type(Type element_type) {
   return element_type.isInteger(64) && !element_type.isUnsignedInteger();
@@ -389,8 +394,9 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
 
   // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsI64Type(element_type) ||
-      IsQI16Type(element_type) || element_type.isa<ComplexType>() ||
+  if (IsI32Type(element_type) || IsUI32Type(element_type) ||
+      IsI64Type(element_type) || IsQI16Type(element_type) ||
+      IsI16Type(element_type) || element_type.isa<ComplexType>() ||
       element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},

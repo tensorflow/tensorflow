@@ -352,6 +352,22 @@ func.func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testMul32BitUInt
+func.func @testMul32BitUInt(tensor<? x ui32>, tensor<? x ui32>) -> tensor<? x ui32> {
+^bb0(%arg0: tensor<? x ui32>, %arg1: tensor<? x ui32>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x ui32>
+  func.return %0#0 : tensor<? x ui32>
+}
+
+// CHECK-LABEL: testMul16BitInt
+func.func @testMul16BitInt(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i16> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i16>
+  func.return %0#0 : tensor<? x i16>
+}
+
 // CHECK-LABEL: testMulComplex
 func.func @testMulComplex(tensor<? x complex<f32>>, tensor<? x complex<f32>>) -> tensor<? x complex<f32>> {
 ^bb0(%arg0: tensor<? x complex<f32>>, %arg1: tensor<? x complex<f32>>):

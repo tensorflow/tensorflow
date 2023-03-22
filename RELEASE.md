@@ -45,6 +45,7 @@
     *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
     *   Add int16 indices support for built-in op `gather` and `gather_nd`.
     *   Add reference implementation for 16-bit int unquantized `add`.
+    *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
 
 *   `tf.keras`
 
