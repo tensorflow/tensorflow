@@ -489,12 +489,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_compiled_memory_stats",
            &PyLoadedExecutable::GetCompiledMemoryStats)
       .def("delete", &PyLoadedExecutable::Delete)
-      .def("execute", &PyLoadedExecutable::Execute, py::arg("arguments"),
-           py::arg("device") = std::nullopt)
-      // TODO(chky): Change execute() to always return token rather than hanving
-      // two API entry points.
-      .def("execute_with_token", &PyLoadedExecutable::ExecuteWithToken,
-           py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
            &PyLoadedExecutable::ExecuteShardedOnLocalDevices,
            py::arg("arguments"))
