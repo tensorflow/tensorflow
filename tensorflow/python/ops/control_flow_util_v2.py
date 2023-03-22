@@ -187,7 +187,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
 
     def _extract_input_index(function_attribute_name):
       func_name = node_def.attr[function_attribute_name].func.name
-      fdef = functions[func_name].definition
+      fdef = functions[func_name].cached_definition
       output_arg_name = fdef.signature.output_arg[output_idx].name
       output_tensor_name = fdef.ret[output_arg_name]
       return resource_input_index(
@@ -300,7 +300,7 @@ def get_func_graph(op, input_shapes, func_name):
   while graph is not None:
     func = graph._get_function(func_name)  # pylint: disable=protected-access
     if func is not None:
-      fdef = func.definition
+      fdef = func.cached_definition
       break
     if hasattr(graph, "outer_graph"):
       graph = graph.outer_graph
@@ -330,7 +330,7 @@ def get_func_graph(op, input_shapes, func_name):
     if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
       f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
       try:
-        cf = function.ConcreteFunction(f.graph, attrs=f.definition.attr)
+        cf = function.ConcreteFunction(f.graph, attrs=f.cached_definition.attr)
       except AttributeError:
         # f is not found or f is a _DefinedFunction that doesn't have a graph.
         continue

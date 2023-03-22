@@ -1217,8 +1217,8 @@ def partitioned_call(args,
       "config_proto": config_proto,
       "executor_type": executor_type_attr,
   }
-  if xla_compile_attr in f.definition.attr:
-    op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
+  if xla_compile_attr in f.cached_definition.attr:
+    op_attrs[xla_compile_attr] = f.cached_definition.attr[xla_compile_attr]
   op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
   outputs = op.outputs
   if hasattr(f, "graph"):

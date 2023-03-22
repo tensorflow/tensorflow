@@ -756,7 +756,10 @@ def _trace_gradient_functions(graph, saveable_view):
               try:
                 arg_index = outer_fn.graph.inputs.index(outer_capture)
                 capture_name = (
-                    outer_fn.signature.input_arg[arg_index].name + ":0"
+                    outer_fn.cached_definition.signature.input_arg[
+                        arg_index
+                    ].name
+                    + ":0"
                 )
               except ValueError:
                 pass
