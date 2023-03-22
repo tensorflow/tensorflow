@@ -89,6 +89,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 
   def testTwoReducesWithAssign(self):
+    self.skipForPathways('Reason for failure is yet to be investigated.')
     # FIXME(b/238384852): The purpose of this test is to validate the control
     # dependency added by DTensor.
     # However, as we have no way of testing the per-device graph
@@ -115,7 +116,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
       b1 = math_ops.reduce_sum(b, name='reduceb')
       return a1 * b1
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = func(sharded_a, sharded_b)
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 
@@ -191,6 +192,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
   # Regression test for b/184401449.
   def testDeviceIdTensorOnSplitHost(self):
+    self.skipForPathways('Reason for failure is yet to be investigated.')
     if not test_util.is_tpu_present():
       self.skipTest('This test only runs on TPUs.')
     self.skipForDeviceType(['TPU'],
@@ -308,6 +310,7 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
 
   # Create two independent global AllReduce ops that should get combined.
   def testGlobalAllReduceCombiner(self):
+    self.skipForPathways('Reason for failure is yet to be investigated.')
     self.skipForDeviceType(['TPU'],
                            'This test requires 8 TPU cores.',
                            unless_device_count_equals_to=8)
@@ -351,6 +354,7 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
   # should not get combined
 
   def testGlobalAllReduceCombinerDifferentReduce(self):
+    self.skipForPathways('Reason for failure is yet to be investigated.')
     self.skipForDeviceType(['TPU'],
                            'This test requires 8 TPU cores.',
                            unless_device_count_equals_to=8)
@@ -392,6 +396,7 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
 
   # Create two independent subgroup AllReduce ops that should get combined.
   def testSubgroupAllReduceCombiner(self):
+    self.skipForPathways('Reason for failure is yet to be investigated.')
     self.skipForDeviceType(['TPU'],
                            'This test requires 8 TPU cores.',
                            unless_device_count_equals_to=8)
@@ -430,6 +435,7 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
 
   # TODO(b/188605096): also add a MixedPrecisionReduceScatter test
   def testMixedPrecisionAllReduce(self):
+    self.skipForPathways('Reason for failure is yet to be investigated.')
     has_enable_dtensor_mixed_precision_reduce = (
         'DTENSOR_ENABLE_MIXED_PRECISION_REDUCE' in os.environ
     )

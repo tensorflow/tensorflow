@@ -25,7 +25,7 @@ limitations under the License.
 #include <cmath>  // NOLINT
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"

@@ -125,10 +125,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/tsl/platform:refcount",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -286,9 +288,11 @@ cc_library(
     name = "parallel_executor_interface",
     hdrs = ["parallel_executor.h"],
     deps = [
-        ":dtensor_device_util",
+        ":tensor_layout",
+        ":tensor_with_layout",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/tsl/platform:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

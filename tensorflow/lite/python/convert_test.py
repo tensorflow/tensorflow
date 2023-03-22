@@ -26,6 +26,7 @@ from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.framework.graph_util_impl import _node_name
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -343,8 +344,8 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       a = array_ops.constant([3., 4.])
       b = array_ops.constant([5., 6.])
       hint = op_hint.OpHint("agg")
-      a0, a1 = array_ops.unstack(a)
-      b0, b1 = array_ops.unstack(b)
+      a0, a1 = array_ops_stack.unstack(a)
+      b0, b1 = array_ops_stack.unstack(b)
 
       a0 = hint.add_input(a0, tag="c", aggregate=op_hint.OpHint.AGGREGATE_STACK)
       b0 = hint.add_input(b0, tag="n", aggregate=op_hint.OpHint.AGGREGATE_STACK)
@@ -358,7 +359,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       c1 = hint.add_output(
           c1, tag="out", aggregate=op_hint.OpHint.AGGREGATE_STACK)
 
-      curr = array_ops.stack([c0, c1])
+      curr = array_ops_stack.stack([c0, c1])
       output = array_ops.identity(curr, name="FINAL_OUTPUT")
       with self.cached_session() as sess:
         stubbed_graphdef = op_hint.convert_op_hints_to_stubs(

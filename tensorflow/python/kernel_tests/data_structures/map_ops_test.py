@@ -20,7 +20,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import map_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
@@ -119,11 +119,11 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.tensor_map_insert(m, k, v)
 
     default_value = array_ops.zeros_like(v)
-    l = control_flow_ops.cond(
+    l = cond.cond(
         map_ops.tensor_map_has_key(m, k),
         lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
         lambda: default_value)
-    l2 = control_flow_ops.cond(
+    l2 = cond.cond(
         map_ops.tensor_map_has_key(m, k2),
         lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
         lambda: default_value)

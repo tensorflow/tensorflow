@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -123,7 +124,7 @@ TensorShape GetOutShape(llvm::ArrayRef<Tensor> inputs) {
 template <int64_t R, int64_t D>
 auto GetEigenBinaryConcatFn() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice> device) {
+            std::optional<Eigen::ThreadPoolDevice> device) {
     auto lhs = inputs[0].tensor<float, R>();
     auto rhs = inputs[1].tensor<float, R>();
     Tensor output(DT_FLOAT, GetOutShape<D>(inputs));
@@ -139,7 +140,7 @@ auto GetEigenBinaryConcatFn() {
 template <int64_t R, int64_t D>
 auto GetEigenTernaryConcatFn() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice> device) {
+            std::optional<Eigen::ThreadPoolDevice> device) {
     auto arg0 = inputs[0].tensor<float, R>();
     auto arg1 = inputs[1].tensor<float, R>();
     auto arg2 = inputs[2].tensor<float, R>();
@@ -162,7 +163,7 @@ auto GetEigenTernaryConcatFn() {
 template <int64_t R, int64_t D>
 auto GetEigenOctonaryConcatFn() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice> device) {
+            std::optional<Eigen::ThreadPoolDevice> device) {
     auto arg0 = inputs[0].tensor<float, R>();
     auto arg1 = inputs[1].tensor<float, R>();
     auto arg2 = inputs[2].tensor<float, R>();

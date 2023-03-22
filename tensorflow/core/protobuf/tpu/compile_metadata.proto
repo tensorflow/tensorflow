@@ -66,6 +66,9 @@ message TPUCompileMetadataProto {
     // Whether to use XLA collectives to broadcast this parameter to all
     // replicas, instead of using TensorFlow Send/Recv among the tasks.
     bool requires_xla_broadcast = 11;
+
+    // Which dimension of this arg is bounded dynamic.
+    repeated bool is_bounded_dynamic_dim = 12;
   }
   repeated Arg args = 1;
 

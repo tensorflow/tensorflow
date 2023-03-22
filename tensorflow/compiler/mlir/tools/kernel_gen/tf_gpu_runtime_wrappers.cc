@@ -33,7 +33,7 @@ static void ReportInternalError(tensorflow::OpKernelContext *ctx,
     return;
   }
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{tensorflow::error::INTERNAL, msg});
+      tensorflow::Status{absl::StatusCode::kInternal, msg});
 }
 
 #if GOOGLE_CUDA

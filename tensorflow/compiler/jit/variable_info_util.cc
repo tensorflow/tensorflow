@@ -52,6 +52,11 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
   result->reserve(variable_indices.size());
   for (int var_idx : variable_indices) {
     Var* variable = nullptr;
+    if (inputs[var_idx]->NumElements() == 0) {
+      return errors::InvalidArgument("Empty resource tensor passed  at index ",
+                                     var_idx,
+                                     " to GetVariableInfosFromInputs.");
+    }
     ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
       auto pos1 = handle.device().find("STREAM");

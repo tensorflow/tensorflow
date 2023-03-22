@@ -63,10 +63,13 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
 
 LogicalResult GlobalTensorOp::verify() {
   GlobalTensorOp global_tensor = *this;
-  if (failed(VerifyTensorTypesCompatible(global_tensor.getType(),
-                                         global_tensor.getValue().getType()))) {
-    return global_tensor.emitError() << "'type' and 'value' attributes should "
-                                        "have compatible tensor types";
+  if (global_tensor.getValue()) {
+    if (failed(VerifyTensorTypesCompatible(
+            global_tensor.getType(), global_tensor.getValue()->getType()))) {
+      return global_tensor.emitError()
+             << "'type' and 'value' attributes should "
+                "have compatible tensor types";
+    }
   }
   if (!global_tensor.getIsMutable()) {
     if (!global_tensor.getType().cast<TensorType>().hasStaticShape()) {

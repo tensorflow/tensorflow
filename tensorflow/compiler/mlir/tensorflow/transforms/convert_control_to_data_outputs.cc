@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <memory>
 #include <queue>
-#include <set>
-#include <string>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/EquivalenceClasses.h"
@@ -57,13 +54,7 @@ class ConvertControlToDataOutputsPass
     : public impl::ExecutorConvertControlToDataOutputsPassBase<
           ConvertControlToDataOutputsPass> {
  public:
-  explicit ConvertControlToDataOutputsPass(bool coarse_tpu_tokens)
-      : coarse_tpu_tokens_(coarse_tpu_tokens) {}
-
   void runOnOperation() override;
-
- private:
-  bool coarse_tpu_tokens_;
 };
 
 // Returns a vector of all tf.WhileOp(s) which use func as while body. If any of
@@ -502,8 +493,8 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFExecutorConvertControlToDataOutputsPass(bool coarse_tpu_tokens) {
-  return std::make_unique<ConvertControlToDataOutputsPass>(coarse_tpu_tokens);
+CreateTFExecutorConvertControlToDataOutputsPass() {
+  return std::make_unique<ConvertControlToDataOutputsPass>();
 }
 
 }  // namespace tf_executor

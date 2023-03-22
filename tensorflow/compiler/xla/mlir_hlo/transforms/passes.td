@@ -13,28 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
-#define TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
+#ifndef MLIR_HLO_TRANSFORMS_PASSES
+#define MLIR_HLO_TRANSFORMS_PASSES
 
 include "mlir/Pass/PassBase.td"
-
-def BufferReuse : Pass<"buffer-reuse", "func::FuncOp"> {
-  let summary = "Reuses already allocated buffers to save allocation "
-                "operations if it is provably safe.";
-  let description = [{
-    This pass tries to reuse already allocated buffers if they have the same
-    size, are in the right appearance order and have no interference among
-    themselves.
-  }];
-  let constructor = "createBufferReusePass()";
-}
-
-def CopyRemoval : Pass<"copy-removal", "func::FuncOp"> {
-  let summary = "Removes redundant operations that implement a "
-                "CopyOpInterface, if the intersection of the useranges from"
-                "copy source and target only contains the CopyOp.";
-  let constructor = "createCopyRemovalPass()";
-}
 
 def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   let summary = "Pass to pack allocated buffer to reduce memory consumption.";
@@ -168,4 +150,4 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
-#endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
+#endif // MLIR_HLO_TRANSFORMS_PASSES

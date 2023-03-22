@@ -173,11 +173,10 @@ module @jit_f.0 {
     x = np.arange(6, dtype=np.float32).reshape((2, 3))
 
     def f(x):  # x: f32[2, b]
-      # Module takes another argument which is the value of b
       # (sin(x), x.shape[1])
       module = """
 module @jit_f.0 {
-  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
+  func.func public @main(%arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
     %0, %1 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>)
     return %0, %1 : tensor<2x?xf32>, tensor<i32>
@@ -191,8 +190,7 @@ module @jit_f.0 {
       return xla.call_module([x], version=2,
                              module=module,
                              Tout=[x.dtype, np.int32],
-                             Sout=[(None, 3), ()],
-                             dim_args_spec=['0.1'])
+                             Sout=[(None, 3), ()])
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
@@ -240,18 +238,11 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
-    dim_args_spec = []  # No dim_args_spec
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'Module main has dynamic shapes but no dim_args_spec was given'):
-      self._assertOpOutputMatchesExpected(f, (x, y),
-                                          (np.sin(x + y), x.shape[1]))
-
     dim_args_spec = ['1.0']  # Too few dim_args_spec
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Incorrect number of arguments for XlaCallModule: 2. '
-        'The module has 4 of which 0 platform index arguments '
+        'Incorrect number of arguments passed to XlaCallModule: 2. '
+        'The module takes 4 arguments of which 0 platform index arguments '
         'and 1 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
@@ -370,7 +361,9 @@ module @jit_f.0 {
     # With empty platforms, there should be no platform_index argument
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Call applied function arity must match number of arguments'):
+        'Incorrect number of arguments passed to XlaCallModule: 1. '
+        'The module takes 2 arguments of which 0 platform index arguments '
+        'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # Same with a single platform
@@ -378,7 +371,9 @@ module @jit_f.0 {
     if self.testing_platform() == 'CPU':
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          'Call applied function arity must match number of arguments'):
+          'Incorrect number of arguments passed to XlaCallModule: 1. '
+          'The module takes 2 arguments of which 0 platform index arguments '
+          'and 0 dimension arguments.'):
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     #  Same if the version is 2
@@ -386,7 +381,9 @@ module @jit_f.0 {
     version = 2
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Call applied function arity must match number of arguments'):
+        'Incorrect number of arguments passed to XlaCallModule: 1. '
+        'The module takes 2 arguments of which 0 platform index arguments '
+        'and 0 dimension arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     version = 3

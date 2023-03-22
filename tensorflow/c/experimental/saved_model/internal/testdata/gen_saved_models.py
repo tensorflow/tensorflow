@@ -29,9 +29,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.saved_model import saved_model
 
 
@@ -77,7 +77,7 @@ def _gen_simple_while_loop(base_dir):
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec((), dtypes.float32)])
     def compute(self, value):
-      acc, _ = control_flow_ops.while_loop(
+      acc, _ = while_loop.while_loop(
           cond=lambda acc, i: i > 0,
           body=lambda acc, i: (acc + i, i - 1),
           loop_vars=(constant_op.constant(0.0), value))

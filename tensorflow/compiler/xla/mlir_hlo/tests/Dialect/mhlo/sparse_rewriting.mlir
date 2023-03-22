@@ -96,6 +96,24 @@ func.func @rewrite_dot(%arg0: tensor<5x5xf64, #CSR>,
   return %1 : tensor<5x5xf64, #CSR>
 }
 
+// CHECK-LABEL: func.func @rewrite_general_dot(
+// CHECK-SAME:    %[[ARG0:.*0]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>,
+// CHECK-SAME:    %[[ARG1:.*1]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>> {
+// CHECK:         %[[VAL:.*]] = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
+// CHECK:         return %[[VAL]] : tensor<5x5xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>
+func.func @rewrite_general_dot(%arg0: tensor<5x5xf64, #CSR>,
+                               %arg1: tensor<5x5xf64, #CSR>) -> tensor<5x5xf64, #CSR> {
+   %0 = "mhlo.dot_general"(%arg0, %arg1)
+       {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1],
+                                          rhs_contracting_dimensions = [0]>,
+	precision_config = [#mhlo<precision DEFAULT>,
+	                    #mhlo<precision DEFAULT>]}
+     : (tensor<5x5xf64, #CSR>,
+        tensor<5x5xf64, #CSR>) -> tensor<5x5xf64>
+  %1 = sparse_tensor.convert %0 : tensor<5x5xf64> to tensor<5x5xf64, #CSR>
+  return %1 : tensor<5x5xf64, #CSR>
+}
+
 // CHECK-LABEL:  func.func @rewrite_elt_convert(
 // CHECK-SAME:     %[[ARG0:.*0]]: tensor<5x5xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<5x5xf32, #sparse_tensor.encoding<{{{.*}}}>> {
 // CHECK:          %[[VAL:.*]] = sparse_tensor.convert %[[ARG0]]

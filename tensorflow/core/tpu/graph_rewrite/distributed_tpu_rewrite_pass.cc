@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -4445,12 +4446,11 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   // calls); this may be okay, but to be conservative, just assume that the
   // master session has the proper flags set.
 
-  // We do not initialize platform right now, but we can still retrieve the
-  // TPU topology even with an uninitialized platform.
-  auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform(
-      /*initialize_platform=*/false);
-  TF_RET_CHECK(tpu_platform);
-  tpu::TpuTopologyExternal tpu_topology(tpu_platform->GetTopologyPtr());
+  // The TPU system may be uninitialized yet, but we can still retrieve the
+  // TPU topology even with an uninitialized TPU system via
+  // TpuUtil_GetTopologyPtrFn.
+  tpu::TpuTopologyExternal tpu_topology(
+      stream_executor::tpu::OpsApiFn()->TpuUtil_GetTopologyPtrFn());
   TF_RET_CHECK(num_tpus_per_task ==
                tpu_topology.LogicalDevicesPerHost(kTensorCore));
   TF_RETURN_IF_ERROR(BuildDeviceAssignment(

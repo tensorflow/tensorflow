@@ -210,6 +210,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                             const tensorflow::OpRegistrationData** op_data);
 
   const FunctionDef* FindFunctionDef(const string& name) const override;
+  core::RefCountPtr<FunctionRecord> FindRecord(
+      const string& name) const override;
 
   Device* HostCPU() const { return host_cpu_device_; }
   Device* CanonicalDevice(Device* d) const {
@@ -244,8 +246,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const FunctionDef* GetFunctionDef(const string& function_name);
 
   std::vector<string> ListFunctionNames() override;
+  tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
 
   Status RemoveFunction(const string& func) override;
+  Status AddRemoveFunctionNotifier(const string& func,
+                                   std::function<void()> notifier) override;
 
   // Wait for pending nodes to be finished in local executors (including context
   // default executor and thread executors) and executors on remote workers.
@@ -744,6 +749,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   mutex cache_mu_;
   mutex device_cache_mu_;
+  mutex remove_function_notifiers_mu_;
   struct RegisteredFunction : public core::RefCounted {
     ~RegisteredFunction() override {}
 
@@ -756,6 +762,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       TF_GUARDED_BY(cache_mu_);
   absl::flat_hash_map<Fprint128, Device*, Fprint128Hasher> device_cache_
       TF_GUARDED_BY(device_cache_mu_);
+  std::unordered_map<std::string, std::vector<std::function<void()>>>
+      remove_function_notifiers_ TF_GUARDED_BY(remove_function_notifiers_mu_);
 
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_graphs_{false};

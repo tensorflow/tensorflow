@@ -375,6 +375,14 @@ message OpMetadata {
   ProfileInfo profile_info = 10;
 
   reserved 11;
+
+  // Deduplicated HLO name for this op. In some cases, we can have multiple
+  // instructions (e.g. fusions) that are considered duplicates. We want to
+  // group them together under the same name so that we can group them together
+  // during analysis (e.g. HLO Op Profile tool in Xprof).
+  // E.g. If we have fusion.1, fusion.2, and fusion.3 marked as duplicates,
+  // fusion.2 and fusion.3 will have deduplicated_name = fusion.1
+  string deduplicated_name = 12;
 }
 
 // Profile data from the execution of a computation.
@@ -480,6 +488,8 @@ message DeviceAssignmentProto {
 message LiteralProto {
   ShapeProto shape = 1;
   repeated bool preds = 2;
+  bytes s4s = 21;
+  bytes u4s = 22;
   bytes s8s = 15;
   bytes u8s = 3;
   repeated int32 s32s = 4;
@@ -499,7 +509,7 @@ message LiteralProto {
   bytes f8e5m2s = 19;
   bytes f8e4m3fns = 20;
   repeated int64 sparse_indices = 14;
-  // Next = 21
+  // Next = 23
 }
 
 message WindowDimension {

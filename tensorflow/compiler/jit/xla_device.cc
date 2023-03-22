@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -310,15 +309,13 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
 
 StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   if (UsePjRtForSingleDeviceCompilation()) {
-    // TODO(b/262472386) Support shape_determination_fns with PJRT.
-    if (shape_determination_fns_.size() > 1) {
-      return errors::Unimplemented(
-          "Use PJRT with multiple ShapeDeterminationFn is not implemented.");
-    }
     if (device_contexts_.empty()) {
-      device_contexts_.emplace_back(new PjRtDeviceContext());
-      VLOG(1) << "XlaDevice " << this << " new PjRtDeviceContext "
-              << device_contexts_[0];
+      for (const auto& iter : shape_determination_fns_) {
+        auto device_context = new PjRtDeviceContext(iter);
+        VLOG(1) << "XlaDevice " << this << " new PjRtDeviceContext "
+                << device_context;
+        device_contexts_.emplace_back(device_context);
+      }
       if (use_accelerator_device_info_) {
         auto accelerator_device_info =
             std::make_unique<DeviceBase::AcceleratorDeviceInfo>();

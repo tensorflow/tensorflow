@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -851,7 +850,7 @@ Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
 // Gets the broadcasted shapes of the input and weight of the BatchMatMul op
 // from their types. If there are dynamic dimesions, these shapes couldn't be
 // used as the arguments for the BroadcastTo ops.
-llvm::Optional<std::pair<SmallVector<int64_t>, SmallVector<int64_t>>>
+std::optional<std::pair<SmallVector<int64_t>, SmallVector<int64_t>>>
 GetBroadcastShapesForBatchMatmul(ShapedType input_type,
                                  ShapedType weight_type) {
   ArrayRef<int64_t> input_shape = input_type.getShape();

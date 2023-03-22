@@ -32,8 +32,8 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
@@ -139,8 +139,8 @@ tf_py_test(
     srcs = ["make_deterministic_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -176,8 +176,6 @@ tf_py_test(
     size = "small",
     srcs = ["optimization_test.py"],
     shard_count = 2,
-    # TODO(b/200273447): Re-enable.
-    tags = ["notsan"],  # Seems flaky in TSAN.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

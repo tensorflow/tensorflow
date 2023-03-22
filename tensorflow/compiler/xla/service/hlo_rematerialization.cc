@@ -1199,7 +1199,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
       }
       default: {
         LOG(FATAL) << "Unsupported indirect instruction with opcode "
-                   << HloOpcodeString(indirect_user->instruction->opcode());
+                   << indirect_user->instruction->opcode();
         break;
       }
     }
@@ -1229,13 +1229,14 @@ std::string MemoryUsageTracker::ToString() const {
   for (auto* item = instruction_list_.first(); item != nullptr;
        item = instruction_list_.next(item)) {
     const HloInstruction* instruction = item->instruction;
-    std::string inprogress = item == in_progress_item_ ? " in-progress" : "";
-    std::string placed = item->placed ? " placed" : "";
+    absl::string_view inprogress =
+        item == in_progress_item_ ? " in-progress" : "";
+    absl::string_view placed = item->placed ? " placed" : "";
     absl::StrAppend(&output, "  ", instruction->name(), inprogress, placed,
                     "\n    Defines:\n");
     for (BufferId buffer_id : item->buffers_defined) {
       const Buffer& buffer = buffers_[buffer_id];
-      std::string live = IsCurrentlyLive(buffer_id) ? " live" : "";
+      absl::string_view live = IsCurrentlyLive(buffer_id) ? " live" : "";
       absl::StrAppend(&output, "      ", buffer.ToString(), live, ", ",
                       buffer.unfinished_user_count, " unfinished uses\n");
     }
@@ -1735,11 +1736,11 @@ StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
   HloComputation* computation = best->parent();
   HloInstruction* compressed = computation->AddInstruction(
       HloInstruction::CreateUnary(compact_shape, HloOpcode::kCopy, best),
-      /*new_name=*/best->name() + ".remat_compressed");
+      /*new_name=*/absl::StrCat(best->name(), ".remat_compressed"));
 
   HloInstruction* uncompressed = computation->AddInstruction(
       HloInstruction::CreateUnary(best->shape(), HloOpcode::kCopy, compressed),
-      /*new_name=*/best->name() + ".remat_uncompressed");
+      /*new_name=*/absl::StrCat(best->name(), ".remat_uncompressed"));
 
   Item* compressed_item = instruction_list->CreateItem(compressed);
   compressed_item->placed = true;

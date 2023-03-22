@@ -117,7 +117,7 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
   }
 
   return tsl::Status(
-      tsl::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal));
 }
 
@@ -180,7 +180,7 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
             config.ordinal, init_status.ToString()));

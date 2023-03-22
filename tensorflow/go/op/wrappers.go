@@ -10288,6 +10288,17 @@ func DataServiceDatasetV2(scope *Scope, dataset_id tf.Output, processing_mode tf
 	return op.Output(0)
 }
 
+// DatasetCardinalityAttr is an optional argument to DatasetCardinality.
+type DatasetCardinalityAttr func(optionalAttr)
+
+// DatasetCardinalityCardinalityOptions sets the optional cardinality_options attribute to value.
+// If not specified, defaults to ""
+func DatasetCardinalityCardinalityOptions(value string) DatasetCardinalityAttr {
+	return func(m optionalAttr) {
+		m["cardinality_options"] = value
+	}
+}
+
 // Returns the cardinality of `input_dataset`.
 //
 // Returns the cardinality of `input_dataset`.
@@ -10298,15 +10309,20 @@ func DataServiceDatasetV2(scope *Scope, dataset_id tf.Output, processing_mode tf
 //
 // Returns The cardinality of `input_dataset`. Named constants are used to represent
 // infinite and unknown cardinality.
-func DatasetCardinality(scope *Scope, input_dataset tf.Output) (cardinality tf.Output) {
+func DatasetCardinality(scope *Scope, input_dataset tf.Output, optional ...DatasetCardinalityAttr) (cardinality tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "DatasetCardinality",
 		Input: []tf.Input{
 			input_dataset,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -57542,7 +57558,7 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 //
 //	version: Tracks changes the semantics of the op, to support backwards
 //
-// compatibility. Version 1 carries an MHLO text or bytecode `module`. From
+// compatibility. Minimum supported version is 2. From
 // version 2, the op carries a StableHLO text or bytecode `module`. From
 // version 3, the op also supports the `platforms` attribute.
 //

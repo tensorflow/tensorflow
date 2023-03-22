@@ -251,7 +251,7 @@ tf_py_test(
     size = "small",
     srcs = ["ctc_decoder_ops_test.py"],
     deps = [
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -561,8 +561,9 @@ cuda_py_test(
     tags = ["no_windows"],  # b/139739217
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -663,9 +664,7 @@ cuda_py_test(
     srcs = ["xent_op_d9m_test.py"],
     tags = [
         "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
-        "noasan",  # TODO(b/231484532): Remove after flakiness resolved.
         "nomac",  # TODO(b/235277289) Flaky on OSX
-        "notsan",  # TODO(b/200548634): Remove.
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

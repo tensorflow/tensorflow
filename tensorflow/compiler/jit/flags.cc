@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 
-#include <limits>
 #include <mutex>  // NOLINT
-#include <optional>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -229,7 +227,6 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
-  bool enable_mlir_coarse_data_token_optimization = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
   bool enable_mlir_generic_outside_compilation = false;
@@ -285,10 +282,6 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
-       Flag("tf_mlir_enable_coarse_data_token_optimization",
-            &enable_mlir_coarse_data_token_optimization,
-            "Makes the `tf-executor-convert-control-to-data-outputs` pass use "
-            "fewer tokens in loops that start TPU computations."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef"),
@@ -317,8 +310,6 @@ void AllocateAndParseFlags() {
       enable_mlir_convert_control_to_data_outputs_pass;
   mlir_flags->tf_mlir_enable_generic_outside_compilation =
       enable_mlir_generic_outside_compilation;
-  mlir_flags->tf_mlir_enable_coarse_data_token_optimization =
-      enable_mlir_coarse_data_token_optimization;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(

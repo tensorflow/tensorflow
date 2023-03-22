@@ -33,13 +33,13 @@ namespace metrics {
 // has 1 field "write_version", which is equal to the
 // `tensorflow::libexport::GetWriteVersion` of the protobuf and should be
 // incremented when a SavedModel has been successfully written.
-monitoring::CounterCell& SavedModelWrite(absl::string_view write_version);
+monitoring::CounterCell& SavedModelWriteCount(absl::string_view write_version);
 
 // Returns "/tensorflow/core/saved_model/read/count" cell. This metric
 // has 1 field "write_version", which is equal to the
 // `tensorflow::libexport::GetWriteVersion` of the protobuf, and should be
 // incremented when a SavedModel has been successfully read.
-monitoring::CounterCell& SavedModelRead(absl::string_view write_version);
+monitoring::CounterCell& SavedModelReadCount(absl::string_view write_version);
 
 // Returns "/tensorflow/core/saved_model/write/fingerprint" cell, which contains
 // the saved_model_checksum of the SM's fingerprint when it is exported.

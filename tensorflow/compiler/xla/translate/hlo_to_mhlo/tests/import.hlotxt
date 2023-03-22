@@ -938,12 +938,12 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_outfeed_with_sharding
-// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> (!mhlo.token {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
+// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> (!mhlo.token {mhlo.sharding = "{maximal device=0}"})
 %test_outfeed_with_sharding (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
   %Arg_0.1 = s32[3] parameter(0)
   %Arg_1.2 = token[] parameter(1)
   // CHECK-NEXT:  "mhlo.outfeed"([[DATA]], [[TOKEN]])
-  // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
+  // CHECK-SAME: mhlo.sharding = "{maximal device=0}"
   // CHECK-SAME:  outfeed_config = "foobar"
   ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={maximal device=0}
 }
@@ -1700,13 +1700,13 @@ add {
 }
 
 // CHECK-LABEL : func private @sparse
-// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
+// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>
 %sparse {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
 }
 
 // CHECK-LABEL : func private @sparse-nu-no
-// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], pointerBitWidth = 32, indexBitWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], pointerBitWidth = 32, indexBitWidth = 32 }>>
+// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], posWidth = 32, crdWidth = 32 }>>
 %sparse-nu-no {
   ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
 }
@@ -1757,7 +1757,7 @@ add {
  }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding
-// CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "\08\03\1A\01\02\22\02\00\01"}) -> (tensor<4xi32> {mhlo.sharding = "\08\03\1A\01\02\22\02\00\01"})
+// CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "{devices=[2]0,1}"}) -> (tensor<4xi32> {mhlo.sharding = "{devices=[2]0,1}"})
 %test_args_and_result_with_sharding (Arg_0.1: s32[4]) -> s32[4] {
   %arg0.1 = s32[4] parameter(0), sharding={devices=[2]0,1}
   ROOT %copy.1 = s32[4] copy(%arg0.1), sharding={devices=[2]0,1}

@@ -581,11 +581,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
                                   lib_def_, composite_devices, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
-  metrics::UpdateFunctionGraphOptimizationTime(optimization_end_time_usecs -
-                                               optimization_start_time_usecs);
+  const uint64 graph_optimization_duration =
+      optimization_end_time_usecs - optimization_start_time_usecs;
+  metrics::UpdateFunctionGraphOptimizationTime(graph_optimization_duration);
   VLOG(1) << "Finished graph optimizations for MultiDevice function \""
           << function_name << "\" with target device \"" << options.target
-          << "\"";
+          << "\". Took " << graph_optimization_duration / 1000000 << " secs.";
 
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? lib_def_ : options.lib_def;
@@ -1227,11 +1228,16 @@ void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
+    FunctionLibraryRuntime::DoneCallback done,
+    const FunctionLibraryRuntime::Options& opts,
     const Rendezvous* created_rendezvous) const {
-  return [this, items, done = std::move(done), step_id,
-          created_rendezvous](const Status& status) {
-    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
+  const Rendezvous* rendezvous_to_cleanup = nullptr;
+  if (opts.cleanup_rendezvous_after_run) {
+    rendezvous_to_cleanup = created_rendezvous;
+  }
+  return [this, items, done = std::move(done), step_id = opts.step_id,
+          rendezvous_to_cleanup](const Status& status) {
+    this->CleanupCreatedRendezvous(rendezvous_to_cleanup, step_id);
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1330,8 +1336,8 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done),
-                                    new_opts.step_id, created_rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), new_opts,
+                                    created_rendezvous);
   std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
   done = [rets, function_rets, done = std::move(done)](const Status& s) {
     Status status = s;
@@ -1520,7 +1526,9 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
     Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
                                        std::move(get_component_args));
-    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
+    if (new_opts.cleanup_rendezvous_after_run) {
+      CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
+    }
     status.Update(FunctionRetsToTensors(&function_rets, rets));
     return status;
   } else {
@@ -1585,8 +1593,8 @@ void ProcessFunctionLibraryRuntime::Run(
   return;
 #else   // !IS_MOBILE_PLATFORM
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts.step_id,
-                                    created_rendezvous);
+  done =
+      ApplyCleanUpToDoneCallback(cleanup_items, done, opts, created_rendezvous);
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {

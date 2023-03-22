@@ -15,16 +15,16 @@ limitations under the License.
 
 // Must be at top (before any system includes and Python.h).
 // clang-format off
-#include "pybind11/attr.h"
-#include "pybind11/chrono.h"
-#include "pybind11/complex.h"
-#include "pybind11/detail/common.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/chrono.h"  // from @pybind11
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "pybind11/stl.h"
+#include "pybind11/stl.h"  // from @pybind11
 
 // clang-format on
 #include "Python.h"

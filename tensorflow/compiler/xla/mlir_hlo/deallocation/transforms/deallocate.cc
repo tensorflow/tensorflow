@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 
@@ -189,48 +187,12 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
   return results;
 }
 
-struct MergedRetentionSet {
-  SmallVector<Type> types;
-  // [set index, type index] -> index in set.
-  SmallVector<SmallVector<std::optional<int64_t>>> indices;
-};
-
-MergedRetentionSet mergeRetentionSets(
-    ArrayRef<const SmallVector<Value>*> sets) {
-  llvm::DenseMap<Type, SmallVector<size_t>> indicesByType;
-  MergedRetentionSet result;
-  for (const auto* set : sets) {
-    auto& typeIndices = result.indices.emplace_back();
-    DenseMap<Type, size_t> usedByType;
-    for (auto [setIndex, v] : llvm::enumerate(*set)) {
-      auto& indices = indicesByType[v.getType()];
-      auto& numUsed = usedByType[v.getType()];
-      if (indices.size() <= numUsed) {
-        indices.push_back(result.types.size());
-        result.types.push_back(v.getType());
-      }
-
-      if (typeIndices.size() < indices[numUsed] + 1) {
-        typeIndices.resize(indices[numUsed] + 1);
-      }
-      typeIndices[indices[numUsed]] = setIndex;
-      ++numUsed;
-    }
-  }
-  for (auto& typeIndices : result.indices) {
-    typeIndices.resize(result.types.size());
-  }
-  return result;
-}
-
 TransformResult Deallocator::transformOp(
     RegionBranchOpInterface op,
     const breaks_if_you_move_ops::ValueSet& ownedMemrefs) {
   SmallVector<int64_t> originalNumArgsByRegion;
-  SmallVector<std::optional<int64_t>> successors(op->getNumRegions());
   SmallVector<SmallVector<Value>> retentionSetsByRegion;
   retentionSetsByRegion.reserve(op->getNumRegions());
-  SmallVector<const SmallVector<Value>*> exitRegionSets;
 
   for (auto [index, region] : llvm::enumerate(op->getRegions())) {
     assert(region.getBlocks().size() <= 1 &&
@@ -243,35 +205,14 @@ TransformResult Deallocator::transformOp(
 
     // Transform region and collect owned memrefs.
     retentionSet = transformBlock(region.front());
-    if (llvm::any_of(edges, [](auto& edge) {
-          return edge.successorRegionIndex == std::nullopt;
-        })) {
-      exitRegionSets.push_back(&retentionSetsByRegion.back());
-    } else {
-      assert(edges.size() == 1);
-      successors[index] = *edges.front().successorRegionIndex;
-    }
   }
 
-  // Compute the added result types and mapping to retained memrefs.
-  auto merged = mergeRetentionSets(exitRegionSets);
-
   // Adjust terminator operands.
-  for (auto [region, retentionSet, successor] :
-       llvm::zip(op->getRegions(), retentionSetsByRegion, successors)) {
+  for (auto [region, retentionSet] :
+       llvm::zip(op->getRegions(), retentionSetsByRegion)) {
     if (region.empty()) continue;
     auto* terminator = region.front().getTerminator();
-    if (successor) {
-      terminator->setOperands(terminator->getNumOperands(), 0, retentionSet);
-    } else {
-      ImplicitLocOpBuilder b(op.getLoc(), terminator);
-      for (auto [index, type] :
-           llvm::zip(merged.indices[region.getRegionNumber()], merged.types)) {
-        auto val =
-            index ? retentionSet[*index] : b.create<NullOp>(type).getResult();
-        terminator->setOperands(terminator->getNumOperands(), 0, val);
-      }
-    }
+    terminator->setOperands(terminator->getNumOperands(), 0, retentionSet);
   }
 
   ImplicitLocOpBuilder b(op.getLoc(), op);
@@ -348,10 +289,27 @@ TransformResult Deallocator::transformOp(
   if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
     return {{}, transformBlock(func.getBody().front(), /*ownsInputs=*/false)};
   }
+
+  // Deallocate ops inside unknown op regions.
+  // Also assert that unknown ops with regions return no memrefs. There is no
+  // way to generically transform such ops, if they exist. Eventually we'll need
+  // an interface for this.
+  if (op->getNumRegions() > 0) {
+    assert(llvm::none_of(op->getResults(), isMemref));
+    for (auto& region : op->getRegions()) {
+      for (auto& block : region.getBlocks()) {
+        transformBlock(block, /*ownsInputs=*/false);
+      }
+    }
+  }
+
   // Assume any memref operand may alias any memref result.
   for (auto result : llvm::make_filter_range(op->getResults(), isMemref)) {
     for (auto arg : llvm::make_filter_range(op->getOperands(), isMemref)) {
-      aliases.unionSets(result, arg);
+      if (getElementTypeOrSelf(result.getType()) ==
+          getElementTypeOrSelf(arg.getType())) {
+        aliases.unionSets(result, arg);
+      }
     }
   }
   // No new allocations or releases.

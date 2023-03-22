@@ -51,20 +51,17 @@ func.func @sparse_matvec(%arg0: tensor<3x5xf64, #CSR>,
 }
 
 //
-// Matrix-matrix gendot.
+// Matrix-matrix gendot, one sparse operand.
 //
-// Ensures both transpositions are folded away after
-// lowering dot_general to a direct dot operation.
-//
-// CHECK-LABEL: func.func @sparse_matmat(
+// CHECK-LABEL: func.func @sparse_matmat_1s(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<16x32xf64, #sparse_tensor.encoding<{{{.*}}}>>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<32x64xf64>) -> tensor<16x64xf64> {
 // CHECK:         %[[DOT:.*]] = "mhlo.dot"(%[[ARG0]], %[[ARG1]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32xf64, #sparse_tensor.encoding<{{{.*}}}>>, tensor<32x64xf64>) -> tensor<16x64xf64>
-// CHECK:        return %[[DOT]] : tensor<16x64xf64>
+// CHECK:         return %[[DOT]] : tensor<16x64xf64>
 // CHECK:       }
 //
-func.func @sparse_matmat(%arg0: tensor<16x32xf64, #CSR>,
-                         %arg1: tensor<32x64xf64>) -> tensor<16x64xf64> {
+func.func @sparse_matmat_1s(%arg0: tensor<16x32xf64, #CSR>,
+                            %arg1: tensor<32x64xf64>) -> tensor<16x64xf64> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1],
                                       rhs_contracting_dimensions = [0]>,
@@ -76,18 +73,36 @@ func.func @sparse_matmat(%arg0: tensor<16x32xf64, #CSR>,
 }
 
 //
+// Matrix-matrix gendot, everything sparse.
+//
+// CHECK-LABEL: func.func @sparse_matmat_as(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<16x32xf64, #sparse_tensor.encoding<{{{.*}}}>>,
+// CHECK-SAME:    %[[ARG1:.*]]: tensor<32x64xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16x64xf64, #sparse_tensor.encoding<{{{.*}}}>> {
+// CHECK:         %[[DOT:.*]] = "mhlo.dot"(%[[ARG0]], %[[ARG1]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>, tensor<32x64xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>) -> tensor<16x64xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>
+// CHECK:         return %[[DOT]] : tensor<16x64xf64, #sparse_tensor.encoding<{{{.*}}}>>
+// CHECK:       }
+//
+func.func @sparse_matmat_as(%arg0: tensor<16x32xf64, #CSR>,
+                            %arg1: tensor<32x64xf64, #CSR>) -> tensor<16x64xf64, #CSR> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1],
+                                      rhs_contracting_dimensions = [0]>,
+    precision_config = [#mhlo<precision DEFAULT>,
+                        #mhlo<precision DEFAULT>]}
+    : (tensor<16x32xf64, #CSR>,
+       tensor<32x64xf64, #CSR>) -> tensor<16x64xf64, #CSR>
+  return %0 : tensor<16x64xf64, #CSR>
+}
+
+//
 // Higher-order gendot.
 //
-// A situation that introduces reshape operations.
-//
-// TODO: propagate sparsity better!
+// A situation that would introduce sparse reshape operations is not rewritten.
 //
 // CHECK-LABEL: func.func @sparse_tensor(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<197x12x64xf32>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<12x64x768xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<197x768xf32> {
-// CHECK:         %[[R1:.*]] = mhlo.reshape %[[ARG0]] : (tensor<197x12x64xf32>) -> tensor<197x768xf32>
-// CHECK:         %[[R2:.*]] = mhlo.reshape %[[ARG1]] : (tensor<12x64x768xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<768x768xf32>
-// CHECK:         %[[R:.*]] = "mhlo.dot"(%[[R1]], %[[R2]]) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<197x768xf32>, tensor<768x768xf32>) -> tensor<197x768xf32>
+// CHECK:         %[[R:.*]] = "mhlo.dot_general"(%[[ARG0]], %[[ARG1]])
 // CHECK:         return %[[R]] : tensor<197x768xf32>
 func.func @sparse_tensor(%arg0: tensor<197x12x64xf32>,
                          %arg1: tensor<12x64x768xf32, #COO>) -> tensor<197x768xf32> {

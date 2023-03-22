@@ -640,7 +640,7 @@ Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
     if (user->opcode() == HloOpcode::kTuple) {
       continue;
     }
-    VLOG(3) << "Setting  user layout : " << user->ToString();
+    VLOG(3) << "Setting user layout : " << user->ToString();
     if (user->opcode() == HloOpcode::kGetTupleElement) {
       auto tuple_index = user->tuple_index();
       CHECK(shape.IsTuple());

@@ -1915,6 +1915,7 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED;
   tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED;
   std::vector<int32_t> hardware_cluster_ids{};
+  std::string public_model_id{};
   EdgeTpuSettingsT() = default;
   EdgeTpuSettingsT(const EdgeTpuSettingsT &o);
   EdgeTpuSettingsT(EdgeTpuSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -1932,7 +1933,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_MODEL_TOKEN = 12,
     VT_FLOAT_TRUNCATION_TYPE = 14,
     VT_QOS_CLASS = 16,
-    VT_HARDWARE_CLUSTER_IDS = 18
+    VT_HARDWARE_CLUSTER_IDS = 18,
+    VT_PUBLIC_MODEL_ID = 20
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1958,6 +1960,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int32_t> *hardware_cluster_ids() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_HARDWARE_CLUSTER_IDS);
   }
+  const flatbuffers::String *public_model_id() const {
+    return GetPointer<const flatbuffers::String *>(VT_PUBLIC_MODEL_ID);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE, 4) &&
@@ -1973,6 +1978,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_QOS_CLASS, 4) &&
            VerifyOffset(verifier, VT_HARDWARE_CLUSTER_IDS) &&
            verifier.VerifyVector(hardware_cluster_ids()) &&
+           VerifyOffset(verifier, VT_PUBLIC_MODEL_ID) &&
+           verifier.VerifyString(public_model_id()) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2008,6 +2015,9 @@ struct EdgeTpuSettingsBuilder {
   void add_hardware_cluster_ids(flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids) {
     fbb_.AddOffset(EdgeTpuSettings::VT_HARDWARE_CLUSTER_IDS, hardware_cluster_ids);
   }
+  void add_public_model_id(flatbuffers::Offset<flatbuffers::String> public_model_id) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_PUBLIC_MODEL_ID, public_model_id);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2028,8 +2038,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
     tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
     tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> hardware_cluster_ids = 0,
+    flatbuffers::Offset<flatbuffers::String> public_model_id = 0) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_public_model_id(public_model_id);
   builder_.add_hardware_cluster_ids(hardware_cluster_ids);
   builder_.add_qos_class(qos_class);
   builder_.add_float_truncation_type(float_truncation_type);
@@ -2050,10 +2062,12 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     const char *model_token = nullptr,
     tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED,
     tflite::EdgeTpuSettings_::QosClass qos_class = tflite::EdgeTpuSettings_::QosClass_QOS_UNDEFINED,
-    const std::vector<int32_t> *hardware_cluster_ids = nullptr) {
+    const std::vector<int32_t> *hardware_cluster_ids = nullptr,
+    const char *public_model_id = nullptr) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   auto hardware_cluster_ids__ = hardware_cluster_ids ? _fbb.CreateVector<int32_t>(*hardware_cluster_ids) : 0;
+  auto public_model_id__ = public_model_id ? _fbb.CreateString(public_model_id) : 0;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       inference_power_state,
@@ -2063,7 +2077,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
       model_token__,
       float_truncation_type,
       qos_class,
-      hardware_cluster_ids__);
+      hardware_cluster_ids__,
+      public_model_id__);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2074,6 +2089,7 @@ struct GoogleEdgeTpuSettingsT : public flatbuffers::NativeTable {
   bool enable_tracing = false;
   tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED;
   std::vector<uint8_t> extension_data{};
+  std::string model_identifier{};
 };
 
 struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2083,7 +2099,8 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
     VT_LOG_VERBOSITY = 4,
     VT_ENABLE_TRACING = 6,
     VT_PRIORITY = 8,
-    VT_EXTENSION_DATA = 10
+    VT_EXTENSION_DATA = 10,
+    VT_MODEL_IDENTIFIER = 12
   };
   int32_t log_verbosity() const {
     return GetField<int32_t>(VT_LOG_VERBOSITY, -1);
@@ -2097,6 +2114,9 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   const flatbuffers::Vector<uint8_t> *extension_data() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_EXTENSION_DATA);
   }
+  const flatbuffers::String *model_identifier() const {
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_IDENTIFIER);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_LOG_VERBOSITY, 4) &&
@@ -2104,6 +2124,8 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
            VerifyField<int32_t>(verifier, VT_PRIORITY, 4) &&
            VerifyOffset(verifier, VT_EXTENSION_DATA) &&
            verifier.VerifyVector(extension_data()) &&
+           VerifyOffset(verifier, VT_MODEL_IDENTIFIER) &&
+           verifier.VerifyString(model_identifier()) &&
            verifier.EndTable();
   }
   GoogleEdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2127,6 +2149,9 @@ struct GoogleEdgeTpuSettingsBuilder {
   void add_extension_data(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data) {
     fbb_.AddOffset(GoogleEdgeTpuSettings::VT_EXTENSION_DATA, extension_data);
   }
+  void add_model_identifier(flatbuffers::Offset<flatbuffers::String> model_identifier) {
+    fbb_.AddOffset(GoogleEdgeTpuSettings::VT_MODEL_IDENTIFIER, model_identifier);
+  }
   explicit GoogleEdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2143,8 +2168,10 @@ inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
     int32_t log_verbosity = -1,
     bool enable_tracing = false,
     tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data = 0,
+    flatbuffers::Offset<flatbuffers::String> model_identifier = 0) {
   GoogleEdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_model_identifier(model_identifier);
   builder_.add_extension_data(extension_data);
   builder_.add_priority(priority);
   builder_.add_log_verbosity(log_verbosity);
@@ -2157,14 +2184,17 @@ inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsDir
     int32_t log_verbosity = -1,
     bool enable_tracing = false,
     tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
-    const std::vector<uint8_t> *extension_data = nullptr) {
+    const std::vector<uint8_t> *extension_data = nullptr,
+    const char *model_identifier = nullptr) {
   auto extension_data__ = extension_data ? _fbb.CreateVector<uint8_t>(*extension_data) : 0;
+  auto model_identifier__ = model_identifier ? _fbb.CreateString(model_identifier) : 0;
   return tflite::CreateGoogleEdgeTpuSettings(
       _fbb,
       log_verbosity,
       enable_tracing,
       priority,
-      extension_data__);
+      extension_data__,
+      model_identifier__);
 }
 
 flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -3426,6 +3456,7 @@ struct ModelFileT : public flatbuffers::NativeTable {
   int64_t offset = 0;
   int64_t length = 0;
   std::unique_ptr<tflite::ModelIdGroupT> model_id_group{};
+  int64_t buffer_handle = 0;
   ModelFileT() = default;
   ModelFileT(const ModelFileT &o);
   ModelFileT(ModelFileT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -3440,7 +3471,8 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FD = 6,
     VT_OFFSET = 8,
     VT_LENGTH = 10,
-    VT_MODEL_ID_GROUP = 12
+    VT_MODEL_ID_GROUP = 12,
+    VT_BUFFER_HANDLE = 14
   };
   const flatbuffers::String *filename() const {
     return GetPointer<const flatbuffers::String *>(VT_FILENAME);
@@ -3457,6 +3489,9 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::ModelIdGroup *model_id_group() const {
     return GetPointer<const tflite::ModelIdGroup *>(VT_MODEL_ID_GROUP);
   }
+  int64_t buffer_handle() const {
+    return GetField<int64_t>(VT_BUFFER_HANDLE, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_FILENAME) &&
@@ -3466,6 +3501,7 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int64_t>(verifier, VT_LENGTH, 8) &&
            VerifyOffset(verifier, VT_MODEL_ID_GROUP) &&
            verifier.VerifyTable(model_id_group()) &&
+           VerifyField<int64_t>(verifier, VT_BUFFER_HANDLE, 8) &&
            verifier.EndTable();
   }
   ModelFileT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3492,6 +3528,9 @@ struct ModelFileBuilder {
   void add_model_id_group(flatbuffers::Offset<tflite::ModelIdGroup> model_id_group) {
     fbb_.AddOffset(ModelFile::VT_MODEL_ID_GROUP, model_id_group);
   }
+  void add_buffer_handle(int64_t buffer_handle) {
+    fbb_.AddElement<int64_t>(ModelFile::VT_BUFFER_HANDLE, buffer_handle, 0);
+  }
   explicit ModelFileBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3509,8 +3548,10 @@ inline flatbuffers::Offset<ModelFile> CreateModelFile(
     int64_t fd = 0,
     int64_t offset = 0,
     int64_t length = 0,
-    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0) {
+    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0,
+    int64_t buffer_handle = 0) {
   ModelFileBuilder builder_(_fbb);
+  builder_.add_buffer_handle(buffer_handle);
   builder_.add_length(length);
   builder_.add_offset(offset);
   builder_.add_fd(fd);
@@ -3525,7 +3566,8 @@ inline flatbuffers::Offset<ModelFile> CreateModelFileDirect(
     int64_t fd = 0,
     int64_t offset = 0,
     int64_t length = 0,
-    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0) {
+    flatbuffers::Offset<tflite::ModelIdGroup> model_id_group = 0,
+    int64_t buffer_handle = 0) {
   auto filename__ = filename ? _fbb.CreateString(filename) : 0;
   return tflite::CreateModelFile(
       _fbb,
@@ -3533,7 +3575,8 @@ inline flatbuffers::Offset<ModelFile> CreateModelFileDirect(
       fd,
       offset,
       length,
-      model_id_group);
+      model_id_group,
+      buffer_handle);
 }
 
 flatbuffers::Offset<ModelFile> CreateModelFile(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4490,7 +4533,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       (lhs.model_token == rhs.model_token) &&
       (lhs.float_truncation_type == rhs.float_truncation_type) &&
       (lhs.qos_class == rhs.qos_class) &&
-      (lhs.hardware_cluster_ids == rhs.hardware_cluster_ids);
+      (lhs.hardware_cluster_ids == rhs.hardware_cluster_ids) &&
+      (lhs.public_model_id == rhs.public_model_id);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -4505,7 +4549,8 @@ inline EdgeTpuSettingsT::EdgeTpuSettingsT(const EdgeTpuSettingsT &o)
         model_token(o.model_token),
         float_truncation_type(o.float_truncation_type),
         qos_class(o.qos_class),
-        hardware_cluster_ids(o.hardware_cluster_ids) {
+        hardware_cluster_ids(o.hardware_cluster_ids),
+        public_model_id(o.public_model_id) {
   inactive_power_configs.reserve(o.inactive_power_configs.size());
   for (const auto &v : o.inactive_power_configs) { inactive_power_configs.emplace_back((v) ? new tflite::EdgeTpuInactivePowerConfigT(*v) : nullptr); }
 }
@@ -4519,6 +4564,7 @@ inline EdgeTpuSettingsT &EdgeTpuSettingsT::operator=(EdgeTpuSettingsT o) FLATBUF
   std::swap(float_truncation_type, o.float_truncation_type);
   std::swap(qos_class, o.qos_class);
   std::swap(hardware_cluster_ids, o.hardware_cluster_ids);
+  std::swap(public_model_id, o.public_model_id);
   return *this;
 }
 
@@ -4539,6 +4585,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = float_truncation_type(); _o->float_truncation_type = _e; }
   { auto _e = qos_class(); _o->qos_class = _e; }
   { auto _e = hardware_cluster_ids(); if (_e) { _o->hardware_cluster_ids.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->hardware_cluster_ids[_i] = _e->Get(_i); } } }
+  { auto _e = public_model_id(); if (_e) _o->public_model_id = _e->str(); }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4557,6 +4604,7 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _float_truncation_type = _o->float_truncation_type;
   auto _qos_class = _o->qos_class;
   auto _hardware_cluster_ids = _o->hardware_cluster_ids.size() ? _fbb.CreateVector(_o->hardware_cluster_ids) : 0;
+  auto _public_model_id = _o->public_model_id.empty() ? 0 : _fbb.CreateString(_o->public_model_id);
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
@@ -4566,7 +4614,8 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
       _model_token,
       _float_truncation_type,
       _qos_class,
-      _hardware_cluster_ids);
+      _hardware_cluster_ids,
+      _public_model_id);
 }
 
 
@@ -4575,7 +4624,8 @@ inline bool operator==(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSet
       (lhs.log_verbosity == rhs.log_verbosity) &&
       (lhs.enable_tracing == rhs.enable_tracing) &&
       (lhs.priority == rhs.priority) &&
-      (lhs.extension_data == rhs.extension_data);
+      (lhs.extension_data == rhs.extension_data) &&
+      (lhs.model_identifier == rhs.model_identifier);
 }
 
 inline bool operator!=(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs) {
@@ -4596,6 +4646,7 @@ inline void GoogleEdgeTpuSettings::UnPackTo(GoogleEdgeTpuSettingsT *_o, const fl
   { auto _e = enable_tracing(); _o->enable_tracing = _e; }
   { auto _e = priority(); _o->priority = _e; }
   { auto _e = extension_data(); if (_e) { _o->extension_data.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->extension_data.begin()); } }
+  { auto _e = model_identifier(); if (_e) _o->model_identifier = _e->str(); }
 }
 
 inline flatbuffers::Offset<GoogleEdgeTpuSettings> GoogleEdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4610,12 +4661,14 @@ inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(fl
   auto _enable_tracing = _o->enable_tracing;
   auto _priority = _o->priority;
   auto _extension_data = _o->extension_data.size() ? _fbb.CreateVector(_o->extension_data) : 0;
+  auto _model_identifier = _o->model_identifier.empty() ? 0 : _fbb.CreateString(_o->model_identifier);
   return tflite::CreateGoogleEdgeTpuSettings(
       _fbb,
       _log_verbosity,
       _enable_tracing,
       _priority,
-      _extension_data);
+      _extension_data,
+      _model_identifier);
 }
 
 
@@ -5393,7 +5446,8 @@ inline bool operator==(const ModelFileT &lhs, const ModelFileT &rhs) {
       (lhs.fd == rhs.fd) &&
       (lhs.offset == rhs.offset) &&
       (lhs.length == rhs.length) &&
-      ((lhs.model_id_group == rhs.model_id_group) || (lhs.model_id_group && rhs.model_id_group && *lhs.model_id_group == *rhs.model_id_group));
+      ((lhs.model_id_group == rhs.model_id_group) || (lhs.model_id_group && rhs.model_id_group && *lhs.model_id_group == *rhs.model_id_group)) &&
+      (lhs.buffer_handle == rhs.buffer_handle);
 }
 
 inline bool operator!=(const ModelFileT &lhs, const ModelFileT &rhs) {
@@ -5406,7 +5460,8 @@ inline ModelFileT::ModelFileT(const ModelFileT &o)
         fd(o.fd),
         offset(o.offset),
         length(o.length),
-        model_id_group((o.model_id_group) ? new tflite::ModelIdGroupT(*o.model_id_group) : nullptr) {
+        model_id_group((o.model_id_group) ? new tflite::ModelIdGroupT(*o.model_id_group) : nullptr),
+        buffer_handle(o.buffer_handle) {
 }
 
 inline ModelFileT &ModelFileT::operator=(ModelFileT o) FLATBUFFERS_NOEXCEPT {
@@ -5415,6 +5470,7 @@ inline ModelFileT &ModelFileT::operator=(ModelFileT o) FLATBUFFERS_NOEXCEPT {
   std::swap(offset, o.offset);
   std::swap(length, o.length);
   std::swap(model_id_group, o.model_id_group);
+  std::swap(buffer_handle, o.buffer_handle);
   return *this;
 }
 
@@ -5432,6 +5488,7 @@ inline void ModelFile::UnPackTo(ModelFileT *_o, const flatbuffers::resolver_func
   { auto _e = offset(); _o->offset = _e; }
   { auto _e = length(); _o->length = _e; }
   { auto _e = model_id_group(); if (_e) { if(_o->model_id_group) { _e->UnPackTo(_o->model_id_group.get(), _resolver); } else { _o->model_id_group = std::unique_ptr<tflite::ModelIdGroupT>(_e->UnPack(_resolver)); } } }
+  { auto _e = buffer_handle(); _o->buffer_handle = _e; }
 }
 
 inline flatbuffers::Offset<ModelFile> ModelFile::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -5447,13 +5504,15 @@ inline flatbuffers::Offset<ModelFile> CreateModelFile(flatbuffers::FlatBufferBui
   auto _offset = _o->offset;
   auto _length = _o->length;
   auto _model_id_group = _o->model_id_group ? CreateModelIdGroup(_fbb, _o->model_id_group.get(), _rehasher) : 0;
+  auto _buffer_handle = _o->buffer_handle;
   return tflite::CreateModelFile(
       _fbb,
       _filename,
       _fd,
       _offset,
       _length,
-      _model_id_group);
+      _model_id_group,
+      _buffer_handle);
 }
 
 

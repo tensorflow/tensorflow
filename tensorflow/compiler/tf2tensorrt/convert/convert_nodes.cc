@@ -1132,7 +1132,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
       return errors::Create(
-          status.code(),
+          static_cast<absl::StatusCode>(status.code()),
           StrCat("Failed to add output for node: ", node_def.name(), ": ",
                  status.error_message()),
           errors::GetPayloads(status));
@@ -5927,6 +5927,10 @@ Status ConvertGraphDefToEngine(
               "Variable resource type conversion requires a valid ctx");
         }
 
+        if (ctx->input(slot_number).NumElements() == 0) {
+          return errors::InvalidArgument("Resource input ", node_name,
+                                         " is empty.");
+        }
         TF_RETURN_IF_ERROR(converter->AddInputResource(
             node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
       } else {

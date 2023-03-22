@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -103,10 +104,10 @@ void tensorflow_nudge(const float min, const float max, const int quant_min,
 }
 
 // Lowers the Pack operator to TOSA.
-llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
-                                    Value result_value,
-                                    SmallVectorImpl<Value>& inputs,
-                                    int32_t axis) {
+std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
+                                   Value result_value,
+                                   SmallVectorImpl<Value>& inputs,
+                                   int32_t axis) {
   //////////////////////////////////////////////////
   // Operator: output = Pack([values], axis) or output = Stack([values], axis)
   // Lowering:
@@ -158,10 +159,10 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   ArrayRef<int64_t> input0_tensor_shape = input_type.getShape();
   int input_tensor_rank = input0_tensor_shape.size();
 
-  if (axis < 0 || axis >= input_tensor_rank) {
+  if (axis < 0 || axis > input_tensor_rank) {
     (void)rewriter.notifyMatchFailure(
         op, llvm::formatv("reduce axis {} is not in valid range "
-                          "[-rank(input), rank(input))",
+                          "[-rank(input), rank(input)]",
                           axis));
     return std::nullopt;
   }
@@ -208,7 +209,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // Negative values are also allowed up to -(rank(input)+1)
   // where the axis "wraps around".
   if (axis < 0) axis += input_tensor_rank;
-  if ((axis < 0) || (axis > (input_tensor_rank + 1))) {
+  if ((axis < 0) || (axis > input_tensor_rank)) {
     (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return std::nullopt;
   }
@@ -301,7 +302,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // If axis is equal to input tensor rank, then we need extra transpose
   // [N, A, B, C] to [A, B, C, N]
   if (axis == input_tensor_rank) {
-    llvm::Optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
+    std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
         rewriter, op, perm, {static_cast<int64_t>(perm.size())});
 
     if (!a3_transpose_perm) return std::nullopt;
@@ -316,10 +317,10 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers the Unpack operator to TOSA
-llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
-                                                   Operation* op,
-                                                   Value input_value,
-                                                   int32_t axis) {
+std::optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
+                                                  Operation* op,
+                                                  Value input_value,
+                                                  int32_t axis) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -348,7 +349,7 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
       perm.push_back(i);
     }
 
-    llvm::Optional<Value> a1_transpose_perm = getConstTensor<int32_t>(
+    std::optional<Value> a1_transpose_perm = getConstTensor<int32_t>(
         rewriter, op, perm, {static_cast<int64_t>(perm.size())});
 
     if (!a1_transpose_perm) return std::nullopt;
@@ -416,9 +417,9 @@ llvm::Optional<SmallVector<Value>> convertUnpackOp(PatternRewriter& rewriter,
 }
 
 // Lowers the Select operator to TOSA.
-llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
-                                      Value result_value, Value condition_value,
-                                      Value x_value, Value y_value) {
+std::optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
+                                     Value result_value, Value condition_value,
+                                     Value x_value, Value y_value) {
   RankedTensorType result_type =
       result_value.getType().dyn_cast<RankedTensorType>();
   RankedTensorType condition_type =
@@ -468,9 +469,9 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers the ZerosLike operator to TOSA by creating a constant
 // of the desired type and shape.
-llvm::Optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
-                                         Operation* op, Value result,
-                                         Value input) {
+std::optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
+                                        Operation* op, Value result,
+                                        Value input) {
   RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
     (void)rewriter.notifyMatchFailure(op, "result not ranked tensor type");
@@ -496,10 +497,9 @@ llvm::Optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
 
 // Lowers the Mul operator to TOSA.  For quantized types, this requires
 // inserting rescale operators before and after the operation.
-llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
-                                        Operation* op, Value output_val,
-                                        Value input_lhs_val,
-                                        Value input_rhs_val) {
+std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
+                                       Value output_val, Value input_lhs_val,
+                                       Value input_rhs_val) {
   ShapedType input_lhs_type = input_lhs_val.getType().dyn_cast<ShapedType>();
   ShapedType input_rhs_type = input_rhs_val.getType().dyn_cast<ShapedType>();
   ShapedType output_type = output_val.getType().dyn_cast<ShapedType>();
@@ -542,10 +542,11 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
     // 32bits can be rescaled with 32bits quantize multiplier back to 16bits
     bool scale32 = true;
 
-    Value op1_rescale_lhs = buildRescaleToInt32(
-        rewriter, op, input_lhs_val, 1.0f, input_lhs_qtype.getZeroPoint());
-    Value op2_rescale_rhs = buildRescaleToInt32(
-        rewriter, op, input_rhs_val, 1.0f, input_rhs_qtype.getZeroPoint());
+    Value op1_rescale_lhs = removeZeroPointAndCastToInt32(
+        rewriter, op, input_lhs_val, input_lhs_qtype.getZeroPoint());
+    Value op2_rescale_rhs = removeZeroPointAndCastToInt32(
+        rewriter, op, input_rhs_val, input_rhs_qtype.getZeroPoint());
+
     auto op3_mul_op1_op2 =
         CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
                                       op1_rescale_lhs, op2_rescale_rhs, 0);
@@ -560,9 +561,9 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 }
 
 // Lowers the SquaredDifference operator to TOSA.
-llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
-                                                 Operation* op, Value result,
-                                                 Value x, Value y) {
+std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
+                                                Operation* op, Value result,
+                                                Value x, Value y) {
   // Squared-difference is (x-y)*(x-y).
   // This lowering calculates the difference and multiplies.
   ShapedType result_type = result.getType().dyn_cast<ShapedType>();
@@ -587,8 +588,8 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 }
 
 // Lowers the Round operator to TOSA.
-llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
-                                     Value result, Value input) {
+std::optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
+                                    Value result, Value input) {
   // Implements banker's rounding by calculating floor(input + 0.5).
   ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
@@ -612,10 +613,10 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers ConcatV2 to TOSA Concat.
-llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
-                                        Operation* op, ShapedType result_type,
-                                        SmallVectorImpl<Value>& values,
-                                        int32_t axis) {
+std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
+                                       ShapedType result_type,
+                                       SmallVectorImpl<Value>& values,
+                                       int32_t axis) {
   // Check all inputs are RankedTensorType
   for (auto v : values) {
     if (!v.getType().dyn_cast<RankedTensorType>()) {
@@ -680,11 +681,11 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
 }
 
 // Lowers SpaceToBatchND to TOSA.
-llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
-                                              Operation* op, Value result_value,
-                                              Value input_value,
-                                              Value block_shape_value,
-                                              Value paddings_value) {
+std::optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
+                                             Operation* op, Value result_value,
+                                             Value input_value,
+                                             Value block_shape_value,
+                                             Value paddings_value) {
   /////////////////////////////////////////////////
   // Operator: output = SpaceToBatchND(input, block_shape, paddings)
   // Lowering:
@@ -909,7 +910,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a3_transpose_shape[i] = a2_shape[a3_perm[i]];
   }
 
-  llvm::Optional<Value> a3_transpose_const = getConstTensor<int32_t>(
+  std::optional<Value> a3_transpose_const = getConstTensor<int32_t>(
       rewriter, op, a3_perm, {static_cast<int64_t>(a3_perm.size())});
 
   if (!a3_transpose_const) return std::nullopt;
@@ -956,11 +957,11 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
 }
 
 // Lowers BatchToSpaceND to TOSA.
-llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
-                                              Operation* op, Value result_value,
-                                              Value input_value,
-                                              Value block_shape_value,
-                                              Value crops_value) {
+std::optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
+                                             Operation* op, Value result_value,
+                                             Value input_value,
+                                             Value block_shape_value,
+                                             Value crops_value) {
   /////////////////////////////////////////////////
   // Operator: output = BatchToSpaceND(input, block_shape, clips)
   // Lowering:
@@ -1135,7 +1136,7 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     a2_transpose_shape[i] = a1_shape[a2_perm[i]];
   }
 
-  llvm::Optional<Value> a2_transpose_perm = getConstTensor<int32_t>(
+  std::optional<Value> a2_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, a2_perm, {static_cast<int64_t>(a2_perm.size())});
 
   if (!a2_transpose_perm) return std::nullopt;
@@ -1208,9 +1209,9 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
 }
 
 // Lowers ExpandDims to TOSA.
-llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
-                                          Operation* op, Value result_value,
-                                          Value input_value, Value dim_value) {
+std::optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
+                                         Operation* op, Value result_value,
+                                         Value input_value, Value dim_value) {
   // Lowers to a reshape op with 1's inserted in the appropriate dimensions.
   RankedTensorType output_type =
       result_value.getType().dyn_cast<RankedTensorType>();
@@ -1272,9 +1273,9 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
 }
 
 // Lowers Squeeze to TOSA.
-llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
-                                       Value result_value, Value input_value,
-                                       SmallVectorImpl<int32_t>& squeeze_dims) {
+std::optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
+                                      Value result_value, Value input_value,
+                                      SmallVectorImpl<int32_t>& squeeze_dims) {
   // Lowers to a reshape op where dimensions in squeeze_dims with size=1
   // are removed.
   RankedTensorType output_type =
@@ -1336,8 +1337,8 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers ELU to a sequence of TOSA ops.
-llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
-                                   Value result_value, Value features_value) {
+std::optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
+                                  Value result_value, Value features_value) {
   // Lowers Elu using the following formula:
   // elu(x) = x < 0 ? (exp(x) - 1) : x
   // one = const({1});
@@ -1385,9 +1386,9 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers Softmax to a sequence of TOSA ops.
-llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
-                                       Value result_value, Value logits_value,
-                                       double beta) {
+std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
+                                      Value result_value, Value logits_value,
+                                      double beta) {
   // softmax = exp(logits) / reduce_sum(exp(logits), -1)
   //
   // or equivalently multiply exp(-max(logits)) to both numerator and
@@ -1804,9 +1805,9 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers LogSoftmax to a sequence of TOSA ops.
-llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
-                                          Operation* op, Value result_value,
-                                          Value logits_value) {
+std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
+                                         Operation* op, Value result_value,
+                                         Value logits_value) {
   // log_softmax = log(exp(logits) / reduce_sum(exp(logits), -1))
   // op1 = exp(logits)
   // op2 = reduce_sum(op1, -1)
@@ -1864,11 +1865,11 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
 }
 
 // Lowers SpaceToDepth to a sequence of TOSA ops.  Supports NHWC.
-llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
-                                            Operation* op, Value result_value,
-                                            Value input_value,
-                                            IntegerAttr block_size_attr,
-                                            StringAttr data_format) {
+std::optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
+                                           Operation* op, Value result_value,
+                                           Value input_value,
+                                           IntegerAttr block_size_attr,
+                                           StringAttr data_format) {
   // NHWC lowering version:
   // a2 = tf.reshape(a, [orig_shape[0], orig_shape[1]//b, b, orig_shape[2]//b,
   // b, orig_shape[3]])
@@ -1931,7 +1932,7 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
       rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF(a_reshape_dims)));
 
-  llvm::Optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
+  std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{0, 1, 3, 2, 4, 5}, /*shape=*/{6});
 
   if (!a3_transpose_perm) return std::nullopt;
@@ -1958,11 +1959,11 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
 }
 
 // Lowers DepthToSpace to a sequence of TOSA ops.  Supports NHWC.
-llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
-                                            Operation* op, Value result_value,
-                                            Value input_value,
-                                            IntegerAttr block_size_attr,
-                                            StringAttr data_format) {
+std::optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
+                                           Operation* op, Value result_value,
+                                           Value input_value,
+                                           IntegerAttr block_size_attr,
+                                           StringAttr data_format) {
   // NHWC version
   // a2 = tf.reshape(a, [orig_shape[0], orig_shape[1], orig_shape[2], b, b,
   // orig_shape[3] // (b*b)])
@@ -2021,7 +2022,7 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
       rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF(a_reshape_dims)));
 
-  llvm::Optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
+  std::optional<Value> a3_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{0, 1, 3, 2, 4, 5}, /*shape=*/{6});
 
   if (!a3_transpose_perm) return std::nullopt;
@@ -2048,7 +2049,7 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
 }
 
 // Lowers Split to a sequence of TOSA ops.
-llvm::Optional<SmallVector<Value>> convertSplitOp(
+std::optional<SmallVector<Value>> convertSplitOp(
     PatternRewriter& rewriter, Operation* op, Value result_value,
     Value input_value, int32_t num_split, int32_t axis) {
   // This lowering creates num_split slice ops and ties them together
@@ -2144,7 +2145,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
 }
 
 // Lowers SplitV to a sequence of TOSA ops.
-llvm::Optional<SmallVector<Value>> convertSplitVOp(
+std::optional<SmallVector<Value>> convertSplitVOp(
     PatternRewriter& rewriter, Operation* op, Value result_value,
     Value input_value, SmallVectorImpl<int32_t>& size_split, int32_t axis) {
   // This lowering creates num_split slice ops and ties them together
@@ -2222,7 +2223,7 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 // the only legal negative stride.
 static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
                                    Value input, ArrayRef<int32_t> strides) {
-  for (auto it : llvm::enumerate(strides)) {
+  for (const auto& it : llvm::enumerate(strides)) {
     auto axis = it.index();
     auto stride = it.value();
     if (stride != -1) continue;
@@ -2237,7 +2238,7 @@ static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers StridedSlice to a sequence of TOSA ops.
-llvm::Optional<Value> convertStridedSliceOp(
+std::optional<Value> convertStridedSliceOp(
     PatternRewriter& rewriter, Operation* op, Value result_value,
     Value input_value, Value begin_value, Value end_value, Value strides_value,
     int32_t begin_mask, int32_t end_mask, int32_t ellipsis_mask,
@@ -2321,7 +2322,7 @@ llvm::Optional<Value> convertStridedSliceOp(
   }
 
   // Set begin mask values if possible.
-  for (auto& val : llvm::enumerate(begin))
+  for (const auto& val : llvm::enumerate(begin))
     begin_mask |= (val.value() == 0) << val.index();
 
   // If all begin/end masks are set and striding is one we can just return
@@ -2486,9 +2487,9 @@ llvm::Optional<Value> convertStridedSliceOp(
 }
 
 // Lowers FloorDiv to a sequence of TOSA operators.
-llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
-                                        Operation* op, Value result_value,
-                                        Value lhs_value, Value rhs_value) {
+std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
+                                       Value result_value, Value lhs_value,
+                                       Value rhs_value) {
   // FloorDiv lowering:
   // floor(1/rhs * lhs)
   //
@@ -2519,9 +2520,9 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
 }
 
 // Lowers FloorMod to a sequence of TOSA operators.
-llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
-                                        Operation* op, Value result_value,
-                                        Value lhs_value, Value rhs_value) {
+std::optional<Value> convertFloorModOp(PatternRewriter& rewriter, Operation* op,
+                                       Value result_value, Value lhs_value,
+                                       Value rhs_value) {
   // FloorMod lowering:
   // (1/rhs * lhs) - floor(1/rhs * lhs)
   // a1 = reciprocal(rhs);
@@ -2549,9 +2550,9 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
 }
 
 // Lowers FusedActivation to a sequence of TOSA ops.
-llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
-                                             Operation* op, Value input_value,
-                                             StringAttr fused_activation_fn) {
+std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
+                                            Operation* op, Value input_value,
+                                            StringAttr fused_activation_fn) {
   ShapedType input_type = input_value.getType().dyn_cast<ShapedType>();
   if (!input_type) return std::nullopt;
 
@@ -2715,7 +2716,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
 
 // Common function for lowering reduce operations to TOSA ops.
 template <typename T>
-llvm::Optional<Value> convertReduceOpCommon(
+std::optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
     bool is_quantized, double input_scale, int64_t input_zp,
@@ -2797,11 +2798,11 @@ llvm::Optional<Value> convertReduceOpCommon(
 }
 
 // Lowers ReduceAll to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
-                                         Value input_value,
-                                         ElementsAttr axes_elems) {
+std::optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
+                                        Operation* op,
+                                        RankedTensorType output_type,
+                                        Value input_value,
+                                        ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -2812,11 +2813,11 @@ llvm::Optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
 }
 
 // Lowers ReduceAny to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
-                                         Value input_value,
-                                         ElementsAttr axes_elems) {
+std::optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
+                                        Operation* op,
+                                        RankedTensorType output_type,
+                                        Value input_value,
+                                        ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -2827,11 +2828,11 @@ llvm::Optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
 }
 
 // Lowers ReduceMin to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
-                                         Value input_value,
-                                         ElementsAttr axes_elems) {
+std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
+                                        Operation* op,
+                                        RankedTensorType output_type,
+                                        Value input_value,
+                                        ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -2842,11 +2843,11 @@ llvm::Optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
 }
 
 // Lowers ReduceMax to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
-                                         Value input_value,
-                                         ElementsAttr axes_elems) {
+std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
+                                        Operation* op,
+                                        RankedTensorType output_type,
+                                        Value input_value,
+                                        ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -2857,11 +2858,11 @@ llvm::Optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
 }
 
 // Lowers ReduceProd to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
-                                          Operation* op,
-                                          RankedTensorType output_type,
-                                          Value input_value,
-                                          ElementsAttr axes_elems) {
+std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -2883,11 +2884,11 @@ llvm::Optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
 }
 
 // Lowers ReduceSum to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
-                                         Operation* op,
-                                         RankedTensorType output_type,
-                                         Value input_value,
-                                         ElementsAttr axes_elems) {
+std::optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
+                                        Operation* op,
+                                        RankedTensorType output_type,
+                                        Value input_value,
+                                        ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -2934,11 +2935,11 @@ llvm::Optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
 }
 
 // Lowers ReduceMean to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
-                                          Operation* op,
-                                          RankedTensorType output_type,
-                                          Value input_value,
-                                          ElementsAttr axes_elems) {
+std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   // reduce_mean is lowered as followed:
   // op1 = reduce_sum(input)
   // op2 = mul(op1, 1.0 / num_elements_on_reduced_axis)
@@ -3017,11 +3018,11 @@ llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
 }
 
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
-llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
-                                      RankedTensorType output_type,
-                                      Value input_value, StringRef mode,
-                                      bool align_corners,
-                                      bool half_pixel_centers) {
+std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
+                                     RankedTensorType output_type,
+                                     Value input_value, StringRef mode,
+                                     bool align_corners,
+                                     bool half_pixel_centers) {
   const bool is_bilinear = mode == "BILINEAR";
   const bool is_nearest = mode == "NEAREST_NEIGHBOR";
   RankedTensorType input_type =
@@ -3097,7 +3098,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
       n = 1;
-      d = 1;
+      d = output;
       offset = 0;
       border = output - 1;
       return;
@@ -3253,10 +3254,10 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
-llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
-                                        Operation* op, ShapedType output_type,
-                                        Value input_value, double scale,
-                                        int64_t zeropoint) {
+std::optional<Value> convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
+                                       ShapedType output_type,
+                                       Value input_value, double scale,
+                                       int64_t zeropoint) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -3289,12 +3290,12 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
 }
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
-llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
-                                          Operation* op, ShapedType output_type,
-                                          Value input_value,
-                                          ArrayRef<float> scale,
-                                          ArrayRef<float> zeropoint,
-                                          int64_t dim) {
+std::optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
+                                         Operation* op, ShapedType output_type,
+                                         Value input_value,
+                                         ArrayRef<float> scale,
+                                         ArrayRef<float> zeropoint,
+                                         int64_t dim) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return std::nullopt;
@@ -3303,7 +3304,7 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
   if (!input_type.getElementType().isa<mlir::quant::QuantizedType>())
     return std::nullopt;
 
-  Optional<Value> zp_val;
+  std::optional<Value> zp_val;
   if (zeropoint.size() == 1) {
     zp_val = getTosaConstTensorSingleF32(rewriter, op,
                                          static_cast<float>(zeropoint[0]));
@@ -3314,7 +3315,7 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
     zp_val = getConstTensor(rewriter, op, zeropoint, shape);
   }
 
-  Optional<Value> scale_val;
+  std::optional<Value> scale_val;
   if (scale.size() == 1) {
     scale_val =
         getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale[0]));
@@ -3341,11 +3342,11 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
 }
 
 // Lowers FakeQuant to a sequence of TOSA quantization ops.
-llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
-                                         Operation* op, ShapedType output_type,
-                                         Value input_value, double min,
-                                         double max, int64_t num_bits,
-                                         bool narrow_range) {
+std::optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
+                                        Operation* op, ShapedType output_type,
+                                        Value input_value, double min,
+                                        double max, int64_t num_bits,
+                                        bool narrow_range) {
   // FakeQuant is lowered as follow:
   // op1 = quantize(input)
   // op2 = dequantize(op1)
@@ -3406,11 +3407,11 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
       .getResult();
 }
 
-llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
-                                             Operation* op,
-                                             RankedTensorType output_type,
-                                             Value input, Value pad,
-                                             TFTFLMirrorPaddingType mode) {
+std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
+                                            Operation* op,
+                                            RankedTensorType output_type,
+                                            Value input, Value pad,
+                                            TFTFLMirrorPaddingType mode) {
   RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     (void)rewriter.notifyMatchFailure(op, "input type isn't a ranked tensor");
@@ -3455,7 +3456,7 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
 
   // Note that this also represents the intermediate padded tensors for each
   // dimension.
-  llvm::Optional<Value> result;
+  std::optional<Value> result;
 
   const int rank = input_type.getRank();
   const int offset = (mode == TFTFLMirrorPaddingType::SYMMETRIC) ? 0 : 1;
@@ -3550,7 +3551,7 @@ llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
   return result;
 }
 
-llvm::Optional<Value> convertTFConv2DCommon(
+std::optional<Value> convertTFConv2DCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
@@ -3568,7 +3569,7 @@ llvm::Optional<Value> convertTFConv2DCommon(
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[2]);
-  llvm::Optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
+  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{3, 0, 1, 2}, /*shape=*/{4});
 
   if (!a1_filter_transpose_perm) return std::nullopt;
@@ -3637,13 +3638,13 @@ llvm::Optional<Value> convertTFConv2DCommon(
       .getResult();
 }
 
-llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                          Operation* op, ShapedType output_type,
-                                          Value input, Value filter, Value bias,
-                                          ArrayRef<int64_t> strides,
-                                          ArrayRef<int64_t> dilations,
-                                          StringRef padding_ref,
-                                          StringRef data_format_ref) {
+std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
+                                         Operation* op, ShapedType output_type,
+                                         Value input, Value filter, Value bias,
+                                         ArrayRef<int64_t> strides,
+                                         ArrayRef<int64_t> dilations,
+                                         StringRef padding_ref,
+                                         StringRef data_format_ref) {
   if (data_format_ref.str() != "NDHWC") {
     (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
     return std::nullopt;
@@ -3690,7 +3691,7 @@ llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[2]);
   a1_transpose_dims.push_back(filter_shape[3]);
-  llvm::Optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
+  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{4, 0, 1, 2, 3}, /*shape=*/{5});
 
   if (!a1_filter_transpose_perm) return std::nullopt;
@@ -3707,7 +3708,7 @@ llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
       .getResult();
 }
 
-llvm::Optional<Value> convertTFConv3DCommon(
+std::optional<Value> convertTFConv3DCommon(
     PatternRewriter& rewriter, Operation* op, ShapedType output_type,
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, StringRef padding_ref,
@@ -3739,10 +3740,10 @@ llvm::Optional<Value> convertTFConv3DCommon(
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.
-llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
-                                      Value result_value, Value params_value,
-                                      Value indices_value, int32_t batch_dims,
-                                      int32_t axis) {
+std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
+                                     Value result_value, Value params_value,
+                                     Value indices_value, int32_t batch_dims,
+                                     int32_t axis) {
   auto result_type = result_value.getType().dyn_cast<ShapedType>();
   auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
@@ -3953,11 +3954,11 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   SmallVector<int64_t> tosa_indices_shape = {N, W};
   SmallVector<int64_t> tosa_gather_result_shape = {N, W, C};
 
-  llvm::Optional<Value> params_transpose_perm_val = getConstTensor<int32_t>(
+  std::optional<Value> params_transpose_perm_val = getConstTensor<int32_t>(
       rewriter, op, params_transpose_perm,
       {static_cast<int64_t>(params_transpose_perm.size())});
 
-  llvm::Optional<Value> result_transpose_perm_val = getConstTensor<int32_t>(
+  std::optional<Value> result_transpose_perm_val = getConstTensor<int32_t>(
       rewriter, op, result_transpose_perm,
       {static_cast<int64_t>(result_transpose_perm.size())});
 
@@ -4031,9 +4032,9 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.
-llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
-                                        Operation* op, Value result_value,
-                                        Value params_value, Value indices_value)
+std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
+                                       Value result_value, Value params_value,
+                                       Value indices_value)
 
 {
   auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
@@ -4163,7 +4164,7 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
     flattened_coeff_vec[i - 1] *= flattened_coeff_vec[i];
   }
 
-  llvm::Optional<Value> flattened_coeff_value = getConstTensor<int32_t>(
+  std::optional<Value> flattened_coeff_value = getConstTensor<int32_t>(
       rewriter, op, flattened_coeff_vec,
       {static_cast<int64_t>(flattened_coeff_vec.size())});
 
@@ -4209,10 +4210,10 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
 }
 
 // Lowers OneHot operator to a sequence of TOSA ops.
-llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
-                                      Value result_value, Value indices_value,
-                                      Value on_value, Value off_value,
-                                      int32_t depth, int32_t axis) {
+std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
+                                     Value result_value, Value indices_value,
+                                     Value on_value, Value off_value,
+                                     int32_t depth, int32_t axis) {
   auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
   auto on_value_type = on_value.getType().dyn_cast<RankedTensorType>();
@@ -4340,7 +4341,7 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
           tensorflow::ConvertMlirShapeToTF({left_dim, right_dim, K})));
 
   // Transposed to [LeftDims, K, RightDims].
-  llvm::Optional<Value> perm_const =
+  std::optional<Value> perm_const =
       getConstTensor<int32_t>(rewriter, op, /*vec=*/{0, 2, 1}, /*shape=*/{3});
 
   if (!perm_const) return std::nullopt;
@@ -4360,8 +4361,8 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers Sin operator to a sequence of TOSA ops.
-llvm::Optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
-                                   Value input, ShapedType output_type) {
+std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
+                                  Value input, ShapedType output_type) {
   RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
   Location loc = op->getLoc();
 
@@ -4460,6 +4461,46 @@ llvm::Optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
                                  output_scale, rewriter.getI32IntegerAttr(0))
+      .getResult();
+}
+
+// Lowers Sign operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                    Value input, RankedTensorType output_type) {
+  auto output_elem_type = output_type.getElementType();
+  if (output_elem_type.isa<mlir::quant::QuantizedType>()) {
+    (void)rewriter.notifyMatchFailure(op, "tfl quantization not yet supported");
+    return llvm::None;
+  }
+
+  // TOSA greater and select can both broadcast, so simply create a tensor with
+  // one element.
+  Value pos_one, neg_one, zero;
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  if (output_elem_type.isa<FloatType>()) {
+    pos_one = getTosaConstTensorSingleF32(rewriter, op, 1.0f);
+    neg_one = getTosaConstTensorSingleF32(rewriter, op, -1.0f);
+    zero = getTosaConstTensorSingleF32(rewriter, op, 0.0f);
+  } else {
+    pos_one = getTosaConstTensorScalarInt(builder, output_elem_type, 1);
+    neg_one = getTosaConstTensorScalarInt(builder, output_elem_type, -1);
+    zero = getTosaConstTensorScalarInt(builder, output_elem_type, 0);
+  }
+
+  ShapedType const_type = output_type.clone(rewriter.getIntegerType(1));
+
+  auto gt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, input, zero);
+
+  auto lt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, zero, input);
+
+  auto select_neg_op = CreateOpAndInfer<tosa::SelectOp>(
+      builder, output_type, lt_zero_op, neg_one, zero);
+
+  // Select positive one based on the condition tensor.
+  return CreateOpAndInfer<tosa::SelectOp>(builder, output_type, gt_zero_op,
+                                          pos_one, select_neg_op)
       .getResult();
 }
 

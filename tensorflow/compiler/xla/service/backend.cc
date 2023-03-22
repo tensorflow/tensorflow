@@ -138,7 +138,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tsl::port::MaxParallelism();
-    intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
+    intra_op_thread_pool_ = std::make_unique<IntraOpThreadPool>(num_threads);
   }
 }
 

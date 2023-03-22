@@ -48,7 +48,10 @@
 // //tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer
 // && cp
 // bazel-bin/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
-// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss
+// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+// NOTE: If you are a Google developer using the internal dev environment,
+// please read the description of the following bash script and then run it:
+// ./third_party/tensorflow/lite/experimental/acceleration/configuration/google/regenerate_tflite_configuration_generated_header.sh
 
 // LINT.IfChange
 
@@ -491,6 +494,19 @@ message EdgeTpuSettings {
 
   // Cluster IDs the model will be compiled for.
   repeated int32 hardware_cluster_ids = 8 [packed = true];
+
+  // Public model ID to be logged in logs, traces and metrics for identifying
+  // the model to help debugging.
+  // The configured string must obey the following rules:
+  // 1. Must not contain any confidential information, because public_model_id
+  // will be logged in android logs and traces which are publicly visible.
+  // 2. Must not contain any private user data or PII (Personally Identifiable
+  // Information), such as age, language, geography, religion, etc.
+  // 3. Should be <=30 chars, otherwise EdgeTpu software might truncate the
+  // string due to logging size constraints.
+  // 4. Please try to use a unique name so that it's easier to identify the
+  // model during debugging.
+  optional string public_model_id = 9;
 }
 
 // Google EdgeTPU delegate settings.
@@ -520,6 +536,29 @@ message GoogleEdgeTpuSettings {
 
   // Reserved.
   optional bytes extension_data = 4;
+
+  // A unique identifier of the input model. Creating delegates with different
+  // user model binaries with the same model identifier will overwrite
+  // previously cached entries, saving disk space.
+  // If this field is not set, the model will be treated as a new entry, and
+  // will cost disk space to cache.
+  // This field is different from the model_token in CompilationCachingSettings,
+  // where the users may reuse the same model_identifier for different flavors
+  // of the same model to save disk space, whereas model_token must be unique.
+  // Example usage:
+  // (1) An app only uses one model, and wants to update the model.
+  // For both the existing and new models, set: model_identifier = "my_model"
+  // Creating the delegate with the new entry this way will delete the old
+  // cache entry, and replace it with the new version of "my_model"
+  // (2) An app A/B tests two versions of the same model (e.g. a stable version
+  //  and a testing/staging/beta version), and wants to frequently switch
+  // between them.
+  // The clients should use different model_identifier for the two variants.
+  // Model_A: model_identifier = "my_model_a"
+  // Model_B: model_identifier = "my_model_b"
+  // Both Model A and B will be cached separately, and coexist for efficient
+  // lookups.
+  optional string model_identifier = 5 [default = ""];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -808,12 +847,16 @@ message MiniBenchmarkEvent {
 }
 
 // How to access the model for mini-benchmark.
-// Since mini-benchmark runs in a separate process, it can not access an
-// in-memory model. It can read the model either from a file or from a file
-// descriptor. The file descriptor typically comes from the Android asset
-// manager.
+// Mini-benchmark can read the model from a file path, a file
+// descriptor, or in-memory model. The file descriptor typically comes from the
+// Android asset manager. Since mini-benchmark runs in a separate process, it
+// can not access the in-memory model directly. Instead, it will copy the
+// in-memory model to the validation process.
 //
-// Users should set either filename, or all of fd, offset and length.
+// Users should set one of  the following:
+// 1) filename, or
+// 2) all of fd, offset (optional, default to 0) and length, or
+// 3) both buffer_handle and length.
 message ModelFile {
   // Filename for reading model from.
   optional string filename = 1;
@@ -821,9 +864,16 @@ message ModelFile {
   optional int64 fd = 2;
   // Offset for model in file descriptor.
   optional int64 offset = 3;
-  // Length of model in file descriptor.
+  // Length of model.
   optional int64 length = 4;
   optional ModelIdGroup model_id_group = 5;
+  // In-memory buffer handle to the model. This handle will be cast to a pointer
+  // of type const uint8_t* to load the model. The caller needs to ensure the
+  // buffer handle out-lives the mini-benchmark main process.
+  // NOTE: When using buffer_handle, this proto should not serialized and copied
+  // across process boundaries (e.g. via a file), since it may contain handles
+  // that refer to addresses in the current process's address space.
+  optional int64 buffer_handle = 6;
 }
 
 message ModelIdGroup {
@@ -863,6 +913,9 @@ message MinibenchmarkSettings {
   repeated TFLiteSettings settings_to_test = 1;
   // How to access the model. This would typically be set dynamically, as it
   // depends on the application folder and/or runtime state.
+  // NOTE: When using buffer_handle, this proto should not serialized and copied
+  // across process boundaries (e.g. via a file), since it may contain handles
+  // that refer to addresses in the current process's address space.
   optional ModelFile model_file = 2;
   // Where to store state. This would typically be set dynamically, as it
   // depends on the application folder.

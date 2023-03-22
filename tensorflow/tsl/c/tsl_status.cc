@@ -32,7 +32,8 @@ void TSL_SetStatus(TSL_Status* s, TSL_Code code, const char* msg) {
     s->status = ::tsl::OkStatus();
     return;
   }
-  s->status = Status(static_cast<Code>(code), tsl::StringPiece(msg));
+  s->status =
+      Status(static_cast<absl::StatusCode>(code), tsl::StringPiece(msg));
 }
 
 void TSL_SetPayload(TSL_Status* s, const char* key, const char* value) {

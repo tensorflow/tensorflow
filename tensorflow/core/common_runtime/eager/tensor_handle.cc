@@ -1075,9 +1075,4 @@ int TensorHandle::DeviceId(Status* status) const {
   return (d == nullptr) ? 0 : d->parsed_name().id;
 }
 
-tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {
-  Ref();
-  return this;
-}
-
 }  // namespace tensorflow

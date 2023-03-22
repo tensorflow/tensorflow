@@ -16,7 +16,6 @@ limitations under the License.
 #include <optional>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -105,7 +104,7 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 }
 
 // Tries to infer the tensor array element shape.
-llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
+std::optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
   auto element_shape = ta.getElementShapeAttr().cast<mlir::TF::ShapeAttr>();
   if (element_shape.hasStaticShape()) {
@@ -117,7 +116,7 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
 
   bool has_failure = false;
   auto elem_type = cutil::GetElementTypeFromAccess(
-      ta.getHandle(), module, [&](Operation* user) -> llvm::Optional<Type> {
+      ta.getHandle(), module, [&](Operation* user) -> std::optional<Type> {
         if (has_failure) return std::nullopt;
         if (auto write = llvm::dyn_cast<TF::TensorArrayWriteV3Op>(user)) {
           return write.getValue().getType();

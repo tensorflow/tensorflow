@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
@@ -119,7 +120,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
                                               EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
-  void Release() override;
+  // Templated struct `AutoReleaser` in
+  // core/runtime_fallback/runtime/kernel_utils.h needs a Release() method
+  // defined.
+  void Release();
 
   tensorflow::DataType DataType() const override;
   Status Shape(tensorflow::PartialTensorShape* shape) const override;
@@ -132,8 +136,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   const char* DeviceType(Status* status) const override;
   int DeviceId(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
-
-  ImmediateExecutionTensorHandle* Copy() override;
 
   // Subclasses may return True to instruct the string formatter
   // to use SummarizeValue instead of the NumPy formatter.
@@ -271,6 +273,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     return ptr->getKind() == kEager;
   }
 
+  tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
  private:
   friend class PackedTensorHandleTest;
 
@@ -390,6 +394,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 #endif
 
   PartialTensorShape inference_shape_;
+
+  FullTypeDef full_type_;
 };
 
 // Returns the device backing the resource. Else, returns nullptr.

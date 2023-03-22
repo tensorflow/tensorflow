@@ -36,7 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import logging_ops
@@ -45,6 +45,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import functional as tpu_functional
@@ -594,7 +595,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
             tokens = tokens.write(step, next_token)
             return (step + 1, tokens)
 
-          def cond(step, tokens):
+          def cond_fn(step, tokens):
             del tokens
             return math_ops.less(step, max_length)
 
@@ -608,8 +609,8 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
           )
 
           step = constant_op.constant(0)
-          step, tokens_var = control_flow_ops.while_loop(
-              cond, body, [step, tokens_var])
+          step, tokens_var = while_loop.while_loop(cond_fn, body,
+                                                   [step, tokens_var])
 
           image_flat = array_ops.transpose(tokens_var.stack(), [1, 0])
           image = array_ops.tile(
@@ -770,7 +771,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
         fn2 = lambda: computation_with_string_ops(a)
         pred = math_ops.greater_equal(a, b)
         result = array_ops.identity(
-            control_flow_ops.cond(pred, fn1, fn2),
+            cond.cond(pred, fn1, fn2),
             name="uncompilable_control_flow")
         return result
 

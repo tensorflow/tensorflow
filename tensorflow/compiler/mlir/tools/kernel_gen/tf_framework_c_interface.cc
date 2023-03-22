@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+#include <optional>
+
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 #endif
 
@@ -99,7 +101,7 @@ extern "C" void _mlir_ciface_tf_dealloc(void* op_kernel_ctx, void* ptr) {
 
 extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
                                              int32_t error_code, char* msg) {
-  Optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
+  std::optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
   if (!symbol.has_value()) {
     LOG(ERROR) << "No valid conversion from integer value = " << error_code
                << "to ErrorCode attribute";

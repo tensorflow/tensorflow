@@ -63,7 +63,7 @@ class Device : public DeviceBase {
   const std::string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName& parsed_name() const {
+  const DeviceNameUtils::ParsedName& parsed_name() const override {
     return parsed_name_;
   }
 

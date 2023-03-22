@@ -22,9 +22,9 @@ cc_library(
         "port.h",
     ],
     deps = [
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/platform:logging",
     ] + tf_stream_executor_deps("platform", "//tensorflow/compiler/xla/stream_executor/platform/"),
 )
 

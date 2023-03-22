@@ -21,12 +21,14 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
@@ -44,17 +46,21 @@ namespace tosa {
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
                              llvm::SmallVector<Value>& dims);
 
-llvm::Optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
-                                                  Operation* op,
-                                                  Value input_value,
-                                                  ShapedType output_type,
-                                                  llvm::ArrayRef<Value> dims);
+std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
+                                                 Operation* op,
+                                                 Value input_value,
+                                                 ShapedType output_type,
+                                                 llvm::ArrayRef<Value> dims);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
                    int64_t input_zp, int64_t output_zp, bool double_round,
                    bool scale32);
+
+// Removes the zero point and cast to int32, no need to handle roundings modes
+Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
+                                    Value input_val, int64_t input_zp);
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
@@ -98,6 +104,11 @@ Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
                                   int32_t val);
 
+// Create an expected bitwidth integer constant operator based on the type
+// parameter.
+Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
+                                  int64_t val);
+
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
@@ -130,8 +141,8 @@ bool getTransposeConv2dPaddingValues(
 // Default template creates a constant tensor in T.
 // To create INT48 TOSA constant, need to pass in llvm::APInt instead.
 template <typename T>
-llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
-                                     ArrayRef<T> vec, ArrayRef<int64_t> shape);
+std::optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
+                                    ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
@@ -146,9 +157,9 @@ LogicalResult ApplyPatternsWithShapeResolution(
 // Creates a TOSA operation and performs shape inference on the individual
 // op. This allows shape inference during the TFLite to TOSA lowering.
 template <typename TosaOp, typename... Args>
-TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+TosaOp CreateOpAndInfer(ImplicitLocOpBuilder& builder, Type result_ty,
                         Args&&... args) {
-  auto op = rewriter.create<TosaOp>(loc, result_ty, args...);
+  auto op = builder.create<TosaOp>(result_ty, args...);
 
   InferShapedTypeOpInterface shapeInterface =
       dyn_cast<InferShapedTypeOpInterface>(op.getOperation());
@@ -156,7 +167,7 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
 
   SmallVector<ShapedTypeComponents> returnedShapes;
   if (shapeInterface
-          .inferReturnTypeComponents(op.getContext(), op.getLoc(),
+          .inferReturnTypeComponents(op.getContext(), builder.getLoc(),
                                      op->getOperands(), op->getAttrDictionary(),
                                      op->getRegions(), returnedShapes)
           .failed())
@@ -189,6 +200,13 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
           : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;
+}
+
+template <typename TosaOp, typename... Args>
+TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+                        Args&&... args) {
+  ImplicitLocOpBuilder builder(loc, rewriter);
+  return CreateOpAndInfer<TosaOp>(builder, result_ty, args...);
 }
 
 template <typename TosaOp, typename... Args>

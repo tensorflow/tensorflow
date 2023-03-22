@@ -425,7 +425,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
         not tf2.enabled()):
       return SparseTensorValue(*tensor_list)
     else:
-      return SparseTensor(*tensor_list)
+      result = SparseTensor(*tensor_list)
+      # Augment the static dense shape with the shape carried by the spec.
+      result._dense_shape_default = result._dense_shape_default.merge_with(  # pylint: disable=protected-access
+          self._shape)
+      return result
 
   # The SparseTensorSpec tensor_list encoding uses (de)serialize_sparse ops
   # to (un)box the component tensors in a way that allows for batching &

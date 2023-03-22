@@ -47,6 +47,66 @@ class CastBf16OpsToF32Pass
   void runOnOperation() override;
 };
 
+class CastBf16OpsToF32 : public RewritePattern {
+ public:
+  explicit CastBf16OpsToF32(MLIRContext* context)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+
+ private:
+  LogicalResult match(Operation* op) const override {
+    if (isa<TF::CastOp, TF::ConstOp>(op) ||
+        op->getName().hasTrait<OpTrait::ZeroOperands>()) {
+      return failure();
+    }
+    for (Value input : op->getOperands()) {
+      if (getElementTypeOrSelf(input).isBF16()) {
+        return success();
+      }
+    }
+    for (Value value : op->getResults()) {
+      if (getElementTypeOrSelf(value).isBF16()) {
+        return success();
+      }
+    }
+    return failure();
+  }
+
+  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
+    // Casts inputs of the operation.
+    for (int i = 0; i < op->getNumOperands(); i++) {
+      Value input = op->getOperand(i);
+      if (getElementTypeOrSelf(input).isBF16()) {
+        Value f32_cast = rewriter.create<TF::CastOp>(
+            op->getLoc(),
+            CloneTypeWithNewElementType(input.getType(), rewriter.getF32Type()),
+            input);
+        op->setOperand(i, f32_cast);
+      }
+    }
+
+    // Casts BF16 outputs of the operation.
+    for (Value value : op->getResults()) {
+      if (getElementTypeOrSelf(value).isBF16()) {
+        value.setType(CloneTypeWithNewElementType(value.getType(),
+                                                  rewriter.getF32Type()));
+        rewriter.setInsertionPointAfterValue(value);
+        for (Operation* user : op->getUsers()) {
+          for (int i = 0; i < user->getNumOperands(); i++) {
+            if (user->getOperand(i) == value) {
+              Value bf16_cast = rewriter.create<TF::CastOp>(
+                  user->getLoc(),
+                  CloneTypeWithNewElementType(value.getType(),
+                                              rewriter.getBF16Type()),
+                  value);
+              user->setOperand(i, bf16_cast);
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/cast_bf16_ops_to_f32.inc"
 
 void CastBf16OpsToF32Pass::runOnOperation() {
@@ -54,6 +114,7 @@ void CastBf16OpsToF32Pass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   auto module_op = getOperation();
 
+  patterns.add<CastBf16OpsToF32>(ctx);
   populateWithGenerated(patterns);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {

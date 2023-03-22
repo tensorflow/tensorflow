@@ -59,6 +59,7 @@ def RetainOp : DeallocationOp<"retain", [AttrSizedOperandSegments]> {
     Any allocs that are not in the result are deallocated.
 
     `allocs` may contain `null`s. Otherwise, all allocs must be distinct.
+    `retained` values may alias.
   }];
 
   let arguments = (ins Variadic<AnyRankedOrUnrankedMemRef>:$retained,
@@ -71,6 +72,7 @@ def RetainOp : DeallocationOp<"retain", [AttrSizedOperandSegments]> {
   }];
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 #endif  // DEALLOCATION_TD_

@@ -1396,7 +1396,7 @@ class StridedArrayViewBase {
   //
   // `index` should have the same size as `shape`.
   // Each value `dim` in `index` should be in [0, shape[dim]).
-  static llvm::Optional<SmallVector<int64_t>> NextTensorIndex(
+  static std::optional<SmallVector<int64_t>> NextTensorIndex(
       SmallVector<int64_t> index, ArrayRef<int64_t> shape, int64_t fixed_axis) {
 #ifndef NDEBUG
     assert(shape.size() == index.size());
@@ -1518,7 +1518,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
   if (reduce_dim < 0) reduce_dim += iota_type.getRank();
 
   auto index =
-      llvm::Optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
+      std::optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
   while (index.has_value()) {
     StridedArrayView<DenseIntElementsAttr> array_view(
         iota_const_attr, iota_shape, *index, reduce_dim);

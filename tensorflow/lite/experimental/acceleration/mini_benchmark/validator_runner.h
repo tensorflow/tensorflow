@@ -80,6 +80,7 @@ class ValidatorRunner {
       int64_t timeout_us = kDefaultEventTimeoutUs);
 
  private:
+  const std::string storage_path_;
   FlatbufferStorage<BenchmarkEvent> storage_;
   ErrorReporter* error_reporter_;
   bool triggered_ = false;

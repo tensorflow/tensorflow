@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_HLO_XLA_RUNTIME_PIPELINE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_HLO_XLA_RUNTIME_PIPELINE_H_
 
+#include <string>
+
 #include "tensorflow/compiler/xla/runtime/compiler.h"
 #include "tensorflow/compiler/xla/status.h"
 
@@ -28,9 +30,13 @@ namespace cpu {
 
 struct HloXlaRuntimePipelineOptions {
   bool enable_tiling_and_fusion = false;
+  bool enable_fusion_outlining = false;
   bool sparse_bufferization = true;
   bool outline_with_xla_framework = false;
   bool experimental_deallocation = false;
+  bool enable_avx2 = true;
+  // Optional CPU name, similar to llc's -mcpu flag.
+  std::string cpu_name = "";
 };
 
 // Creates a pipeline that lowers modules from HLO to Linalg on buffers.

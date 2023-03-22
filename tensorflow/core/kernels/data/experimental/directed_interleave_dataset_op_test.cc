@@ -439,7 +439,7 @@ TEST_F(DirectedInterleaveDatasetOpTest, InvalidArguments) {
       InvalidInputDatasetsDataType(), ZeroInputDatasetParams()};
   for (auto& dataset_params : invalid_params_vec) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 
@@ -450,7 +450,7 @@ TEST_F(DirectedInterleaveDatasetOpTest, InvalidSelectorValues) {
   std::vector<Tensor> next;
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence).code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

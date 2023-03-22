@@ -179,8 +179,8 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
       auto results = block.getTerminator()->getOperands();
       // Remove the mhlo.return terminator, then inline the block.
       rewriter.eraseOp(block.getTerminator());
-      rewriter.mergeBlockBefore(/*source=*/&block, /*dest=*/op.getOperation(),
-                                /*argValues=*/{});
+      rewriter.inlineBlockBefore(/*source=*/&block, /*dest=*/op.getOperation(),
+                                 /*argValues=*/{});
       rewriter.replaceOp(op, results);
       return success();
     }

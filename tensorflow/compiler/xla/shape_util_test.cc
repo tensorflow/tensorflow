@@ -1213,6 +1213,28 @@ TEST(Transpose021Test, BatchedLogical) {
                 shape, transposed, dimensions, Vector3{0, 2, 1}));
 }
 
+TEST(Transpose021Test, LogicalWithDegenerateDims) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {1, 32, 1, 3, 1, 64, 1}, {6, 5, 4, 3, 2, 1, 0});
+  Shape transposed = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {1, 32, 1, 64, 1, 3, 1}, {6, 5, 4, 3, 2, 1, 0});
+  std::vector<int64_t> dimensions = {6, 1, 4, 5, 2, 3, 0};
+  EXPECT_EQ(std::make_optional(Vector3{32, 64, 3}),
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{0, 2, 1}));
+}
+
+TEST(Transpose021Test, LogicalWithDegenerateLastDim) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 64, 32}, {2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {32, 64, 1}, {2, 1, 0});
+  std::vector<int64_t> dimensions = {2, 1, 0};
+  EXPECT_EQ(std::make_optional(Vector3{1, 32, 64}),
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{0, 2, 1}));
+}
+
 TEST(Transpose021Test, Large) {
   Shape shape =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 31, 31, 65}, {3, 2, 1, 0});

@@ -356,7 +356,7 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(tensorflow::error::INTERNAL,
+            return tensorflow::Status(absl::StatusCode::kInternal,
                                       "failed to copy data from TF tensor");
           }
         } else {

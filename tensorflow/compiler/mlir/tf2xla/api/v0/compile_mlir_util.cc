@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -56,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -355,23 +356,6 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 }
 
-// The default LLVM MLIR Inliner always runs canonicalization, however there
-// is a bug where dumping the pass pipeline and recreating it in offline
-// tools doesn't run canonicalization. To ensure prod and offline tools
-// inlining are equal, explicitly create the Inliner with canonicalization so
-// that the canonicalizer is dumped as part of pipeline passes.
-// See https://github.com/llvm/llvm-project/issues/60960.
-std::unique_ptr<mlir::Pass> CreateInlinerWithCanonicalization() {
-  mlir::registerCanonicalizerPass();
-  auto inliner = mlir::createInlinerPass(/*opPipelines=*/{},
-                                         /*defaultPipelineBuilder=*/{});
-  if (inliner->initializeOptions("default-pipeline=canonicalize").failed()) {
-    return nullptr;
-  }
-
-  return inliner;
-}
-
 }  //  namespace
 
 void CreateConvertMlirToXlaHloPipeline(
@@ -388,7 +372,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(CreateInlinerWithCanonicalization());
+  pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateDropWhileShapeInvariantPass());
   // Create a replicated TensorList initialization ops for all of its uses. This
@@ -468,7 +452,7 @@ void CreateConvertMlirToXlaHloPipeline(
   }
 
   if (CanInlineFunctionsPostLegalization(device_type)) {
-    pm.addPass(CreateInlinerWithCanonicalization());
+    pm.addPass(mlir::createInlinerPass());
   }
 
   // In order to export to XLA, we must sink constants to control flow regions,

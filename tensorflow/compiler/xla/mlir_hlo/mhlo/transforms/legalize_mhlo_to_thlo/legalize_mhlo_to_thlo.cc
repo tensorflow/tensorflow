@@ -421,18 +421,17 @@ class LegalizeMHLOToTHLOPass
     // List of patterns.
     // clang-format off
     patterns.insert<
+        ConcatenateOpPattern,
+        GatherPattern,
         ReversePattern,
         ScatterPattern,
         SortPattern,
         ThloRegionReturnOpConversion>(*typeConverter, ctx);
+    // clang-format on
 
     if (enableExperimental) {
-      patterns.insert<
-        ConcatenateOpPattern,
-        DynamicBroadcastInDimOpPattern,
-        GatherPattern>(*typeConverter, ctx);
+      patterns.insert<DynamicBroadcastInDimOpPattern>(*typeConverter, ctx);
     }
-    // clang-format on
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {

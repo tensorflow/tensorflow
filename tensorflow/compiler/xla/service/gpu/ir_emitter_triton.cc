@@ -37,6 +37,8 @@ limitations under the License.
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -72,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
+#include "triton/Conversion/TritonGPUToLLVM/ArithToIndexPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -218,10 +221,10 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createTritonGPUCoalescePass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
-  pm.addPass(mlir::createTritonGPUFuseTranspositionsPass());
+  pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createTritonGPUPipelinePass(num_stages));
   pm.addPass(mlir::createTritonGPUPrefetchPass());
-  pm.addPass(mlir::createTritonGPUFuseTranspositionsPass());
+  pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUDecomposeConversionsPass());
   if (cc.major == se::CudaComputeCapability::VOLTA) {
@@ -233,11 +236,13 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mt::createTritonConvertArithToIndexPass());
+  pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
+  pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
 }
 
 // Extact additional attributes from an LLVM function that are not passed
@@ -325,8 +330,8 @@ struct GeneralizeKernelSignaturePass
 // TODO(b/270937368): Split this up into smaller functions.
 std::optional<LaunchDimensions> MatMul(
     mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
-    mlir::func::FuncOp fn, tensorflow::AutotuneResult::TritonGemmKey& config,
-    int shmem_budget) {
+    mlir::func::FuncOp fn,
+    const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
   // time.
@@ -660,11 +665,8 @@ std::optional<LaunchDimensions> MatMul(
 std::optional<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
-    AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    std::function<std::optional<LaunchDimensions>(
-        mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
-        AutotuneResult::TritonGemmKey&, int)>
-        generator) {
+    const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
+    LaunchDimensionsGenerator generator) {
   // TODO(b/264317991): Pass in a context instead if this becomes to slow.
   mlir::MLIRContext mlir_context;
   mlir_context.loadDialect<mt::TritonDialect>();
@@ -710,7 +712,7 @@ std::optional<LaunchDimensions> TritonWrapper(
   b.create<mlir::func::ReturnOp>(loc);
   CHECK(mlir::succeeded(mlir::verify(triton_module)));
 
-  VLOG(4) << triton_module;
+  VLOG(4) << llvm_ir::DumpToString(triton_module);
 
   // Compile Triton kernel to LLVM.
   mlir::PassManager pm(&mlir_context);

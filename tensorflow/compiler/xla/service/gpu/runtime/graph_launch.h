@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GRAPH_LAUNCH_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_GRAPH_LAUNCH_H_
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -39,6 +40,11 @@ void RegisterGraphLaunchCustomCalls(
 
 struct GraphInstance;                // Forward declare
 class StreamExecutorGraphInstances;  // Forward declare
+
+// A state vector that keeps track of the number of times a capture function
+// gets executed. Graph capture function ordinal is the key in this container.
+class CapturedFunctionExecutionCount
+    : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
 
 #if GOOGLE_CUDA
 
@@ -81,6 +87,17 @@ class GraphInstances {
   mutable absl::Mutex mutex_;
   absl::node_hash_map<se::StreamExecutor*, StreamExecutorGraphInstances> graphs_
       ABSL_GUARDED_BY(mutex_);
+};
+
+// Xla executable keeps a mapping from stream executors to execution counts.
+class CapturedFunctionExecutionCounts {
+ public:
+  CapturedFunctionExecutionCount* operator()(se::StreamExecutor* executor);
+
+ private:
+  mutable absl::Mutex mutex_;
+  absl::node_hash_map<se::StreamExecutor*, CapturedFunctionExecutionCount>
+      counts_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

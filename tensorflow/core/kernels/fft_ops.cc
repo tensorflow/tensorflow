@@ -266,7 +266,7 @@ class FFTCPU : public FFTBase {
     Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
     input_slice_sizes[0] = input_dims[0];
     TensorShape full_fft_shape;
-    full_fft_shape.AddDim(input_dims[0]);
+    OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(input_dims[0]));
     for (auto i = 1; i <= FFTRank; i++) {
       input_slice_sizes[i] =
           i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];

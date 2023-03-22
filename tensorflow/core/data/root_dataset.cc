@@ -345,10 +345,6 @@ string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
-int64_t RootDataset::CardinalityInternal() const {
-  return input_->Cardinality();
-}
-
 int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
   return input_->Cardinality(options);
 }
