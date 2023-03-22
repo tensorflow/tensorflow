@@ -32,6 +32,9 @@ limitations under the License.
 // In the above code, GetModuleTxt is not called if ShouldDump returns false.
 ////////////////////////////////////////////////////////////////////////////////
 
+#define SHOULD_DUMP(name) \
+  ::tensorflow::DebugDataDumper::Global()->ShouldDump(name)
+
 #define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                    \
   do {                                                                    \
     if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))        \
