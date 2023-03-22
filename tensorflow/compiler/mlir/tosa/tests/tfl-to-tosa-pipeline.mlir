@@ -115,10 +115,45 @@ func.func @test_depthwise_conv2d_bias_qi8(%arg0: tensor<1x32x32x8x!quant.uniform
 // -----
 
 // CHECK-LABEL: @test_conv2d_grouped_convolution
+// CHECK-DAG: %[[INPUT_SLICE_1:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 4, 1, 64>, start = array<i64: 0, 0, 0, 0>}
+// CHECK-DAG: %[[FILTER_SLICE_1:.*]] = "tosa.slice"(%arg1) {size = array<i64: 64, 1, 1, 64>, start = array<i64: 0, 0, 0, 0>}
+// CHECK-DAG: %[[BIAS_SLICE_1:.*]] = "tosa.slice"(%arg2) {size = array<i64: 64>, start = array<i64: 0>}
+// CHECK-DAG: %[[CONV_1:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_1]], %[[FILTER_SLICE_1]], %[[BIAS_SLICE_1]]) {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
+// CHECK-DAG: %[[INPUT_SLICE_2:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 4, 1, 64>, start = array<i64: 0, 0, 0, 64>}
+// CHECK-DAG: %[[FILTER_SLICE_2:.*]] = "tosa.slice"(%arg1) {size = array<i64: 64, 1, 1, 64>, start = array<i64: 64, 0, 0, 0>}
+// CHECK-DAG: %[[BIAS_SLICE_2:.*]] = "tosa.slice"(%arg2) {size = array<i64: 64>, start = array<i64: 64>}
+// CHECK-DAG: %[[CONV_2:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_2]], %[[FILTER_SLICE_2]], %[[BIAS_SLICE_2]]) {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
+// CHECK-DAG: %[[CONCAT:.*]] = "tosa.concat"(%[[CONV_1]], %[[CONV_2]]) {axis = 3 : i64}
+// CHECK: return %[[CONCAT]]
 func.func @test_conv2d_grouped_convolution(%input: tensor<1x4x1x128xf32>, %weights: tensor<128x1x1x64xf32>, %bias: tensor<128xf32>) -> tensor<1x4x1x128xf32> {
-  // expected-error @below {{Grouped convolution is not supported at this time}}
   %0 = "tfl.conv_2d"(%input, %weights, %bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x4x1x128xf32>, tensor<128x1x1x64xf32>, tensor<128xf32>)  -> (tensor<1x4x1x128xf32>)
   return %0 : tensor<1x4x1x128xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_conv2d_grouped_strided_convolution
+// CHECK-DAG: %[[INPUT_SLICE_1:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 0>}
+// CHECK-DAG: %[[FILTER_SLICE_1:.*]] = "tosa.slice"(%arg1) {size = array<i64: 128, 3, 1, 16>, start = array<i64: 0, 0, 0, 0>}
+// CHECK-DAG: %[[BIAS_SLICE_1:.*]] = "tosa.slice"(%arg2) {size = array<i64: 128>, start = array<i64: 0>}
+// CHECK-DAG: %[[CONV_1:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_1]], %[[FILTER_SLICE_1]], %[[BIAS_SLICE_1]]) {dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}
+// CHECK-DAG: %[[INPUT_SLICE_2:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 16>}
+// CHECK-DAG: %[[FILTER_SLICE_2:.*]] = "tosa.slice"(%arg1) {size = array<i64: 128, 3, 1, 16>, start = array<i64: 16, 0, 0, 0>}
+// CHECK-DAG: %[[BIAS_SLICE_2:.*]] = "tosa.slice"(%arg2) {size = array<i64: 128>, start = array<i64: 16>}
+// CHECK-DAG: %[[CONV_2:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_2]], %[[FILTER_SLICE_2]], %[[BIAS_SLICE_2]]) {dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>
+// CHECK-DAG: %[[INPUT_SLICE_3:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 32>}
+// CHECK-DAG: %[[FILTER_SLICE_3:.*]] = "tosa.slice"(%arg1) {size = array<i64: 128, 3, 1, 16>, start = array<i64: 32, 0, 0, 0>}
+// CHECK-DAG: %[[BIAS_SLICE_3:.*]] = "tosa.slice"(%arg2) {size = array<i64: 128>, start = array<i64: 32>}
+// CHECK-DAG: %[[CONV_3:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_3]], %[[FILTER_SLICE_3]], %[[BIAS_SLICE_3]]) {dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}
+// CHECK-DAG: %[[INPUT_SLICE_4:.*]] = "tosa.slice"(%arg0) {size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 48>}
+// CHECK-DAG: %[[FILTER_SLICE_4:.*]] = "tosa.slice"(%arg1) {size = array<i64: 128, 3, 1, 16>, start = array<i64: 48, 0, 0, 0>}
+// CHECK-DAG: %[[BIAS_SLICE_4:.*]] = "tosa.slice"(%arg2) {size = array<i64: 128>, start = array<i64: 48>}
+// CHECK-DAG: %[[CONV_4:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_4]], %[[FILTER_SLICE_4]], %[[BIAS_SLICE_4]]) {dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}
+// CHECK-DAG: %[[CONCAT:.*]] = "tosa.concat"(%[[CONV_1]], %[[CONV_2]], %[[CONV_3]], %[[CONV_4]]) {axis = 3 : i64}
+// CHECK: return %[[CONCAT]]
+func.func @test_conv2d_grouped_strided_convolution(%input: tensor<1x3x1x64xf32>, %weights: tensor<512x3x1x16xf32>, %bias: tensor<512xf32>) -> tensor<1x2x1x512xf32> {
+  %0 = "tfl.conv_2d"(%input, %weights, %bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 1 : i32} : (tensor<1x3x1x64xf32>, tensor<512x3x1x16xf32>, tensor<512xf32>)  -> (tensor<1x2x1x512xf32>)
+  return %0 : tensor<1x2x1x512xf32>
 }
 
 // -----

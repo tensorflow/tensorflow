@@ -1267,6 +1267,91 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
   return success();
 }
 
+Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
+  auto input_type = dyn_cast<RankedTensorType>(op.getInput().getType());
+  auto filter_type = dyn_cast<RankedTensorType>(op.getFilter().getType());
+  auto bias_type = dyn_cast<RankedTensorType>(op.getBias().getType());
+  auto output_type = dyn_cast<RankedTensorType>(op.getResult().getType());
+
+  // The inputs are NHWC, so the slicing/concatenation is done over dim 3.
+  int64_t in_channels_dim = 3;
+  int64_t input_channels = input_type.getDimSize(in_channels_dim);
+  int64_t filter_channels = filter_type.getDimSize(in_channels_dim);
+  int64_t num_groups = input_channels / filter_channels;
+
+  SmallVector<Value> convolutions;
+  convolutions.reserve(num_groups);
+  auto rank = input_type.getRank();
+
+  // Input size vector
+  SmallVector<int64_t, 4> input_size_vals(input_type.getShape().begin(),
+                                          input_type.getShape().end());
+  input_size_vals.back() = filter_channels;
+  DenseI64ArrayAttr input_size = rewriter.getDenseI64ArrayAttr(input_size_vals);
+  auto input_slice_ty =
+      RankedTensorType::get(input_size_vals, input_type.getElementType());
+
+  // Filter size vector
+  SmallVector<int64_t, 4> filter_size_vals(filter_type.getShape().begin(),
+                                           filter_type.getShape().end());
+  filter_size_vals.front() = filter_type.getDimSize(0) / num_groups;
+  DenseI64ArrayAttr filter_size =
+      rewriter.getDenseI64ArrayAttr(filter_size_vals);
+  auto filter_slice_ty =
+      RankedTensorType::get(filter_size_vals, filter_type.getElementType());
+
+  // Bias size vector
+  int64_t bias_size_val = bias_type.getDimSize(0) / num_groups;
+  DenseI64ArrayAttr bias_size = rewriter.getDenseI64ArrayAttr(bias_size_val);
+  auto bias_slice_ty =
+      RankedTensorType::get(bias_size_val, bias_type.getElementType());
+
+  auto per_conv_out_type = RankedTensorType::get(
+      {output_type.getDimSize(0), output_type.getDimSize(1),
+       output_type.getDimSize(2), output_type.getDimSize(3) / num_groups},
+      output_type.getElementType());
+
+  // Create a separate convolution for each group
+  for (int i = 0; i < num_groups; ++i) {
+    // Slice the input
+    SmallVector<int64_t, 4> input_start_vals(rank, 0);
+    input_start_vals.back() = i * filter_channels;
+    DenseI64ArrayAttr input_start =
+        rewriter.getDenseI64ArrayAttr(input_start_vals);
+
+    auto slice_input = rewriter.createOrFold<tosa::SliceOp>(
+        op->getLoc(), input_slice_ty, op.getInput(), input_start, input_size);
+
+    // Slice the filter
+    SmallVector<int64_t, 4> filter_start_vals(rank, 0);
+    filter_start_vals.front() = i * filter_channels;
+    DenseI64ArrayAttr filter_start =
+        rewriter.getDenseI64ArrayAttr(filter_start_vals);
+
+    auto slice_filter = rewriter.createOrFold<tosa::SliceOp>(
+        op->getLoc(), filter_slice_ty, op.getFilter(), filter_start,
+        filter_size);
+
+    // Slice the bias
+    DenseI64ArrayAttr bias_start =
+        rewriter.getDenseI64ArrayAttr(i * filter_channels);
+    auto slice_bias = rewriter.createOrFold<tosa::SliceOp>(
+        op->getLoc(), bias_slice_ty, op.getBias(), bias_start, bias_size);
+
+    // Create a convolution for each set of slices
+    auto conv = rewriter.create<TFL::Conv2DOp>(
+        op->getLoc(), per_conv_out_type, slice_input, slice_filter, slice_bias,
+        op.getDilationHFactor(), op.getDilationWFactor(),
+        op.getFusedActivationFunction(), op.getPadding(), op.getStrideH(),
+        op.getStrideW());
+
+    convolutions.push_back(conv.getResult());
+  }
+
+  return rewriter.createOrFold<tosa::ConcatOp>(op->getLoc(), output_type,
+                                               convolutions, in_channels_dim);
+}
+
 LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_conv2d_op = cast<TFL::Conv2DOp>(op);
@@ -1301,8 +1386,8 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   int64_t filter_channels = filter_type.getDimSize(3);
   if (input_channels != filter_channels &&
       input_channels % filter_channels == 0) {
-    return rewriter.notifyMatchFailure(
-        op, "grouped convolution is not supported at this time");
+    rewriter.replaceOp(op, lowerGroupedConvolution(tfl_conv2d_op, rewriter));
+    return success();
   }
 
   DenseI64ArrayAttr pad;
