@@ -550,6 +550,10 @@ struct SignOptions;
 struct SignOptionsBuilder;
 struct SignOptionsT;
 
+struct BitcastOptions;
+struct BitcastOptionsBuilder;
+struct BitcastOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
@@ -1066,11 +1070,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_ATAN2 = 156,
   BuiltinOperator_UNSORTED_SEGMENT_MIN = 157,
   BuiltinOperator_SIGN = 158,
+  BuiltinOperator_BITCAST = 159,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SIGN
+  BuiltinOperator_MAX = BuiltinOperator_BITCAST
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[159] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[160] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1230,13 +1235,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[159] {
     BuiltinOperator_UNSORTED_SEGMENT_SUM,
     BuiltinOperator_ATAN2,
     BuiltinOperator_UNSORTED_SEGMENT_MIN,
-    BuiltinOperator_SIGN
+    BuiltinOperator_SIGN,
+    BuiltinOperator_BITCAST
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[160] = {
+  static const char * const names[161] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1396,13 +1402,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "ATAN2",
     "UNSORTED_SEGMENT_MIN",
     "SIGN",
+    "BITCAST",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_SIGN)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BITCAST)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1532,11 +1539,12 @@ enum BuiltinOptions : uint8_t {
   BuiltinOptions_UnsortedSegmentSumOptions = 121,
   BuiltinOptions_ATan2Options = 122,
   BuiltinOptions_SignOptions = 123,
+  BuiltinOptions_BitcastOptions = 124,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SignOptions
+  BuiltinOptions_MAX = BuiltinOptions_BitcastOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[124] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[125] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1661,13 +1669,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[124] {
     BuiltinOptions_UnsortedSegmentMinOptions,
     BuiltinOptions_UnsortedSegmentSumOptions,
     BuiltinOptions_ATan2Options,
-    BuiltinOptions_SignOptions
+    BuiltinOptions_SignOptions,
+    BuiltinOptions_BitcastOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[125] = {
+  static const char * const names[126] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1792,13 +1801,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "UnsortedSegmentSumOptions",
     "ATan2Options",
     "SignOptions",
+    "BitcastOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_SignOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_BitcastOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2299,6 +2309,10 @@ template<> struct BuiltinOptionsTraits<tflite::SignOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SignOptions;
 };
 
+template<> struct BuiltinOptionsTraits<tflite::BitcastOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_BitcastOptions;
+};
+
 template<typename T> struct BuiltinOptionsUnionTraits {
   static const BuiltinOptions enum_value = BuiltinOptions_NONE;
 };
@@ -2793,6 +2807,10 @@ template<> struct BuiltinOptionsUnionTraits<tflite::ATan2OptionsT> {
 
 template<> struct BuiltinOptionsUnionTraits<tflite::SignOptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_SignOptions;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::BitcastOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_BitcastOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -3808,6 +3826,14 @@ struct BuiltinOptionsUnion {
   const tflite::SignOptionsT *AsSignOptions() const {
     return type == BuiltinOptions_SignOptions ?
       reinterpret_cast<const tflite::SignOptionsT *>(value) : nullptr;
+  }
+  tflite::BitcastOptionsT *AsBitcastOptions() {
+    return type == BuiltinOptions_BitcastOptions ?
+      reinterpret_cast<tflite::BitcastOptionsT *>(value) : nullptr;
+  }
+  const tflite::BitcastOptionsT *AsBitcastOptions() const {
+    return type == BuiltinOptions_BitcastOptions ?
+      reinterpret_cast<const tflite::BitcastOptionsT *>(value) : nullptr;
   }
 };
 
@@ -11563,6 +11589,45 @@ inline flatbuffers::Offset<SignOptions> CreateSignOptions(
 
 flatbuffers::Offset<SignOptions> CreateSignOptions(flatbuffers::FlatBufferBuilder &_fbb, const SignOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct BitcastOptionsT : public flatbuffers::NativeTable {
+  typedef BitcastOptions TableType;
+};
+
+struct BitcastOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef BitcastOptionsT NativeTableType;
+  typedef BitcastOptionsBuilder Builder;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  BitcastOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BitcastOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BitcastOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BitcastOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct BitcastOptionsBuilder {
+  typedef BitcastOptions Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit BitcastOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<BitcastOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<BitcastOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<BitcastOptions> CreateBitcastOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  BitcastOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<BitcastOptions> CreateBitcastOptions(flatbuffers::FlatBufferBuilder &_fbb, const BitcastOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code = 0;
@@ -12074,6 +12139,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const tflite::SignOptions *builtin_options_as_SignOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_SignOptions ? static_cast<const tflite::SignOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::BitcastOptions *builtin_options_as_BitcastOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_BitcastOptions ? static_cast<const tflite::BitcastOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -12601,6 +12669,10 @@ template<> inline const tflite::ATan2Options *Operator::builtin_options_as<tflit
 
 template<> inline const tflite::SignOptions *Operator::builtin_options_as<tflite::SignOptions>() const {
   return builtin_options_as_SignOptions();
+}
+
+template<> inline const tflite::BitcastOptions *Operator::builtin_options_as<tflite::BitcastOptions>() const {
+  return builtin_options_as_BitcastOptions();
 }
 
 struct OperatorBuilder {
@@ -16938,6 +17010,29 @@ inline flatbuffers::Offset<SignOptions> CreateSignOptions(flatbuffers::FlatBuffe
       _fbb);
 }
 
+inline BitcastOptionsT *BitcastOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<BitcastOptionsT>(new BitcastOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void BitcastOptions::UnPackTo(BitcastOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<BitcastOptions> BitcastOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BitcastOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateBitcastOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<BitcastOptions> CreateBitcastOptions(flatbuffers::FlatBufferBuilder &_fbb, const BitcastOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BitcastOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateBitcastOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorCodeT>(new OperatorCodeT());
   UnPackTo(_o.get(), _resolver);
@@ -17973,6 +18068,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::SignOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_BitcastOptions: {
+      auto ptr = reinterpret_cast<const tflite::BitcastOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -18484,6 +18583,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::SignOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_BitcastOptions: {
+      auto ptr = reinterpret_cast<const tflite::BitcastOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -18983,6 +19086,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::SignOptionsT *>(value);
       return CreateSignOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_BitcastOptions: {
+      auto ptr = reinterpret_cast<const tflite::BitcastOptionsT *>(value);
+      return CreateBitcastOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -19479,6 +19586,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) : 
     }
     case BuiltinOptions_SignOptions: {
       value = new tflite::SignOptionsT(*reinterpret_cast<tflite::SignOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_BitcastOptions: {
+      value = new tflite::BitcastOptionsT(*reinterpret_cast<tflite::BitcastOptionsT *>(u.value));
       break;
     }
     default:
@@ -20100,6 +20211,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SignOptions: {
       auto ptr = reinterpret_cast<tflite::SignOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_BitcastOptions: {
+      auto ptr = reinterpret_cast<tflite::BitcastOptionsT *>(value);
       delete ptr;
       break;
     }

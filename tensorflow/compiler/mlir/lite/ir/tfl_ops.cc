@@ -4096,6 +4096,68 @@ void ConstBytesAttr::print(mlir::AsmPrinter& printer) const {
 }
 
 //===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+int64_t GetTypeBitWidth(mlir::Type type) {
+  if (auto quant_type = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    return quant_type.getStorageTypeIntegralWidth();
+  }
+  if (type.isIntOrFloat()) {
+    return std::max(type.getIntOrFloatBitWidth(),
+                    static_cast<unsigned>(CHAR_BIT));
+  }
+  return -1;
+}
+
+LogicalResult BitcastOp::verify() {
+  BitcastOp op = *this;
+  auto input_type = op.getInput().getType().cast<ShapedType>();
+  auto output_type = op.getOutput().getType().cast<ShapedType>();
+
+  auto input_element_type = input_type.getElementType();
+  auto output_element_type = output_type.getElementType();
+
+  if (input_type.hasStaticShape()) {
+    const int input_element_type_bitwidth = GetTypeBitWidth(input_element_type);
+    const int output_element_type_bitwidth =
+        GetTypeBitWidth(output_element_type);
+
+    if (input_element_type_bitwidth < 0 || output_element_type_bitwidth < 0) {
+      // Only supports quantized type, int and float types.
+      return op.emitOpError("Unsupported element type.");
+    }
+
+    if (input_element_type_bitwidth < output_element_type_bitwidth) {
+      if (output_element_type_bitwidth % input_element_type_bitwidth != 0) {
+        return op.emitOpError(
+            "output element bitwidth is not multiple of input element "
+            "bitwidth");
+      }
+      if (input_type.getShape().empty() ||
+          input_type.getShape().back() % (output_element_type_bitwidth /
+                                          input_element_type_bitwidth) !=
+              0) {
+        return op.emitOpError(
+            "input rightmost dimension size is not multiple of the divisor");
+      }
+    } else if (input_element_type_bitwidth > output_element_type_bitwidth) {
+      if (input_element_type_bitwidth % output_element_type_bitwidth != 0) {
+        return op.emitOpError(
+            "input element bitwidth is not multiple of output element "
+            "bitwidth");
+      }
+    }
+  }
+  return success();
+}
+
+OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
+  if (getType() == getInput().getType()) return getInput();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 

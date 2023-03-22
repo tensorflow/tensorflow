@@ -3137,3 +3137,14 @@ func.func @testUnsortedSegmentMin(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %
   func.return %0 : tensor<8xf32>
   // CHECK: return %0 : tensor<8xf32>
 }
+
+
+// -----
+
+// CHECK-LABEL: testBitcast
+func.func @testBitcast(%arg0: tensor<8xui32>) -> tensor<8xi32> {
+  // CHECK: "tfl.bitcast"(%arg0)
+  %0 = "tfl.bitcast"(%arg0) : (tensor<8xui32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+  // CHECK: return %0 : tensor<8xi32>
+}

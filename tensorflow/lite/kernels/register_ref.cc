@@ -181,6 +181,7 @@ TfLiteRegistration* Register_CALL_ONCE();
 TfLiteRegistration* Register_VAR_HANDLE();
 TfLiteRegistration* Register_READ_VARIABLE();
 TfLiteRegistration* Register_ASSIGN_VARIABLE();
+TfLiteRegistration* Register_BITCAST();
 
 namespace {
 
@@ -528,6 +529,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
   AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
   AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
+  AddBuiltin(BuiltinOperator_BITCAST, Register_BITCAST());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

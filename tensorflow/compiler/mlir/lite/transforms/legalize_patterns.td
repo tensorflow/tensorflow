@@ -577,6 +577,8 @@ def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
 
 def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;
 
+def LegalizeBitcast : Pat<(TF_BitcastOp $x), (TFL_BitcastOp $x)>;
+
 // =============================================================================
 // Training OPs
 // =============================================================================

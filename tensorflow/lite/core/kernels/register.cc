@@ -359,6 +359,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SIGN, Register_SIGN(),
              /* min_version = */ 1,
              /* max_version = */ 2);
+  AddBuiltin(BuiltinOperator_BITCAST, Register_BITCAST());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

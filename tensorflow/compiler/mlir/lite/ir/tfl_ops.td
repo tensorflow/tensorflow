@@ -4030,6 +4030,26 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
     outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
 }
 
+def TFL_BitcastOp : TFL_Op<"bitcast", [Pure]> {
+  let summary = "Bitcast operator";
+
+  let description = [{
+    Bitcasts a tensor from one type to another.
+  }];
+
+  let arguments = (ins AnyTensor:$input);
+
+  let results = (outs AnyTensor:$output);
+
+  // TFLite's bitcast bitop does not utilize options, instead derives types
+  // from the TfLiteTensors.
+  let hasOptions = 0;
+
+  let hasFolder = 1;
+
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//
