@@ -107,7 +107,7 @@ class Fingerprint(object):
 
     Returns:
       The string concatenation of `graph_def_program_hash`,
-      `signature_def_hash`, and `saved_object_graph_hash`
+      `signature_def_hash`, `saved_object_graph_hash`, and `checkpoint_hash`
       fingerprint attributes (separated by '/').
 
     Raises:
