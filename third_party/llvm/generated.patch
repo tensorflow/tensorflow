@@ -1,34 +1,48 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/string/BUILD.bazel
-@@ -144,6 +144,7 @@
-     deps = [
-         "//libc:__support_cpp_span",
-         "//libc/test/UnitTest:memory_matcher",
-+        ":memory_check_utils",
-     ],
- )
+diff -ruN --strip-trailing-cr a/lldb/test/API/commands/watchpoints/step_over_watchpoint/TestStepOverWatchpoint.py b/lldb/test/API/commands/watchpoints/step_over_watchpoint/TestStepOverWatchpoint.py
+--- a/lldb/test/API/commands/watchpoints/step_over_watchpoint/TestStepOverWatchpoint.py
++++ b/lldb/test/API/commands/watchpoints/step_over_watchpoint/TestStepOverWatchpoint.py
+@@ -34,13 +34,13 @@
+         # stepping off from the breakpoint:
+         bkpt.SetEnabled(False)
+         
+-        return (target, process, thread, read_watchpoint)
++        return (target, process, thread, frame, read_watchpoint)
+     
+     # Read-write watchpoints not supported on SystemZ
+     @expectedFailureAll(archs=['s390x'])
+     @add_test_categories(["basic_process"])
+     def test_step_over(self):
+-        target, process, thread, wp = self.get_to_start("Set a breakpoint here")
++        target, process, thread, frame, wp = self.get_to_start("Set a breakpoint here")
+     
+         thread.StepOver()
+         self.assertStopReason(thread.GetStopReason(), lldb.eStopReasonWatchpoint,
+@@ -61,7 +61,7 @@
+         bugnumber="<rdar://problem/34027183>")
+     @add_test_categories(["basic_process"])
+     def test_step_instruction(self):
+-        target, process, thread, wp = self.get_to_start("Set breakpoint after call")
++        target, process, thread, frame, wp = self.get_to_start("Set breakpoint after call")
  
-@@ -156,6 +157,7 @@
-     deps = [
-         "//libc:__support_cpp_span",
-         "//libc/test/UnitTest:memory_matcher",
-+        ":memory_check_utils",
-     ],
- )
+         self.step_inst_for_watchpoint(1)
  
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -6762,8 +6762,8 @@
+@@ -75,6 +75,7 @@
+         if re.match("^mips", arch) or re.match("powerpc64le", arch):
+             self.runCmd("watchpoint delete 1")
+ 
++        error = lldb.SBError()
+         # resolve_location=True, read=False, write=True
+         write_watchpoint = write_value.Watch(True, False, True, error)
+         self.assertTrue(write_watchpoint, "Failed to set write watchpoint.")
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -219,6 +219,7 @@
+     hdrs = ["src/__support/arg_list.h"],
      deps = [
-         ":IR",
-         ":Support",
--        "//third_party/llvm/llvm-project/llvm:Core",
--        "//third_party/llvm/llvm-project/llvm:FrontendOpenMP",
-+        "//llvm:Core",
-+        "//llvm:FrontendOpenMP",
+         ":libc_root",
++        ":__support_common",
      ],
  )
  
