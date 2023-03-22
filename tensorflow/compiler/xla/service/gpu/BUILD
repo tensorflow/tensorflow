@@ -377,6 +377,7 @@ cc_library(
         ":gpu_device_info",
         ":ir_emission_utils",
         ":launch_dimensions",
+        ":matmul_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
@@ -1015,6 +1016,7 @@ cc_library(
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
         ":ir_emission_utils",
+        ":matmul_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",

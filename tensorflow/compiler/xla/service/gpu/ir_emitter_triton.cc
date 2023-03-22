@@ -15,27 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
 #include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
-#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
@@ -70,9 +64,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "triton/Conversion/TritonGPUToLLVM/ArithToIndexPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
@@ -353,12 +347,16 @@ std::optional<LaunchDimensions> MatMul(
   CHECK_LE(dims.lhs_batch_dimensions_size(), 1);
   const bool batch = !dims.lhs_batch_dimensions().empty();
   CHECK_EQ(dot_instr->operand(0)->shape().rank(), 2 + batch);
-  const int lhs_noncontracting_dim_idx =
-      NoncontractingDimensionIndex(dims.lhs_contracting_dimensions(0),
-                                   batch ? dims.lhs_batch_dimensions(0) : -1);
-  const int rhs_noncontracting_dim_idx =
-      NoncontractingDimensionIndex(dims.rhs_contracting_dimensions(0),
-                                   batch ? dims.rhs_batch_dimensions(0) : -1);
+  const int64_t lhs_noncontracting_dim_idx =
+      GetNonContractingDims(dot_instr->operand(0)->shape(),
+                            dims.lhs_batch_dimensions(),
+                            dims.lhs_contracting_dimensions())
+          .value()[0];
+  const int64_t rhs_noncontracting_dim_idx =
+      GetNonContractingDims(dot_instr->operand(1)->shape(),
+                            dims.rhs_batch_dimensions(),
+                            dims.rhs_contracting_dimensions())
+          .value()[0];
 
   // Non-contracting dimension lengths.
   // Just the fastest-varying part of it if the dimension is split.

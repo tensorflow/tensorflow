@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <stack>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -40,16 +40,33 @@ namespace xla {
 namespace gpu {
 namespace {
 
-int FirstBatchDimensionIndex(const DotDimensionNumbers& dimension_numbers,
-                             const int operand_number) {
+// Batch dimensions of an operand of a dot instruction.
+// Just an unified accessor to lhs_batch_dimensions and rhs_batch_dimensions.
+const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
+    const HloInstruction& dot, const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   if (operand_number == 0) {
-    return dimension_numbers.lhs_batch_dimensions_size()
-               ? dimension_numbers.lhs_batch_dimensions(0)
-               : -1;
+    return dimension_numbers.lhs_batch_dimensions();
   }
-  return dimension_numbers.rhs_batch_dimensions_size()
-             ? dimension_numbers.rhs_batch_dimensions(0)
-             : -1;
+  return dimension_numbers.rhs_batch_dimensions();
+}
+
+// Index of first batch dimension of dot instruction operand; -1 if none exist.
+int64_t FirstBatchDimensionForOperand(const HloInstruction& dot,
+                                      const int operand_number) {
+  tsl::protobuf::RepeatedField<int64_t> dimensions =
+      BatchDimensionsForOperand(dot, operand_number);
+  return dimensions.empty() ? -1 : dimensions[0];
+}
+
+// Index of first contracting dimension of dot instruction operand.
+int64_t FirstContractingDimensionIndex(const HloInstruction& dot,
+                                       const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (operand_number == 0) {
+    return dimension_numbers.lhs_contracting_dimensions(0);
+  }
+  return dimension_numbers.rhs_contracting_dimensions(0);
 }
 
 // Data types that are tested to work in the triton GEMM emitter.
@@ -389,16 +406,15 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
               }
               // Non-contracting dimension can be split if batch is absent.
               return DimensionOrder(
-                  operand, -1,
-                  NoncontractingDimensionIndex(
-                      dot->dot_dimension_numbers().lhs_contracting_dimensions(
-                          0),
-                      -1));
+                  operand, /*batch_dimension_index=*/-1,
+                  GetNonContractingDims(
+                      operand->shape(), /*batch_dims=*/{},
+                      {FirstContractingDimensionIndex(*dot, 0)})
+                      .value()[0]);
             } else if (operand == dot->operand(1)) {
-              return DimensionOrder(
-                  operand,
-                  FirstBatchDimensionIndex(dot->dot_dimension_numbers(), 1),
-                  -1);
+              return DimensionOrder(operand,
+                                    FirstBatchDimensionForOperand(*dot, 1),
+                                    /*splittable_dimension_index=*/-1);
             }
             // Otherwise operand's output is described by its consumer's input.
             return DimensionOrder(dim_orders.at(hlo));
@@ -480,17 +496,6 @@ StatusOr<bool> RunOnComputation(
 
 }  // anonymous namespace
 
-int NoncontractingDimensionIndex(const int contracting_dimension_index,
-                                 const int batch_dimension_index) {
-  // Sum of all indices is 0 + 1 = 1 if only two dimensions are present.
-  int ret = 1 - contracting_dimension_index;
-  if (batch_dimension_index >= 0) {
-    // Sum of all indices is 0 + 1 + 2 = 3 if three dimensions are present.
-    ret += (2 - batch_dimension_index);
-  }
-  return ret;
-}
-
 DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
   VLOG(5) << root->parent()->ToString();
 
@@ -555,7 +560,6 @@ bool IsTritonHandledGEMM(
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
     return false;
   }
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
 
   auto supported_output_type = [&](const PrimitiveType t) {
     switch (t) {
@@ -583,7 +587,7 @@ bool IsTritonHandledGEMM(
   }
 
   // TODO(b/269580541): support multiple batch dimensions.
-  if (dimension_numbers.lhs_batch_dimensions().size() > 1) {
+  if (dot.dot_dimension_numbers().lhs_batch_dimensions().size() > 1) {
     return false;
   }
 
@@ -593,11 +597,14 @@ bool IsTritonHandledGEMM(
 
   // Traverse HLO graph part checking that it both can be fused
   // and is worth fusing.
-  auto has_triton_fusible_inputs = [&](const HloInstruction* input,
-                                       int64_t batch_dimension_index,
-                                       int64_t contracting_dimension_index) {
-    DimensionOrder dim_order(input, batch_dimension_index,
-                             contracting_dimension_index);
+  auto has_triton_fusible_inputs = [&](const int operand_number) {
+    const HloInstruction* input = dot.operand(operand_number);
+    DimensionOrder dim_order(
+        input, FirstBatchDimensionForOperand(dot, operand_number),
+        GetNonContractingDims(
+            input->shape(), BatchDimensionsForOperand(dot, operand_number),
+            {FirstContractingDimensionIndex(dot, operand_number)})
+            .value()[0]);
     while (TryToFuse(input, dim_order, cuda_compute_capability).ok()) {
       if (input->opcode() == HloOpcode::kConvert ||
           input->opcode() == HloOpcode::kTranspose) {
@@ -608,12 +615,7 @@ bool IsTritonHandledGEMM(
     return false;
   };
 
-  return has_triton_fusible_inputs(
-             dot.operand(0), FirstBatchDimensionIndex(dimension_numbers, 0),
-             dimension_numbers.lhs_contracting_dimensions(0)) ||
-         has_triton_fusible_inputs(
-             dot.operand(1), FirstBatchDimensionIndex(dimension_numbers, 1),
-             dimension_numbers.rhs_contracting_dimensions(0));
+  return has_triton_fusible_inputs(0) || has_triton_fusible_inputs(1);
 
   // TODO(b/266857789): either check that no output fusion (axpy, relu etc)
   // is expected or actually support it.
