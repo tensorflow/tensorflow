@@ -402,6 +402,11 @@ bool AbslParseFlag(absl::string_view text,
 std::string AbslUnparseFlag(
     FunctionalHloRunner::ModuleArgumentMode argument_mode);
 
+bool AbslParseFlag(absl::string_view text,
+                   FunctionalHloRunner::ModuleOutputMode* output_mode,
+                   std::string* error);
+std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TOOLS_MULTIHOST_HLO_RUNNER_FUNCTIONAL_HLO_RUNNER_H_
