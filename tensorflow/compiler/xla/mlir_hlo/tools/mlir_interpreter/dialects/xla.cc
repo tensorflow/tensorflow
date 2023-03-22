@@ -19,8 +19,15 @@ namespace mlir {
 namespace interpreter {
 namespace {
 
+llvm::SmallVector<InterpreterValue> bufferToMem(
+    MutableArrayRef<InterpreterValue> args, mlir::Operation*,
+    InterpreterState&) {
+  return {args[0]};
+}
+
 REGISTER_MLIR_INTERPRETER_OP("xla_cpu.memref_element_cast",
                              "builtin.unrealized_conversion_cast");
+REGISTER_MLIR_INTERPRETER_OP("xla_framework.buffer_to_mem", bufferToMem);
 
 }  // namespace
 }  // namespace interpreter
