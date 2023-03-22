@@ -1185,9 +1185,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   }
 
   BufferAllocation::Slice bias, aux;  // Not used.
-  if (matmul.getBias() != nullptr) {
-    TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
-  }
+
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
   bool has_epilogue = false;
@@ -1202,7 +1200,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   BufferAllocation::Slice c_empty;
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b,
-      use_vector_bias ? c_empty : c, d, bias, aux,
+      use_vector_bias ? c_empty : c, d, use_vector_bias ? c : bias, aux,
       a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));

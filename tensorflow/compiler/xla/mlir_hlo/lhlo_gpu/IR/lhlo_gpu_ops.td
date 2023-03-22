@@ -174,7 +174,7 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     I64Attr:$algorithm);
 }
 
-def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOperandSegments]> {
+def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
@@ -184,7 +184,6 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOpe
     Arg<LHLO_Buffer, "", [MemRead]>:$c_scale,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_scale,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
-    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
     Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_amax,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,

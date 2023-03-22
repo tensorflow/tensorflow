@@ -1160,8 +1160,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     config.set_epilogue(GemmBackendConfig::BIAS);
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
-        config.beta() == 0.0) {
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+      // Matrix and vector bias don't co-exist for FP8 matmul.
+      if (config.beta() != 0.0) {
+      // Skip non-trivial case.
+        return true;
+      }
       operands[2] = bias;
     } else {
       operands.push_back(bias);
