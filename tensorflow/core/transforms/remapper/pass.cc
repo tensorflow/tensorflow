@@ -196,8 +196,7 @@ class MatchStringToHashBucket : public RemapperPatternBase {
     TFOp stringtohash_wrapper(op);
 
     // AsString op
-    Value as_string_value = op->getOperand(0);
-    Operation* as_string_op = as_string_value.getDefiningOp();
+    Operation* as_string_op = op->getOperand(0).getDefiningOp();
     if (!as_string_op) return failure();
 
     // Input to StringToHashBucket should be the AsString op
