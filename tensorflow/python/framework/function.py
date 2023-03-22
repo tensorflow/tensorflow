@@ -352,7 +352,7 @@ class _DefinedFunction(object):
           fdef.ParseFromString(compat.as_bytes(proto_data))
           with ops.init_scope():
             if context.executing_eagerly():
-              context.add_function(func)
+              context.add_c_function(func)
               self._function_deleter = _DefinedFunctionDeleter(
                   fdef.signature.name)
       return fdef
@@ -1371,5 +1371,7 @@ _DTYPE_TO_STR = {
     dtypes.qint16: "qi16",
     dtypes.quint16: "qu16",
     dtypes.qint32: "qi32",
-    dtypes.bfloat16: "b16"
+    dtypes.bfloat16: "b16",
+    dtypes.float8_e5m2: "f8e5m2",
+    dtypes.float8_e4m3fn: "f8e4m3fn"
 }

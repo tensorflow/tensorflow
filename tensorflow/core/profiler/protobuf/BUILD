@@ -1,6 +1,7 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],
 )
@@ -29,7 +30,13 @@ tf_proto_library(
     srcs = ["xplane.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+    ],
     visibility = [":friends"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+    ],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
@@ -41,6 +48,15 @@ exports_files(
 tf_proto_library(
     name = "diagnostics_proto",
     srcs = ["diagnostics.proto"],
+    cc_api_version = 2,
+    visibility = [
+        ":friends",
+    ],
+)
+
+tf_proto_library(
+    name = "topology_proto",
+    srcs = ["topology.proto"],
     cc_api_version = 2,
     visibility = [
         ":friends",
@@ -120,6 +136,7 @@ tf_proto_library(
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
     protodeps = [
+        ":topology_proto",
         ":diagnostics_proto",
         ":kernel_stats_proto",
         ":op_metrics_proto",
@@ -158,7 +175,13 @@ tf_proto_library(
     name = "trace_events_proto",
     srcs = ["trace_events.proto"],
     cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/tsl/profiler/protobuf:trace_events_proto",
+    ],
     visibility = [":friends"],
+    exports = [
+        "//tensorflow/tsl/profiler/protobuf:trace_events_proto",
+    ],
 )
 
 tf_proto_library(
@@ -216,5 +239,12 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = [":memory_viewer_friends"],
 #     deps = [":memory_viewer_preprocess_proto"],
+# )
+#
+# py_proto_library(
+#     name = "op_profile_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_profile_proto"],
 # )
 # copybara:uncomment_end

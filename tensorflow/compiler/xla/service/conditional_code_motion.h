@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -219,7 +219,11 @@ class ConditionalCodeMotion : public HloModulePass {
   // configurations specified with the same index number for the conditional.
   absl::flat_hash_map<int64_t, std::vector<int64_t>> search_config_map_;
   std::vector<std::vector<int64_t>> move_config_, reuse_config_;
-
+  // How much memory increase, calculated using
+  // ShapeUtil::ByteSizeOf(hlo->shape(), 1) >> 9, is allowed per instruction
+  // moved.
+  const int64_t kMemoryAllowance = 10000;
+  int64_t memory_increase_ = 0;
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,
                                     std::vector<Boundary>& new_boundaries);

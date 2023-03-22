@@ -18,13 +18,13 @@ limitations under the License.
 #include <string>
 
 #include "flatbuffers/flexbuffers.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/core/tools/verifier.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/lite/tools/verifier.h"
 
 namespace toco {
 

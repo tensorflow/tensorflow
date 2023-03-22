@@ -43,6 +43,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
@@ -54,6 +55,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.training import saver
@@ -433,9 +435,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         return x + v
       def false():
         return 2.0 * v
-      return i + 1, control_flow_ops.cond(i > 0, true, false)
+      return i + 1, tf_cond.cond(i > 0, true, false)
 
-    _, x = control_flow_ops.while_loop(cond, body, [0, 0.0])
+    _, x = while_loop.while_loop(cond, body, [0, 0.0])
     # Computing gradients does not produce an exception:
     g = gradients_impl.gradients(x, v)
     self.evaluate(variables.global_variables_initializer())
@@ -639,7 +641,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[6]])
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterAddVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 1.5],
@@ -652,7 +655,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterSubVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 2.5],
@@ -665,7 +669,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([1.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 1.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterMaxVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 4.0],
@@ -688,7 +693,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.5], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterMinVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 4.0],
@@ -711,7 +717,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 2.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterMulVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 4.0],
@@ -724,7 +731,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 12.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterDivVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 6.0],
@@ -737,7 +745,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
-  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64,
+                            dtypes.bfloat16)
   @test_util.run_in_graph_and_eager_modes
   def testScatterUpdateVariableMethod(self, dtype):
     v = resource_variable_ops.ResourceVariable([0.0, 6.0],
@@ -1287,7 +1296,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       return (i + 1, v.read_value())
 
     with self.assertRaisesRegex(ValueError, "initial_value"):
-      control_flow_ops.while_loop(cond, body, [0, 0])
+      while_loop.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
     with context.eager_mode():
@@ -1466,7 +1475,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       # least 1024 elements. Test that op determinism ensures the op is
       # deterministc.
       v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
-      delta = ops.IndexedSlices(
+      delta = indexed_slices.IndexedSlices(
           values=np.random.normal(size=(1_000_000,)),
           indices=array_ops.zeros((1_000_000,), dtype=np.int32),
           dense_shape=(1024,))
@@ -1688,6 +1697,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       dict(dtype=dtypes.bool),
       dict(dtype=dtypes.int64),
       dict(dtype=dtypes.half),
+      dict(dtype=dtypes.bfloat16),
       dict(dtype=dtypes.float32),
       dict(dtype=dtypes.double),
   ])

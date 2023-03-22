@@ -50,6 +50,10 @@ constexpr char kTestFuzzGeneratedBadNodeAttr[] =
     "cc/saved_model/testdata/fuzz_generated/bad_node_attr";
 constexpr char kTestCyclicModule[] = "cc/saved_model/testdata/CyclicModule";
 constexpr char kTestSimpleV1Model[] = "cc/saved_model/testdata/SimpleV1Model";
+constexpr char kVarsAndArithmeticObjectGraph[] =
+    "cc/saved_model/testdata/VarsAndArithmeticObjectGraph";
+// This is the value in testdata/VarsAndArithmeticObjectGraph/fingerprint.pb
+constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class LoaderTest : public ::testing::Test {
  protected:
@@ -354,14 +358,14 @@ TEST_F(LoaderTest, UpdateMetricsV2) {
   RunOptions run_options;
   const string kCCLoadLabel = "cc_load";
 
-  const int read_count_v2 = metrics::SavedModelRead("2").value();
+  const int read_count_v2 = metrics::SavedModelReadCount("2").value();
   const int api_count = metrics::SavedModelReadApi(kCCLoadLabel).value();
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestCyclicModule);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
 
-  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count_v2 + 1);
+  EXPECT_EQ(metrics::SavedModelReadCount("2").value(), read_count_v2 + 1);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadLabel).value(), api_count + 1);
 }
 
@@ -371,8 +375,8 @@ TEST_F(LoaderTest, UpdateMetricsV1) {
   RunOptions run_options;
   const string kCCLoadLabel = "cc_load";
 
-  const int read_count_v1 = metrics::SavedModelRead("1").value();
-  const int read_count_v2 = metrics::SavedModelRead("2").value();
+  const int read_count_v1 = metrics::SavedModelReadCount("1").value();
+  const int read_count_v2 = metrics::SavedModelReadCount("2").value();
 
   const int api_count = metrics::SavedModelReadApi(kCCLoadLabel).value();
   const string export_dir =
@@ -380,9 +384,25 @@ TEST_F(LoaderTest, UpdateMetricsV1) {
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
 
-  EXPECT_EQ(metrics::SavedModelRead("1").value(), read_count_v1 + 1);
-  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count_v2);
+  EXPECT_EQ(metrics::SavedModelReadCount("1").value(), read_count_v1 + 1);
+  EXPECT_EQ(metrics::SavedModelReadCount("2").value(), read_count_v2);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadLabel).value(), api_count + 1);
+}
+
+TEST_F(LoaderTest, UpdateFingerprintMetrics) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kVarsAndArithmeticObjectGraph);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+
+  EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
+
+  EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
+            kV2ModuleSavedModelChecksum);
 }
 
 }  // namespace

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -60,6 +62,29 @@ TEST(TensorUtilsTest, QuantizationAxisAndShapeValid) {
                                     /*scales_shape=*/{5},
                                     /*zero_points_shape=*/{5},
                                     /*quantization_axis=*/1)));
+}
+
+TEST(TensorUtilsTest, TransposedShape) {
+  EXPECT_EQ(TransposedShape({2, 3, 4, 5}, {1, 2, 3, 0}),
+            TensorShape({3, 4, 5, 2}));
+}
+
+TEST(TensorUtilsTest, Transpose) {
+  const std::vector<int32_t> perm = {1, 2, 0};
+  const TensorShape shape({2, 3, 4});
+  const TensorShape transposed_shape = TransposedShape(shape, perm);
+  Tensor transposed_tensor = test::AsTensor<int32_t>(
+      std::vector<int32_t>(2 * 3 * 4, 0), transposed_shape);
+  Transpose<int32_t>(
+      test::AsTensor<int32_t>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                              shape),
+      perm, transposed_tensor);
+  test::ExpectTensorEqual<int32_t>(
+      transposed_tensor,
+      test::AsTensor<int32_t>({0, 12, 1, 13, 2, 14, 3, 15, 4,  16, 5,  17,
+                               6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23},
+                              transposed_shape));
 }
 
 }  // namespace tensorflow

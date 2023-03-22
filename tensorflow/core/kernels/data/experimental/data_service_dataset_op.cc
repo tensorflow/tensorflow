@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/captured_function.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/service/client/common.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -176,14 +176,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     return EstimateCardinality(processing_mode_, metadata_,
                                is_coordinated_read_);
   }
 
   Status CheckExternalState() const override {
     return Status(
-        error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         strings::StrCat(DebugString(), " does not yet support serialization."));
   }
 
@@ -342,8 +342,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args),
-                                       /*ratio=*/1);
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1, {});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -449,9 +449,6 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kDataTransferProtocol)) {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
-  }
-  if (data_transfer_protocol_.empty()) {
-    data_transfer_protocol_ = kGrpcTransferProtocol;
   }
 
   std::string target_workers_str = "AUTO";

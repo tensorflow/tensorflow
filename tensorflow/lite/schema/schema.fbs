@@ -53,7 +53,8 @@ enum TensorType : byte {
   RESOURCE = 13,
   VARIANT = 14,
   UINT32 = 15,
-  UINT16 = 16
+  UINT16 = 16,
+  INT4 = 17,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -739,8 +740,11 @@ table UnidirectionalSequenceLSTMOptions {
   // If true then first dimension is sequence, otherwise batch.
   time_major:bool;
 
-  // Parameter for Unidirectional Sequence LSTM version 4.
+  // Parameter for Unidirectional Sequence LSTM version 3.
   asymmetric_quantize_inputs:bool;
+
+  // Parameter for unidirectional sequence RNN version 4.
+  diagonal_recurrent_tensors:bool;
 }
 
 table BidirectionalSequenceLSTMOptions {
@@ -919,9 +923,13 @@ table SliceOptions {
 }
 
 table TransposeConvOptions {
+  // Parameters supported by version 1, 2, 3:
   padding:Padding;
   stride_w:int;
   stride_h:int;
+
+  // Parameters supported by version 4:
+  fused_activation_function:ActivationFunctionType = NONE;
 }
 
 table ExpandDimsOptions {

@@ -17,17 +17,17 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -38,8 +38,6 @@ Status DefaultValidator(const OpRegistryInterface& op_registry) {
 }
 
 // OpRegistry -----------------------------------------------------------------
-
-OpRegistryInterface::~OpRegistryInterface() {}
 
 Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
                                         const OpDef** op_def) const {
@@ -52,10 +50,6 @@ Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
 
 OpRegistry::OpRegistry()
     : initialized_(false), op_registry_validator_(DefaultValidator) {}
-
-OpRegistry::~OpRegistry() {
-  for (const auto& e : registry_) delete e.second;
-}
 
 void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
   mutex_lock lock(mu_);
@@ -93,7 +87,7 @@ const OpRegistrationData* OpRegistry::LookUp(const string& op_type_name) const {
     tf_shared_lock l(mu_);
     if (initialized_) {
       if (const OpRegistrationData* res =
-              gtl::FindWithDefault(registry_, op_type_name, nullptr)) {
+              gtl::FindWithDefault(registry_, op_type_name, nullptr).get()) {
         return res;
       }
     }
@@ -110,7 +104,7 @@ const OpRegistrationData* OpRegistry::LookUpSlow(
   {  // Scope for lock.
     mutex_lock lock(mu_);
     first_call = MustCallDeferred();
-    res = gtl::FindWithDefault(registry_, op_type_name, nullptr);
+    res = gtl::FindWithDefault(registry_, op_type_name, nullptr).get();
 
     static bool unregistered_before = false;
     first_unregistered = !unregistered_before && (res == nullptr);
@@ -168,8 +162,11 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   mutex_lock lock(mu_);
   MustCallDeferred();
 
-  std::vector<std::pair<string, const OpRegistrationData*>> sorted(
-      registry_.begin(), registry_.end());
+  std::vector<std::pair<StringPiece, const OpRegistrationData*>> sorted;
+  sorted.reserve(registry_.size());
+  for (const auto& item : registry_) {
+    sorted.emplace_back(item.first, item.second.get());
+  }
   std::sort(sorted.begin(), sorted.end());
 
   auto out = ops->mutable_op();
@@ -211,8 +208,9 @@ string OpRegistry::DebugString(bool include_internal) const {
 bool OpRegistry::MustCallDeferred() const {
   if (initialized_) return false;
   initialized_ = true;
-  for (size_t i = 0; i < deferred_.size(); ++i) {
-    TF_QCHECK_OK(RegisterAlreadyLocked(deferred_[i]));
+  registry_.reserve(registry_.size() + deferred_.size());
+  for (const auto& op_data_factory : deferred_) {
+    TF_QCHECK_OK(RegisterAlreadyLocked(op_data_factory));
   }
   deferred_.clear();
   return true;
@@ -221,8 +219,9 @@ bool OpRegistry::MustCallDeferred() const {
 Status OpRegistry::CallDeferred() const {
   if (initialized_) return OkStatus();
   initialized_ = true;
-  for (size_t i = 0; i < deferred_.size(); ++i) {
-    Status s = RegisterAlreadyLocked(deferred_[i]);
+  registry_.reserve(registry_.size() + deferred_.size());
+  for (const auto& op_data_factory : deferred_) {
+    Status s = RegisterAlreadyLocked(op_data_factory);
     if (!s.ok()) {
       return s;
     }
@@ -233,24 +232,20 @@ Status OpRegistry::CallDeferred() const {
 
 Status OpRegistry::RegisterAlreadyLocked(
     const OpRegistrationDataFactory& op_data_factory) const {
-  std::unique_ptr<OpRegistrationData> op_reg_data(new OpRegistrationData);
+  auto op_reg_data = std::make_unique<OpRegistrationData>();
+  const auto* op_reg_data_raw = op_reg_data.get();
   Status s = op_data_factory(op_reg_data.get());
   if (s.ok()) {
     s = ValidateOpDef(op_reg_data->op_def);
-    if (s.ok() &&
-        !gtl::InsertIfNotPresent(&registry_, op_reg_data->op_def.name(),
-                                 op_reg_data.get())) {
-      s = errors::AlreadyExists("Op with name ", op_reg_data->op_def.name());
-    }
+  }
+  if (s.ok() &&
+      !registry_.try_emplace(op_reg_data->op_def.name(), std::move(op_reg_data))
+           .second) {
+    s = errors::AlreadyExists("Op with name ", op_reg_data->op_def.name());
   }
   Status watcher_status = s;
   if (watcher_) {
-    watcher_status = watcher_(s, op_reg_data->op_def);
-  }
-  if (s.ok()) {
-    op_reg_data.release();
-  } else {
-    op_reg_data.reset();
+    watcher_status = watcher_(s, op_reg_data_raw->op_def);
   }
   return watcher_status;
 }
@@ -264,15 +259,12 @@ OpRegistry* OpRegistry::Global() {
 // OpListOpRegistry -----------------------------------------------------------
 
 OpListOpRegistry::OpListOpRegistry(const OpList* op_list) {
+  index_.reserve(op_list->op_size());
   for (const OpDef& op_def : op_list->op()) {
-    auto* op_reg_data = new OpRegistrationData();
+    auto op_reg_data = std::make_unique<OpRegistrationData>();
     op_reg_data->op_def = op_def;
-    index_[op_def.name()] = op_reg_data;
+    index_[op_def.name()] = std::move(op_reg_data);
   }
-}
-
-OpListOpRegistry::~OpListOpRegistry() {
-  for (const auto& e : index_) delete e.second;
 }
 
 const OpRegistrationData* OpListOpRegistry::LookUp(
@@ -281,7 +273,7 @@ const OpRegistrationData* OpListOpRegistry::LookUp(
   if (iter == index_.end()) {
     return nullptr;
   }
-  return iter->second;
+  return iter->second.get();
 }
 
 Status OpListOpRegistry::LookUp(const string& op_type_name,

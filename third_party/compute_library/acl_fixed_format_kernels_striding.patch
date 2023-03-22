@@ -16,33 +16,55 @@
  *******************************************************************************
 
 diff --git a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
-index 77da83070..44aef28c6 100644
+index 77da83070..985f96761 100644
 --- a/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
 +++ b/src/cpu/operators/internal/CpuGemmAssemblyDispatch.cpp
-@@ -506,7 +506,7 @@ void Fallback<TypeInput, TypeOutput, OutputStage>::run(ITensorPack &tensors)
-             ITensorInfo      *tensor_info     = b->info();
-             const DataLayout  data_layout     = tensor_info->data_layout();
-             const TensorShape tensor_shape    = tensor_info->tensor_shape();
+@@ -495,48 +495,6 @@ void Fallback<TypeInput, TypeOutput, OutputStage>::run(ITensorPack &tensors)
+     {
+         ldb                                = b->info()->strides_in_bytes().y() / sizeof(TypeInput);
+         multi_stride_b                     = b->info()->strides_in_bytes().z() / sizeof(TypeInput);
+-        const arm_compute::WeightFormat wf = assembly_utils::map_to_arm_compute_weight_format(_gemm_kernel_asm->get_config().weight_format);
+-        if(is_fixed_format(wf))
+-        {
+-            // The 4D tensor of dimension O'HWI' created for the
+-            // OHWIo<interleave_by>i<block_by> format is in reality seen
+-            // as a 2D tensor at arm_gemm level, where the rows are
+-            // O'/<interleave_by> and the columns are <interleave_by> *
+-            // H * W * I'.
+-            ITensorInfo      *tensor_info     = b->info();
+-            const DataLayout  data_layout     = tensor_info->data_layout();
+-            const TensorShape tensor_shape    = tensor_info->tensor_shape();
 -            const int         tensor_height   = tensor_shape[get_data_layout_dimension_index(data_layout, DataLayoutDimension::HEIGHT)];
-+            int               tensor_height   = tensor_shape[get_data_layout_dimension_index(data_layout, DataLayoutDimension::HEIGHT)];
-             const int         tensor_width    = tensor_shape[get_data_layout_dimension_index(data_layout, DataLayoutDimension::WIDTH)];
-             int               tensor_channels = tensor_shape[get_data_layout_dimension_index(data_layout, DataLayoutDimension::CHANNEL)];
-             const int         interleave_by   = arm_compute::interleave_by(wf);
-@@ -528,6 +528,17 @@ void Fallback<TypeInput, TypeOutput, OutputStage>::run(ITensorPack &tensors)
-             {
-                 // In this case dimension that is packed is only height
-                 // so we need to stride only height by interleave_by
-+                if(tensor_height % blocked_by != 0) {
-+                    tensor_height = arm_gemm::iceildiv(tensor_height, blocked_by) * blocked_by;
-+                    if(multi_stride_b != 0) {
-+                        multi_stride_b = tensor_height * tensor_width;
-+                    }
-+                }
-+
-+                if(tensor_width % interleave_by != 0) {
-+                    multi_stride_b = arm_gemm::iceildiv(tensor_width, interleave_by) * interleave_by * tensor_height;
-+                }
-+
-                 ldb = interleave_by * tensor_height;
-             }
-             else
+-            const int         tensor_width    = tensor_shape[get_data_layout_dimension_index(data_layout, DataLayoutDimension::WIDTH)];
+-            int               tensor_channels = tensor_shape[get_data_layout_dimension_index(data_layout, DataLayoutDimension::CHANNEL)];
+-            const int         interleave_by   = arm_compute::interleave_by(wf);
+-            const int         blocked_by      = arm_compute::block_by(wf);
+-            // We need to find a new stride that is distance from the data for one
+-            // set of output channels to the next
+-            if(ldb == tensor_channels && multi_stride_b == tensor_channels * tensor_width)
+-            {
+-                // In this case dimensions that are packed are height, width and channel
+-                // so we need to stride it by interleave_by
+-                if(tensor_channels % blocked_by != 0)
+-                {
+-                    // We need to pad
+-                    tensor_channels = arm_gemm::iceildiv(tensor_channels, blocked_by) * blocked_by;
+-                }
+-                ldb = interleave_by * tensor_height * tensor_width * tensor_channels;
+-            }
+-            else if(multi_stride_b == 0 || (ldb == tensor_width && multi_stride_b == tensor_height * tensor_width))
+-            {
+-                // In this case dimension that is packed is only height
+-                // so we need to stride only height by interleave_by
+-                ldb = interleave_by * tensor_height;
+-            }
+-            else
+-            {
+-                // If dimensions are not packed as above error is thrown
+-                // as at the moment other forms of packing are not supported
+-                ARM_COMPUTE_ERROR("Unsupported packing for fixed format kernel");
+-            }
+-        }
+         in1_ptr = reinterpret_cast<const TypeInput *>(b->buffer() + b->info()->offset_first_element_in_bytes());
+     }
+ 

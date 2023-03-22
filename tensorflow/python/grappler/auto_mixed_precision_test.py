@@ -15,6 +15,7 @@
 """Tests for Grappler AutoMixedPrecision."""
 
 import os
+import re
 
 from absl.testing import parameterized
 import numpy as np
@@ -33,7 +34,6 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -41,8 +41,9 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -146,7 +147,7 @@ def _simple_loop(x, functor):
   init = (constant_op.constant(0), x)
   c = lambda i, j: i < 4
   b = lambda i, j: (i + 1, functor(j))
-  ij = control_flow_ops.while_loop(c, b, init)
+  ij = while_loop.while_loop(c, b, init)
   return ij
 
 
@@ -155,7 +156,7 @@ def _loop_vars_intertwined(x0, y0, functor_x, functor_y):
   c = lambda i, j, x, y: j < 4
   b = lambda i, j, x, y: (j + 1, i + 1, functor_y(y), functor_x(x))
   init = (constant_op.constant(0), constant_op.constant(0), x0, y0)
-  ijzw = control_flow_ops.while_loop(c, b, init)
+  ijzw = while_loop.while_loop(c, b, init)
   return ijzw
 
 
@@ -197,7 +198,7 @@ def _recurrent_lstm(c, h):
     ta_x = ta_x.write(
         i, constant_op.constant(0.1, shape=[8, 4], dtype=dtypes.float32))
   init = (constant_op.constant(0), c, h, ta_x)
-  r = control_flow_ops.while_loop(cond, body, init)
+  r = while_loop.while_loop(cond, body, init)
   return r
 
 
@@ -266,15 +267,15 @@ def _get_device(auto_mixed_precision_mode):
 
 
 def _is_cast_to_fp16(node_name):
-  return node_name.endswith('-CastToFp16-AutoMixedPrecision')
+  return re.match('.*-CastToFp16-[0-9]-AutoMixedPrecision$', node_name)
 
 
 def _is_cast_to_bf16(node_name):
-  return node_name.endswith('-CastToBf16-AutoMixedPrecision')
+  return re.match('.*-CastToBf16-[0-9]-AutoMixedPrecision$', node_name)
 
 
 def _is_cast_to_fp32(node_name):
-  return node_name.endswith('-CastToFp32-AutoMixedPrecision')
+  return re.match('.*-CastToFp32-[0-9]-AutoMixedPrecision$', node_name)
 
 
 def _count_casts(mode, nodes):
@@ -592,7 +593,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_depthwise_conv2d(self, mode):
     """Test grad ops with depthwise convolution2d graph."""
     self._maybe_skip(mode)
-    cudnn_version_str = sysconfig.get_build_info().get('cudnn_version', '0.0')
+    cudnn_version_str = sysconfig_lib.get_build_info().get(
+        'cudnn_version', '0.0')
     cudnn_version = tuple([int(x) for x in cudnn_version_str.split('.')])
     if cudnn_version < (8,):
       # Depthwise conv2d ops are only enabled in auto_mixed_precision as of
@@ -881,8 +883,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
         return loss, i
 
       begin, end = constant_op.constant(0), constant_op.constant(num_iter)
-      loss, _ = control_flow_ops.while_loop(
-          lambda loss, i: math_ops.less(i, end), body, [0.0, begin])
+      loss, _ = while_loop.while_loop(lambda loss, i: math_ops.less(i, end),
+                                      body, [0.0, begin])
 
     output_val_ref, output_val, cost_graph = self._run(mode, loss)
     node_map = _build_node_map(cost_graph.node)

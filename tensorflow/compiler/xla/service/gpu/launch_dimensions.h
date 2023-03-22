@@ -32,6 +32,12 @@ class LaunchDimensions {
  public:
   struct Dim3D {
     int64_t x, y, z;
+
+    bool operator==(const Dim3D& other) const {
+      return x == other.x && y == other.y && z == other.z;
+    }
+
+    bool operator!=(const Dim3D& other) const { return !(*this == other); }
   };
 
   // The default constructor creates a launch dimension that indicate
@@ -72,9 +78,28 @@ class LaunchDimensions {
                         thread_counts_per_block_.z, "}");
   }
 
+  void SetSharedMemBytes(uint32_t shared_mem_bytes) {
+    shared_mem_bytes_ = shared_mem_bytes;
+  }
+
+  uint32_t SharedMemBytes() const { return shared_mem_bytes_; }
+
+  bool operator==(const LaunchDimensions& other) const {
+    return block_counts_ == other.block_counts_ &&
+           thread_counts_per_block_ == other.thread_counts_per_block_ &&
+           shared_mem_bytes_ == other.shared_mem_bytes_;
+  }
+
+  bool operator!=(const LaunchDimensions& other) const {
+    return !(*this == other);
+  }
+
  private:
   Dim3D block_counts_;
   Dim3D thread_counts_per_block_;
+
+  // Dynamic shared memory size.
+  uint32_t shared_mem_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out,

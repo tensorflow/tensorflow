@@ -86,6 +86,9 @@ function generate_tflite_framework {
     'load("//tensorflow/lite/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")'
     'tflite_custom_c_library('
     '    name = "custom_c_api",'
+    '    deps = ['
+    '        "//tensorflow/lite/core/shims:builtin_ops_list",'
+    '    ],'
     '    '"$(generate_list_field "models" "$MODEL_NAMES")"
     ')'
     'ios_static_framework('

@@ -96,7 +96,9 @@ _EXCLUDED_OPS = [
     # DTensor Ops with custom gradient functions.
     # Note that these ops only appear in OSS, and fails the test in OSS.
     "CopyToMesh",
+    "CopyToMeshGrad",
     "Relayout",
+    "RelayoutGrad",
 ]
 
 

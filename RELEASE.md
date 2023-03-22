@@ -1,9 +1,367 @@
+# Release 2.13.0
+
+## Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+*  `tf.keras`
+
+    *  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and
+       `KerasRegressor`), which had been deprecated in August 2021.
+       We recommend using [SciKeras](https://github.com/adriangb/scikeras)
+       instead.
+    *  The default Keras model saving format is now the Keras v3 format:
+       calling `model.save("xyz.keras")` will no longer create a H5 file,
+       it will create a native Keras model file.
+       This will only be breaking for you if you were manually inspecting or
+       modifying H5 files saved by Keras under a `.keras` extension.
+       If this breaks you, simply add `save_format="h5"` to your `.save()` call
+       to revert back to the prior behavior.
+
+* The LMDB kernels have been changed to return an error. This is in preparation
+  for completely removing them from TensorFlow. The LMDB dependency that these
+  kernels are bringing to TensorFlow has been dropped, thus making the build
+  slightly faster and more secure.
+
+## Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+## Major Features and Improvements
+
+*   `tf.lite`:
+
+    *   Add 16-bit and 64-bit float type support for built-in op `cast`.
+    *   The Python TF Lite Interpreter bindings now have an option
+        `experimental_disable_delegate_clustering` to turn-off delegate
+        clustering.
+    *   Add int16x8 support for the built-in op `exp`
+    *   Add int16x8 support for the built-in op `mirror_pad`
+    *   Add 16-bit int type support for built-in op `less`, `greater_than`,
+        `equal`
+    *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
+    *   Add int16 indices support for built-in op `gather` and `gather_nd`.
+    *   Add reference implementation for 16-bit int unquantized `add`.
+
+*   `tf.keras`
+
+    *   Added F-Score metrics `tf.keras.metrics.FBetaScore`,
+        `tf.keras.metrics.F1Score`, and `tf.keras.metrics.R2Score`.
+    *   Added activation function `tf.keras.activations.mish`.
+    *   Added experimental `keras.metrics.experimental.PyMetric` API for metrics
+        that run Python code on the host CPU (compiled outside of the TensorFlow
+        graph). This can be used for integrating metrics from external Python
+        libraries (like sklearn or pycocotools) into Keras as first-class Keras
+        metrics.
+    *   Added `tf.keras.optimizers.Lion` optimizer.
+    *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
+        `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
+        exporting the model the best-scoring model as evaluated by a
+        `SidecarEvaluator` evaluator. The evaluator regularly evaluates the
+        model and exports it if the user-defined comparison function determines
+        that it is an improvement.
+    *   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay`
+        learning rate scheduler. You can now specify an initial and target
+        learning rate, and our scheduler will perform a linear interpolation
+        between the two after which it will begin a decay phase.
+    *   Added experimental support for an exactly-once visitation guarantee for
+        evaluating Keras models trained with
+        `tf.distribute.ParameterServerStrategy`, via the
+        `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
+    *   Added `tf.keras.__internal__.KerasTensor`,
+        `tf.keras.__internal__.SparseKerasTensor`, and
+        `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these
+        classes to do instance type checking and type annotations for
+        layer/model inputs and outputs.
+    *   All the `tf.keras.dtensor.experimental.optimizers` classes have been 
+        merged with `tf.keras.optimizers`. You can migrate your code to use
+        `tf.keras.optimizers` directly. The API namespace for
+        `tf.keras.dtensor.experimental.optimizers` will be removed in future
+        releases.
+
+*   `tf.function`:
+
+    *   ConcreteFunction (`tf.types.experimental.ConcreteFunction`) as generated
+        through `get_concrete_function` now performs holistic input validation
+        similar to calling `tf.function` directly. This can cause breakages
+        where existing calls pass Tensors with the wrong shape or omit certain
+        non-Tensor arguments (including default values).
+
+*   `tf.nn`
+
+    *   `tf.nn.embedding_lookup_sparse` and `tf.nn.safe_embedding_lookup_sparse`
+        now support ids and weights described by `tf.RaggedTensor`s.
+    *   Added a new boolean argument `allow_fast_lookup` to
+        `tf.nn.embedding_lookup_sparse` and
+        `tf.nn.safe_embedding_lookup_sparse`, which enables a simplified and
+        typically faster lookup procedure.
+
+*   `tf.data`
+    
+    *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
+        `Dataset.zip(a, b, c)`.
+
+*   `tf.SavedModel`
+
+    *   Introduce class method
+        `tf.saved_model.experimental.Fingerprint.from_proto(proto)`, which can
+        be used to construct a `Fingerprint` object directly from a protobuf.
+    *   Introduce member method
+        `tf.saved_model.experimental.Fingerprint.singleprint()`, which provides
+        a convenient way to uniquely identify a SavedModel.
+
+## Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+*   `tf.distribute`
+
+    *   Opened an experimental API,
+        `tf.distribute.experimental.coordinator.get_current_worker_index`, for
+        retrieving the worker index from within a worker, when using parameter
+        server training with a custom training loop.
+
+*   `tf.experimental.dtensor`:
+
+    *   Deprecated `dtensor.run_on` in favor of `dtensor.default_mesh` to
+        correctly indicate that the context does not override the mesh that the
+        ops and functions will run on, it only sets a fallback default mesh.
+    *   List of members of dtensor.Layout and dtensor.Mesh have slightly changed
+        as part of efforts to consolidate the C++ and Python source
+        code with pybind11. Most notably, Layout.serialized_string is removed.
+
+*   `tf.experimental.ExtensionType`:
+
+    *   `tf.experimental.ExtensionType` now supports Python `tuple` as
+        the type annotation of its fields.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+
+# Release 2.12.0
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+*   Build, Compilation and Packaging
+
+    *   Removal of redundant packages: the `tensorflow-gpu` and `tf-nightly-gpu`
+        packages have been effectively removed and replaced with packages that
+        direct users to switch to `tensorflow` or `tf-nightly` respectively.
+        The naming difference was the only difference between the two sets of
+        packages ever since TensorFlow 2.1, so there is no loss of functionality
+        or GPU support. See
+        https://pypi.org/project/tensorflow-gpu for more details.
+
+*   `tf.function`:
+
+    *   tf.function now uses the Python inspect library directly for parsing
+        the signature of the Python function it is decorated on.
+    *   This can break certain cases that were previously ignored where the
+        signature is malformed, e.g.
+            *   Using functools.wraps on a function with different signature
+            *   Using functools.partial with an invalid tf.function input
+    *   tf.function now enforces input parameter names to be valid Python
+        identifiers. Incompatible names are automatically sanitized similarly to
+        existing SavedModel signature behavior.
+    *   Parameterless tf.functions are assumed to have an empty input_signature
+        instead of an undefined one even if the input_signature is unspecified.
+    *   tf.types.experimental.TraceType now requires an additional
+        `placeholder_value` method to be defined.
+    *   tf.function now traces with placeholder values generated by TraceType
+        instead of the value itself.
+
+*   `tf.config.experimental.enable_mlir_graph_optimization`:
+
+    * Experimental API removed.
+
+*   `tf.config.experimental.disable_mlir_graph_optimization`:
+
+    * Experimental API removed.
+
+*   `tf.keras`
+
+    * Moved all saving-related utilities to a new namespace, `keras.saving`,
+      i.e. `keras.saving.load_model`, `keras.saving.save_model`,
+      `keras.saving.custom_object_scope`, `keras.saving.get_custom_objects`,
+      `keras.saving.register_keras_serializable`,
+      `keras.saving.get_registered_name` and
+      `keras.saving.get_registered_object`.
+      The previous API locations (in `keras.utils` and `keras.models`) will
+      stay available indefinitely, but we recommend that you update your code
+      to point to the new API locations.
+    * Improvements and fixes in Keras loss masking:
+        * Whether you represent a ragged tensor as a `tf.RaggedTensor` or using
+          [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding),
+          the returned loss values should be the identical to each other.
+          In previous versions Keras may have silently ignored the mask.
+        * If you use masked losses with Keras the loss values may be different
+          in TensorFlow `2.12` compared to previous versions.
+        * In cases where the mask was previously ignored, you will now get
+          an error if you pass a mask with an incompatible shape.
+
+*   `tf.SavedModel`
+
+    * Introduce new class `tf.saved_model.experimental.Fingerprint` that
+      contains the fingerprint of the SavedModel. See the
+      [SavedModel Fingerprinting RFC](https://github.com/tensorflow/community/pull/415)
+      for details.
+    * Introduce API `tf.saved_model.experimental.read_fingerprint(export_dir)`
+      for reading the fingerprint of a SavedModel.
+
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+*   `tf.lite`:
+
+    *   Add 16-bit float type support for built-in op `fill`.
+    *   Transpose now supports 6D tensors.
+    *   Float LSTM now supports diagonal recurrent tensors:
+        https://arxiv.org/abs/1903.08023
+
+*   `tf.keras`:
+
+    *   The new Keras model saving format (`.keras`) is available. You can start
+        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`. In
+        the future it will become the default for all files with the `.keras`
+        extension. This file format targets the Python runtime only and makes
+        it possible to reload Python objects identical to the saved originals.
+        The format supports non-numerical state such as vocabulary files and
+        lookup tables, and it is easy to customize in the case of custom layers
+        with exotic elements of state (e.g. a FIFOQueue). The format
+        does not rely on bytecode or pickling, and is safe by default. Note
+        that as a result, Python `lambdas` are disallowed at loading time. If
+        you want to use `lambdas`, you can pass `safe_mode=False` to the loading
+        method (only do this if you trust the source of the model).
+    *   Added a `model.export(filepath)` API to create a lightweight SavedModel
+        artifact that can be used for inference (e.g. with TF-Serving).
+    *   Added `keras.export.ExportArchive` class for low-level customization of
+        the process of exporting SavedModel artifacts for inference.
+        Both ways of exporting models are based on `tf.function` tracing
+        and produce a TF program composed of TF ops. They are meant primarily
+        for environments where the TF runtime is available,
+        but not the Python interpreter, as is typical
+        for production with TF Serving.
+    *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
+        structured data preprocessing and encoding.
+    *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
+        layer. The layer now accepts a new boolean argument `sparse`. If
+        `sparse` is set to True, the layer returns a SparseTensor instead of a
+        dense Tensor. Defaults to False.
+    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+    *   Added `synchronized` optional parameter to `layers.BatchNormalization`.
+    *   Added deprecation warning to
+        `layers.experimental.SyncBatchNormalization` and suggested to use
+        `layers.BatchNormalization` with `synchronized=True` instead.
+    *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
+        inputs (`mask` argument) when computing the mean and variance.
+    *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
+    *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display
+        layer trainable status in model plots.
+    *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via
+        `feature_space.save("myfeaturespace.keras")`, and reload it via
+        `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
+    *   Added utility `tf.keras.utils.to_ordinal` to convert class vector to
+        ordinal regression / classification matrix.
+
+*   `tf.experimental.dtensor`:
+
+    *   Coordination service now works with
+        `dtensor.initialize_accelerator_system`, and enabled by default.
+    *   Add `tf.experimental.dtensor.is_dtensor` to check if a tensor is a
+        DTensor instance.
+
+*   `tf.data`:
+
+    *   Added support for alternative checkpointing protocol which makes it
+        possible to checkpoint the state of the input pipeline without having to
+        store the contents of internal buffers. The new functionality can be
+        enabled through the `experimental_symbolic_checkpoint` option of
+        `tf.data.Options()`.
+    *   Added a new `rerandomize_each_iteration` argument for the
+        `tf.data.Dataset.random()` operation, which controls whether the
+        sequence of generated random numbers should be re-randomized every epoch
+        or not (the default behavior). If `seed` is set and
+        `rerandomize_each_iteration=True`, the `random()` operation will produce
+        a different (deterministic) sequence of numbers every epoch.
+    *   Added a new `rerandomize_each_iteration` argument for the
+        `tf.data.Dataset.sample_from_datasets()` operation, which controls
+        whether the sequence of generated random numbers used for sampling
+        should be re-randomized every epoch or not. If `seed` is set and
+        `rerandomize_each_iteration=True`, the `sample_from_datasets()`
+        operation will use a different (deterministic) sequence of numbers every
+        epoch.
+    *   Added a new field, `warm_start`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will start background threads of asynchronous
+        transformations upon iterator creation (as opposed to upon first call
+        to `GetNext`). To enable this behavior, set `warm_start=True` in
+        `tf.data.experimental.OptimizationOptions`. It should be noted that this
+        possibly improves the latency of the initial 'GetNext' call at the
+        expense of requiring more memory to hold prefetched elements between
+        the time of iterator construction and usage.
+*   `tf.test`:
+
+    *   Added `tf.test.experimental.sync_devices`, which is useful for
+        accurately measuring performance in benchmarks.
+
+*   `tf.experimental.dtensor`:
+
+    *   Added experimental support to ReduceScatter fuse on GPU (NCCL).
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.random`
+  * Added non-experimental aliases for `tf.random.split` and
+    `tf.random.fold_in`, the experimental endpoints are still available
+    so no code changes are necessary.
+* `tf.experimental.ExtensionType`
+  * Added function `experimental.extension_type.as_dict()`, which converts an
+    instance of `tf.experimental.ExtensionType` to a `dict` representation.
+* `stream_executor`
+  * Top level `stream_executor` directory has been deleted, users should use
+    equivalent headers and targets under `compiler/xla/stream_executor`.
+* `tf.nn`
+  * Added `tf.nn.experimental.general_dropout`, which is similar to
+    `tf.random.experimental.stateless_dropout` but accepts a custom sampler
+    function.
+* `tf.types.experimental.GenericFunction`
+  * The `experimental_get_compiler_ir` method supports tf.TensorSpec
+   compilation arguments.
+*  `tf.config.experimental.mlir_bridge_rollout`
+    *   Removed enums `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` and
+    `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED` which are no longer used by
+    the tf2xla bridge
+
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.11.0
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
-* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
-  removed.
 
 ## Breaking Changes
 *   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and
@@ -16,7 +374,8 @@
         checkpoint saving/loading, but at the cost of breaking checkpoint
         backward compatibility in some cases. If you want to keep using an old
         checkpoint, please change your optimizer to
-        `tf.keras.optimizer.legacy.XXX` (e.g. `tf.keras.optimizer.legacy.Adam`).
+        `tf.keras.optimizers.legacy.XXX` (e.g.
+        `tf.keras.optimizers.legacy.Adam`).
     *   **TF1 compatibility.** The new optimizer does not support TF1 any more,
         so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`.
         We highly recommend to migrate your workflow to TF2 for stable
@@ -43,6 +402,10 @@
         optimizer to update different parts of model in multiple stages,
         please call `optimizer.build(model.trainable_variables)` before the
         training loop.
+    *   **Performance regression on `ParameterServerStrategy`.** This could be
+        significant if you have many PS servers. We are aware of this issue and
+        working on fixes, for now we suggest using the legacy optimizers when
+        using `ParameterServerStrategy`.
     *   **Timeout or performance loss.** We don't anticipate this to happen, but
         if you see such issues, please use the legacy optimizer, and file
         an issue in the Keras GitHub repo.
@@ -52,12 +415,6 @@
     New optimizers (e.g., `Adafactor`) will
     only be implemented based on `tf.keras.optimizers.Optimizer`, the new
     base class.
-
-## Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 ## Major Features and Improvements
 
@@ -108,6 +465,11 @@
         the [RFC](https://github.com/tensorflow/community/pull/415) for more
         details regarding its design and properties.
 
+*   `tf.data`:
+    *   Graduated experimental APIs:
+        * [`tf.data.Dataset.ragged_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ragged_batch), which batches elements of `tf.data.Dataset`s into `tf.RaggedTensor`s.
+        * [`tf.data.Dataset.sparse_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#sparse_batch), which batches elements of `tf.data.Dataset`s into `tf.sparse.SparseTensor`s.
+
 ## Bug Fixes and Other Changes
 
 *   `tf.image`
@@ -127,11 +489,152 @@
 *   `tf.SparseTensor`:
     *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.
 
+## Security
+
+* TF is currently using giflib 5.2.1 which has [CVE-2022-28506](https://nvd.nist.gov/vuln/detail/CVE-2022-28506). TF is not affected by the CVE as it does not use `DumpScreen2RGB` at all.
+*   Fixes an OOB seg fault in `DynamicStitch` due to missing validation ([CVE-2022-41883](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41883))
+*   Fixes an overflow in `tf.keras.losses.poisson` ([CVE-2022-41887](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41887))
+*   Fixes a heap OOB failure in `ThreadUnsafeUnigramCandidateSampler` caused by missing validation ([CVE-2022-41880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41880))
+*   Fixes a segfault in `ndarray_tensor_bridge` ([CVE-2022-41884](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41884))
+*   Fixes an overflow in `FusedResizeAndPadConv2D` ([CVE-2022-41885](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41885))
+*   Fixes a overflow in `ImageProjectiveTransformV2` ([CVE-2022-41886](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41886))
+*   Fixes an FPE in `tf.image.generate_bounding_box_proposals` on GPU ([CVE-2022-41888](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41888))
+*   Fixes a segfault in `pywrap_tfe_src` caused by invalid attributes ([CVE-2022-41889](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41889))
+*   Fixes a `CHECK` fail in `BCast` ([CVE-2022-41890](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41890))
+*   Fixes a segfault in `TensorListConcat` ([CVE-2022-41891](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41891))
+*   Fixes a `CHECK_EQ` fail in `TensorListResize` ([CVE-2022-41893](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41893))
+*   Fixes an overflow in `CONV_3D_TRANSPOSE` on TFLite ([CVE-2022-41894](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41894))
+*   Fixes a heap OOB in `MirrorPadGrad` ([CVE-2022-41895](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41895))
+*   Fixes a crash in `Mfcc` ([CVE-2022-41896](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41896))
+*   Fixes a heap OOB in `FractionalMaxPoolGrad` ([CVE-2022-41897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41897))
+*   Fixes a `CHECK` fail in `SparseFillEmptyRowsGrad` ([CVE-2022-41898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41898))
+*   Fixes a `CHECK` fail in `SdcaOptimizer` ([CVE-2022-41899](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41899))
+*   Fixes a heap OOB in `FractionalAvgPool` and `FractionalMaxPool`([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900))
+*   Fixes a `CHECK_EQ` in `SparseMatrixNNZ` ([CVE-2022-41901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41901))
+*   Fixes an OOB write in grappler ([CVE-2022-41902](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41902))
+*   Fixes a overflow in `ResizeNearestNeighborGrad` ([CVE-2022-41907](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41907))
+*   Fixes a `CHECK` fail in `PyFunc` ([CVE-2022-41908](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41908))
+*   Fixes a segfault in `CompositeTensorVariantToComponents` ([CVE-2022-41909](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41909))
+*   Fixes a invalid char to bool conversion in printing a tensor ([CVE-2022-41911](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41911))
+*   Fixes a heap overflow in `QuantizeAndDequantizeV2` ([CVE-2022-41910](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41910))
+*   Fixes a `CHECK` failure in `SobolSample` via missing validation ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+*   Fixes a `CHECK` fail in `TensorListScatter` and `TensorListScatterV2` in eager mode ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+103yiran, 8bitmp3, Aakar Dwivedi, Alexander Grund, alif_elham, Aman Agarwal,
+amoitra, Andrei Ivanov, andreii, Andrew Goodbody, angerson, Ashay Rane,
+Azeem Shaikh, Ben Barsdell, bhack, Bhavani Subramanian, Cedric Nugteren,
+Chandra Kumar Ramasamy, Christopher Bate, CohenAriel, Cotarou, cramasam,
+Enrico Minack, Francisco Unda, Frederic Bastien, gadagashwini, Gauri1 Deshpande,
+george, Jake, Jeff, Jerry Ge, Jingxuan He, Jojimon Varghese, Jonathan Dekhtiar,
+Kaixi Hou, Kanvi Khanna, kcoul, Keith Smiley, Kevin Hu, Kun Lu, kushanam,
+Lianmin Zheng, liuyuanqiang, Louis Sugy, Mahmoud Abuzaina, Marius Brehler,
+mdfaijul, Meenakshi Venkataraman, Milos Puzovic, mohantym, Namrata-Ibm,
+Nathan John Sircombe, Nathan Luehr, Olaf Lipinski, Om Thakkar, Osman F Bayram,
+Patrice Vignola, Pavani Majety, Philipp Hack, Prianka Liz Kariat, Rahul Batra,
+RajeshT, Renato Golin, riestere, Roger Iyengar, Rohit Santhanam, Rsanthanam-Amd,
+Sadeed Pv, Samuel Marks, Shimokawa, Naoaki, Siddhesh Kothadi, Simengliu-Nv,
+Sindre Seppola, snadampal, Srinivasan Narayanamoorthy, sushreebarsa,
+syedshahbaaz, Tamas Bela Feher, Tatwai Chong, Thibaut Goetghebuer-Planchon,
+tilakrayal, Tom Anderson, Tomohiro Endo, Trevor Morris, vibhutisawant,
+Victor Zhang, Vremold, Xavier Bonaventura, Yanming Wang, Yasir Modak,
+Yimei Sun, Yong Tang, Yulv-Git, zhuoran.liu, zotanika
+
+# Release 2.10.1
+
+This release introduces several vulnerability fixes:
+
+*   Fixes an OOB seg fault in `DynamicStitch` due to missing validation ([CVE-2022-41883](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41883))
+*   Fixes an overflow in `tf.keras.losses.poisson` ([CVE-2022-41887](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41887))
+*   Fixes a heap OOB failure in `ThreadUnsafeUnigramCandidateSampler` caused by missing validation ([CVE-2022-41880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41880))
+*   Fixes a segfault in `ndarray_tensor_bridge` ([CVE-2022-41884](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41884))
+*   Fixes an overflow in `FusedResizeAndPadConv2D` ([CVE-2022-41885](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41885))
+*   Fixes a overflow in `ImageProjectiveTransformV2` ([CVE-2022-41886](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41886))
+*   Fixes an FPE in `tf.image.generate_bounding_box_proposals` on GPU ([CVE-2022-41888](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41888))
+*   Fixes a segfault in `pywrap_tfe_src` caused by invalid attributes ([CVE-2022-41889](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41889))
+*   Fixes a `CHECK` fail in `BCast` ([CVE-2022-41890](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41890))
+*   Fixes a segfault in `TensorListConcat` ([CVE-2022-41891](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41891))
+*   Fixes a `CHECK_EQ` fail in `TensorListResize` ([CVE-2022-41893](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41893))
+*   Fixes an overflow in `CONV_3D_TRANSPOSE` on TFLite ([CVE-2022-41894](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41894))
+*   Fixes a heap OOB in `MirrorPadGrad` ([CVE-2022-41895](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41895))
+*   Fixes a crash in `Mfcc` ([CVE-2022-41896](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41896))
+*   Fixes a heap OOB in `FractionalMaxPoolGrad` ([CVE-2022-41897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41897))
+*   Fixes a `CHECK` fail in `SparseFillEmptyRowsGrad` ([CVE-2022-41898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41898))
+*   Fixes a `CHECK` fail in `SdcaOptimizer` ([CVE-2022-41899](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41899))
+*   Fixes a heap OOB in `FractionalAvgPool` and `FractionalMaxPool`([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900))
+*   Fixes a `CHECK_EQ` in `SparseMatrixNNZ` ([CVE-2022-41901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41901))
+*   Fixes an OOB write in grappler ([CVE-2022-41902](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41902))
+*   Fixes a overflow in `ResizeNearestNeighborGrad` ([CVE-2022-41907](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41907))
+*   Fixes a `CHECK` fail in `PyFunc` ([CVE-2022-41908](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41908))
+*   Fixes a segfault in `CompositeTensorVariantToComponents` ([CVE-2022-41909](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41909))
+*   Fixes a invalid char to bool conversion in printing a tensor ([CVE-2022-41911](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41911))
+*   Fixes a heap overflow in `QuantizeAndDequantizeV2` ([CVE-2022-41910](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41910))
+*   Fixes a `CHECK` failure in `SobolSample` via missing validation ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+*   Fixes a `CHECK` fail in `TensorListScatter` and `TensorListScatterV2` in eager mode ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+
+# Release 2.9.3
+
+This release introduces several vulnerability fixes:
+
+*   Fixes an overflow in `tf.keras.losses.poisson` ([CVE-2022-41887](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41887))
+*   Fixes a heap OOB failure in `ThreadUnsafeUnigramCandidateSampler` caused by missing validation ([CVE-2022-41880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41880))
+*   Fixes a segfault in `ndarray_tensor_bridge` ([CVE-2022-41884](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41884))
+*   Fixes an overflow in `FusedResizeAndPadConv2D` ([CVE-2022-41885](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41885))
+*   Fixes a overflow in `ImageProjectiveTransformV2` ([CVE-2022-41886](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41886))
+*   Fixes an FPE in `tf.image.generate_bounding_box_proposals` on GPU ([CVE-2022-41888](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41888))
+*   Fixes a segfault in `pywrap_tfe_src` caused by invalid attributes ([CVE-2022-41889](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41889))
+*   Fixes a `CHECK` fail in `BCast` ([CVE-2022-41890](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41890))
+*   Fixes a segfault in `TensorListConcat` ([CVE-2022-41891](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41891))
+*   Fixes a `CHECK_EQ` fail in `TensorListResize` ([CVE-2022-41893](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41893))
+*   Fixes an overflow in `CONV_3D_TRANSPOSE` on TFLite ([CVE-2022-41894](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41894))
+*   Fixes a heap OOB in `MirrorPadGrad` ([CVE-2022-41895](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41895))
+*   Fixes a crash in `Mfcc` ([CVE-2022-41896](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41896))
+*   Fixes a heap OOB in `FractionalMaxPoolGrad` ([CVE-2022-41897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41897))
+*   Fixes a `CHECK` fail in `SparseFillEmptyRowsGrad` ([CVE-2022-41898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41898))
+*   Fixes a `CHECK` fail in `SdcaOptimizer` ([CVE-2022-41899](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41899))
+*   Fixes a heap OOB in `FractionalAvgPool` and `FractionalMaxPool`([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900))
+*   Fixes a `CHECK_EQ` in `SparseMatrixNNZ` ([CVE-2022-41901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41901))
+*   Fixes an OOB write in grappler ([CVE-2022-41902](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41902))
+*   Fixes a overflow in `ResizeNearestNeighborGrad` ([CVE-2022-41907](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41907))
+*   Fixes a `CHECK` fail in `PyFunc` ([CVE-2022-41908](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41908))
+*   Fixes a segfault in `CompositeTensorVariantToComponents` ([CVE-2022-41909](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41909))
+*   Fixes a invalid char to bool conversion in printing a tensor ([CVE-2022-41911](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41911))
+*   Fixes a heap overflow in `QuantizeAndDequantizeV2` ([CVE-2022-41910](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41910))
+*   Fixes a `CHECK` failure in `SobolSample` via missing validation ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+*   Fixes a `CHECK` fail in `TensorListScatter` and `TensorListScatterV2` in eager mode ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+
+# Release 2.8.4
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a heap OOB failure in `ThreadUnsafeUnigramCandidateSampler` caused by missing validation ([CVE-2022-41880](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41880))
+*   Fixes a segfault in `ndarray_tensor_bridge` ([CVE-2022-41884](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41884))
+*   Fixes an overflow in `FusedResizeAndPadConv2D` ([CVE-2022-41885](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41885))
+*   Fixes a overflow in `ImageProjectiveTransformV2` ([CVE-2022-41886](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41886))
+*   Fixes an FPE in `tf.image.generate_bounding_box_proposals` on GPU ([CVE-2022-41888](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41888))
+*   Fixes a segfault in `pywrap_tfe_src` caused by invalid attributes ([CVE-2022-41889](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41889))
+*   Fixes a `CHECK` fail in `BCast` ([CVE-2022-41890](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41890))
+*   Fixes a segfault in `TensorListConcat` ([CVE-2022-41891](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41891))
+*   Fixes a `CHECK_EQ` fail in `TensorListResize` ([CVE-2022-41893](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41893))
+*   Fixes an overflow in `CONV_3D_TRANSPOSE` on TFLite ([CVE-2022-41894](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41894))
+*   Fixes a heap OOB in `MirrorPadGrad` ([CVE-2022-41895](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41895))
+*   Fixes a crash in `Mfcc` ([CVE-2022-41896](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41896))
+*   Fixes a heap OOB in `FractionalMaxPoolGrad` ([CVE-2022-41897](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41897))
+*   Fixes a `CHECK` fail in `SparseFillEmptyRowsGrad` ([CVE-2022-41898](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41898))
+*   Fixes a `CHECK` fail in `SdcaOptimizer` ([CVE-2022-41899](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41899))
+*   Fixes a heap OOB in `FractionalAvgPool` and `FractionalMaxPool`([CVE-2022-41900](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41900))
+*   Fixes a `CHECK_EQ` in `SparseMatrixNNZ` ([CVE-2022-41901](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41901))
+*   Fixes an OOB write in grappler ([CVE-2022-41902](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41902))
+*   Fixes a overflow in `ResizeNearestNeighborGrad` ([CVE-2022-41907](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41907))
+*   Fixes a `CHECK` fail in `PyFunc` ([CVE-2022-41908](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41908))
+*   Fixes a segfault in `CompositeTensorVariantToComponents` ([CVE-2022-41909](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41909))
+*   Fixes a invalid char to bool conversion in printing a tensor ([CVE-2022-41911](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41911))
+*   Fixes a heap overflow in `QuantizeAndDequantizeV2` ([CVE-2022-41910](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-41910))
+*   Fixes a `CHECK` failure in `SobolSample` via missing validation ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
+*   Fixes a `CHECK` fail in `TensorListScatter` and `TensorListScatterV2` in eager mode ([CVE-2022-35935](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-35935))
 
 # Release 2.10.0
 
@@ -1228,7 +1731,7 @@ This releases introduces several vulnerability fixes:
     ([CVE-2022-23572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23572))
 *   Fixes a heap OOB read/write in `SpecializeType`
     ([CVE-2022-23574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23574))
-*   Fixes an unitialized variable access in `AssignOp`
+*   Fixes an uninitialized variable access in `AssignOp`
     ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573))
 *   Fixes an integer overflow in `OpLevelCostEstimator::CalculateTensorSize`
     ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575))
@@ -1506,7 +2009,7 @@ This releases introduces several vulnerability fixes:
     ([CVE-2022-23572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23572))
 *   Fixes a heap OOB read/write in `SpecializeType`
     ([CVE-2022-23574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23574))
-*   Fixes an unitialized variable access in `AssignOp`
+*   Fixes an uninitialized variable access in `AssignOp`
     ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573))
 *   Fixes an integer overflow in `OpLevelCostEstimator::CalculateTensorSize`
     ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575))
@@ -10596,3 +11099,5 @@ answered questions, and were part of inspiring discussions.
 # Release 0.5.0
 
 Initial release of TensorFlow.
+
+<!-- mdformat global-off(b/169948621#comment2) -->

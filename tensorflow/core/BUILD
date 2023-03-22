@@ -69,6 +69,7 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
+    "if_nccl",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -79,27 +80,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tensorflow_opensource_extra_deps")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_monitoring_framework_deps")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
 
 # For platform specific build config
 load(
@@ -108,14 +89,11 @@ load(
     "tf_additional_test_deps",
     "tf_dtensor_tpu_dependencies",
     "tf_jspb_proto_library",
-    "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
     "tf_proto_library",
-    "tf_protos_all_impl",
     "tf_protos_grappler_impl",
-    "tf_protos_profiler_impl",
     "tf_tpu_dependencies",
 )
 load(
@@ -135,17 +113,21 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        ":dependency_whitelist",
+        ":dependency_allowlist",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    features = if_google(["-parse_headers"]),
+    features = if_google([
+        "-layering_check",
+        "-parse_headers",
+    ]),
     licenses = ["notice"],
 )
 
 package_group(
-    name = "dependency_whitelist",
+    name = "dependency_allowlist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",
@@ -189,8 +171,13 @@ tf_proto_library(
         "//tensorflow/core/protobuf:error_codes_proto_impl",
         "//tensorflow/core/protobuf:for_core_protos",
         "//tensorflow/core/util:protos_all",
-        "//tensorflow/core/util:test_log_proto_impl",
+        "//tensorflow/core/util:test_log_proto",
         "//tensorflow/core/grappler/costs:op_performance_data",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+        "//tensorflow/tsl/protobuf:coordination_config_proto",
+        "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -449,11 +436,6 @@ tf_cuda_library(
     ],
 )
 
-alias(
-    name = "ptr_util",
-    actual = "//tensorflow/core/util:ptr_util",
-)
-
 # TODO(gonnet): Remove this alias once all users have been moved to the actual target.
 alias(
     name = "reader_base",
@@ -619,6 +601,7 @@ cc_library(
         "//tensorflow/core/kernels:random_index_shuffle_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
+        "//tensorflow/core/kernels:sync_ops",
         "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:required",
@@ -642,23 +625,16 @@ cc_library(
         "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_mkl([
-        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
-        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_identity_op",
-        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
         "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
         "//tensorflow/core/kernels/mkl:mkl_requantize_ops",
         "//tensorflow/core/kernels/mkl:mkl_quantize_op",
         "//tensorflow/core/kernels/mkl:mkl_relu_op",
-        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
-        "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_swish_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_mish_op",
@@ -666,8 +642,8 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
     ]) + if_cuda([
@@ -836,24 +812,14 @@ filegroup(
         "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_no_runtime",
         "//tensorflow/core/platform:mobile_srcs_no_runtime",
+        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
-        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
         "//tensorflow/tsl/framework:mobile_srcs_no_runtime",
         "//tensorflow/tsl/framework/fixedpoint:mobile_srcs_no_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
-    ] + glob(
-        [
-            "client/**/*.cc",
-        ],
-        exclude = [
-            "**/*test.*",
-            "**/*testutil*",
-            "**/*testlib*",
-            "**/*main.cc",
-        ],
-    ),
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -966,6 +932,7 @@ filegroup(
         "nn_grad",
         "nn_ops_op_lib",
         "no_op_op_lib",
+        "optional_ops_op_lib",
         "parsing_ops_op_lib",
         "portable_op_registrations_and_gradients",
         "ragged_array_ops_op_lib",
@@ -994,6 +961,7 @@ filegroup(
         "stateless_random_ops_v2_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
+        "sync_ops_op_lib",
         "tpu_configuration_ops_op_lib",
         "tpu_cross_replica_ops_op_lib",
         "tpu_embedding_ops_op_lib",
@@ -1049,6 +1017,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:resource",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core:mobile_additional_lib_deps",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
@@ -1084,6 +1053,7 @@ cc_library(
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core/util:managed_stack_trace",
+#         "//tensorflow/core/platform:resource",
 #         "//tensorflow/tsl/framework/fixedpoint",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1117,7 +1087,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        ":protos_all_cc_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
@@ -1285,7 +1255,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1311,7 +1281,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1466,7 +1436,7 @@ cc_library(
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:unbounded_work_queue",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
@@ -1476,7 +1446,23 @@ cc_library(
     ] + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": ["//tensorflow/core/platform:subprocess"],
-    }) + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
+    }) +
+    # The TF proto implementations that we will statically link here.
+    [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
+        "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:protos_all_cc_impl",
+        "//tensorflow/compiler/xla:xla_proto_cc_impl",
+        "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
+    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
@@ -1625,7 +1611,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/framework:bounds_check",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1662,6 +1648,7 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",
@@ -1684,7 +1671,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
@@ -1700,6 +1687,7 @@ tf_cuda_library(
         "//tensorflow/compiler/jit:common",
         "//tensorflow/tsl/framework:cancellation",
         "//tensorflow/tsl/util:command_line_flags",
+        "//tensorflow/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
@@ -1790,6 +1778,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
+        "//tensorflow/core/common_runtime:stats_publisher_interface",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
@@ -1937,61 +1926,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests(
-    name = "core_higher_level_tests",
-    size = "small",
-    srcs = [
-        "//tensorflow/core/example:feature_util_test.cc",
-        "//tensorflow/core/graph:algorithm_test.cc",
-        "//tensorflow/core/graph:control_flow_test.cc",
-        "//tensorflow/core/graph:costmodel_test.cc",
-        "//tensorflow/core/graph:edgeset_test.cc",
-        "//tensorflow/core/graph:graph_def_builder_test.cc",
-        "//tensorflow/core/graph:graph_partition_test.cc",
-        "//tensorflow/core/graph:graph_test.cc",
-        "//tensorflow/core/graph:node_builder_test.cc",
-        "//tensorflow/core/graph:optimizer_cse_test.cc",
-        "//tensorflow/core/graph:subgraph_test.cc",
-        "//tensorflow/core/graph:tensor_id_test.cc",
-        "//tensorflow/core/graph:validate_test.cc",
-        "//tensorflow/core/util/sparse:higher_level_tests_group",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/cc:while_loop",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
@@ -2019,28 +1953,21 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ] + if_mkl([
-        "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
-        "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels/mkl:mkl_identity_op",
-        "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
-        "//tensorflow/core/kernels/mkl:mkl_lrn_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
         "//tensorflow/core/kernels/mkl:mkl_quantize_op",
         "//tensorflow/core/kernels/mkl:mkl_relu_op",
-        "//tensorflow/core/kernels/mkl:mkl_reshape_op",
-        "//tensorflow/core/kernels/mkl:mkl_slice_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
-        "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]),
 )
 

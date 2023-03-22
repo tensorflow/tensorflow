@@ -59,7 +59,8 @@ FallbackState::FallbackState(const SessionOptions &session_options,
 }
 
 StatusOr<std::unique_ptr<GraphExecutionState>>
-FallbackState::CreateGraphExecutionState(GraphDef graph_def) const {
+FallbackState::CreateGraphExecutionState(GraphDef graph_def,
+                                         bool run_placer) const {
   // Create GraphExecutionState which contains the preprocessed graph including
   // device information. The following code is adapted from
   // http://cs?q=tensorflow/core/common_runtime/direct_session.cc:427%20at_cl:352783230
@@ -68,11 +69,16 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def) const {
   options.device_set = &device_set_;
   options.session_options = &session_options_;
   options.session_handle = "tfrt_fallback_handle";
+  options.run_placer = run_placer;
 
   std::unique_ptr<GraphExecutionState> execution_state;
   TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
       std::move(graph_def), options, &execution_state));
   return execution_state;
+}
+
+Status FallbackState::AddFunctionDef(const FunctionDef &func_def) {
+  return func_lib_def_.AddFunctionDef(func_def);
 }
 
 }  // namespace tfrt_stub

@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_TIMER_H_
 
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow {
@@ -27,13 +27,15 @@ class TpuTimer : public ::stream_executor::internal::TimerInterface {
  public:
   explicit TpuTimer(SE_Timer* timer) : timer_(timer) {}
   ~TpuTimer() override {
-    tensorflow::tpu::ExecutorApiFn()->TpuTimer_FreeFn(timer_);
+    stream_executor::tpu::ExecutorApiFn()->TpuTimer_FreeFn(timer_);
   }
   uint64_t Microseconds() const override {
-    return tensorflow::tpu::ExecutorApiFn()->TpuTimer_MicrosecondsFn(timer_);
+    return stream_executor::tpu::ExecutorApiFn()->TpuTimer_MicrosecondsFn(
+        timer_);
   }
   uint64_t Nanoseconds() const override {
-    return tensorflow::tpu::ExecutorApiFn()->TpuTimer_NanosecondsFn(timer_);
+    return stream_executor::tpu::ExecutorApiFn()->TpuTimer_NanosecondsFn(
+        timer_);
   }
 
  private:

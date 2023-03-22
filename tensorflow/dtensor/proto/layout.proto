@@ -60,4 +60,12 @@ message MeshProto {
 
   // Required name which uniquely identifies this mesh in a program.
   string name = 3;
+
+  // If true, ops on this mesh will use XLA SPMD.
+  bool use_xla_spmd = 7;
+
+  // The device string when the mesh is a single device mesh. If it is not
+  // empty, then global_device_ids, local_device_ids, local_device and global
+  // devices are all empty.
+  string single_device = 8;
 }

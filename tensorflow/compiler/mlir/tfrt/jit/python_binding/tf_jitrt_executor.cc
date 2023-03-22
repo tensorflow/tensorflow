@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/python_binding/conversion_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tfrt/jitrt/async_task_runner.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -55,12 +57,12 @@ using ::tfrt::StrCat;
 
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::RemainingResultsConverter;
 using ::tfrt::jitrt::ReturnStridedMemref;
 
 using ::xla::runtime::Executable;
-using ::xla::runtime::HostContextAsyncTaskRunner;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
 
@@ -74,32 +76,33 @@ TfJitRtExecutor::TfJitRtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
-    const std::string& mlir_module, const std::string& entrypoint,
-    Specialization specialization, bool vectorize, bool codegen_transpose,
-    bool legalize_i1_tensors, bool one_shot_bufferize) {
+TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
+                                                 const std::string& entrypoint,
+                                                 Specialization specialization,
+                                                 bool vectorize,
+                                                 bool legalize_i1_tensors) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
   CompilationPipelineOptions copts;
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
   copts.num_worker_threads = 4;
 
   JitExecutable::Options opts;
-  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    RegisterDefaultJitRtDialects(registry);
-    // Needed to verify function argument attributes which are used to
-    // annotate dynamic shaped types with static type information.
-    mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
-  };
-  opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-    tensorflow::TfJitRtPipelineOptions opts;
-    opts.vectorize = vectorize;
-    opts.codegen_transpose = codegen_transpose;
-    opts.legalize_i1_tensors = legalize_i1_tensors;
-    opts.one_shot_bufferize = one_shot_bufferize;
-    tensorflow::CreateTfJitRtPipeline(pm, opts);
-    CreateDefaultJitRtCompilationPipeline(pm, copts);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        RegisterDefaultJitRtDialects(dialects);
+        // Needed to verify function argument attributes which are used to
+        // annotate dynamic shaped types with static type information.
+        mlir::tfrt::RegisterPythonTestAttrsDialect(*dialects);
+      };
+  opts.compiler.create_compilation_pipeline =
+      [=](xla::runtime::PassManager& passes) {
+        tensorflow::TfJitRtPipelineOptions opts;
+        opts.vectorize = vectorize;
+        opts.legalize_i1_tensors = legalize_i1_tensors;
+        tensorflow::CreateTfJitRtPipeline(*passes, opts);
+        CreateDefaultJitRtCompilationPipeline(passes, copts);
+      };
   if (specialization != Specialization::kDisabled) {
     opts.compiler.create_specialization_pipeline =
         CreateJitRtSpecializationPipeline;
@@ -240,7 +243,8 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   PyBindingResultConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto st = (*executable)->Execute(memrefs, converter, opts); !st.ok())
-    throw std::runtime_error(StrCat("Unsupported argument: ", st.message()));
+    throw std::runtime_error(
+        StrCat("Unsupported argument: ", st.status().message()));
 
   // Pull Python arrays out of async values.
   std::vector<py::array> ret_values;
@@ -283,9 +287,7 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
-           py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
-           py::arg("legalize_i1_tensors") = false,
-           py::arg("one_shot_bufferize") = false)
+           py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));

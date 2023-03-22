@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/string_type.h"
 
 std::ostream& operator<<(std::ostream& os, const TfLiteTensor& tensor) {

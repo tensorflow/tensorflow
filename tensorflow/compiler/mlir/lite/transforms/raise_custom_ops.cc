@@ -90,12 +90,12 @@ void RaiseCustomOpsPass::runOnOperation() {
 
     new_block->addArguments(op->getOperandTypes(),
                             SmallVector<Location>(op->getNumOperands(), loc));
-    for (auto &idx_args : llvm::enumerate(new_block->getArguments())) {
+    for (const auto &idx_args : llvm::enumerate(new_block->getArguments())) {
       inner_op->setOperand(idx_args.index(), idx_args.value());
     }
     custom_op->setAttrs(inner_op->getAttrs());
     builder.create<YieldOp>(loc, inner_op->getResults());
-    custom_op.body().takeBody(region);
+    custom_op.getBody().takeBody(region);
 
     op->replaceAllUsesWith(custom_op);
     op->erase();

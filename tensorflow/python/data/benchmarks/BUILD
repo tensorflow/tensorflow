@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -95,6 +96,7 @@ tf_py_test(
     srcs = ["map_benchmark.py"],
     deps = [
         ":benchmark_base",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )

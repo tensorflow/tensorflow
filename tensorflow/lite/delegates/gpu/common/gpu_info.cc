@@ -52,6 +52,7 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 7xx series
+      {"740", AdrenoGpu::kAdreno740},
       {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
@@ -122,9 +123,10 @@ MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
       {"g510", MaliGpu::kG510}, {"g51", MaliGpu::kG51},
       {"g52", MaliGpu::kG52},   {"g57", MaliGpu::kG57},
       {"g610", MaliGpu::kG610}, {"g68", MaliGpu::kG68},
-      {"g710", MaliGpu::kG710}, {"g71", MaliGpu::kG71},
-      {"g72", MaliGpu::kG72},   {"g76", MaliGpu::kG76},
-      {"g77", MaliGpu::kG77},   {"g78", MaliGpu::kG78},
+      {"g710", MaliGpu::kG710}, {"g715", MaliGpu::kG715},
+      {"g71", MaliGpu::kG71},   {"g72", MaliGpu::kG72},
+      {"g76", MaliGpu::kG76},   {"g77", MaliGpu::kG77},
+      {"g78", MaliGpu::kG78},
   };
   for (const auto& v : kMapping) {
     if (gpu_description.find(v.first) != std::string::npos) {
@@ -132,6 +134,25 @@ MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
     }
   }
   return MaliGpu::kUnknown;
+}
+
+PowerVRGpu GetPowerVRGpuVersion(const std::string& gpu_description) {
+  // Order must be preserved
+  const std::vector<std::pair<std::string, PowerVRGpu>> kMapping = {
+      {"rogue", PowerVRGpu::kRogue},     {"axe", PowerVRGpu::kAXE},
+      {"axm", PowerVRGpu::kAXM},         {"axt", PowerVRGpu::kAXT},
+      {"bxe", PowerVRGpu::kBXE},         {"bxm", PowerVRGpu::kBXM},
+      {"bxs", PowerVRGpu::kBXS},         {"bxt", PowerVRGpu::kBXT},
+      {"cxt", PowerVRGpu::kCXT},         {"dxt", PowerVRGpu::kDXT},
+      {"powervr g", PowerVRGpu::kRogue},
+  };
+  for (const auto& v : kMapping) {
+    if (gpu_description.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+
+  return PowerVRGpu::kUnknown;
 }
 
 }  // namespace
@@ -198,7 +219,8 @@ bool AdrenoInfo::IsAdreno6xx() const {
 }
 
 bool AdrenoInfo::IsAdreno7xx() const {
-  return adreno_gpu == AdrenoGpu::kAdreno730;
+  return adreno_gpu == AdrenoGpu::kAdreno730 ||
+         adreno_gpu == AdrenoGpu::kAdreno740;
 }
 
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
@@ -264,6 +286,8 @@ int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
     // Adreno 7xx series
+    case AdrenoGpu::kAdreno740:
+      return 6;
     case AdrenoGpu::kAdreno730:
       return 4;
     // Adreno 6xx series
@@ -519,8 +543,11 @@ bool MaliInfo::IsValhallGen3() const {
          gpu_version == MaliGpu::kG610 || gpu_version == MaliGpu::kG710;
 }
 
+bool MaliInfo::IsValhallGen4() const { return gpu_version == MaliGpu::kG715; }
+
 bool MaliInfo::IsValhall() const {
-  return IsValhallGen1() || IsValhallGen2() || IsValhallGen3();
+  return IsValhallGen1() || IsValhallGen2() || IsValhallGen3() ||
+         IsValhallGen4();
 }
 
 int MaliInfo::GetApproximateComputeUnitsCount() const {
@@ -542,12 +569,31 @@ int MaliInfo::GetApproximateComputeUnitsCount() const {
     } else if (gpu_version == MaliGpu::kG310 || gpu_version == MaliGpu::kG510 ||
                gpu_version == MaliGpu::kG610) {
       return 6;  // Mali-G310/G510/G610 can have up to 6 cores
-    } else if (gpu_version == MaliGpu::kG710) {
-      return 10;  // Mali-G710 can have 7–16 cores
+    } else if (gpu_version == MaliGpu::kG710 || gpu_version == MaliGpu::kG715) {
+      return 10;  // Mali-G710/G715 can have 7–16 cores
     }
   }
   return 4;
 }
+
+PowerVRInfo::PowerVRInfo(const std::string& gpu_description)
+    : gpu_version(GetPowerVRGpuVersion(gpu_description)) {}
+
+bool PowerVRInfo::IsRogue() const { return gpu_version == PowerVRGpu::kRogue; }
+
+bool PowerVRInfo::IsImgAxx() const {
+  return gpu_version == PowerVRGpu::kAXE || gpu_version == PowerVRGpu::kAXM ||
+         gpu_version == PowerVRGpu::kAXT;
+}
+
+bool PowerVRInfo::IsImgBxx() const {
+  return gpu_version == PowerVRGpu::kBXE || gpu_version == PowerVRGpu::kBXM ||
+         gpu_version == PowerVRGpu::kBXS || gpu_version == PowerVRGpu::kBXT;
+}
+
+bool PowerVRInfo::IsImgCxx() const { return gpu_version == PowerVRGpu::kCXT; }
+
+bool PowerVRInfo::IsImgDxx() const { return gpu_version == PowerVRGpu::kDXT; }
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {
@@ -555,6 +601,14 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
   std::string lowered = gpu_description;
   absl::AsciiStrToLower(&lowered);
   gpu_info->vendor = GetGpuVendor(lowered);
+
+  // Because clvk is an OpenCL layer on top of vulkan, it does not react to CL
+  // optimisation as native CL implementation does. For the time being, let's
+  // manage it manually with explicit conditions in the code.
+  if (gpu_info->IsApiOpenCl() && gpu_info->opencl_info.IsCLVK()) {
+    gpu_info->vendor = GpuVendor::kUnknown;
+  }
+
   if (gpu_info->IsAdreno()) {
     gpu_info->adreno_info = AdrenoInfo(lowered);
   } else if (gpu_info->IsApple()) {
@@ -562,6 +616,8 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
     gpu_info->supported_subgroup_sizes = {32};
   } else if (gpu_info->IsMali()) {
     gpu_info->mali_info = MaliInfo(lowered);
+  } else if (gpu_info->IsPowerVR()) {
+    gpu_info->powervr_info = PowerVRInfo(lowered);
   }
 }
 
@@ -859,7 +915,7 @@ int GpuInfo::GetComputeUnitsCount() const {
     return adreno_info.GetComputeUnitsCount();
   }
   if (IsMali()) {
-    mali_info.GetApproximateComputeUnitsCount();
+    return mali_info.GetApproximateComputeUnitsCount();
   }
   return 4;
 }

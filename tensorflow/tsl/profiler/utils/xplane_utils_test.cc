@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
@@ -285,7 +285,7 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
   // Check plane level stats,
   EXPECT_EQ(dst_plane.stats_size(), 3);
   absl::flat_hash_map<absl::string_view, absl::string_view> plane_stats;
-  plane.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+  plane.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Name() == "plane_stat1") {
       EXPECT_EQ(stat.IntValue(), 1);
     } else if (stat.Name() == "plane_stat2") {
@@ -591,6 +591,42 @@ TEST(XplaneutilsTest, TestIsXSpaceGrouped) {
   }
   LOG(ERROR) << space.DebugString();
   EXPECT_TRUE(IsXSpaceGrouped(space));
+}
+
+TEST(XplaneutilsTest, TestIsHostPlane) {
+  XSpace xspace;
+  auto xplane_host_thread = FindOrAddMutablePlaneWithName(&xspace, "/host:CPU");
+  auto xplane_host_cpu = FindOrAddMutablePlaneWithName(&xspace, "Host CPUs");
+  auto xplane_tfstreamz =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:tfstreamz");
+  auto xplane_metadata =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:metadata");
+  auto xplane_syscalls = FindOrAddMutablePlaneWithName(&xspace, "Syscalls");
+  auto xplane_python_tracer =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:python-tracer");
+  auto xplane_custom_prefix =
+      FindOrAddMutablePlaneWithName(&xspace, "/device:CUSTOM:123");
+  auto xplane_legacy_custom =
+      FindOrAddMutablePlaneWithName(&xspace, "/custom:456");
+  auto xplane_cupti = FindOrAddMutablePlaneWithName(&xspace, "/host:CUPTI");
+  EXPECT_TRUE(IsHostPlane(*xplane_host_thread));
+  EXPECT_TRUE(IsHostPlane(*xplane_host_cpu));
+  EXPECT_TRUE(IsHostPlane(*xplane_tfstreamz));
+  EXPECT_TRUE(IsHostPlane(*xplane_metadata));
+  EXPECT_TRUE(IsHostPlane(*xplane_syscalls));
+  EXPECT_TRUE(IsHostPlane(*xplane_python_tracer));
+  EXPECT_TRUE(IsHostPlane(*xplane_custom_prefix));
+  EXPECT_TRUE(IsHostPlane(*xplane_legacy_custom));
+  EXPECT_TRUE(IsHostPlane(*xplane_cupti));
+}
+
+TEST(XplaneutilsTest, TestIsDevicePlane) {
+  XSpace xspace;
+  auto xplane_host_thread = FindOrAddMutablePlaneWithName(&xspace, "/host:CPU");
+  auto xplane_device_thread =
+      FindOrAddMutablePlaneWithName(&xspace, "/device:TPU");
+  EXPECT_FALSE(IsDevicePlane(*xplane_host_thread));
+  EXPECT_TRUE(IsDevicePlane(*xplane_device_thread));
 }
 
 }  // namespace

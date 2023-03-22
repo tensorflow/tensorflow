@@ -1,9 +1,12 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "if_linux_x86_64",
-    "tf_cc_test",
-    "tf_copts",
+    "tsl_copts",
+)
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -11,6 +14,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # tensorflow/tsl/lib/io/table_builder.cc uses crc functionality
         "//tensorflow/tsl/lib/io:__pkg__",
@@ -28,7 +32,7 @@ cc_library(
     ],
     hdrs = ["crc32c.h"],
     # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
+    copts = tsl_copts() + if_linux_x86_64(["-msse4.2"]),
     deps = [
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:cord",
@@ -56,7 +60,7 @@ filegroup(
     visibility = ["//tensorflow/core/lib/hash:__pkg__"],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "crc32c_test",
     size = "small",
     srcs = ["crc32c_test.cc"],

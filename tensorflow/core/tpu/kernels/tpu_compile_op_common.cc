@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -44,11 +46,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace {
 
@@ -116,7 +116,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (OpsApiFn()->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
+        if (stream_executor::tpu::OpsApiFn()
+                ->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }
 
@@ -145,14 +146,24 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status
+  if (!compile_status.ok() &&
+      !compile_status
            .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
            .has_value()) {
+    // TODO(b/237021124): Remove the string insertion once the TF runtime
+    // correctly propagates the status payload set.
+    const std::string new_error_message =
+        absl::StrCat(TpuCompileInterface::kTpuCompileErrorMessage, ". ",
+                     compile_status.error_message());
+
     tpu::CompilationResultProto proto;
-    proto.set_status_code(compile_status.code());
-    proto.set_status_error_message(
-        TruncateMessage(compile_status.error_message(), 128));
+    proto.set_status_code(static_cast<error::Code>(compile_status.code()));
+    proto.set_status_error_message(TruncateMessage(new_error_message, 128));
     status_payload = proto.SerializeAsString();
+
+    // Update compile_status's error message as well.
+    compile_status = tensorflow::errors::CreateWithUpdatedMessage(
+        compile_status, new_error_message);
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
@@ -392,7 +403,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
            .has_value()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
-    proto.set_status_code(status.code());
+    proto.set_status_code(static_cast<error::Code>(status.code()));
     if (!status.ok()) {
       proto.set_status_error_message(TruncateMessage(
           absl::StrCat("Compilation failure: ", status.error_message()), 128));
@@ -407,7 +418,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
     status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
-                      output.scalar<tstring>()());
+                      absl::Cord(output.scalar<tstring>()()));
   }
 
   if (status.ok()) {

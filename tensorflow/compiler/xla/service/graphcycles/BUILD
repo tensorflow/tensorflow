@@ -1,10 +1,10 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-        "//tensorflow/compiler/xla:internal",
+        "//tensorflow/compiler:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -28,19 +28,17 @@ cc_library(
     name = "ordered_set",
     hdrs = ["ordered_set.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "graphcycles_test",
     srcs = ["graphcycles_test.cc"],
     deps = [
         ":graphcycles",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -49,12 +47,11 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "ordered_set_test",
     srcs = ["ordered_set_test.cc"],
     deps = [
         ":ordered_set",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",

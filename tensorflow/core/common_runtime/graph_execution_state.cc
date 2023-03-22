@@ -66,7 +66,8 @@ namespace tensorflow {
 namespace {
 bool IsCollectiveV2(const string& op) {
   return op == "CollectiveReduceV2" || op == "CollectiveGatherV2" ||
-         op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2";
+         op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2" ||
+         op == "ColectiveReduceScatterV2";
 }
 }  // namespace
 
@@ -80,7 +81,8 @@ GraphExecutionState::GraphExecutionState(
       session_options_(options.session_options),
       session_handle_(options.session_handle),
       flib_def_(std::move(flib_def)),
-      graph_(nullptr) {}
+      graph_(nullptr),
+      run_placer_(options.run_placer) {}
 
 GraphExecutionState::~GraphExecutionState() {
   node_name_to_cost_id_map_.clear();
@@ -100,8 +102,8 @@ GraphExecutionState::~GraphExecutionState() {
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 
   if (options.session_options->config.graph_options().place_pruned_graph() ||
-      !options.session_options->config.experimental()
-           .optimize_for_static_graph()) {
+      options.session_options->config.experimental()
+          .disable_optimize_for_static_graph()) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
         std::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
@@ -181,10 +183,11 @@ GraphExecutionState::~GraphExecutionState() {
 Status GraphExecutionState::Extend(
     const GraphDef& extension_def,
     std::unique_ptr<GraphExecutionState>* out) const {
-  if (session_options_->config.experimental().optimize_for_static_graph()) {
+  if (!session_options_->config.experimental()
+           .disable_optimize_for_static_graph()) {
     return errors::FailedPrecondition(
         "Extending the graph is not supported when "
-        "`optimize_for_static_graph` is true.");
+        "`disable_optimize_for_static_graph` is false.");
   }
 
   GraphDef gdef;
@@ -620,14 +623,16 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
-                /* default_local_device= */ nullptr,
-                session_options_ == nullptr ||
-                    session_options_->config.allow_soft_placement(),
-                session_options_ != nullptr &&
-                    session_options_->config.log_device_placement());
-  // TODO(mrry): Consider making the Placer cancellable.
-  TF_RETURN_IF_ERROR(placer.Run());
+  if (run_placer_) {
+    Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
+                  /* default_local_device= */ nullptr,
+                  session_options_ == nullptr ||
+                      session_options_->config.allow_soft_placement(),
+                  session_options_ != nullptr &&
+                      session_options_->config.log_device_placement());
+    // TODO(mrry): Consider making the Placer cancellable.
+    TF_RETURN_IF_ERROR(placer.Run());
+  }
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));

@@ -74,7 +74,7 @@ TriangularSolveThunk::TriangularSolveThunk(
 
 Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  return RunTriangulatSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
+  return RunTriangularSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
                             buffer_allocations.GetDeviceAddress(b_buffer_),
                             buffer_allocations.GetDeviceAddress(temp_buffer_),
                             asm_opts_, uplo_, side_, unit_diagonal_,
@@ -82,7 +82,7 @@ Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
                             a_batch_stride_, b_batch_stride_, params.stream);
 }
 
-Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
+Status RunTriangularSolve(se::DeviceMemoryBase a_data,
                           se::DeviceMemoryBase b_data,
                           se::DeviceMemoryBase temp_data,
                           se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,

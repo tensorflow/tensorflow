@@ -35,17 +35,18 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
   TF_ASSIGN_OR_RETURN(const auto mesh, ExtractDeviceMeshEnclosingCluster(op));
   auto unsorted_segmented_sum = llvm::cast<mlir::TF::UnsortedSegmentSumOp>(op);
-  const int output_rank = ValueRank(unsorted_segmented_sum.output());
+  const int output_rank = ValueRank(unsorted_segmented_sum.getOutput());
   if (input_layouts.find(0) != input_layouts.end()) {
     // If the data layout exists, we can use it to forward propagate a layout
     // to the output.
     const int segment_ids_rank =
-        ValueRank(unsorted_segmented_sum.segment_ids());
+        ValueRank(unsorted_segmented_sum.getSegmentIds());
 
+    TF_ASSIGN_OR_RETURN(
+        Layout input_layout_truncated,
+        input_layouts.lookup(0).Truncate(segment_ids_rank, /*end=*/true));
     return llvm::DenseMap<int, Layout>(
-        {{0, input_layouts.lookup(0)
-                 .Truncate(segment_ids_rank, /*end=*/true)
-                 .LeftPad(output_rank)}});
+        {{0, input_layout_truncated.LeftPad(output_rank)}});
   }
 
   // When we don't have a data layout we can only output a replicated layout.
@@ -65,16 +66,17 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutBackward(
   if (!output_layouts.empty()) {
     // If we have an output layout, we can send it backwards to the last few
     // dimension
-    const int data_rank = ValueRank(unsorted_segmented_sum.data());
-    return llvm::DenseMap<int, Layout>({{0, output_layouts.lookup(0)
-                                                .Truncate(1, /*end=*/true)
-                                                .LeftPad(data_rank)},
-                                        {1, segment_ids_layout},
-                                        {2, num_segments_layout}});
+    const int data_rank = ValueRank(unsorted_segmented_sum.getData());
+    TF_ASSIGN_OR_RETURN(Layout output_layout_truncated,
+                        output_layouts.lookup(0).Truncate(1, /*end=*/true));
+    return llvm::DenseMap<int, Layout>(
+        {{0, output_layout_truncated.LeftPad(data_rank)},
+         {1, segment_ids_layout},
+         {2, num_segments_layout}});
   }
   return llvm::DenseMap<int, Layout>(
       {{0, Layout::ReplicatedOnMesh(
-               mesh, /*rank=*/ValueRank(unsorted_segmented_sum.data()))},
+               mesh, /*rank=*/ValueRank(unsorted_segmented_sum.getData()))},
        {1, segment_ids_layout},
        {2, num_segments_layout}});
 }
@@ -92,8 +94,8 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
   // 4. Emit a Relayout to the output layout.
 
   auto sum_op = mlir::cast<mlir::TF::UnsortedSegmentSumOp>(op);
-  mlir::Value data = sum_op.data();
-  mlir::Value segment_ids = sum_op.segment_ids();
+  mlir::Value data = sum_op.getData();
+  mlir::Value segment_ids = sum_op.getSegmentIds();
 
   TF_ASSIGN_OR_RETURN(Layout data_layout,
                       ExtractRequiredLayoutFromOperand(data));
@@ -103,7 +105,8 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
   const int data_rank = data_layout.rank();
   const int segment_ids_rank = segment_ids_layout.rank();
 
-  Layout new_segment_ids_layout = data_layout.Truncate(segment_ids_rank);
+  TF_ASSIGN_OR_RETURN(Layout new_segment_ids_layout,
+                      data_layout.Truncate(segment_ids_rank));
 
   absl::flat_hash_set<std::string> reduce_dimensions;
   for (int i = 0; i < segment_ids_rank; i++)
@@ -116,14 +119,15 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
 
   mlir::OpBuilder builder(op);
   mlir::Operation* new_sum_op = builder.create<mlir::TF::UnsortedSegmentSumOp>(
-      op->getLoc(), sum_op.output().getType(), data, new_segment_ids,
-      sum_op.num_segments());
+      op->getLoc(), sum_op.getOutput().getType(), data, new_segment_ids,
+      sum_op.getNumSegments());
 
   InferSPMDExpandedLocalShape(new_sum_op);
 
-  Layout result_output_layout =
-      data_layout.Truncate(segment_ids_rank, /*end=*/true)
-          .LeftPad(data_rank - segment_ids_rank + 1);  // This is output rank.
+  TF_ASSIGN_OR_RETURN(Layout data_layout_truncated,
+                      data_layout.Truncate(segment_ids_rank, /*end=*/true));
+  Layout result_output_layout = data_layout_truncated.LeftPad(
+      data_rank - segment_ids_rank + 1);  // This is output rank.
 
   TF_ASSIGN_OR_RETURN(
       new_sum_op, EmitAllReduce(builder, result_output_layout,

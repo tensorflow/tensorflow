@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -35,7 +36,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/utils",
+        "//third_party/py/numpy",
         "@gast_archive//:gast",
     ],
 )

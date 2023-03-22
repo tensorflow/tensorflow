@@ -171,7 +171,7 @@ class Conv2DTest(test.TestCase):
       if test_util.GpuSupportsHalfMatMulAndConv():
         out.append(dtypes.float16)
       if not test.is_built_with_rocm():
-        out.append(dtypes.float64)
+        out.extend([dtypes.float64, dtypes.bfloat16])
       return out
 
     return [dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16]
@@ -1205,7 +1205,7 @@ class Conv2DTest(test.TestCase):
     for (data_format, use_gpu) in GetTestConfigs():
       values.append(_GetVal(data_format, use_gpu))
     for i in range(1, len(values)):
-      self.assertAllClose(values[0], values[i], rtol=1e-4, atol=1e-4)
+      self.assertAllClose(values[0], values[i], rtol=2e-4, atol=2e-4)
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth1ValidBackpropFilter(self):

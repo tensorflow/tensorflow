@@ -18,9 +18,17 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <deque>
+#include <iterator>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
@@ -120,14 +128,16 @@ class MarkForCompilationPassImpl {
   MarkForCompilationPassImpl(DebugOptions debug_options, Graph* graph,
                              FunctionLibraryDefinition* flib_def, Env* env,
                              OptimizerOptions::GlobalJitLevel global_jit_level,
-                             bool cpu_global_jit)
+                             bool cpu_global_jit,
+                             std::string cluster_name_prefix)
       : debug_options_(debug_options),
         graph_(graph),
         graph_fingerprint_(0),
         flib_def_(flib_def),
         env_(env),
         global_jit_level_(global_jit_level),
-        cpu_global_jit_(cpu_global_jit) {}
+        cpu_global_jit_(cpu_global_jit),
+        cluster_name_prefix_(cluster_name_prefix) {}
 
   Status Run();
 
@@ -449,6 +459,7 @@ class MarkForCompilationPassImpl {
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
   bool cpu_global_jit_;
+  const std::string cluster_name_prefix_;
   absl::flat_hash_map<const Cluster*, bool> should_compile_cluster_cache_;
   jit::DeviceInfoCache device_info_cache_;
 
@@ -967,13 +978,16 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        if (debug_options_.deterministic_cluster_names) {
-          name = absl::StrCat("cluster_", graph_fingerprint_, "_",
-                              GetNextClusterSequenceNumber(graph_fingerprint_));
+        if (!cluster_name_prefix_.empty()) {
+          name = absl::StrCat(cluster_name_prefix_, "_");
         } else {
-          name = absl::StrCat("cluster_",
-                              GetNextClusterSequenceNumber(graph_fingerprint_));
+          name = "cluster_";
         }
+        if (debug_options_.deterministic_cluster_names) {
+          absl::StrAppend(&name, graph_fingerprint_, "_");
+        }
+        absl::StrAppend(&name,
+                        GetNextClusterSequenceNumber(graph_fingerprint_));
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -1851,7 +1865,12 @@ Status MarkForCompilation(
       GetGlobalJitLevelForGraph(options),
       options.session_options->config.graph_options()
           .optimizer_options()
-          .cpu_global_jit()}
+          .cpu_global_jit(),
+      /*cluster_name_prefix=*/options.session_options != nullptr
+          ? options.session_options->config.experimental()
+                .session_metadata()
+                .name()
+          : ""}
       .Run();
 }
 
@@ -2015,6 +2034,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Cross",
       "Cumprod",
       "Cumsum",
+      "CumulativeLogsumexp",
       "DenseBincount",
       "DataFormatDimMap",
       "DataFormatVecPermute",
@@ -2143,6 +2163,10 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "RngSkip",
       "Roll",
       "ScatterNd",
+      "SegmentSumV2",
+      "SegmentProdV2",
+      "SegmentMinV2",
+      "SegmentMaxV2",
       "SelfAdjointEigV2",
       "SoftmaxCrossEntropyWithLogits",
       "SpaceToBatch",

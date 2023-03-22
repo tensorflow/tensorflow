@@ -36,13 +36,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/data_type.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace Eigen {
 struct half;
@@ -354,7 +354,7 @@ class BatchDescriptor {
   // dimensions, except possibly for feature_map_count(), though this
   // function does not verify that.
   static BatchDescriptor DepthConcatenateOutputDescriptor(
-      port::ArraySlice<dnn::BatchDescriptor> inputs);  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> inputs);
 
  private:
   absl::Span<const int64_t> spatial_size() const {
@@ -886,12 +886,12 @@ class OpRunner<void(Args...)> {
   virtual size_t GetWorkspaceSize() const = 0;
 
   // Convert to an AlgorithmDesc for AoT compilation or autotuning.
-  virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
+  virtual tsl::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
-  virtual port::Status operator()(Stream*, ProfileResult*,
-                                  DeviceMemoryBase scratch_memory,
-                                  Args... args) const = 0;
+  virtual tsl::Status operator()(Stream*, ProfileResult*,
+                                 DeviceMemoryBase scratch_memory,
+                                 Args... args) const = 0;
 };
 
 using ConvSignature = void(DeviceMemoryBase /* input_data */,
@@ -1095,11 +1095,45 @@ std::string ElementwiseOperationString(ElementwiseOperation op);
 // See PR#16309 and issue #18402 for links discussing the issue.
 class VersionInfo {
  public:
-  VersionInfo(int major = 0, int minor = 0, int patch = 0)
+  explicit VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
+  explicit VersionInfo(DnnVersionInfoProto proto)
+      : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
+
+  DnnVersionInfoProto ToProto() const {
+    DnnVersionInfoProto proto;
+    proto.set_major(major_);
+    proto.set_minor(minor_);
+    proto.set_patch(patch_);
+    return proto;
+  }
+
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
+
+  std::tuple<int, int, int> as_tuple() const {
+    return std::make_tuple(major_, minor_, patch_);
+  }
+
+  friend bool operator<(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() < b.as_tuple();
+  }
+  friend bool operator>(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() > b.as_tuple();
+  }
+  friend bool operator<=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() <= b.as_tuple();
+  }
+  friend bool operator>=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() >= b.as_tuple();
+  }
+  friend bool operator==(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() == b.as_tuple();
+  }
+  friend bool operator!=(const VersionInfo& a, const VersionInfo& b) {
+    return a.as_tuple() != b.as_tuple();
+  }
 
  private:
   int major_;
@@ -1120,7 +1154,7 @@ class VersionInfo {
 //   functions are actually implemented by both backends, the rest are
 //   actually backend-specific. The massive interface creates extra mental
 //   burden.
-// * Poor error handling: the API should return Status objects.
+// * Poor error handling: the API should return tsl::Status objects.
 //
 // PrepareForConvolution is an example for how new APIs should be written.
 class DnnSupport {
@@ -1128,11 +1162,11 @@ class DnnSupport {
   DnnSupport() {}
   virtual ~DnnSupport() {}
 
-  virtual port::Status Init() = 0;
+  virtual tsl::Status Init() = 0;
 
   // Gets the version of the backing library, as a VersionInfo object.
-  virtual port::StatusOr<VersionInfo> GetVersion() {
-    return port::UnimplementedError(
+  virtual tsl::StatusOr<VersionInfo> GetVersion() {
+    return tsl::errors::Unimplemented(
         "DnnSupport::GetVersion not implemented on this platform.");
   }
 
@@ -1203,6 +1237,26 @@ class DnnSupport {
     return false;
   }
 
+  // Performs a bfloat16 forward batch normalization operation onto the
+  // stream. See DoBatchNormalizationForward above for argument details.
+  virtual bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const DeviceMemory<Eigen::bfloat16>& side_input,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* reserve_space_1,
+      DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
   // Performs a single-precision backward batch normalization gradient
   // computation operation onto the stream.
   //
@@ -1249,6 +1303,26 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<Eigen::half>* side_input_backprop,
+      DeviceMemory<uint8_t>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
+  // Performs a bfloat16 backward batch normalization gradient computation
+  // operation onto the stream. See DoBatchNormalizationBackward above for
+  // argument details.
+  virtual bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+      const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var,
+      const DeviceMemory<Eigen::bfloat16>& y,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
+      DeviceMemory<Eigen::bfloat16>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<Eigen::bfloat16>* side_input_backprop,
       DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) {
     return false;
@@ -1304,7 +1378,7 @@ class DnnSupport {
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
-  virtual port::Status DoFusedConvolve(
+  virtual tsl::Status DoFusedConvolve(
       Stream* stream, DataType input_type, DataType side_input_type,
       DataType bias_type, DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
@@ -1319,12 +1393,12 @@ class DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) {
-    return port::UnimplementedError(
+    return tsl::errors::Unimplemented(
         "DnnSupport::DoFusedConvolve not implemented on this platform.");
   }
 
   template <typename ElementType, typename OutputType>
-  port::Status PrepareForConvolution(
+  tsl::Status PrepareForConvolution(
       ConvolutionKind kind, Stream* stream,
       const BatchDescriptor& batch_descriptor,
       DeviceMemory<ElementType> input_data,
@@ -1341,6 +1415,19 @@ class DnnSupport {
         input_data, filter_descriptor, filter_data, output_descriptor,
         output_data, convolution_descriptor, algorithm_config,
         scratch_allocator, algorithm_desc, scratch_memory);
+  }
+
+  // cuDNN-specific input transformation that allows running int8x32
+  // convolutions faster using Tensor Core IMMA instruction.
+  virtual tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) {
+    return tsl::errors::Unimplemented(
+        "DnnSupport::CudnnReorderConvolutionFilterAndBias is specific to CUDA "
+        "convolution implementation.");
   }
 
   // Enqueues a single-precision convolution operation onto the stream.
@@ -1377,7 +1464,7 @@ class DnnSupport {
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
-  virtual port::Status DoConvolve(
+  virtual tsl::Status DoConvolve(
       ConvolutionKind kind, DataType element_type, DataType output_type,
       Stream* stream, const BatchDescriptor& input_descriptor,
       DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
@@ -1390,10 +1477,10 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
-  virtual port::Status GetConvolveRunners(
+  virtual tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -1405,7 +1492,7 @@ class DnnSupport {
       bool use_fallback, ScratchAllocator* scratch_allocator,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
-  virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
   ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -1414,7 +1501,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor);
 
-  virtual port::Status GetFusedConvolveRunners(
+  virtual tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType element_type, dnn::DataType bias_type,
       dnn::DataType output_type, double conv_input_scale,
@@ -1427,7 +1514,7 @@ class DnnSupport {
       bool use_fallback, dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
-  virtual port::Status GetFusedMatmulRunners(
+  virtual tsl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType element_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
@@ -1436,7 +1523,7 @@ class DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 
-  virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -1510,13 +1597,13 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with
@@ -1637,7 +1724,7 @@ class DnnSupport {
   // the input. The output width and height can be different.
   //
   // See PoolingDescriptor for how to configure the pooling operation.
-  virtual port::Status DoPoolForward(
+  virtual tsl::Status DoPoolForward(
       DataType element_type, Stream* stream,
       const dnn::PoolingDescriptor& pooling_dimensions,
       const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
@@ -1645,7 +1732,7 @@ class DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator) = 0;
 
   // Performs differentiation of the pooling operation.
-  virtual port::Status DoPoolBackward(
+  virtual tsl::Status DoPoolBackward(
       DataType element_type, Stream* stream,
       const dnn::PoolingDescriptor& pooling_dimensions,
       const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
@@ -1723,9 +1810,8 @@ class DnnSupport {
   //  output_data: un-owned device memory region in which to place the
   //    depth concatenate result.
   virtual bool DoDepthConcatenate(
-      Stream* stream,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) = 0;
 
   // Concatenates several layers into one, by concatenating each in the
@@ -1750,9 +1836,8 @@ class DnnSupport {
   //  concat_direction:  either dnn:SpaceConcatenateMode::XDirection or
   //    dnn::SpaceConcatenateMode::YDirection.
   virtual bool DoSpaceConcatenate(
-      Stream* stream,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data,
       dnn::SpaceConcatenateMode concat_direction) {
     return false;
@@ -1870,8 +1955,8 @@ class DnnSupport {
   //    operation result.
   virtual bool DoElementwiseOperate(
       Stream* stream, ElementwiseOperation operation,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) = 0;
 
@@ -1898,10 +1983,9 @@ class DnnSupport {
   //    operation result.
   virtual bool DoElementwiseOperateScaledQuantized(
       Stream* stream, ElementwiseOperation operation,
-      port::ArraySlice<int> input_multiplicands,  // non-absl ok
-      int output_divisor,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      absl::Span<const int> input_multiplicands, int output_divisor,
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) {
     return false;
@@ -2050,7 +2134,7 @@ class DnnSupport {
   //    for dropout layer. The user has to maintain the memory until the model
   //    is no longer in use.
   //  use_padded_io: a bool to specify whether the input is using padded IO.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
                       int cell_size, int batch_size,
                       dnn::RnnInputMode input_mode,
@@ -2059,8 +2143,8 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64_t seed,
                       ScratchAllocator* state_allocator, bool use_padded_io) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnDescriptor is unimplemented");
+    return tsl::Status(absl::StatusCode::kUnimplemented,
+                       "createRnnDescriptor is unimplemented");
   }
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -2072,29 +2156,29 @@ class DnnSupport {
   //  data_size: the size of the state.
   //  seq_lengths: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented");
+    return tsl::Status(absl::StatusCode::kUnimplemented,
+                       "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major, dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented");
+    return tsl::Status(absl::StatusCode::kUnimplemented,
+                       "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
-  virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  virtual tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnStateTensorDescriptor is unimplemented");
+    return tsl::Status(absl::StatusCode::kUnimplemented,
+                       "createRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.
@@ -2320,16 +2404,16 @@ class DnnSupport {
   }
 
   template <typename ElementType>
-  port::Status PrepareForCtcLoss(Stream* stream,
-                                 const RnnStateTensorDescriptor& probs_desc,
-                                 DeviceMemory<ElementType> probs_data,
-                                 const RnnStateTensorDescriptor& grads_desc,
-                                 absl::Span<const int> labels_data,
-                                 absl::Span<const int> labels_lengths_data,
-                                 absl::Span<const int> input_lengths_data,
-                                 ScratchAllocator* workspace_allocator,
-                                 DeviceMemory<uint8_t>* scratch_memory,
-                                 int* ctc_loss_algo_id) {
+  tsl::Status PrepareForCtcLoss(Stream* stream,
+                                const RnnStateTensorDescriptor& probs_desc,
+                                DeviceMemory<ElementType> probs_data,
+                                const RnnStateTensorDescriptor& grads_desc,
+                                absl::Span<const int> labels_data,
+                                absl::Span<const int> labels_lengths_data,
+                                absl::Span<const int> input_lengths_data,
+                                ScratchAllocator* workspace_allocator,
+                                DeviceMemory<uint8_t>* scratch_memory,
+                                int* ctc_loss_algo_id) {
     return DoPrepareForCtcLoss(
         stream, ToDataType<ElementType>::value, probs_desc, grads_desc,
         labels_data, labels_lengths_data, input_lengths_data,
@@ -2357,7 +2441,7 @@ class DnnSupport {
   //    workspace memory used by this operation. The caller is responsible for
   //    keeping the memory alive long enough for this operation, and recylces
   //    afterwards.
-  virtual port::Status DoCtcLoss(
+  virtual tsl::Status DoCtcLoss(
       Stream* stream, dnn::DataType element_type,
       const RnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
@@ -2629,10 +2713,10 @@ class DnnSupport {
 
  protected:
   // Returns whether status is 'ok', and potentially logs the error.
-  static bool IsStatusOk(const port::Status& status, bool report_error);
+  static bool IsStatusOk(const tsl::Status& status, bool report_error);
 
  private:
-  virtual port::Status DoPrepareForConvolution(
+  virtual tsl::Status DoPrepareForConvolution(
       ConvolutionKind kind, DataType element_type, Stream* stream,
       const BatchDescriptor& batch_descriptor, DeviceMemoryBase input_data,
       const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
@@ -2646,7 +2730,7 @@ class DnnSupport {
     return ::tsl::OkStatus();
   }
 
-  virtual port::Status DoPrepareForCtcLoss(
+  virtual tsl::Status DoPrepareForCtcLoss(
       Stream* stream, DataType element_type,
       const RnnStateTensorDescriptor& probs_desc,
       const RnnStateTensorDescriptor& grads_desc,

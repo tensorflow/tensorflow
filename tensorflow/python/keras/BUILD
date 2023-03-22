@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -39,6 +40,7 @@ py_library(
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -53,6 +55,7 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
@@ -79,11 +82,12 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training_lib",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/distribute:distribute_coordinator_utils",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
@@ -91,6 +95,9 @@ py_library(
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
         "//tensorflow/python/summary",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -99,7 +106,8 @@ py_library(
     srcs = ["backend_config.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -126,6 +134,8 @@ py_library(
         ":backend",
         "//tensorflow/python/keras/layers:advanced_activations",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -154,6 +164,8 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/profiler:profiler_v2",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -194,6 +206,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -206,7 +219,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:cond",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/util:dispatch",
     ],
 )
 
@@ -230,12 +246,12 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/engine:base_layer_utils",
@@ -243,6 +259,9 @@ py_library(
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
     ],
@@ -259,12 +278,13 @@ py_library(
         ":metrics",
         ":optimizers",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:version_utils",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -279,6 +299,8 @@ py_library(
         ":backend",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -319,11 +341,11 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )

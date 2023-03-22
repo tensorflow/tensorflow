@@ -8,6 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -78,7 +79,6 @@ tf_cc_test(
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -222,6 +222,7 @@ tf_cc_test(
     deps = [
         ":finalize_dataset_op",
         ":options_dataset_op",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -428,11 +429,13 @@ tf_kernel_library(
         "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/data:tfdataz_metrics",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/data:utils",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
     ],
@@ -444,6 +447,7 @@ tf_cc_test(
     srcs = ["iterator_ops_test.cc"],
     deps = [
         ":iterator_ops",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -567,6 +571,7 @@ tf_kernel_library(
         "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:root_dataset",
+        "//tensorflow/core/data:tfdataz_metrics",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:env",
@@ -870,6 +875,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -998,7 +1004,6 @@ tf_cc_test(
         ":iterator_ops",
         ":range_dataset_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1013,6 +1018,7 @@ tf_kernel_library(
     hdrs = ["reduce_dataset_op.h"],
     deps = [
         ":iterator_ops",
+        ":prefetch_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1176,7 +1182,6 @@ tf_cc_test(
         ":iterator_ops",
         ":range_dataset_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1501,6 +1506,7 @@ filegroup(
     name = "portable_all_op_kernels_headers",
     srcs = [
         "//tensorflow/core/data:captured_function.h",
+        "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
         "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:metric_utils.h",
@@ -1510,6 +1516,7 @@ filegroup(
         "//tensorflow/core/data:serialization_utils.h",
         "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.h",
+        "//tensorflow/core/data:tfdataz_metrics.h",
         "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/data:utils.h",
         "//tensorflow/core/kernels/data/experimental:portable_all_op_kernels_headers",
@@ -1527,9 +1534,11 @@ filegroup(
     srcs = [
         ":portable_all_op_kernels_headers",
         "//tensorflow/core/data:captured_function.cc",
+        "//tensorflow/core/data:compression_utils.cc",
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:metric_utils.cc",
+        "//tensorflow/core/data:tfdataz_metrics.cc",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
         "//tensorflow/core/data:root_dataset.cc",

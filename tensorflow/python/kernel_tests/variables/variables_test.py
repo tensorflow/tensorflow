@@ -21,7 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -29,12 +29,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
@@ -109,7 +110,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testCyclicInitializer(self):
     with self.cached_session():
-      cyclic = control_flow_ops.while_loop(
+      cyclic = while_loop.while_loop(
           cond=lambda i: i < 10,
           body=lambda i: i + 1,
           loop_vars=(constant_op.constant(0),))
@@ -266,7 +267,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
         var_dict["v2"] = v2
         return v2 + v0
 
-      add = control_flow_ops.cond(
+      add = tf_cond.cond(
           math_ops.less(v0, 10), var_in_then_clause, var_in_else_clause)
       v1 = var_dict["v1"]
       v2 = var_dict["v2"]
@@ -298,7 +299,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       return (i + 1, v.read_value())
 
     with self.assertRaisesRegex(ValueError, "inside a control-flow"):
-      control_flow_ops.while_loop(cond, body, [0, 0])
+      while_loop.while_loop(cond, body, [0, 0])
 
   @test_util.run_deprecated_v1
   def testUseVariableAsTensor(self):
@@ -608,11 +609,15 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
         "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
         repr(var))
 
-  def testVariableNamesPreserveNameScopesWithDefun(self):
-    @function.defun
+  def testVariableNamesPreserveNameScopesWithFunction(self):
+    v = None
+
+    @def_function.function
     def create_variable():
       with ops.name_scope("foo"):
-        v = variables.Variable(0.0, name="bar")
+        nonlocal v
+        if v is None:
+          v = variables.Variable(0.0, name="bar")
       self.assertEqual(v.name, "foo/bar:0")
     with ops.get_default_graph().as_default():
       create_variable()

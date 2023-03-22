@@ -177,7 +177,7 @@ void PopulateEmptyIsland(tf_executor::IslandOp island) {
     Value operand = yield.getOperand(0);
     auto identity = builder.create<TF::IdentityOp>(island.getLoc(),
                                                    operand.getType(), operand);
-    yield.setOperand(0, identity.output());
+    yield.setOperand(0, identity.getOutput());
   } else {
     auto identity_n = builder.create<TF::IdentityNOp>(
         island.getLoc(), yield.getOperandTypes(), yield.getOperands());

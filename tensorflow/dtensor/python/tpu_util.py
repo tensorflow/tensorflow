@@ -20,15 +20,12 @@ from typing import List, Optional, Dict
 
 import numpy as np
 
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
-from tensorflow.dtensor.python import heartbeat
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -86,9 +83,9 @@ class _CoreLocation:
 
 def _create_device_array(shape, device_type, host_id, local_device_ids=None):
   """Returns ID and device lists that can be used to create a mesh."""
-  num_global_devices = api.num_global_devices(device_type)
+  num_global_devices = config.num_global_devices(device_type)
   global_device_ids = np.arange(num_global_devices).reshape(shape)
-  local_device_list = api.local_devices(device_type)
+  local_device_list = config.local_devices(device_type)
 
   # User can specify local_device_ids or use default list for multi host.
   num_local_devices = len(local_device_list)
@@ -142,6 +139,103 @@ def shutdown_tpu_system():
     logging.warning("TPU system fails to shut down.")
 
 
+def tpu_system_init_helper(task_id,
+                           num_tasks,
+                           num_devices,
+                           use_tfrt_host_runtime=True):
+  """A helper function to initialize multi-client tpu system."""
+
+  @def_function.function
+  def _tpu_init_fn():
+    return gen_dtensor_ops.configure_and_initialize_global_tpu(
+        use_tfrt_host_runtime=use_tfrt_host_runtime)
+
+  @def_function.function
+  def _set_global_tpu_array_fn(topology_proto):
+    gen_dtensor_ops.d_tensor_set_global_tpu_array(topology_proto)
+
+  with ops.device("/job:" + config.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
+    my_core_ids = _tpu_init_fn()
+  logging.info("TPU core IDs: %s", my_core_ids)
+
+  # `my_core_ids` contains the IDs of TPU cores attached to this host.
+  #
+  # To generate correct and efficient XLA AllReduce group assignment, we must
+  # merge these arrays from all hosts and broadcast the result back to all
+  # hosts, so all hosts can use these mappings in their MLIR passes.
+  #
+  # This is essentially doing what WaitForDistributedTpuOp and
+  # SetGlobalTPUArrayOp do, in our multi-client environment.
+  num_devices_per_task = int(num_devices / num_tasks)
+
+  # Create a one-time use mesh and layout just for merging core IDs.
+  mesh = layout_lib.Mesh([_MESH_DIM_X],
+                         *_create_device_array((num_devices,), _TPU_DEVICE_TYPE,
+                                               config.client_id()))
+  layout = layout_lib.Layout([_MESH_DIM_X, layout_lib.UNSHARDED], mesh)
+  device = dtensor_device.DTensorDevice(meshes=[mesh])
+  logging.info("TPU core locations: %s",
+               device.tpu_core_ids_to_locations(my_core_ids))
+
+  # At this point, we don't know which cores are attached to other hosts.
+  # The core ID mappings in the runtime haven't been set yet.
+  #
+  # The core ID merging AllReduce below is carefully written so it works
+  # without needing correct core mappings to be set in the runtime. We will
+  # use this AllReduce's result to set the core ID mappings, and all future
+  # user-initiated AllReduces will use the mappings.
+  #
+  # The runtime is hard-coded to ignore core ID mappings on this AllReduce.
+  all_core_ids = np.zeros([num_devices], dtype=np.int32)
+  for i in range(len(my_core_ids)):
+    all_core_ids[task_id * num_devices_per_task + i] = my_core_ids[i]
+
+  # Only one local device gets valid input: 8 local core IDs among
+  # (num_tasks - 1) * 8 zeros. The 8 core IDs are set using task ID as offset.
+  # The other 7 local devices get zero inputs. All devices on all host
+  # participate in one AllReduce, whose result will be core IDs arranged by
+  # task-device ordinals.
+  all_core_ids = constant_op.constant([all_core_ids])
+  zeros = array_ops.zeros_like(all_core_ids)
+  all_core_ids = [all_core_ids] + [zeros] * (num_devices_per_task - 1)
+
+  with ops.device(device.name):
+    all_core_ids = device.pack(all_core_ids, layout)
+    all_core_ids = math_ops.reduce_sum(all_core_ids, axis=[0])
+    unpacked_all_tpu_ids = device.unpack(all_core_ids)
+
+  all_core_ids = list(unpacked_all_tpu_ids[0].numpy())
+  logging.info("All TPU core IDs: %s", all_core_ids)
+
+  # Set the default core ID mappings in the runtime for legacy code and tests.
+  #
+  # Legacy code and tests create TPU meshes directly without using the
+  # `create_tpu_mesh` function below. Those meshes have global device IDs
+  # equal to TF task-device ordinals. The `all_core_ids` array happens to
+  # arrange core IDs by TF task-device ordinals. Using this array on those
+  # meshes guarantee correct although inefficient results.
+  device.set_tpu_core_ids("", all_core_ids)
+
+  # Remember enough global, immutable information to be able to build any ring
+  # we want prescribed by `create_tpu_mesh` in the future.
+  global _all_core_ids
+  _all_core_ids = all_core_ids
+
+  all_core_locations = device.tpu_core_ids_to_locations(all_core_ids)
+  all_core_locations = [
+      _CoreLocation(l[0], l[1], l[2], l[3]) for l in all_core_locations
+  ]
+  global _all_core_locations
+  _all_core_locations = all_core_locations
+  logging.info("All TPU core locations: %s", all_core_locations)
+
+  tpu_topology = _create_tpu_topology(all_core_locations, num_tasks,
+                                      num_devices_per_task)
+
+  _set_global_tpu_array_fn(tpu_topology.serialized())
+  return tpu_topology, device
+
+
 def initialize_tpu_system():
   """Initializes the TPU system."""
 
@@ -151,98 +245,18 @@ def initialize_tpu_system():
   context.async_wait()
   context.context()._clear_caches()  # pylint: disable=protected-access
 
-  @function.defun
-  def _tpu_init_fn():
-    return gen_dtensor_ops.configure_and_initialize_global_tpu()
-
-  @def_function.function
-  def _set_global_tpu_array_fn(topology_proto):
-    gen_dtensor_ops.d_tensor_set_global_tpu_array(topology_proto)
-
+  use_tfrt_host_runtime = context.context().use_tfrt
+  logging.info("Using TFRT host runtime is set to %s", use_tfrt_host_runtime)
   try:
-    with ops.device("/job:" + config.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
-      my_core_ids = _tpu_init_fn()
-    logging.info("TPU core IDs: %s", my_core_ids)
-
-    # `my_core_ids` contains the IDs of TPU cores attached to this host.
-    #
-    # To generate correct and efficient XLA AllReduce group assignment, we must
-    # merge these arrays from all hosts and broadcast the result back to all
-    # hosts, so all hosts can use these mappings in their MLIR passes.
-    #
-    # This is essentially doing what WaitForDistributedTpuOp and
-    # SetGlobalTPUArrayOp do, in our multi-client environment.
     task_id = config.client_id()
     num_tasks = config.num_clients()
-    num_devices = api.num_global_devices(_TPU_DEVICE_TYPE)
-    num_devices_per_task = int(num_devices / num_tasks)
+    num_devices = config.num_global_devices(_TPU_DEVICE_TYPE)
 
-    # Create a one-time use mesh and layout just for merging core IDs.
-    mesh = layout_lib.Mesh([_MESH_DIM_X],
-                           *_create_device_array((num_devices,),
-                                                 _TPU_DEVICE_TYPE,
-                                                 config.client_id()))
-    layout = layout_lib.Layout([_MESH_DIM_X, layout_lib.UNSHARDED], mesh)
-    device = dtensor_device.DTensorDevice(meshes=[mesh])
-    logging.info("TPU core locations: %s",
-                 device.tpu_core_ids_to_locations(my_core_ids))
-
-    # At this point, we don't know which cores are attached to other hosts.
-    # The core ID mappings in the runtime haven't been set yet.
-    #
-    # The core ID merging AllReduce below is carefully written so it works
-    # without needing correct core mappings to be set in the runtime. We will
-    # use this AllReduce's result to set the core ID mappings, and all future
-    # user-initiated AllReduces will use the mappings.
-    #
-    # The runtime is hard-coded to ignore core ID mappings on this AllReduce.
-    all_core_ids = np.zeros([num_devices], dtype=np.int32)
-    for i in range(len(my_core_ids)):
-      all_core_ids[task_id * num_devices_per_task + i] = my_core_ids[i]
-
-    # Only one local device gets valid input: 8 local core IDs among
-    # (num_tasks - 1) * 8 zeros. The 8 core IDs are set using task ID as offset.
-    # The other 7 local devices get zero inputs. All devices on all host
-    # participate in one AllReduce, whose result will be core IDs arranged by
-    # task-device ordinals.
-    all_core_ids = constant_op.constant([all_core_ids])
-    zeros = array_ops.zeros_like(all_core_ids)
-    all_core_ids = [all_core_ids] + [zeros] * (num_devices_per_task - 1)
-
-    with ops.device(device.name):
-      all_core_ids = device.pack(all_core_ids, layout)
-      all_core_ids = math_ops.reduce_sum(all_core_ids, axis=[0])
-      unpacked_all_tpu_ids = device.unpack(all_core_ids)
-
-    all_core_ids = list(unpacked_all_tpu_ids[0].numpy())
-    logging.info("All TPU core IDs: %s", all_core_ids)
-
-    # Set the default core ID mappings in the runtime for legacy code and tests.
-    #
-    # Legacy code and tests create TPU meshes directly without using the
-    # `create_tpu_mesh` function below. Those meshes have global device IDs
-    # equal to TF task-device ordinals. The `all_core_ids` array happens to
-    # arrange core IDs by TF task-device ordinals. Using this array on those
-    # meshes guarantee correct although inefficient results.
-    device.set_tpu_core_ids("", all_core_ids)
-
-    # Remember enough global, immutable information to be able to build any ring
-    # we want prescribed by `create_tpu_mesh` in the future.
-    global _all_core_ids
-    _all_core_ids = all_core_ids
-
-    all_core_locations = device.tpu_core_ids_to_locations(all_core_ids)
-    all_core_locations = [
-        _CoreLocation(l[0], l[1], l[2], l[3]) for l in all_core_locations
-    ]
-    global _all_core_locations
-    _all_core_locations = all_core_locations
-    logging.info("All TPU core locations: %s", all_core_locations)
-
-    tpu_topology = _create_tpu_topology(all_core_locations, num_tasks,
-                                        num_devices_per_task)
-
-    _set_global_tpu_array_fn(tpu_topology.serialized())
+    tpu_topology, device = tpu_system_init_helper(
+        task_id,
+        num_tasks,
+        num_devices,
+        use_tfrt_host_runtime=use_tfrt_host_runtime)
     global _tpu_topology
     _tpu_topology = tpu_topology
     logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,
@@ -264,13 +278,6 @@ def initialize_tpu_system():
                   + "messages above to see whether that's the case. \nIf so, "
                   + "consider to restart the job or try another machine.")
     raise e
-
-  # Optionally exchange heartbeats between workers every minute.
-  if config.num_clients() > 1 and config.heartbeat_enabled():
-    logging.info(
-        "Starting DTensor heartbeat service exchanging signals every 10 minutes"
-    )
-    heartbeat.start(period=180)
 
   # Clear out the eager context caches since the memory is invalid now.
   logging.info("Clearing out eager caches")
@@ -565,15 +572,17 @@ def _build_orthogonal_rings(
 
 
 @tf_export("experimental.dtensor.create_tpu_mesh", v1=[])
-def create_tpu_mesh(mesh_dim_names: List[str],
-                    mesh_shape: List[int],
-                    mesh_name: str,
-                    ring_dims: Optional[int] = None,
-                    ring_axes: Optional[List[str]] = None,
-                    ring_bounds: Optional[List[int]] = None,
-                    can_split_host_across_rings: bool = True,
-                    build_ring_across_rings: bool = False,
-                    rotate_ring_across_rings: bool = False) -> layout_lib.Mesh:
+def create_tpu_mesh(
+    mesh_dim_names: List[str],
+    mesh_shape: List[int],
+    mesh_name: str,
+    ring_dims: Optional[int] = None,
+    ring_axes: Optional[List[str]] = None,
+    ring_bounds: Optional[List[int]] = None,
+    can_split_host_across_rings: bool = True,
+    build_ring_across_rings: bool = False,
+    rotate_ring_across_rings: bool = False,
+    use_xla_spmd: bool = layout_lib.USE_XLA_SPMD) -> layout_lib.Mesh:
   """Returns a distributed TPU mesh optimized for AllReduce ring reductions.
 
   Only as many as leading axes specified by `ring_axes` as necessary will be
@@ -604,6 +613,8 @@ def create_tpu_mesh(mesh_dim_names: List[str],
       across model-parallel rings. This ring could be strided.
     rotate_ring_across_rings: Optional; If true, build the data-parallel ring in
       column-major instead of row-major order.
+    use_xla_spmd: Boolean when True, will use XLA SPMD instead of
+      DTensor SPMD.
   """
 
   logging.info("Building a TPU mesh %s of shape %s", mesh_name, mesh_shape)
@@ -704,7 +715,7 @@ def create_tpu_mesh(mesh_dim_names: List[str],
   global_device_ids, local_device_ids, local_device_list = _create_device_array(
       mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes)
   return layout_lib.Mesh(mesh_dim_names, global_device_ids, local_device_ids,
-                         local_device_list, mesh_name)
+                         local_device_list, mesh_name, use_xla_spmd)
 
 
 def get_device_ids(mesh: layout_lib.Mesh,

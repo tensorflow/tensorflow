@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -120,7 +121,6 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/218876472)
-        "nomsan",  # b/216320808
         "nozapfhahn",
     ],
     xla_tags = [

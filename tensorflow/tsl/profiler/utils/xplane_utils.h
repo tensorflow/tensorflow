@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/timespan.h"
 #include "tensorflow/tsl/profiler/utils/trace_utils.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
@@ -207,6 +207,12 @@ class XEventContextTracker {
 // Aggregate traces on full_trace xplane and add them onto the aggregated_trace
 // xplane.
 void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace);
+
+// Return whether this is a host plan.
+bool IsHostPlane(const XPlane& plane);
+
+// Return whether this is a device plan.
+bool IsDevicePlane(const XPlane& plane);
 
 }  // namespace profiler
 }  // namespace tsl

@@ -19,17 +19,19 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 
@@ -50,12 +52,13 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
   absl::string_view fingerprint() const override;
 
  private:
-  Status LoadProgramAndEnqueueToStream(
+  xla::Status LoadProgramAndEnqueueToStream(
       const xla::ServiceExecutableRunOptions& run_options,
       absl::Span<const stream_executor::DeviceMemoryBase> arguments,
       stream_executor::DeviceMemoryBase result,
-      std::optional<stream_executor::DeviceMemoryBase>
-          cross_program_prefetch_addr) override;
+      const std::vector<stream_executor::DeviceMemoryBase>&
+          cross_program_prefetch_addrs,
+      const std::vector<uint32_t>& cross_program_prefetch_offsets) override;
 
   xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) override;
 

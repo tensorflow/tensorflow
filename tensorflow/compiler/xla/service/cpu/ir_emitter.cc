@@ -21,7 +21,9 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,8 +37,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/CodeGen/TargetRegisterInfo.h"
-#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/FMF.h"
@@ -46,6 +46,10 @@ limitations under the License.
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -59,13 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_loop_emitter.h"
-#include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
-#include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -76,12 +74,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -165,7 +162,7 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
-    HloComputation* computation, const std::string& function_name_prefix,
+    HloComputation* computation, absl::string_view function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order,
     bool allow_reassociation) {
@@ -247,12 +244,10 @@ void IrEmitter::InitializeIrFunction(const std::string& function_name) {
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
   // Create and initialize new IrFunction.
-  compute_function_.reset(new IrFunction(function_name, linkage,
-                                         hlo_module_config_, module_, &b_,
-                                         num_dynamic_loop_bounds_));
+  compute_function_ =
+      std::make_unique<IrFunction>(function_name, linkage, hlo_module_config_,
+                                   module_, &b_, num_dynamic_loop_bounds_);
 }
-
-IrEmitter::~IrEmitter() {}
 
 Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
@@ -893,11 +888,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   VLOG(2) << "HandleDot: ";
   VLOG(2) << "  lhs operand: "
-          << llvm_ir::DumpToString(*lhs_array.GetBasePointer());
+          << llvm_ir::DumpToString(lhs_array.GetBasePointer());
   VLOG(2) << "  rhs operand: "
-          << llvm_ir::DumpToString(*rhs_array.GetBasePointer());
+          << llvm_ir::DumpToString(rhs_array.GetBasePointer());
   VLOG(2) << "  target: "
-          << llvm_ir::DumpToString(*target_array.GetBasePointer());
+          << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
   return EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
@@ -1185,6 +1180,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
       case PRED:
       case S8:
       case U8:
+      case S16:
+      case U16:
       case S32:
       case U32:
       case S64:
@@ -2604,7 +2601,8 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   Br(header_bb);
 
   // Adds the exit block to the function and sets the insert point there.
-  compute_function_->function()->getBasicBlockList().push_back(exit_bb);
+  llvm::Function* llvm_fn = compute_function_->function();
+  llvm_fn->insert(llvm_fn->end(), exit_bb);
   b_.SetInsertPoint(exit_bb);
 
   return OkStatus();
@@ -2975,9 +2973,9 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   VLOG(2) << "FinishVisit root: " << root->ToString();
   if (root->opcode() == HloOpcode::kOutfeed) {
     VLOG(2) << "  outfeed with value: "
-            << llvm_ir::DumpToString(*GetEmittedValueFor(root->operand(0)));
+            << llvm_ir::DumpToString(GetEmittedValueFor(root->operand(0)));
   } else {
-    VLOG(2) << "  value: " << llvm_ir::DumpToString(*GetEmittedValueFor(root));
+    VLOG(2) << "  value: " << llvm_ir::DumpToString(GetEmittedValueFor(root));
   }
 
   auto record_complete_computation = [&](llvm::Value* prof_counter) {

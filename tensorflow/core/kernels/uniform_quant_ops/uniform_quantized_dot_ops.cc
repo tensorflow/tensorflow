@@ -269,7 +269,6 @@ Status EvalHybridDot(OpKernelContext* context, const Tensor& lhs,
                      const Tensor& rhs, const Tensor& rhs_scales,
                      const Tensor& rhs_zero_points, Tensor& output) {
   const int64_t batches = lhs.dim_size(0);
-  const int64_t accum_depth = lhs.dim_size(1);
 
   Tensor lhs_quantized;
   TF_RETURN_IF_ERROR(
@@ -282,11 +281,14 @@ Status EvalHybridDot(OpKernelContext* context, const Tensor& lhs,
   float* lhs_scales_data = lhs_scales.flat<float>().data();
   int32_t* lhs_zero_points_data = lhs_zero_points.flat<int32_t>().data();
 
+  auto lhs_tensor = lhs.template tensor<float, 2>();
+  auto lhs_quantized_tensor = lhs_quantized.template tensor<qint8, 2>();
   for (int64_t b = 0; b < batches; ++b) {
-    AsymmetricQuantize(lhs, b * accum_depth, accum_depth,
-                       /*quantization_min_val=*/-128,
-                       /*quantization_max_val=*/127, lhs_scales_data[b],
-                       lhs_zero_points_data[b], lhs_quantized);
+    TF_RETURN_IF_ERROR(AsymmetricQuantize(
+        lhs_tensor.template chip<0>(b),
+        /*quantization_min_val=*/-128,
+        /*quantization_max_val=*/127, lhs_scales_data[b],
+        lhs_zero_points_data[b], lhs_quantized_tensor.template chip<0>(b)));
   }
   if (rhs_scales.dims() != 0) {
     EvalLhsPerBatchAndRhsPerChannelQuantizedDot<qint8, Trhs>(

@@ -81,7 +81,7 @@ class PendingCounts {
   // Create a new PendingCounts object that can hold the state of
   // all the Handles allocated from "final_allocator".
   explicit PendingCounts(Layout layout)
-      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {
+      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]()) {
     if (num_bytes_ >= sizeof(LargeCounts)) {
       CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
     }

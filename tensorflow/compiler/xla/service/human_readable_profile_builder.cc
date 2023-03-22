@@ -27,8 +27,8 @@ using absl::StrAppend;
 using absl::StrAppendFormat;
 using absl::StrCat;
 using absl::StrFormat;
-using tensorflow::strings::HumanReadableElapsedTime;
-using tensorflow::strings::HumanReadableNumBytes;
+using tsl::strings::HumanReadableElapsedTime;
+using tsl::strings::HumanReadableNumBytes;
 
 std::string HumanReadableProfileBuilder::ToString() const {
   std::string s;

@@ -312,6 +312,22 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     const auto bbox_deltas = context->input(1);
     const auto image_info = context->input(2);
     const auto anchors = context->input(3);
+
+    OP_REQUIRES(context, scores.dims() == 4,
+                errors::InvalidArgument("`scores` must be rank 4 but is rank ",
+                                        scores.dims()));
+    OP_REQUIRES(
+        context, bbox_deltas.dims() == 4,
+        errors::InvalidArgument("`bbox_deltas` must be rank 4 but is rank ",
+                                bbox_deltas.dims()));
+    OP_REQUIRES(
+        context, image_info.dims() == 2,
+        errors::InvalidArgument("`image_info` must be rank 2 but is rank ",
+                                image_info.dims()));
+    OP_REQUIRES(context, anchors.dims() == 3,
+                errors::InvalidArgument("`anchors` must be rank 3 but is rank ",
+                                        anchors.dims()));
+
     const auto num_images = scores.dim_size(0);
     const auto num_anchors = scores.dim_size(3);
     const auto height = scores.dim_size(1);

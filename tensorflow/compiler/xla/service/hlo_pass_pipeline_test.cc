@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -79,7 +79,7 @@ class ReverseStringModulePass : public HloModulePass {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       HloInstruction* root = computation->root_instruction();
-      std::string name = root->name();
+      std::string name(root->name());
       std::reverse(name.begin(), name.end());
       root->SetAndSanitizeName(name);
       changed = true;

@@ -15,7 +15,6 @@
 """Tests for tensorflow.python.framework.function_def_to_graph."""
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function_def_to_graph
@@ -123,6 +122,25 @@ class FunctionDefToGraphTest(test.TestCase):
     self.assertSequenceEqual(fg.inputs[0].shape.as_list(), [None, 2, 2])
     self.assertSequenceEqual(fg.inputs[1].shape.as_list(), [])
 
+  def testIncludeLibraryFunctions(self):
+    @def_function.function
+    def g(x):
+      return x + 1
+
+    @def_function.function
+    def f(x):
+      return g(x)
+
+    cfg = g.get_concrete_function(1.0)
+    cfg.add_to_graph()
+    gname = cfg.function_def.signature.name
+    function_def = f.get_concrete_function(1.0).function_def
+    func_graph = function_def_to_graph.function_def_to_graph(
+        function_def, include_library_functions=True)
+    graph_def = func_graph.as_graph_def()
+    self.assertLen(graph_def.library.function, 1)
+    self.assertEqual(graph_def.library.function[0].signature.name, gname)
+
 
 class FunctionDefToGraphDefTest(test.TestCase):
 
@@ -222,7 +240,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
     v = variables.Variable(1)
 
-    @function.defun
+    @def_function.function
     def fn(inp):
       assign = v.assign(3, name="assign", read_value=False)
       x = constant_op.constant(2.0, name="x")
@@ -244,7 +262,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
   def testAttributesForArgDef(self):
 
-    @function.defun
+    @def_function.function
     def fn(x):
       return x
 

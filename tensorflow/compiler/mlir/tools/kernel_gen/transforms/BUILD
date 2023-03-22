@@ -10,6 +10,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
     licenses = ["notice"],
 )
@@ -148,7 +149,7 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_legalize_to_memref",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:type_conversion",
@@ -160,6 +161,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
     ] + if_cuda_is_configured([
         "//tensorflow/tsl/platform:cuda_libdevice_path",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
@@ -175,7 +177,6 @@ cc_library(
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
         "copy_cleanup_pass.cc",
-        "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
         "parallel_loops_to_sequential.cc",

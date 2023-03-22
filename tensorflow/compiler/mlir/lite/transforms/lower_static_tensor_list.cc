@@ -22,19 +22,19 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,6 +55,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -255,7 +256,7 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
       ConversionPatternRewriter &rewriter) const override {
     // Verify that the tensor proto contains tensor of type variant and scalar
     // shape. The variant type should hold a TensorList.
-    auto proto_attr = op.value().dyn_cast<TF::TensorProtoAttr>();
+    auto proto_attr = op.getValue().dyn_cast<TF::TensorProtoAttr>();
     if (!proto_attr) return failure();
     tensorflow::Tensor tensor;
     if (!tensorflow::ConvertToTensor(proto_attr, &tensor).ok())
@@ -470,7 +471,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
   LogicalResult matchAndRewrite(
       OpT op, typename OpT::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Type dtype = op.element_dtype();
+    Type dtype = op.getElementDtype();
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
           dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
           dtype.isInteger(32) || dtype.isInteger(64))) {
@@ -499,7 +500,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
             element_shape = rewriter.create<TF::ShapeOp>(
                 op.getLoc(),
                 tensorflow::GetTypeFromTFTensorShape({-1}, shape_dtype),
-                set_op.item());
+                set_op.getItem());
             element_shape_acquired = true;
           } else if (TF::WhileOp while_op =
                          llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
@@ -513,7 +514,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
                       llvm::dyn_cast<TF::TensorListSetItemOp>(
                           inside_use.getOwner())) {
                 if (auto shaped_type =
-                        set_op.item().getType().dyn_cast<ShapedType>()) {
+                        set_op.getItem().getType().dyn_cast<ShapedType>()) {
                   if (shaped_type.hasStaticShape()) {
                     RankedTensorType type =
                         tensorflow::GetTypeFromTFTensorShape(
@@ -594,7 +595,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     }
 
     int64_t result_rank = -1;  // -1 means unknown result rank.
-    Type element_dtype = op.element_dtype();
+    Type element_dtype = op.getElementDtype();
     Type result_type = UnrankedTensorType::get(element_dtype);
     Value leading_dim = GetNumElements(op, adaptor.getOperands(), &rewriter);
     if (auto element_type =
@@ -650,7 +651,7 @@ struct ConvertTensorListReserve
   Value GetNumElements(TF::TensorListReserveOp op, ValueRange operands,
                        PatternRewriter *rewriter) const override {
     Value scalar_zero = CreateI32SplatConst(op.getLoc(), rewriter, {}, 0);
-    Type shape_dtype = getElementTypeOrSelf(op.element_shape().getType());
+    Type shape_dtype = getElementTypeOrSelf(op.getElementShape().getType());
     Value num_elements = operands[1];
     IntegerAttr attr;
     if (matchPattern(num_elements, m_Constant(&attr))) {
@@ -658,7 +659,7 @@ struct ConvertTensorListReserve
     }
     if (auto const_op = num_elements.getDefiningOp<TF::ConstOp>()) {
       return CreateI32SplatConst(op->getLoc(), rewriter, {1},
-                                 (*const_op.value()
+                                 (*const_op.getValue()
                                        .cast<DenseElementsAttr>()
                                        .getValues<APInt>()
                                        .begin())
@@ -707,7 +708,7 @@ struct ConvertTensorListPushBack
         loc, expanded_item_type, item, scalar_zero);
 
     Type elem_type = getElementTypeOrSelf(item);
-    auto handle_dtype = getElementTypeOrSelf(op.output_handle().getType())
+    auto handle_dtype = getElementTypeOrSelf(op.getOutputHandle().getType())
                             .cast<TF::VariantType>();
     Type result_type =
         GetTensorTypeForTensorList(elem_type, handle_dtype, &rewriter);
@@ -749,7 +750,7 @@ struct ConvertTensorListResize
 
     // Infer result type of this op based on TF's shape inference result.
     Type elem_type = getElementTypeOrSelf(input_handle);
-    auto handle_dtype = getElementTypeOrSelf(op.output_handle().getType())
+    auto handle_dtype = getElementTypeOrSelf(op.getOutputHandle().getType())
                             .cast<TF::VariantType>();
     Type result_type =
         GetTensorTypeForTensorList(elem_type, handle_dtype, &rewriter);
@@ -842,7 +843,7 @@ struct ConvertTensorListResize
         loc, tensorflow::GetTypeFromTFTensorShape({-1}, shape_dtype),
         input_shape, slice_start, slice_size);
     auto extended_part = rewriter->create<TF::TensorListReserveOp>(
-        loc, resize_op.output_handle().getType(), elem_shape, size_diff);
+        loc, resize_op.getOutputHandle().getType(), elem_shape, size_diff);
     // `ConcatOp` expects non-variant-typed input. Insert a
     // `TensorListStackOp` here to convert type from variant to non-variant.
     // Note that we are using the same `result_type` for both the
@@ -954,7 +955,7 @@ struct ConvertTensorListStack
     RankedTensorType shape_type =
         tensorflow::GetTypeFromTFTensorShape({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
-    SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.num_elements());
+    SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.getNumElements());
     for (const auto &dim : dense_elem_attr.getValues<APInt>())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type = tensorflow::GetTypeFromTFTensorShape(
@@ -1099,7 +1100,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 }
 
 // Returns true if we can deduce the type is tensorlist.
-bool IsTensorListType(Type type, llvm::Optional<Value> value) {
+bool IsTensorListType(Type type, std::optional<Value> value) {
   TF::VariantType variant_ty =
       getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
   if (!variant_ty) {
@@ -1116,7 +1117,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
   if (!value.has_value()) {
     return false;
   }
-  for (const mlir::OpOperand &use : value.getValue().getUses()) {
+  for (const mlir::OpOperand &use : value.value().getUses()) {
     mlir::Operation *op = use.getOwner();
     if (llvm::isa<TF::TensorListGetItemOp>(op) ||
         llvm::isa<TF::TensorListLengthOp>(op) ||
@@ -1150,7 +1151,7 @@ llvm::SmallSet<int, 4> GetTensorListResultsIndex(func::FuncOp func) {
 
   for (const auto &result_and_idx :
        llvm::enumerate(func.getFunctionType().getResults())) {
-    if (IsTensorListType(result_and_idx.value(), llvm::None)) {
+    if (IsTensorListType(result_and_idx.value(), std::nullopt)) {
       set.insert(result_and_idx.index());
     }
   }
@@ -1315,10 +1316,10 @@ llvm::DenseMap<int, int> MapTensorListResultToArgument(func::FuncOp func) {
     Value parent = value;
     while (true) {
       if (auto identity = parent.getDefiningOp<TF::IdentityOp>()) {
-        parent = identity.input();
+        parent = identity.getInput();
       } else if (auto set_item =
                      parent.getDefiningOp<TF::TensorListSetItemOp>()) {
-        parent = set_item.input_handle();
+        parent = set_item.getInputHandle();
       } else {
         break;
       }
@@ -1518,18 +1519,26 @@ void LowerStaticTensorListPass::runOnOperation() {
            llvm::all_of(op->getResultTypes(), is_not_variant);
   };
 
+  auto is_set_item_legal = [](Operation *op) {
+    return op->hasAttr("resize_if_index_out_of_bounds") &&
+           op->getAttr("resize_if_index_out_of_bounds")
+               .cast<mlir::BoolAttr>()
+               .getValue();
+  };
+
   ConversionTarget target(*context);
   target.addDynamicallyLegalDialect<TF::TensorFlowDialect>(is_legal);
   target.addIllegalOp<TF::EmptyTensorListOp, TF::TensorListFromTensorOp,
                       TF::TensorListGetItemOp, TF::TensorListLengthOp,
                       TF::TensorListPushBackOp, TF::TensorListReserveOp,
-                      TF::TensorListSetItemOp, TF::TensorListStackOp,
-                      TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
+                      TF::TensorListStackOp, TF::TensorListResizeOp,
+                      TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<arith::ConstantOp>();
   target.addLegalOp<func::FuncOp>();
   target.addDynamicallyLegalOp<func::ReturnOp>(is_legal);
   target.addDynamicallyLegalOp<TF::YieldOp>(is_legal);
+  target.addDynamicallyLegalOp<TF::TensorListSetItemOp>(is_set_item_legal);
   target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();

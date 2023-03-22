@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/metrics.h"
 
 namespace tensorflow {
@@ -31,7 +31,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "IncrementWrite",
       [](const char* write_version) {
-        metrics::SavedModelWrite(write_version).IncrementBy(1);
+        metrics::SavedModelWriteCount(write_version).IncrementBy(1);
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/write/count' "
@@ -40,7 +40,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetWrite",
       [](const char* write_version) {
-        return metrics::SavedModelWrite(write_version).value();
+        return metrics::SavedModelWriteCount(write_version).value();
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/write/count' "
@@ -65,7 +65,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "IncrementRead",
       [](const char* write_version) {
-        metrics::SavedModelRead(write_version).IncrementBy(1);
+        metrics::SavedModelReadCount(write_version).IncrementBy(1);
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/read/count' "
@@ -75,7 +75,7 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetRead",
       [](const char* write_version) {
-        return metrics::SavedModelRead(write_version).value();
+        return metrics::SavedModelReadCount(write_version).value();
       },
       py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/read/count' "
@@ -96,6 +96,62 @@ void DefineMetricsModule(py::module main_module) {
       },
       py::doc("Get value of '/tensorflow/core/saved_model/read/api' "
               "counter for `api_label` cell."));
+
+  m.def(
+      "SetReadFingerprint",
+      [](const char* saved_model_checksum) {
+        metrics::SavedModelReadFingerprint().Set(saved_model_checksum);
+      },
+      py::kw_only(), py::arg("saved_model_checksum"),
+      py::doc("Set the '/tensorflow/core/saved_model/read/fingerprint' gauge "
+              "with `saved_model_checksum`."));
+
+  m.def(
+      "GetReadFingerprint",
+      []() { return metrics::SavedModelReadFingerprint().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/read/fingerprint' "
+              "gauge."));
+
+  m.def(
+      "SetWriteFingerprint",
+      [](const char* saved_model_checksum) {
+        metrics::SavedModelWriteFingerprint().Set(saved_model_checksum);
+      },
+      py::kw_only(), py::arg("saved_model_checksum"),
+      py::doc("Set the '/tensorflow/core/saved_model/write/fingerprint' gauge "
+              "with `saved_model_checksum`."));
+
+  m.def(
+      "GetWriteFingerprint",
+      []() { return metrics::SavedModelWriteFingerprint().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/write/fingerprint' "
+              "gauge."));
+
+  m.def(
+      "SetReadPath",
+      [](const char* saved_model_path) {
+        metrics::SavedModelReadPath().Set(saved_model_path);
+      },
+      py::kw_only(), py::arg("saved_model_path"),
+      py::doc("Set the '/tensorflow/core/saved_model/read/path' gauge "
+              "with `saved_model_path`."));
+
+  m.def(
+      "GetReadPath", []() { return metrics::SavedModelReadPath().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/read/path' gauge."));
+
+  m.def(
+      "SetWritePath",
+      [](const char* saved_model_path) {
+        metrics::SavedModelWritePath().Set(saved_model_path);
+      },
+      py::kw_only(), py::arg("saved_model_path"),
+      py::doc("Set the '/tensorflow/core/saved_model/write/path' gauge "
+              "with `saved_model_path`."));
+
+  m.def(
+      "GetWritePath", []() { return metrics::SavedModelWritePath().value(); },
+      py::doc("Get value of '/tensorflow/core/saved_model/write/path' gauge."));
 
   m.def(
       "AddCheckpointReadDuration",

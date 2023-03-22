@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/Support/ErrorOr.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/c_runner_utils.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/c_runner_utils.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
@@ -67,6 +67,8 @@ struct ExecutionContext {
   // User-defined diagnostic engine for reporting diagnostics.
   const DiagnosticEngine* diagnostic_engine = nullptr;
 };
+
+void DestroyExecutionContext::operator()(ExecutionContext* ctx) { delete ctx; }
 
 //===----------------------------------------------------------------------===//
 // Conversion from custom calls and type id registries to symbols binding.
@@ -284,10 +286,9 @@ Status Executable::InitializeCallFrame(unsigned ordinal, ArgumentsRef arguments,
 // Execute the compiled XLA runtime executable.
 //===----------------------------------------------------------------------===//
 
-Status Executable::Execute(unsigned ordinal, ArgumentsRef arguments,
-                           const ResultConverter& results,
-                           const ExecuteOpts& opts,
-                           bool verify_arguments) const {
+absl::StatusOr<ExecutionReference> Executable::Execute(
+    unsigned ordinal, ArgumentsRef arguments, const ResultConverter& results,
+    const ExecuteOpts& opts, bool verify_arguments) const {
   // CallFrame can be allocated on the stack because compiled function will
   // unpack all the arguments it needs, and async regions will not access
   // the data after the initial function will return the result.
@@ -325,17 +326,17 @@ Status Executable::Execute(unsigned ordinal, ArgumentsRef arguments,
       !st.ok())
     return (results.ReturnError(st), st);
 
-  Execute(ordinal, call_frame, opts);
+  auto exec_ref = Execute(ordinal, call_frame, opts);
 
   // Convert compiled function return values into results.
   if (auto st = ReturnResults(ordinal, results, &call_frame); !st.ok())
     return st;
 
-  return absl::OkStatus();
+  return {std::move(exec_ref)};
 }
 
-void Executable::Execute(unsigned ordinal, CallFrame& call_frame,
-                         const ExecuteOpts& opts) const {
+ExecutionReference Executable::Execute(unsigned ordinal, CallFrame& call_frame,
+                                       const ExecuteOpts& opts) const {
   assert(ordinal < functions_.size() && "function ordinal out of bounds");
   const Function& fn = functions_[ordinal];
 
@@ -343,25 +344,32 @@ void Executable::Execute(unsigned ordinal, CallFrame& call_frame,
   // executable.
   AsyncRuntime::Set(AsyncRuntime(opts.async_task_runner));
 
-  // Runtime execution context can be used only by the compiled function and
-  // can be safely allocated on the stack.
-  //
-  // TODO(ezhulenev): It's not quite true, with custom calls inside async
-  // functions the lifetime of the execution context must be extended until all
-  // pending async tasks are completed. Figure out where to transfer the
-  // execution context ownership for async functions.
+  ExecutionReference exec_ref;
+  ExecutionContext* execution_ctx_ptr = nullptr;
+  // For sync executable, runtime execution context can be used only by the
+  // compiled function and can be safely allocated on the stack.
   ExecutionContext execution_ctx = {
       &fn.results_memory_layout, &call_frame, opts.custom_call_data,
       opts.custom_call_registry, opts.diagnostic_engine};
+  if (IsAsync()) {
+    // With custom calls inside async functions the lifetime of the execution
+    // context must be extended until all pending async tasks are completed.
+    exec_ref = ExecutionReference(new ExecutionContext{
+        &fn.results_memory_layout, &call_frame, opts.custom_call_data,
+        opts.custom_call_registry, opts.diagnostic_engine});
+    execution_ctx_ptr = exec_ref.get();
+  } else {
+    // Override the execution context argument.
+    execution_ctx_ptr = &execution_ctx;
+  }
 
-  // Override the execution context argument.
-  ExecutionContext* execution_context_ptr = &execution_ctx;
   assert(call_frame.args.size() == fn.arguments_memory_layout.num_args_ptrs);
   assert(call_frame.args[0] == nullptr && "expected to see a placeholder");
-  call_frame.args[0] = &execution_context_ptr;
+  call_frame.args[0] = &execution_ctx_ptr;
 
   // Call the compiled function.
   (*fn.fptr)(call_frame.args.data());
+  return exec_ref;
 }
 
 Status Executable::ReturnResults(unsigned ordinal,
@@ -427,7 +435,7 @@ Status Executable::ReturnResults(unsigned ordinal,
   // Prepare exported functions for the executable.
   std::vector<Executable::Function> functions;
 
-  for (auto& indexed : llvm::enumerate(load_functions)) {
+  for (const auto& indexed : llvm::enumerate(load_functions)) {
     LoadFunction& fn = indexed.value();
 
     // Get the memory layout for passing function arguments.
@@ -438,14 +446,10 @@ Status Executable::ReturnResults(unsigned ordinal,
     auto results_memory_layout = GetResultsMemoryLayout(fn.runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
-    Executable::Function function{std::move(fn.name),
-                                  (*engine)->exported(indexed.index()),
-                                  std::move(fn.signature),
-                                  std::move(fn.runtime_signature),
-                                  std::move(*args_memory_layout),
-                                  std::move(*results_memory_layout)};
-
-    functions.push_back(std::move(function));
+    functions.push_back(Executable::Function(
+        std::move(fn.name), (*engine)->exported(indexed.index()),
+        std::move(fn.signature), std::move(fn.runtime_signature),
+        std::move(*args_memory_layout), std::move(*results_memory_layout)));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),
@@ -512,10 +516,9 @@ FunctionRef::FunctionRef(const Executable* executable, unsigned ordinal)
   assert(executable && "executable must be not null");
 }
 
-absl::Status FunctionRef::operator()(ArgumentsRef arguments,
-                                     const ResultConverter& results,
-                                     const Executable::ExecuteOpts& opts,
-                                     bool verify_arguments) const {
+absl::StatusOr<ExecutionReference> FunctionRef::operator()(
+    ArgumentsRef arguments, const ResultConverter& results,
+    const Executable::ExecuteOpts& opts, bool verify_arguments) const {
   return executable_->Execute(ordinal_, arguments, results, opts,
                               verify_arguments);
 }
@@ -565,11 +568,23 @@ bool CustomCall(ExecutionContext* ctx, const char* target, void** args,
                 void** attrs, void** rets) {
   assert(ctx && target && args && attrs && rets && "must be not null");
   assert(ctx->custom_call_registry && "custom call registry must be not null");
-  if (ctx->custom_call_registry == nullptr) return false;
+
+  const DiagnosticEngine* diagnostic = ctx->diagnostic_engine;
+
+  if (ctx->custom_call_registry == nullptr) {
+    if (diagnostic)
+      diagnostic->EmitError(
+          absl::InternalError("custom call registry is not available"));
+    return false;
+  }
 
   auto* custom_call = ctx->custom_call_registry->Find(target);
-  assert(custom_call && "custom call not found");
-  if (custom_call == nullptr) return false;
+  if (custom_call == nullptr) {
+    if (diagnostic)
+      diagnostic->EmitError(absl::InternalError(absl::StrFormat(
+          "custom call is not registered with runtime: %s", target)));
+    return false;
+  }
 
   return succeeded(custom_call->call(args, attrs, rets, ctx->custom_call_data,
                                      ctx->diagnostic_engine));

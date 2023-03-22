@@ -27,6 +27,8 @@ namespace data {
 namespace experimental {
 namespace {
 
+constexpr char kInputImplEmpty[] = "input_impl_empty";
+
 class UnbatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit UnbatchDatasetOp(OpKernelConstruction* ctx)
@@ -78,8 +80,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
-    int64_t CardinalityInternal() const override {
-      int64_t n = input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      int64_t n = input_->Cardinality(options);
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
@@ -117,6 +119,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             current_index_(0),
             current_batch_size_(0),
             shapes_(params.dataset->output_shapes().size()) {}
+
+      bool SymbolicCheckpointCompatible() const override { return true; }
 
       Status Initialize(IteratorContext* ctx) override {
         return dataset()->input_->MakeIterator(ctx, this, prefix(),
@@ -195,11 +199,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        } else {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("input_impl_empty"), ""));
         }
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("current_index"), current_index_));
@@ -217,7 +220,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (!reader->Contains(full_name("input_impl_empty"))) {
+        int64_t input_empty;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+        if (!static_cast<bool>(input_empty)) {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();

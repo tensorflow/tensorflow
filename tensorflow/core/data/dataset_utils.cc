@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -94,6 +96,7 @@ constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kWarmStartOpt[] = "warm_start";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -122,6 +125,10 @@ void DefaultOptimizationGraphRewrites(
     if (optimization_options.optional_parallel_batch_case() !=
         OptimizationOptions::kParallelBatch) {
       optimization_default->insert(kParallelBatchOpt);
+    }
+    if (optimization_options.optional_inject_prefetch_case() !=
+        OptimizationOptions::kInjectPrefetch) {
+      optimization_default->insert(kInjectPrefetchOpt);
     }
   }
   if (OpDeterminismRequired()) {
@@ -205,6 +212,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
+    }
+  }
+  if (optimization_options.optional_warm_start_case() ==
+      OptimizationOptions::kWarmStart) {
+    if (optimization_options.warm_start()) {
+      optimization_enabled->insert(kWarmStartOpt);
+    } else {
+      optimization_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -672,9 +687,9 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
-  error::Code code = static_cast<error::Code>(code_int);
+  absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-  if (code != error::Code::OK) {
+  if (code != absl::StatusCode::kOk) {
     tstring error_message;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -928,15 +943,18 @@ bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
          rollout_pct;
 }
 bool AllTasks(int64_t task_id) { return true; }
+// Typically 2 tasks run on a single TPU host. This selector assigns every 2
+// other tasks in the experiment such that control and experiment do not run on
+// the same hosts. For example, if a job has 4 tasks, then task 0 and 1 are
+// assigned to control and tasks 2 and 3 experiment.
+bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<5>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", RandomJobSamplePercentage<100>,
-                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
@@ -944,7 +962,11 @@ REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
 REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<10>,
+                            IndependentHostTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

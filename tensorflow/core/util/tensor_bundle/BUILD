@@ -9,14 +9,10 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -25,7 +21,6 @@ package(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        "byte_swap_array.cc",
         "byte_swap_array.h",
         "byte_swap_tensor.cc",
         "byte_swap_tensor.h",
@@ -60,6 +55,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/lib/io:buffered_file",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
@@ -81,12 +77,12 @@ cc_library(
 
 cc_library(
     name = "byteswaparray",
-    srcs = ["byte_swap_array.cc"],
     hdrs = ["byte_swap_array.h"],
     deps = [
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/util:byte_swap_array",
     ],
 )
 

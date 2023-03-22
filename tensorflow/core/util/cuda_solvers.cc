@@ -406,7 +406,6 @@ static inline Status PotrfImpl(BufSizeFnT bufsize, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
 
-#if CUDA_VERSION >= 9020
 template <typename Scalar, typename SolverFnT>
 static inline Status PotrfBatchedImpl(
     SolverFnT solver, GpuSolver* cuda_solver, OpKernelContext* context,
@@ -441,7 +440,6 @@ static inline Status PotrfBatchedImpl(
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
-#endif  // CUDA_VERSION >= 9020
 
 template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
 static inline Status GetrfImpl(BufSizeFnT bufsize, SolverFnT solver,
@@ -490,6 +488,17 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
   return OkStatus();
 }
 
+#if TENSORFLOW_USE_ROCM
+#define GETRS_INSTANCE(Scalar, type_prefix)                                  \
+  template <>                                                                \
+  Status GpuSolver::Getrs<Scalar>(                                           \
+      cublasOperation_t trans, int n, int nrhs, const Scalar* A, int lda,    \
+      int* pivots, Scalar* B, int ldb, int* dev_lapack_info) const {         \
+    return GetrsImpl(DN_SOLVER_FN(getrs, type_prefix), context_,             \
+                     cusolver_dn_handle_, trans, n, nrhs, A, lda, pivots, B, \
+                     ldb, dev_lapack_info);                                  \
+  }
+#else
 #define GETRS_INSTANCE(Scalar, type_prefix)                                  \
   template <>                                                                \
   Status GpuSolver::Getrs<Scalar>(                                           \
@@ -499,6 +508,7 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
                      cusolver_dn_handle_, trans, n, nrhs, A, lda, pivots, B, \
                      ldb, dev_lapack_info);                                  \
   }
+#endif
 
 TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
 

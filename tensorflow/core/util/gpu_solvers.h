@@ -33,7 +33,11 @@ limitations under the License.
 #else
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
+#include "rocm/rocm_config.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#if TF_ROCM_VERSION >= 40500
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
@@ -283,7 +287,7 @@ class GpuSolver {
   // Uses LU factorization to solve A * X = B.
   template <typename Scalar>
   Status Getrs(const gpuSolverOp_t trans, int n, int nrhs, Scalar* A, int lda,
-               const int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
+               int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
 
   template <typename Scalar>
   Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
@@ -364,8 +368,9 @@ class GpuSolver {
 #if TF_ROCM_VERSION >= 40500
   // Hermitian (Symmetric) Eigen decomposition.
   template <typename Scalar>
-  Status Heevd(gpuSolverOp_t jobz, gpuSolverFill_t uplo, int n, Scalar* dev_A,
-               int lda, typename Eigen::NumTraits<Scalar>::Real* dev_W,
+  Status Heevd(hipsolverEigMode_t jobz, gpuSolverFill_t uplo, int n,
+               Scalar* dev_A, int lda,
+               typename Eigen::NumTraits<Scalar>::Real* dev_W,
                int* dev_lapack_info);
 #endif
 
@@ -400,7 +405,6 @@ class GpuSolver {
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) TF_MUST_USE_RESULT;
 
-#if CUDA_VERSION >= 9020
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
   // Returns OkStatus() if the kernel was launched successfully. See:
@@ -410,7 +414,6 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
-#endif  // CUDA_VERSION >= 9020
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
@@ -550,6 +553,9 @@ class GpuSolver {
 #else  // TENSORFLOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
+#if TF_ROCM_VERSION >= 40500
+  hipsolverHandle_t hipsolver_handle_;
+#endif
 #endif
 
   std::vector<TensorReference> scratch_tensor_refs_;

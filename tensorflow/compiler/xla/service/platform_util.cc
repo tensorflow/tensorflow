@@ -79,6 +79,11 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 
 }  // namespace
 
+/*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+    const std::string& platform_name) {
+  return xla::CanonicalPlatformName(platform_name);
+}
+
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
   // Gather all platforms which have an XLA compiler.
@@ -120,7 +125,7 @@ PlatformUtil::GetSupportedPlatforms() {
     const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithName(
-                          CanonicalPlatformName(platform_name)));
+                          xla::CanonicalPlatformName(platform_name)));
   TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
   return platform;
 }

@@ -19,29 +19,34 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// clang-format off
+// Must be included first
+#include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
+// clang-format on
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "pybind11/attr.h"
-#include "pybind11/cast.h"
-#include "pybind11/detail/common.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl_bind.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl_bind.h"  // from @pybind11
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
@@ -50,11 +55,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #endif  // XLA_PYTHON_ENABLE_TPU
+#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
-#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pjit.h"
@@ -70,13 +75,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -93,11 +101,41 @@ bool IsOptimizedBuild() {
 #endif  // NDEBUG
 }
 
+// Is*san reports whether the build is under that particular sanitizer.
+bool IsAsan() {
+#if defined(ADDRESS_SANITIZER)
+  return true;
+#else  // defined(ADDRESS_SANITIZER)
+  return false;
+#endif
+}
+
+bool IsMsan() {
+#if defined(MEMORY_SANITIZER)
+  return true;
+#else  // defined(MEMORY_SANITIZER)
+  return false;
+#endif
+}
+
+bool IsTsan() {
+#if defined(THREAD_SANITIZER)
+  return true;
+#else  // defined(THREAD_SANITIZER)
+  return false;
+#endif
+}
+
+// IsSanitized reports whether the build is under any sanitizer.
+bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  ImportNumpy();
-  CHECK(tensorflow::RegisterNumpyBfloat16());
+  tsl::ImportNumpy();
+  CHECK(tsl::RegisterNumpyBfloat16());
+  CHECK(tsl::RegisterNumpyFloat8e4m3fn());
+  CHECK(tsl::RegisterNumpyFloat8e5m2());
 
   // Exceptions
   py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
@@ -116,6 +154,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      .value("F8E4M3FN", F8E4M3FN)
+      .value("F8E5M2", F8E5M2)
       .value("BF16", BF16)
       .value("F32", F32)
       .value("F64", F64)
@@ -125,8 +165,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
-  m.def("bfloat16_dtype",
-        []() { return py::handle(tensorflow::Bfloat16Dtype()); });
+  m.def("bfloat16_dtype", []() { return py::handle(tsl::Bfloat16Dtype()); });
+  m.def("float8_e4m3fn_dtype",
+        []() { return py::handle(tsl::Float8e4m3fnDtype()); });
+  m.def("float8_e5m2_dtype",
+        []() { return py::handle(tsl::Float8e5m2Dtype()); });
 
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);
@@ -149,8 +192,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("task_id", &PjRtDevice::process_index,
                              "Deprecated; please use process_index")
       .def_property_readonly("platform",
-                             [](const PjRtDevice& device) {
-                               return device.client()->platform_name();
+                             [](const ClientAndPtr<PjRtDevice>& device) {
+                               return device.client->platform_name();
                              })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
@@ -184,6 +227,9 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def("live_buffers",
            [](const ClientAndPtr<PjRtDevice>& device) {
+             PythonDeprecationWarning(
+                 "Per device live_buffers() is going to be deprecated. Please "
+                 "use the jax.live_arrays() for jax.Arrays instead.");
              return device.client->LiveBuffersOnDevice(device.get());
            })
       .def(
@@ -219,6 +265,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
       .def("live_executables", &PyClient::LiveExecutables)
+      .def("live_arrays", &PyClient::LiveArrays)
       .def("process_index", &PyClient::process_index)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
@@ -232,17 +279,26 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::CreateDeviceToHostChannelHandle)
       .def("create_host_to_device_channel_handle",
            &PyClient::CreateHostToDeviceChannelHandle)
-      .def("buffer_from_pyval", &PyClient::BufferFromPyval, py::arg("argument"),
-           py::arg("device") = nullptr, py::arg("force_copy") = false,
-           py::arg("host_buffer_semantics") =
-               PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def(
+          "buffer_from_pyval",
+          [](py::handle py_client, py::handle argument, py::handle py_device,
+             bool force_copy,
+             PjRtClient::HostBufferSemantics host_buffer_semantics) {
+            PyClient* client = fast_cast<PyClient>(py_client);
+            PjRtDevice* device = py_device.is_none()
+                                     ? nullptr
+                                     : fast_cast<PjRtDevice>(py_device);
+            return client->BufferFromPyval(argument, device, force_copy,
+                                           host_buffer_semantics);
+          },
+          py::arg("argument"), py::arg("device") = nullptr,
+          py::arg("force_copy") = false,
+          py::arg("host_buffer_semantics") =
+              PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("make_cross_host_receive_buffers",
            &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
            py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions(),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("compile", &PyClient::CompileMlir, py::arg("computation"),
            py::arg("compile_options") = CompileOptions(),
            py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable", &PyClient::SerializeExecutable)
@@ -278,29 +334,26 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("has_side_effects") = false);
 
   m.def(
-      "get_cpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetCpuClient(asynchronous));
-        return std::make_shared<PyClient>(std::move(client));
-      },
-      py::arg("asynchronous") = true);
-  m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
-        return std::make_shared<PyClient>(std::move(client));
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
-    return std::make_shared<PyClient>(std::move(client));
+    return std::make_shared<PyClient>(
+        ifrt::PjRtClient::Create(std::move(client)));
   });
+  m.def("load_pjrt_plugin",
+        [](std::string platform_name, std::string library_path) -> Status {
+          return pjrt::LoadPjrtPlugin(platform_name, library_path);
+        });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
   py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
@@ -314,10 +367,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("BFC", GpuAllocatorConfig::Kind::kBFC)
       .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
-  // TODO(tomhennigan): Remove this types.
-  py::class_<StreamExecutorGpuDevice, PjRtDevice,
-             ClientAndPtr<StreamExecutorGpuDevice>>
-      gpu_device(m, "GpuDevice");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -331,7 +380,8 @@ PYBIND11_MODULE(xla_extension, m) {
             GetStreamExecutorGpuClient(asynchronous, allocator_config,
                                        std::move(distributed_client), node_id,
                                        allowed_devices, platform_name));
-        return std::make_shared<PyClient>(std::move(client));
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
@@ -341,25 +391,31 @@ PYBIND11_MODULE(xla_extension, m) {
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef XLA_PYTHON_ENABLE_TPU
-  // TODO(tomhennigan): Remove this types.
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
-      m, "TpuDevice");
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
-        return std::make_shared<PyClient>(std::move(client));
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("max_inflight_computations") = 32);
-  m.def("get_tfrt_tpu_c_api_client",
-        []() -> StatusOr<std::shared_ptr<PyClient>> {
-          py::gil_scoped_release gil_release;
-          TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                              GetCApiClient());
-          return std::make_shared<PyClient>(std::move(c_api_client));
-        });
+  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
+  // GetCApiClient does not depend on TPU.
+  m.def(
+      "get_c_api_client",
+      [](std::string platform_name,
+         const absl::flat_hash_map<std::string, PjRtValueType>& options)
+          -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
+                            GetCApiClient(platform_name, options));
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(c_api_client)));
+      },
+      py::arg("platform_name"),
+      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>());
 #endif  // XLA_PYTHON_ENABLE_TPU
 
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
@@ -368,7 +424,8 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                               GetTfrtPluginDeviceClient());
-          return std::make_shared<PyClient>(std::move(client));
+          return std::make_shared<PyClient>(
+              ifrt::PjRtClient::Create(std::move(client)));
         });
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
@@ -393,6 +450,25 @@ PYBIND11_MODULE(xla_extension, m) {
                              })
       .def("__str__", &CompiledMemoryStats::DebugString);
 
+  py::class_<PyExecuteResults>(m, "ExecuteResults")
+      .def("__len__", [](PyExecuteResults& results) { return results.Size(); })
+      .def("disassemble_into_single_device_arrays",
+           [](PyExecuteResults& results) {
+             return results.DisassembleIntoSingleDeviceArrays();
+           })
+      .def("disassemble_prefix_into_single_device_arrays",
+           [](PyExecuteResults& results, size_t n) {
+             return results.DisassemblePrefixIntoSingleDeviceArrays(n);
+           })
+      .def("consume_with_handlers",
+           [](PyExecuteResults& results,
+              std::vector<std::variant<const PyArrayResultHandler*, py::object>>
+                  out_handlers) {
+             return results.ConsumeWithHandlers(std::move(out_handlers));
+           })
+      .def("consume_token",
+           [](PyExecuteResults& results) { return results.ConsumeToken(); });
+
   py::class_<PyLoadedExecutable, std::shared_ptr<PyLoadedExecutable>>
       loaded_executable(m, "LoadedExecutable");
   loaded_executable.def_property_readonly("client", &PyLoadedExecutable::client)
@@ -413,30 +489,24 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_compiled_memory_stats",
            &PyLoadedExecutable::GetCompiledMemoryStats)
       .def("delete", &PyLoadedExecutable::Delete)
-      .def("execute", &PyLoadedExecutable::Execute, py::arg("arguments"),
-           py::arg("device") = std::nullopt)
-      // TODO(chky): Change execute() to always return token rather than hanving
-      // two API entry points.
-      .def("execute_with_token", &PyLoadedExecutable::ExecuteWithToken,
-           py::arg("arguments"), py::arg("device") = std::nullopt)
       .def("execute_sharded_on_local_devices",
-           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
-           py::arg("arguments"))
-      .def("execute_sharded_on_local_devices",
-           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
+           &PyLoadedExecutable::ExecuteShardedOnLocalDevices,
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           py::overload_cast<absl::Span<const std::vector<PyBuffer::object>>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
+           &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens,
            py::arg("arguments"))
-      .def("execute_sharded_on_local_devices_with_tokens",
-           py::overload_cast<absl::Span<PyShardedBuffer* const>>(
-               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
-           py::arg("arguments"))
+      // TODO(parkers): Switch execute_sharded_on_local_devices* to this.
+      .def("execute_sharded", &PyLoadedExecutable::ExecuteSharded,
+           py::arg("arguments"), py::arg("with_tokens") = false)
       .def("hlo_modules", &PyLoadedExecutable::HloModules)
+      .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
+      .def("get_parameter_shardings",
+           &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
+      .def("compile_options",
+           [](const PyLoadedExecutable& self) {
+             return self.pjrt_executable()->GetCompileOptions();
+           })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
@@ -454,9 +524,15 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);
-  m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer,
-        py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
-        py::arg("gpu_backend") = nullptr);
+  m.def(
+      "dlpack_managed_tensor_to_buffer",
+      [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
+         std::shared_ptr<PyClient> gpu_client) {
+        return DLPackManagedTensorToBuffer(tensor, std::move(cpu_client),
+                                           std::move(gpu_client));
+      },
+      py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
+      py::arg("gpu_backend") = nullptr);
 
   BuildProfilerSubmodule(&m);
   BuildOpsSubmodule(&m);
@@ -470,21 +546,25 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 
-  py::class_<tensorflow::PreemptionSyncManager,
-             std::unique_ptr<tensorflow::PreemptionSyncManager>>
+  py::class_<tsl::PreemptionSyncManager,
+             std::unique_ptr<tsl::PreemptionSyncManager>>
       preemption_sync_manager(m, "PreemptionSyncManager");
   preemption_sync_manager
       .def(
           "initialize",
-          [](tensorflow::PreemptionSyncManager& manager,
-             DistributedRuntimeClient* client) { manager.Initialize(client); },
+          [](tsl::PreemptionSyncManager& manager,
+             DistributedRuntimeClient* client) {
+            TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+                                client->GetCoordinationServiceAgent());
+            return manager.Initialize(agent);
+          },
           py::arg("distributed_client"))
       .def("reached_sync_point",
-           [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
+           [](tsl::PreemptionSyncManager& manager, int step_counter) {
              return manager.ReachedSyncPoint(step_counter);
            });
   m.def("create_preemption_sync_manager",
-        []() { return tensorflow::CreatePreemptionSyncManager(); });
+        []() { return tsl::CreatePreemptionSyncManager(); });
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
@@ -500,6 +580,9 @@ PYBIND11_MODULE(xla_extension, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("shutdown", &DistributedRuntimeClient::Shutdown,
            py::call_guard<py::gil_scoped_release>())
+      // This method assumes that the value is a Python string. Use
+      // `blocking_key_value_get_bytes()` if key_value_set() was called with a
+      // Python bytes object as its value.
       .def(
           "blocking_key_value_get",
           [](DistributedRuntimeClient& client, std::string key,
@@ -507,6 +590,21 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return client.BlockingKeyValueGet(
                 key, absl::Milliseconds(timeout_in_ms));
+          },
+          py::arg("key"), py::arg("timeout_in_ms"))
+      // Same as `blocking_key_value_get()`, but retrieves the raw Python byte
+      // values explicitly.
+      .def(
+          "blocking_key_value_get_bytes",
+          [](DistributedRuntimeClient& client, std::string key,
+             int64_t timeout_in_ms) -> StatusOr<py::bytes> {
+            py::gil_scoped_release gil_release;
+            xla::StatusOr<std::string> result = client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms));
+            if (!result.ok()) {
+              return result.status();
+            }
+            return py::bytes(*result);
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       .def(
@@ -518,6 +616,12 @@ PYBIND11_MODULE(xla_extension, m) {
                                         absl::Milliseconds(timeout_in_ms));
           },
           py::arg("barrier_id"), py::arg("timeout_in_ms"))
+      // The key must be a string, but the value can either be a Python string
+      // or bytes object.
+      // With Python string values, use `key_value_set()` and
+      // `blocking_key_value_get()`.
+      // With Python byte object values, use `key_value_set()` and
+      // `blocking_key_value_get_bytes()`.
       .def(
           "key_value_set",
           [](DistributedRuntimeClient& client, std::string key,
@@ -525,7 +629,44 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return client.KeyValueSet(key, value);
           },
-          py::arg("key"), py::arg("value"));
+          py::arg("key"), py::arg("value"))
+      // Assumes that all values in the directory are Python strings.
+      .def(
+          "key_value_dir_get",
+          [](DistributedRuntimeClient& client, std::string key) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueDirGet(key);
+          },
+          py::arg("key"))
+      // Assumes that all values in the directory are Python byte objects.
+      // Same as `key_value_dir_get()`, but retrieves Python byte values
+      // explicitly.
+      .def(
+          "key_value_dir_get_bytes",
+          [](DistributedRuntimeClient& client, std::string key)
+              -> StatusOr<std::vector<std::pair<std::string, py::bytes>>> {
+            py::gil_scoped_release gil_release;
+            xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+                result = client.KeyValueDirGet(key);
+            if (!result.ok()) {
+              return result.status();
+            }
+            // Convert std::string values to py::bytes.
+            std::vector<std::pair<std::string, py::bytes>> kvs;
+            kvs.reserve(result->size());
+            for (const auto& kv : *result) {
+              kvs.push_back(std::pair(kv.first, py::bytes(kv.second)));
+            }
+            return kvs;
+          },
+          py::arg("key"))
+      .def(
+          "key_value_delete",
+          [](DistributedRuntimeClient& client, std::string key) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueDelete(key);
+          },
+          py::arg("key"));
 
   m.def(
       "get_distributed_runtime_service",
@@ -629,8 +770,13 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules", &PjRtExecutable::GetHloModules)
+      .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+      .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("serialize", &PjRtExecutable::SerializeExecutable);
+      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
+        return ValueOrThrow(exec.SerializeExecutable());
+      });
 
   m.def(
       "compile",
@@ -650,6 +796,26 @@ PYBIND11_MODULE(xla_extension, m) {
       },
       py::arg("topology"), py::arg("computation"),
       py::arg("compile_options") = CompileOptions());
+
+  m.def("is_asan", IsAsan);
+  m.def("is_msan", IsMsan);
+  m.def("is_tsan", IsTsan);
+  m.def("is_sanitized", IsSanitized);
+
+  m.attr("batched_device_put") = py::cpp_function(
+      [](py::object aval, py::object sharding, std::vector<py::object> xs,
+         std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
+         bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics)
+          -> StatusOr<PyArray> {
+        return PyArray::BatchedDevicePut(
+            std::move(aval), std::move(sharding), std::move(xs),
+            std::move(dst_devices), committed, force_copy,
+            host_buffer_semantics, jax::GetEnableX64());
+      },
+      py::arg("aval"), py::arg("sharding"), py::arg("xs"), py::arg("devices"),
+      py::arg("committed") = true, py::arg("force_copy") = false,
+      py::arg("host_buffer_semantics") =
+          PjRtClient::HostBufferSemantics::kZeroCopy);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

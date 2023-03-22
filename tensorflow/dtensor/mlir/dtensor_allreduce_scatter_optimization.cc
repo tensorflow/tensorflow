@@ -50,8 +50,8 @@ bool same_group_assignments(mlir::DenseIntElementsAttr attr_a,
 
 mlir::DenseIntElementsAttr GetScatterGroupAssignment(
     mlir::TF::DTensorAllScatterOp all_scatter, int scatter_dim) {
-  const Layout original_layout = all_scatter.input_layout();
-  const Layout desired_layout = all_scatter.output_layout();
+  const Layout original_layout = all_scatter.getInputLayout();
+  const Layout desired_layout = all_scatter.getOutputLayout();
   absl::flat_hash_set<std::string> scattered_dims;
   scattered_dims.insert(desired_layout.sharding_spec(scatter_dim));
 
@@ -86,8 +86,8 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
         if (VLOG_IS_ON(2)) all_reduce.dump();
         if (VLOG_IS_ON(2)) all_scatter.dump();
 
-        const Layout original_layout = all_scatter.input_layout();
-        const Layout desired_layout = all_scatter.output_layout();
+        const Layout original_layout = all_scatter.getInputLayout();
+        const Layout desired_layout = all_scatter.getOutputLayout();
 
         // Find all potential scatter dimensions.
         std::vector<int> scatter_dims;
@@ -111,7 +111,7 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
         // Check that the all-reduce and all-scatter group assignments are the
         // same.
         mlir::DenseIntElementsAttr all_reduce_group_assignment_attr;
-        if (!matchPattern(all_reduce.group_assignment(),
+        if (!matchPattern(all_reduce.getGroupAssignment(),
                           m_Constant(&all_reduce_group_assignment_attr))) {
           all_reduce.emitOpError("group_assignment should be a constant");
           return mlir::WalkResult::interrupt();
@@ -139,9 +139,9 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
 
         auto reduce_scatter = builder.create<mlir::TF::DTensorReduceScatterOp>(
             all_reduce.getLoc(), all_scatter->getResultTypes(),
-            all_reduce.getOperand(0), all_reduce.group_assignment(),
-            scatter_dim_const_op, all_reduce.reduce_op(),
-            all_reduce.device_type());
+            all_reduce.getOperand(0), all_reduce.getGroupAssignment(),
+            scatter_dim_const_op, all_reduce.getReduceOp(),
+            all_reduce.getDeviceType());
         SetSingleLayoutOnOp(reduce_scatter, desired_layout);
 
         all_scatter->replaceAllUsesWith(reduce_scatter);

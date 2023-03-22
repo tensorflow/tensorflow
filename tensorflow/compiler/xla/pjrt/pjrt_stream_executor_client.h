@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
+#include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -33,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
@@ -43,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -200,13 +203,18 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return std::optional<std::string>();
   }
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override;
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PjRtLoadedExecutable& executable) const;
 
+  // For PjRtStreamExecutorClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override;
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
   // Creates a buffer on the device without initializing or copying any data.
   // An optional `definition_event` may be speficied that can be used to
@@ -302,14 +310,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   virtual void CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer,
-      absl::Span<const std::pair<std::string, PjRtBuffer::RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
+      PjRtBuffer* buffer, std::vector<std::string> serialized_descriptors,
+      std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
       const PjRtBuffer::ScatterDetails& scatter_details) const {
-    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
-      d_and_cb.second(
-          Unimplemented("Scattered cross host sends not implemented."),
-          /*sends_were_enqueued=*/false);
+    for (const auto& cb : callbacks) {
+      cb(Unimplemented("Scattered cross host sends not implemented."),
+         /*sends_were_enqueued=*/false);
     }
   }
 
@@ -612,12 +618,13 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                          RemoteSendCallback on_done) override;
+  void CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      RemoteSendCallback on_done) override;
 
   void CopyToRemoteDeviceScattered(
-      absl::Span<const std::pair<std::string, RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
+      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) override;
 
   PjRtFuture<Status> GetReadyFuture() override;
@@ -789,6 +796,10 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   void Delete() override { executables_.clear(); }
 
   bool IsDeleted() override { return executables_.empty(); }
+
+  StatusOr<std::string> SerializeExecutable() const override {
+    return client_->SerializeExecutable(*this);
+  }
 
   bool IsReturnedFutureSupported() const override { return true; }
 

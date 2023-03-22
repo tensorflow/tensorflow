@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -13,11 +14,11 @@ py_strict_binary(
     python_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",

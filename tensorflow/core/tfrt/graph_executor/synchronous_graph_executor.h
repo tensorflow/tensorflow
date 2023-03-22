@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "learning/infra/mira/mlrt/interpreter/context.h"
+#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -38,7 +40,8 @@ class SynchronousGraphExecutor {
  public:
   // Creates and returns a SynchronousGraphExecutor for the given `graph`.
   static absl::StatusOr<std::unique_ptr<SynchronousGraphExecutor>> Create(
-      const tensorflow::GraphDef& graph);
+      const tensorflow::GraphDef& graph,
+      std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Runs the graph identified by `graph_name` using the input `inputs` and
   // stores the output of the execution in `outputs`. It is the client's
@@ -46,12 +49,12 @@ class SynchronousGraphExecutor {
   // graphs, since this name is used to lookup compiled graphs in the cache. The
   // graph is run synchronously with the TFRT interpreter.
   absl::Status Run(const std::string& graph_name,
-                   absl::Span<tfrt::Value*> input_values,
+                   absl::Span<mlrt::Value> input_values,
                    absl::Span<const std::string> input_names,
                    absl::Span<const tensorflow::DataType> input_dtypes,
                    absl::Span<const std::string> output_tensor_names,
                    absl::Span<const std::string> target_tensor_names,
-                   absl::Span<tfrt::Value*> outputs);
+                   absl::Span<mlrt::Value> outputs);
 
   // Returns the TFRT host context for allocating tensors.
   // TODO(rohitju): This should ideally not be exposed to the client.

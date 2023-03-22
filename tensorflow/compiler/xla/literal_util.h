@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -112,10 +113,10 @@ class LiteralUtil {
   // Creates a scalar literal value one of the given primitive type.
   static Literal One(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the minimum value of the given
-  // primitive type. For floating-point types, returns -inf.
+  // primitive type. For floating-point types supporting inf, returns -inf.
   static Literal MinValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the maximum value of the given
-  // primitive type. For floating-point types, returns inf.
+  // primitive type. For floating-point types supporting inf, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
@@ -251,7 +252,7 @@ class LiteralUtil {
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
-      const std::function<T(absl::Span<const int64_t>)>& generator);
+      absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -305,7 +306,7 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR2WithLayout(
     std::initializer_list<std::initializer_list<NativeT>> values,
     const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64_t>(values.size()),
        static_cast<int64_t>(values.begin()->size())},
@@ -394,7 +395,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
       layout.minor_to_major()));
   literal.PopulateFromArray(values);
@@ -519,12 +520,12 @@ template <typename NativeT>
 template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
-    const std::function<T(absl::Span<const int64_t>)>& generator) {
+    absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
-      [&](absl::Span<const int64_t> indexes) { return generator(indexes); }));
+      [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 

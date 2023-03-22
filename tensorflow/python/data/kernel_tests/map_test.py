@@ -25,8 +25,10 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import from_list
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -43,7 +45,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
@@ -416,8 +419,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/123904513)
-  @combinations.generate(_test_combinations_with_mode_v1("graph"))
+  @combinations.generate(_test_combinations_with_mode("graph"))
   def testCaptureQueue(self, apply_map):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
@@ -432,8 +434,18 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     for element in elements:
       self.assertEqual(element, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    # When the map function in `MapDataset` raises an OutOfRange error, TF1 and
+    # TF2 behave differently. TF1 raises an OutOfRangeError to signal the end of
+    # sequence while TF2 raises an InvalidArgumentError. This behavior is
+    # controlled by the `preserve_cardinality` argument of `map` transformation
+    # which is set to `True` for TF2 and `False` for TF1, which is for backward
+    # compatibility.
+    if tf2.enabled():
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(get_next())
+    else:
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   # TODO(b/117581999): Possible deadlock in eager mode, debug.
   @combinations.generate(_test_combinations_with_mode_v1("graph"))
@@ -619,7 +631,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -630,7 +642,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -663,7 +675,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), divide),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     def build_dataset(row, num):
@@ -693,7 +705,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         return x // 2
 
       def defaults_two():
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.equal(math_ops.mod(x, 2), 0),
             multiply,
             divide,
@@ -704,7 +716,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
                                math_ops.equal(y, 3)), defaults_two),
       ]
 
-      return control_flow_ops.case(
+      return control_flow_case.case(
           pred_fn_pairs, default=multiply, exclusive=True)
 
     row = np.arange(6)
@@ -916,8 +928,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             for i in range(10)
         ])
 
-  # TODO(b/123904513)
-  @combinations.generate(_test_combinations_with_mode_v1("graph"))
+  @combinations.generate(_test_combinations_with_mode("graph"))
   def testParallelMapOutOfRangeError(self, apply_map):
 
     def raising_py_func(i):
@@ -934,8 +945,18 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     for i in range(100):
       self.assertEqual(i, self.evaluate(get_next()))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(get_next())
+    # When the map function in `MapDataset` raises an OutOfRange error, TF1 and
+    # TF2 behave differently. TF1 raises an OutOfRangeError to signal the end of
+    # sequence while TF2 raises an InvalidArgumentError. This behavior is
+    # controlled by the `preserve_cardinality` argument of `map` transformation
+    # which is set to `True` for TF2 and `False` for TF1, which is for backward
+    # compatibility.
+    if tf2.enabled():
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(get_next())
+    else:
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
   @combinations.generate(_test_combinations())
   def testConstantOutput(self, apply_map):
@@ -1131,7 +1152,6 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.close()
       thread.join()
 
-
   # TODO(b/126553094): map doesnt work with variable defined inside function in
   # eager mode, possible Graph tensors leak out of the function building context
   # from function graph in eager mode as variables are created in init_scope.
@@ -1219,11 +1239,13 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
+      with ops.device("/device:CPU:0"):
+        a = variables.VariableV1(3.0)
+      with ops.device("/device:CPU:1"):
+        b = variables.VariableV1(5.0)
+
       def func(_):
-        with ops.device("/device:CPU:0"):
-          a = variables.VariableV1(3.0)
-        with ops.device("/device:CPU:1"):
-          b = variables.VariableV1(5.0)
+        nonlocal a, b
         return math_ops.add(a, b)
 
       # NOTE: Use the legacy function implementation as eager function will
@@ -1317,20 +1339,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
-    if pywrap_sanitizers.is_tsan_enabled():
-      self.skipTest("Creating a large buffer causes OOM when using tsan.")
-    # Tensor of size 512M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
-    dataset = dataset.repeat()
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled()):
+      self.skipTest("Skip to avoid OOM when using sanitizers.")
+    # Tensors of size 512M.
+    dataset = from_list.from_list(
+        [
+            random_ops.random_uniform((128, 1024, 1024), dtype=dtypes.float32)
+            for _ in range(5)
+        ]
+    )
+
     # Set parallelism to 5 to exceed the 2GB protobuf limit
     dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)
-    next(iterator)  # request an element to fill the parallel map buffer
+    next(iterator)  # Request an element to fill the parallel map buffer
+    time.sleep(1)  # Give buffers some time to fill
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+    del dataset
+    del iterator
+    manager.restore_or_initialize()
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -1345,10 +1377,12 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations(),
-                         combinations.combine(num_parallel_calls=[None, 2])))
-  def testCore(self, verify_fn, num_parallel_calls):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              num_parallel_calls=[None, 2], symbolic_checkpoint=[False, True])))
+  def testCore(self, verify_fn, num_parallel_calls, symbolic_checkpoint):
 
     tensor_slice_len = 7
     num_epochs = 2
@@ -1363,8 +1397,11 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       def _map_fn(x, y, z):
         return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-      return (dataset_ops.Dataset.from_tensor_slices(components).map(
-          _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs))
+      dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
+          _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
 
     verify_fn(self, _build_ds, tensor_slice_len * num_epochs)
 

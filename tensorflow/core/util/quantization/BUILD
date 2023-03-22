@@ -12,12 +12,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # buildifier: disable=no-layering-check
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
     licenses = ["notice"],

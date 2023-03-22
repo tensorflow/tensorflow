@@ -42,7 +42,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
   if (input_defining_op) {
     if (auto layout_op =
             llvm::dyn_cast<mlir::TF::DTensorLayout>(input_defining_op)) {
-      auto global_shape = layout_op.global_shape();
+      auto global_shape = layout_op.getGlobalShape();
       if (!global_shape)
         return errors::Internal("global_shape does not have static rank");
       return *global_shape;
@@ -78,7 +78,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalOutputShape(
   if (op->getOpResult(output_index).hasOneUse()) {
     auto user = op->getOpResult(output_index).getUses().begin().getUser();
     if (auto layout_op = mlir::dyn_cast<mlir::TF::DTensorLayout>(user)) {
-      auto global_shape = layout_op.global_shape();
+      auto global_shape = layout_op.getGlobalShape();
       if (!global_shape)
         return errors::Internal("global_shape does not have static rank");
       return *global_shape;
@@ -125,7 +125,7 @@ mlir::NamedAttrList GetAllAttributesFromOperation(mlir::Operation* op) {
 // operation is `DTensorLayout` op, then we use input of DTensorLayout op
 // instead for correct constant matching.
 mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
-    llvm::Optional<mlir::Location> location, mlir::Operation* op,
+    std::optional<mlir::Location> location, mlir::Operation* op,
     int64_t graph_version,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferred_return_shapes) {
   if (auto type_op = llvm::dyn_cast<mlir::InferTypeOpInterface>(op)) {
@@ -170,7 +170,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
   auto operand_as_constant_fn = [](mlir::Value operand) -> mlir::Attribute {
     while (auto input_op = llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(
                operand.getDefiningOp())) {
-      operand = input_op.input();
+      operand = input_op.getInput();
     }
 
     mlir::Attribute attr;
@@ -248,12 +248,12 @@ StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
   if (value.isa<mlir::OpResult>() &&
       mlir::isa<mlir::TF::DTensorLayout>(value.getDefiningOp())) {
     auto layout_op = mlir::cast<mlir::TF::DTensorLayout>(value.getDefiningOp());
-    if (layout_op.global_shape()) return layout_op.global_shape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   } else if (value.hasOneUse() &&
              mlir::isa<mlir::TF::DTensorLayout>(*value.getUsers().begin())) {
     auto layout_op =
         mlir::cast<mlir::TF::DTensorLayout>(*value.getUsers().begin());
-    if (layout_op.global_shape()) return layout_op.global_shape().getValue();
+    if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();
   }
   return errors::InvalidArgument(
       "consumer or producer of value is not a DTensorLayout");

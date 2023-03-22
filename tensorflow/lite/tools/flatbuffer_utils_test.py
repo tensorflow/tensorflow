@@ -16,6 +16,7 @@
 import copy
 import os
 import subprocess
+import sys
 
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools import test_utils
@@ -225,9 +226,27 @@ class XxdOutputToBytesTest(test_util.TensorFlowTestCase):
 
     # 4. VALIDATE
     final_bytes = flatbuffer_utils.xxd_output_to_bytes(input_cc_file)
+    if sys.byteorder == 'big':
+      final_bytes = flatbuffer_utils.byte_swap_tflite_buffer(
+          final_bytes, 'little', 'big'
+      )
 
     # Validate that the initial and final bytearray are the same
     self.assertEqual(initial_bytes, final_bytes)
+
+
+class CountResourceVariablesTest(test_util.TensorFlowTestCase):
+
+  def testCountResourceVariables(self):
+    # 1. SETUP
+    # Define the initial model
+    initial_model = test_utils.build_mock_model()
+
+    # 2. Confirm that resource variables for mock model is 1
+    # The mock model is created with two VAR HANDLE ops, but with the same
+    # shared name.
+    self.assertEqual(
+        flatbuffer_utils.count_resource_variables(initial_model), 1)
 
 
 if __name__ == '__main__':

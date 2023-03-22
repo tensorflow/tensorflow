@@ -2,8 +2,9 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/core/function:__subpackages__",
+        "//tensorflow/core/function/runtime_client:__subpackages__",
     ],
 )
 
@@ -22,17 +23,18 @@ pytype_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/framework:function_proto_py",
-        "//tensorflow/core/function:runtime_client_py",
+        "//tensorflow/core/function/capture:restore_captures",
+        "//tensorflow/core/function/runtime_client:runtime_client_py",
         "//tensorflow/python:default_gradient",
         "//tensorflow/python:gradients",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )
@@ -48,6 +50,7 @@ py_strict_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 #include <optional>
 #include <set>
@@ -22,13 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -816,8 +816,8 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
           {1, 2},
           {3, 4},
       })));
-  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
-  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
+  auto shape10 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1});
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, token, ""));
@@ -858,13 +858,15 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  HloSharding tuple_sharding =
+      HloSharding::SingleTuple(tuple->shape(), sharding);
+  tuple->set_sharding(tuple_sharding);
   // Compatible with original shape as tuple tree structure and leaf ranks are
   // identical
   auto clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
   auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
-  EXPECT_EQ(tuple_clone->sharding(), sharding);
+  EXPECT_EQ(tuple_clone->sharding(), tuple_sharding);
 }
 
 TEST_F(HloInstructionTest,
@@ -878,7 +880,7 @@ TEST_F(HloInstructionTest,
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  tuple->set_sharding(HloSharding::SingleTuple(tuple->shape(), sharding));
   // Incompatible with original shape as tuple tree structure is different
   auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
   clone_shape =
@@ -898,7 +900,7 @@ TEST_F(HloInstructionTest,
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  tuple->set_sharding(HloSharding::SingleTuple(tuple->shape(), sharding));
   // Incompatible with original shape as tuple tree structure is different
   auto clone_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
@@ -1178,7 +1180,8 @@ TEST_F(HloInstructionTest, FullyElementwise) {
 
 TEST_F(HloInstructionTest, MapIsElementwise) {
   auto module = CreateNewVerifiedModule();
-  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  const Shape r2f32 =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 10}, {1, 0});
   HloComputation::Builder builder(TestName());
   HloComputation::Builder map_builder("id");
   map_builder.AddInstruction(

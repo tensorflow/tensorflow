@@ -15,6 +15,8 @@
 
 """Tests for cond_v2."""
 
+import os
+
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -22,26 +24,34 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.module import module as module_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load as load_lib
+from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.training import saver
 from tensorflow.python.util import compat
+
 
 _OPTIONAL_OPS = frozenset([
     "OptionalFromValue", "OptionalNone", "OptionalHasValue", "OptionalGetValue"
@@ -56,7 +66,7 @@ class CondV2Test(test.TestCase):
     with self.session(graph=ops.get_default_graph()) as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
 
-      expected = control_flow_ops.cond(
+      expected = tf_cond.cond(
           array_ops.squeeze_v2(pred), true_fn, false_fn, name="expected")
       actual = cond_v2.cond_v2(pred, true_fn, false_fn, name="actual")
 
@@ -142,6 +152,82 @@ class CondV2Test(test.TestCase):
 
     output = build_cond_with_indexed_slices()
     self.assertAllEqual(output, [1.])
+
+  def testCondNestedFunctionGradientWithSavedModel(self):
+    class Model(module_lib.Module):
+
+      def __init__(self):
+        self.v = resource_variable_ops.ResourceVariable([[1., 1.], [1., 1.]])
+
+      @def_function.function
+      def call(self, x, cond):
+
+        @def_function.function
+        def true_fn():
+          # Einsum doesn't have a symbolic gradient op registered.
+          # Taking gradient of an einsum op will fail if its python gradient
+          # function is not found after loaded from a SavedModel.
+          return gen_linalg_ops.einsum([x, self.v], "ab,bc->ac")
+
+        @def_function.function
+        def false_fn():
+          return x
+
+        return cond_v2.cond_v2(cond > 0, true_fn, false_fn)
+
+    model = Model()
+    x = constant_op.constant([[1., 1.], [1., 1.]])
+    cond = constant_op.constant(1.)
+    with backprop.GradientTape() as tape:
+      y = tape.gradient(model.call(x, cond), model.v)
+
+    self.assertAllEqual(y, [[2., 2.], [2., 2.]])
+
+    saved_model_dir = os.path.join(self.create_tempdir(), "saved_model")
+    save_lib.save(model, saved_model_dir)
+    loaded_model = load_lib.load(saved_model_dir)
+    with backprop.GradientTape() as tape:
+      y = tape.gradient(loaded_model.call(x, cond), loaded_model.v)
+
+    self.assertAllEqual(y, [[2., 2.], [2., 2.]])
+
+  def testCondNestedFunctionGradientWithXlaDynamicCondition(self):
+
+    v = resource_variable_ops.ResourceVariable([[1., 1.], [1., 1.]])
+
+    @def_function.function(
+        jit_compile=True,
+        input_signature=[
+            tensor_spec.TensorSpec([None, 2]),
+            tensor_spec.TensorSpec([]),
+        ],
+    )
+    def f(x, cond):
+
+      @def_function.function
+      def true_fn():
+        return gen_linalg_ops.einsum([x, v], "ab,bc->ac")
+
+      @def_function.function
+      def false_fn():
+        return x
+
+      return cond_v2.cond_v2(cond > 0, true_fn, false_fn)
+
+    x = constant_op.constant([[1., 1.], [1., 1.]])
+    cond = constant_op.constant(1.)
+    with backprop.GradientTape() as tape:
+      # Shape of x in HLO graph should be [<=2, 2].
+      y = tape.gradient(f(x, cond), v)
+
+    self.assertAllEqual(y, [[2., 2.], [2., 2.]])
+
+    x = constant_op.constant([[1., 1.], [1., 1.], [1., 1.]])
+    with backprop.GradientTape() as tape:
+      # HLO graph should be re-compiled to handle x with shape [<=3, 2].
+      y = tape.gradient(f(x, cond), v)
+
+    self.assertAllEqual(y, [[3., 3.], [3., 3.]])
 
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
@@ -286,14 +372,14 @@ class CondV2Test(test.TestCase):
     f()
 
   @test_util.run_v1_only("b/120545219")
-  def testDefunInCond(self):
+  def testFunctionInCond(self):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
       y = constant_op.constant(2.0, name="y")
 
       def true_fn():
 
-        @function.defun
+        @def_function.function
         def fn():
           return x * y * 2.0
 
@@ -307,7 +393,7 @@ class CondV2Test(test.TestCase):
       self._testCond(true_fn, false_fn, [y])
 
   @test_util.run_deprecated_v1
-  def testNestedDefunInCond(self):
+  def testNestedFunctionInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -316,10 +402,10 @@ class CondV2Test(test.TestCase):
 
     def false_fn():
 
-      @function.defun
+      @def_function.function
       def fn():
 
-        @function.defun
+        @def_function.function
         def nested_fn():
           return x * y * 2.0
 
@@ -332,19 +418,19 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   @test_util.run_deprecated_v1
-  def testDoubleNestedDefunInCond(self):
+  def testDoubleNestedFunctionInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
     def true_fn():
 
-      @function.defun
+      @def_function.function
       def fn():
 
-        @function.defun
+        @def_function.function
         def nested_fn():
 
-          @function.defun
+          @def_function.function
           def nested_nested_fn():
             return x * y * 2.0
 
@@ -479,7 +565,7 @@ class CondV2Test(test.TestCase):
     run_test(False, False)
     run_test(False, True)
 
-  def testGradientFromInsideDefun(self):
+  def testGradientFromInsideFunction(self):
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -504,8 +590,8 @@ class CondV2Test(test.TestCase):
       cond_outer = cond_v2.cond_v2(
           pred_outer, true_fn, false_fn, name="outer_cond")
 
-      # Compute grads inside a Defun.
-      @function.defun
+      # Compute grads inside a tf function.
+      @def_function.function
       def nesting_fn():
         return gradients_impl.gradients(cond_outer, [x, y])
 
@@ -537,7 +623,7 @@ class CondV2Test(test.TestCase):
                 pred_inner: False
             }), [5., 0.])
 
-  def testGradientFromInsideNestedDefun(self):
+  def testGradientFromInsideNestedFunction(self):
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -562,11 +648,11 @@ class CondV2Test(test.TestCase):
       cond_outer = cond_v2.cond_v2(
           pred_outer, true_fn, false_fn, name="outer_cond")
 
-      # Compute grads inside a Defun.
-      @function.defun
+      # Compute grads inside a tf function.
+      @def_function.function
       def nesting_fn():
 
-        @function.defun
+        @def_function.function
         def inner_nesting_fn():
           return gradients_impl.gradients(cond_outer, [x, y])
 
@@ -600,7 +686,7 @@ class CondV2Test(test.TestCase):
                 pred_inner: False
             }), [5., 0.])
 
-  def testBuildCondAndGradientInsideDefun(self):
+  def testBuildCondAndGradientInsideFunction(self):
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -608,8 +694,8 @@ class CondV2Test(test.TestCase):
       x = constant_op.constant(1.0, name="x")
       y = constant_op.constant(2.0, name="y")
 
-      # Build cond and its gradient inside a Defun.
-      @function.defun
+      # Build cond and its gradient inside a tf function.
+      @def_function.function
       def fn():
 
         def true_fn():
@@ -1135,7 +1221,7 @@ class CondV2Test(test.TestCase):
     # run on GPUs (running on GPU requires a mixed CPU/GPU graph).
     with self.session(graph=ops.Graph(), use_gpu=False) as sess:
 
-      @function.defun
+      @def_function.function
       def _add_cond(x):
         return cond_v2.cond_v2(
             constant_op.constant(True, name="pred"),
@@ -1161,7 +1247,7 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return ((x,), y * 3.0)
 
-    output = control_flow_ops.cond(
+    output = tf_cond.cond(
         constant_op.constant(False), true_fn, false_fn)
     self.assertEqual(self.evaluate(output[0][0]), 1.)
     self.assertEqual(self.evaluate(output[1]), 9.)
@@ -1181,7 +1267,7 @@ class CondV2Test(test.TestCase):
     with self.assertRaisesRegex(
         TypeError, "true_fn and false_fn arguments to tf.cond must have the "
         "same number, type, and overall structure of return values."):
-      control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
+      tf_cond.cond(constant_op.constant(False), true_fn, false_fn)
 
   @test_util.enable_control_flow_v2
   def testCondAndTensorArray(self):
@@ -1196,10 +1282,10 @@ class CondV2Test(test.TestCase):
       def if_false():
         return output.write(i, x[i])
 
-      output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+      output = tf_cond.cond(x[i] > 0, if_true, if_false)
       return i + 1, output
 
-    _, output = control_flow_ops.while_loop(
+    _, output = while_loop.while_loop(
         lambda i, arr: i < x.shape[0],
         loop_body,
         loop_vars=(constant_op.constant(0), output))
@@ -1208,9 +1294,9 @@ class CondV2Test(test.TestCase):
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
 
   @test_util.enable_control_flow_v2
-  def testCondAndTensorArrayInDefun(self):
+  def testCondAndTensorArrayInFunction(self):
 
-    @function.defun
+    @def_function.function
     def f():
       x = math_ops.range(-5, 5)
       output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])
@@ -1223,10 +1309,10 @@ class CondV2Test(test.TestCase):
         def if_false():
           return output.write(i, x[i])
 
-        output = control_flow_ops.cond(x[i] > 0, if_true, if_false)
+        output = tf_cond.cond(x[i] > 0, if_true, if_false)
         return i + 1, output
 
-      _, output = control_flow_ops.while_loop(
+      _, output = while_loop.while_loop(
           lambda i, arr: i < x.shape[0],
           loop_body,
           loop_vars=(constant_op.constant(0), output))
@@ -1311,12 +1397,14 @@ class CondV2Test(test.TestCase):
       x = constant_op.constant(1., name="x")
 
       def then_branch():
-        return x ** 2., gen_dataset_ops.optional_from_value(
-            [constant_op.constant(1)])
+        return x**2.0, gen_optional_ops.optional_from_value(
+            [constant_op.constant(1)]
+        )
 
       def else_branch():
-        return x ** 3., gen_dataset_ops.optional_from_value(
-            [constant_op.constant(1.)])
+        return x**3.0, gen_optional_ops.optional_from_value(
+            [constant_op.constant(1.0)]
+        )
 
       y, _ = cond_v2.cond_v2(c, then_branch, else_branch)
       return gradients_impl.gradients(y, x)
@@ -1742,7 +1830,7 @@ class CaseTest(test.TestCase):
 
 def _cond(pred, true_fn, false_fn, name):
   if _is_old_cond():
-    return control_flow_ops.cond(pred, true_fn, false_fn, name=name)
+    return tf_cond.cond(pred, true_fn, false_fn, name=name)
   else:
     return cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
 

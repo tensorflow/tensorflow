@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <optional>
 #include <string>
 
 #include "absl/container/node_hash_map.h"
@@ -128,7 +129,7 @@ bool MayHaveSideEffect(Operation* op) {
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return TensorFlowDialect::CanHaveSideEffects(op);
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (mlir::isMemoryEffectFree(op)) return false;
   // Conservatively assume that there can be side effects.
   return true;
 }
@@ -241,7 +242,7 @@ class OpSideEffectCollector {
     } else if (auto while_op = dyn_cast<WhileOp>(op)) {
       AddRegionSideEffectsForOp(while_op.body_function().getBody(), op);
     } else if (auto while_region_op = dyn_cast<WhileRegionOp>(op)) {
-      AddRegionSideEffectsForOp(while_region_op.body(), op);
+      AddRegionSideEffectsForOp(while_region_op.getBody(), op);
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
       llvm::SmallVector<func::FuncOp, 4> branch_funcs;
       case_op.get_branch_functions(branch_funcs);
@@ -286,15 +287,21 @@ class OpSideEffectCollector {
           // dead or get pruned, ignore it for side effect analysis.
           continue;
 
-        // Add side effects for op resource ID.
-        std::string instance_str = "";
+        // Add side effects for op resource ID. If `op` does not have
+        // `GetResourceInstanceInterface`, then all op instances will keep an
+        // empty `instance_str` which enforces global order.
+        std::optional<std::string> instance_str = "";
         SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
         if (auto resource_instance_op =
             dyn_cast<GetResourceInstanceInterface>(op)) {
           instance_str = resource_instance_op.GetResourceInstanceStr();
         }
+        // No value (`std::nullopt`) instance string signals that we should
+        // ignore this effect, see comment for `GetResourceInstanceInterface`.
+        if (!instance_str.has_value()) continue;
+
         TypeID type_id = effect.getResource()->getResourceID();
-        ResourceId resource_id = GetOpResourceId(type_id, instance_str);
+        ResourceId resource_id = GetOpResourceId(type_id, instance_str.value());
         side_effects.SetResourceId(resource_id);
         UpdateSideEffectsByResourceId(side_effects,
                                       side_effects_by_resource_id);
@@ -346,6 +353,17 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
     const TF::ResourceAliasAnalysis::Info& alias_analysis) {
   SideEffectsByResourceId side_effects_by_resource_id;
   if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
+
+  // For fetch op, set unknown effect to guarantee that it depends on every
+  // side-effecting op (directly or indirectly).
+  if (isa<tf_executor::FetchOp>(op)) {
+    SideEffects unknown_effect;
+    unknown_effect.SetUnknownEffect();
+    unknown_effect.SetResourceId(kUnknownResourceId);
+    UpdateSideEffectsByResourceId(unknown_effect,
+                                  side_effects_by_resource_id);
+    return side_effects_by_resource_id;
+  }
 
   if (isa<tf_device::LaunchOp, tf_device::ClusterOp, tf_executor::IslandOp,
           tf_executor::GraphOp, IfRegionOp, CaseRegionOp, WhileRegionOp>(op)) {
@@ -457,49 +475,79 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
 void SideEffectAnalysisInfo::AddPredecessorsForAccess(ResourceId resource_id,
                                                       Operation* op,
                                                       bool read_only) {
-  VLOG(2) << "    Adding predecessors for resource " << resource_id;
+  VLOG(4) << "    Adding predecessors for resource " << resource_id;
   auto it = per_resource_access_info_.find(resource_id);
   if (it == per_resource_access_info_.end()) return;
   const auto& access_info = it->getSecond();
 
-  auto& control_predecessors = control_predecessors_[op];
+  // Collect new control predecessors.
+  llvm::SmallPtrSet<Operation*, 4> new_control_predecessors;
   bool is_last_write_indirectly_tracked = false;
   if (!read_only) {
     // Add reads after last write as predecessors.
-    control_predecessors.insert(access_info.reads_since_last_write.begin(),
-                                access_info.reads_since_last_write.end());
+    new_control_predecessors.insert(access_info.reads_since_last_write.begin(),
+                                    access_info.reads_since_last_write.end());
     // Last write is indirectly tracked by any read predecessor we added.
     is_last_write_indirectly_tracked =
         !access_info.reads_since_last_write.empty();
   }
   if (access_info.last_write && !is_last_write_indirectly_tracked) {
-    // Add last write as predecessor.
-    control_predecessors.insert(access_info.last_write);
+    // Add last write as predecessor since it was not indirectly tracked.
+    new_control_predecessors.insert(access_info.last_write);
   }
+  if (VLOG_IS_ON(4)) {
+    for (Operation* new_control_predecessor : new_control_predecessors) {
+        VLOG(4) << "      Adding predecessor op "
+                << mlir::debugString(*new_control_predecessor);
+    }
+  }
+  // Add new control predecessors to map.
+  control_predecessors_[op].insert(new_control_predecessors.begin(),
+                                   new_control_predecessors.end());
 }
 
 void SideEffectAnalysisInfo::UpdateAccess(ResourceId resource_id,
                                           Operation* op,
                                           bool read_only) {
-  VLOG(2) << "    Updating access for resource " << resource_id;
+  VLOG(4) << "    Updating access for resource " << resource_id;
   op_to_resource_ids_[op].push_back({resource_id, read_only});
+
+  // For unknown ID case, first update access info for all other resource IDs.
   if (resource_id == kUnknownResourceId) {
     if (read_only) {
-      // New unknown read is not tracked by any known resource access.
-      for (auto& entry : per_resource_access_info_) {
-        entry.getSecond().are_last_unknown_reads_tracked = false;
+      // New unknown read is not tracked by any other access.
+      for (auto& [id, info] : per_resource_access_info_) {
+        VLOG(4) << "      Clearing unknown read tracking for ID " << id;
+        info.are_last_unknown_reads_tracked = false;
       }
     } else {
-      // Unknown write can clear all other tracked information, since it acts
-      // like a barrier.
-      per_resource_access_info_.clear();
+      // Unknown write.
+      for (auto& [id, info] : per_resource_access_info_) {
+        if (op_side_effect_collector_.IsOnlySelfDependent(id)) {
+          // For self-dependent-only ID, clear unknown access tracking (the new
+          // unknown write is not tracked by any other access). Note that we
+          // cannot delete the access info because the new unknown write
+          // doesn't indirectly track previous accesses for self-dependent-only
+          // resources.
+          VLOG(4) << "      Clearing unknown access tracking for ID " << id;
+          info.are_last_unknown_reads_tracked = false;
+          info.is_last_unknown_write_tracked = false;
+          info.is_last_unknown_write_tracked_by_write = false;
+        } else {
+          // For other IDs, we can delete access info completely (the unknown
+          // write acts as a barrier for those IDs).
+          VLOG(4) << "      Clearing resource access info for ID " << id;
+          per_resource_access_info_.erase(id);
+        }
+      }
     }
   }
+  // Now update access info for `resource_id`.
   auto& access_info = per_resource_access_info_[resource_id];
   if (read_only) {
     access_info.reads_since_last_write.push_back(op);
-    // Last unknown write is indirectly tracked by this read (we have added the
-    // write as a predecessor for `op` before).
+    // Last unknown write is indirectly tracked by this read (we must have added
+    // the write as a predecessor for `op` before).
     access_info.is_last_unknown_write_tracked = true;
   } else {
     access_info.last_write = op;
@@ -598,7 +646,7 @@ SideEffectAnalysisInfo::GetDependentIds(ResourceId resource_id,
 }
 
 void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
-  VLOG(2) << "Processing op " << mlir::debugString(*op);
+  VLOG(4) << "Processing op " << mlir::debugString(*op);
   SideEffectsByResourceId side_effects_by_resource_id =
         CollectSideEffectsByResourceId(
             op,
@@ -615,7 +663,7 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
   bool had_unknown_resource_read = false;
   for (const auto& [resource_id, side_effects] : side_effects_by_resource_id) {
     const bool read_only = side_effects.IsReadOnly();
-    VLOG(2) << "  Processing resource ID: " << resource_id
+    VLOG(4) << "  Processing resource ID: " << resource_id
             << ", read-only effect: " << read_only;
     // An op that only allocates a resource is expected to return a handle that
     // is used by all other accesses of the same resource. That means, other ops
@@ -680,10 +728,18 @@ bool SideEffectAnalysisInfo::IsUnknownAccessIndirectlyTrackedByResource(
       (no_unknown_write || access_info.is_last_unknown_write_tracked) &&
       (no_unknown_read || access_info.are_last_unknown_reads_tracked);
   if (is_tracked) {
-    VLOG(2) << "      Unknown access indirectly tracked by resource "
+    VLOG(4) << "      Unknown access indirectly tracked by resource "
             << resource_id;
   }
   return is_tracked;
+}
+
+const llvm::SmallVector<Operation*, 4>&
+SideEffectAnalysisInfo::DirectControlPredecessors(
+    Operation* op) const {
+  auto it = sorted_control_predecessors_.find(op);
+  if (it == sorted_control_predecessors_.end()) return empty_operation_set_;
+  return it->second;
 }
 
 llvm::SmallVector<Operation*, 4>
@@ -697,6 +753,14 @@ SideEffectAnalysisInfo::DirectControlPredecessors(
     if (!filter || filter(predecessor)) result.push_back(predecessor);
   }
   return result;
+}
+
+const llvm::SmallVector<Operation*, 4>&
+SideEffectAnalysisInfo::DirectControlSuccessors(
+    Operation* op) const {
+  auto it = sorted_control_successors_.find(op);
+  if (it == sorted_control_successors_.end()) return empty_operation_set_;
+  return it->second;
 }
 
 llvm::SmallVector<Operation*, 4>

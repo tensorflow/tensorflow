@@ -55,7 +55,7 @@ class PercentileSampler {
     return &default_cell_;
   }
 
-  Status GetStatus() { return Status::OK(); }
+  Status GetStatus() { return tsl::OkStatus(); }
 
  private:
   PercentileSamplerCell default_cell_;
@@ -199,20 +199,20 @@ class PercentileSampler {
     if (registration_handle_) {
       for (size_t i = 0; i < percentiles_.size(); ++i) {
         if (percentiles_[i] < 0.0 || percentiles_[i] > 100.0) {
-          status_ = Status(tensorflow::error::Code::INVALID_ARGUMENT,
+          status_ = Status(absl::StatusCode::kInvalidArgument,
                            "Percentile values must be in [0, 100] range.");
           break;
         }
         if (i + 1 < percentiles_.size() &&
             percentiles_[i] >= percentiles_[i + 1]) {
           status_ =
-              Status(tensorflow::error::Code::INVALID_ARGUMENT,
+              Status(absl::StatusCode::kInvalidArgument,
                      "Percentile values must be in strictly ascending order.");
           break;
         }
       }
     } else {
-      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+      status_ = Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
@@ -220,6 +220,12 @@ class PercentileSampler {
   mutable mutex mu_;
 
   Status status_;
+
+  using LabelArray = std::array<string, NumLabels>;
+  // we need a container here that guarantees pointer stability of the value,
+  // namely, the pointer of the value should remain valid even after more cells
+  // are inserted.
+  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -235,12 +241,6 @@ class PercentileSampler {
 
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
-
-  using LabelArray = std::array<string, NumLabels>;
-  // we need a container here that guarantees pointer stability of the value,
-  // namely, the pointer of the value should remain valid even after more cells
-  // are inserted.
-  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
 };

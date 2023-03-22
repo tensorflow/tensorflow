@@ -18,16 +18,44 @@ from collections import abc
 import contextlib
 import threading
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
+from tensorflow.python.distribute.reduce_util import ReduceOp
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+
+
+@tf_export(v1=["distribute.get_loss_reduction"])
+def get_loss_reduction():
+  """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
+
+  This is used to decide whether loss should be scaled in optimizer (used only
+  for estimator + v1 optimizer use case).
+
+  Returns:
+    `tf.distribute.ReduceOp` corresponding to the last loss reduction for
+    estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
+  """
+  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
+    # If we are not in Estimator context then return 'SUM'. We do not need to
+    # scale loss in the optimizer.
+    return ReduceOp.SUM
+  last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
+  if (last_reduction == losses_impl.Reduction.SUM or
+      last_reduction == "sum"):  # Check for tf.keras.losses.Reduction.SUM
+    return ReduceOp.SUM
+  return ReduceOp.MEAN
 
 
 def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
@@ -98,13 +126,13 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
   if same_id and isinstance(v0, values_lib.DistributedVariable):
     return v0
   # * If v0 is a member of a distributed variable, in which case
-  #   hasattr(v0, "_distributed_container") is true, we want to
+  #   value_container(v0) is not v0 itself, we want to
   #   return the DistributedVariable that contains it using the
   #   _distributed_container logic below. This case can trigger
   #   same_id when there is only one device.
   # * In any other situation, same_id means we return v0 unless `always_wrap` is
   #   true.
-  if same_id and not always_wrap and not hasattr(v0, "_distributed_container"):
+  if same_id and not always_wrap and value_container(v0) is v0:
     return v0
 
   # Detect the case where each device has a parallel component of the
@@ -112,15 +140,17 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
   # want to return the containing MirroredVariable, after a bunch of
   # sanity checking. In particular, each component should have the
   # same container, and the devices of the variables should match the
-  # keys of the per-replica dictionary.
-  if hasattr(v0, "_distributed_container"):
+  # keys of the per-replica dictionary. For _UnreadVariables, use the wrap_class
+  # path, which calls tf.identity on them.
+  if (not isinstance(v0, resource_variable_ops._UnreadVariable) and  # pylint: disable=protected-access
+      value_container(v0) is not v0):
     # pylint: disable=protected-access
     assert not isinstance(v0, values_lib.MirroredVariable), (
         "ids = %s, values = %s" % ([id(v) for v in values], values))
-    distributed_container = v0._distributed_container()
+    distributed_container = value_container(v0)
     assert distributed_container is not None
     for v in values[1:]:
-      assert distributed_container is v._distributed_container()
+      assert distributed_container is value_container(v)
     return distributed_container
   # pylint: enable=protected-access
 
@@ -206,14 +236,19 @@ def value_container(val):
     If value does not belong to any container (including the case of
     container having been destroyed), returns the value itself.
   """
-  if (hasattr(val, "_distributed_container") and
-      # DistributedVariable has _distributed_container defined
-      # but we don't want to return it.
-      not isinstance(val, values_lib.DistributedVariable)):
-    container = val._distributed_container()  # pylint: disable=protected-access
-    if container is not None:
-      return container
-  return val
+  # DistributedVariable has _distributed_container defined but we don't want to
+  # return it.
+  container = None
+  if not isinstance(val, values_lib.DistributedVariable):
+    if hasattr(val, "_distributed_container"):
+      container = val._distributed_container()  # pylint: disable=protected-access
+    elif (isinstance(val, composite_tensor.CompositeTensor) and
+          hasattr(val, "handle") and
+          hasattr(val.handle, "_distributed_container")):
+      # For ResourceVariables, the _distributed_container attribute
+      # is added to their handle tensors.
+      container = val.handle._distributed_container()  # pylint: disable=protected-access
+  return container if container is not None else val
 
 
 def is_distributed_variable(v):

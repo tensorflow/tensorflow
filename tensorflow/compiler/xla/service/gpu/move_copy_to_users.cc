@@ -20,9 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -156,6 +156,37 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
       }
     }
+    return OkStatus();
+  }
+
+  // Move copy across kConcat if it occurs on all operands.
+  Status HandleConcatenate(HloInstruction* hlo) override {
+    const HloInstruction* first = hlo->operand(0);
+    if (first->opcode() != HloOpcode::kCopy) {
+      return OkStatus();
+    }
+    const HloInstruction* inner_op = first->operand(0);
+    const Layout& inner_op_layout = inner_op->shape().layout();
+
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(hlo->operand_count());
+    for (HloInstruction* op : hlo->mutable_operands()) {
+      if (op->opcode() != HloOpcode::kCopy ||
+          op->operand(0)->shape().layout() != inner_op_layout) {
+        VLOG(3) << "Mismatch between " << op->ToString()
+                << " and expected op layout " << inner_op_layout.ToString();
+        return OkStatus();
+      }
+      new_operands.push_back(op->mutable_operand(0));
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_concat,
+        MakeConcatHlo(new_operands, hlo->concatenate_dimension()));
+    *new_concat->mutable_shape()->mutable_layout() = inner_op_layout;
+
+    HloInstruction* new_copy = MakeCopyHlo(new_concat, hlo->shape());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, new_copy));
     return OkStatus();
   }
 };

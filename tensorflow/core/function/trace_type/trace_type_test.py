@@ -16,16 +16,17 @@
 
 import collections
 import timeit
+import weakref
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.compat import v2_compat
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -34,7 +35,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.types import trace
 
 
 class TestAttr:
@@ -60,29 +60,9 @@ class TestAttrsClass:
 
 class DummyGenericClass:
   """Helps test memory leaks for GenericType."""
-  pass
 
 
 class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testIteratorAliasing(self):
-    it1 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
-    it2 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
-
-    self.assertEqual(
-        trace_type.from_value((it1, it1)), trace_type.from_value((it2, it2)))
-    self.assertEqual(
-        trace_type.from_value((it1, it2)), trace_type.from_value((it2, it1)))
-    self.assertNotEqual(
-        trace_type.from_value((it1, it1)), trace_type.from_value((it1, it2)))
-
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testIteratorTypesImplementTracing(self):
-    self.assertTrue(
-        issubclass(iterator_ops.OwnedIterator, trace.SupportsTracingProtocol))
-    self.assertTrue(
-        issubclass(iterator_ops.IteratorSpec, trace.SupportsTracingProtocol))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCompositeAndSpec(self):
@@ -240,14 +220,15 @@ class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
     obj = CustomUnhashable()
     with self.assertRaisesRegex(
         TypeError,
-        r'could not be represented through the generic tracing type'):
+        r'Could not generate a generic TraceType for'):
       trace_type.from_value(obj)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testGetPlaceholderValue(self):
+  def testGetDefaultPlaceholderValue(self):
+    placeholder_context = trace_type.InternalPlaceholderContext()
     composite_value = [1, 2, (3, [4, 5]), {6: [7]}, TestAttrsClass(8, (10, 11))]
     composite_type = trace_type.from_value(composite_value)
-    placeholder_value = composite_type._placeholder_value()
+    placeholder_value = composite_type.placeholder_value(placeholder_context)
     self.assertEqual(composite_value, placeholder_value)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -264,6 +245,119 @@ class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         trace_type.from_value(MockWrapper()),
         trace_type.from_value(ActualType(1, 2, 3)))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testBadReturnType(self):
+    class MyClass:
+
+      def __tf_tracing_type__(self, _):
+        return 1
+
+    with self.assertRaises(TypeError):
+      trace_type.from_value(MyClass())
+
+
+class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
+
+  def testLiteral(self):
+    trace_float = default_types.Literal(1.5)
+    ctx = trace_type.InternalCastContext()
+    value = trace_float._cast(1.5, ctx)
+    self.assertEqual(value, 1.5)
+    with self.assertRaises(AssertionError):
+      _ = trace_float._cast(1, ctx)
+
+  @parameterized.parameters(list, tuple)
+  def testTupleAndList(self, container_type):
+    foo = (
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32))
+    foo = container_type(foo)
+    trace_foo = trace_type.from_value(foo)
+    bar = (1, 2)
+    bar = container_type(bar)
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, container_type)
+    self.assertLen(value, len(bar))
+    self.assertSequenceEqual(value, bar)
+    self.assertEqual(value[0].dtype, dtypes.float32)
+    self.assertEqual(value[1].dtype, dtypes.float32)
+
+  @parameterized.parameters(
+      (list, tuple),
+      (tuple, list))
+  def testTupleAndListCannotBeCasted(self, type_a, type_b):
+    foo = (
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32))
+    foo = type_a(foo)
+    trace_foo = trace_type.from_value(foo)
+    bar = (1, 2)
+    bar = type_b(bar)
+    ctx = trace_type.InternalCastContext()
+    with self.assertRaises(AssertionError):
+      _ = trace_foo._cast(bar, ctx)
+
+  def testNamedTuple(self):
+    Foo = collections.namedtuple('Foo', ['x', 'y'])
+    foo = Foo(
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32))
+    trace_foo = trace_type.from_value(foo)
+    bar = Foo(1, 2)
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, Foo)
+    self.assertLen(value, len(bar))
+    self.assertSequenceEqual(value, bar)
+    self.assertEqual(value[0].dtype, dtypes.float32)
+    self.assertEqual(value[1].dtype, dtypes.float32)
+
+  def testAttrs(self):
+    foo = TestAttrsClass(
+        constant_op.constant(1.0, dtypes.float32),
+        constant_op.constant(2.0, dtypes.float32),)
+    trace_foo = trace_type.from_value(foo)
+    bar = TestAttrsClass(1, 2)
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, TestAttrsClass)
+    self.assertEqual(value.a.dtype, dtypes.float32)
+    self.assertEqual(value.b.dtype, dtypes.float32)
+
+  def testDict(self):
+    foo = {'x': constant_op.constant(1.0, dtypes.float32),
+           'y': constant_op.constant(2.0, dtypes.float32)}
+    trace_foo = trace_type.from_value(foo)
+    bar = {'x': 1, 'y': 2}
+    ctx = trace_type.InternalCastContext()
+    value = trace_foo._cast(bar, ctx)
+
+    self.assertIsInstance(value, dict)
+    self.assertSequenceEqual(
+        set(value.keys()),
+        set(bar.keys()))
+    self.assertIn('x', value)
+    self.assertIn('y', value)
+    self.assertEqual(value['x'].dtype, dtypes.float32)
+    self.assertEqual(value['y'].dtype, dtypes.float32)
+
+  def testNumpy(self):
+    ndarray = np.array([1, 2, 3])
+    ndarray_type = trace_type.from_value(ndarray)
+    self.assertEqual(
+        ndarray_type, default_types.TENSOR(ndarray.shape, ndarray.dtype)
+    )
+
+  def testWeakrefInput(self):
+    obj = DummyGenericClass()
+    ref = weakref.ref(obj)
+    with self.assertRaisesRegex(TypeError, 'weakref input .* not supported'):
+      trace_type.from_value(ref)
 
 
 class SignatureToTraceTypeTest(test.TestCase):
@@ -393,7 +487,7 @@ class TraceTypeGenerationBenchmark(test.Benchmark):
 
   def benchmarkTraceTypeLookup(self):
 
-    @function.defun
+    @def_function.function
     def defined(t):
       return t
 
@@ -444,7 +538,7 @@ class TraceTypeGenerationBenchmark(test.Benchmark):
         'variable': variables.Variable(1.0)
     })
 
-    @function.defun
+    @def_function.function
     def defined(t):
       return t
 

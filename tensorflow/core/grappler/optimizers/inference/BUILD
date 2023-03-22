@@ -9,6 +9,7 @@ DEFAULT_VISIBILITY = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = DEFAULT_VISIBILITY,
     licenses = ["notice"],
 )
@@ -49,9 +50,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:graph_optimizer",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/tools/graph_transforms:transform_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

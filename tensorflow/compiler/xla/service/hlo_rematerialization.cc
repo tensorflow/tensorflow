@@ -20,26 +20,28 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -52,7 +54,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::strings::HumanReadableNumBytes;
+using ::tsl::strings::HumanReadableNumBytes;
 
 // Potential optimizations:
 // . TODO(b/35244891): Avoid N^2 behavior by keeping a priority queue
@@ -322,7 +324,7 @@ class InstructionList {
 
   // Scan the list and promote nodes to express lane if should_promote(Item)
   // returns true;
-  void PromoteNodesToSkip(std::function<bool(Item*)> should_promote) {
+  void PromoteNodesToSkip(absl::FunctionRef<bool(Item*)> should_promote) {
     int64_t count = 0;
     for (auto* item = first(); item != nullptr; item = next(item)) {
       if (should_promote(item)) {
@@ -1197,7 +1199,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
       }
       default: {
         LOG(FATAL) << "Unsupported indirect instruction with opcode "
-                   << HloOpcodeString(indirect_user->instruction->opcode());
+                   << indirect_user->instruction->opcode();
         break;
       }
     }
@@ -1227,13 +1229,14 @@ std::string MemoryUsageTracker::ToString() const {
   for (auto* item = instruction_list_.first(); item != nullptr;
        item = instruction_list_.next(item)) {
     const HloInstruction* instruction = item->instruction;
-    std::string inprogress = item == in_progress_item_ ? " in-progress" : "";
-    std::string placed = item->placed ? " placed" : "";
+    absl::string_view inprogress =
+        item == in_progress_item_ ? " in-progress" : "";
+    absl::string_view placed = item->placed ? " placed" : "";
     absl::StrAppend(&output, "  ", instruction->name(), inprogress, placed,
                     "\n    Defines:\n");
     for (BufferId buffer_id : item->buffers_defined) {
       const Buffer& buffer = buffers_[buffer_id];
-      std::string live = IsCurrentlyLive(buffer_id) ? " live" : "";
+      absl::string_view live = IsCurrentlyLive(buffer_id) ? " live" : "";
       absl::StrAppend(&output, "      ", buffer.ToString(), live, ", ",
                       buffer.unfinished_user_count, " unfinished uses\n");
     }
@@ -1733,11 +1736,11 @@ StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
   HloComputation* computation = best->parent();
   HloInstruction* compressed = computation->AddInstruction(
       HloInstruction::CreateUnary(compact_shape, HloOpcode::kCopy, best),
-      /*new_name=*/best->name() + ".remat_compressed");
+      /*new_name=*/absl::StrCat(best->name(), ".remat_compressed"));
 
   HloInstruction* uncompressed = computation->AddInstruction(
       HloInstruction::CreateUnary(best->shape(), HloOpcode::kCopy, compressed),
-      /*new_name=*/best->name() + ".remat_uncompressed");
+      /*new_name=*/absl::StrCat(best->name(), ".remat_uncompressed"));
 
   Item* compressed_item = instruction_list->CreateItem(compressed);
   compressed_item->placed = true;

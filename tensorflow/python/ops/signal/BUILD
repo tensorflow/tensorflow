@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -20,8 +21,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -32,6 +34,7 @@ py_library(
         "//tensorflow/python:spectral_ops_gen",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],

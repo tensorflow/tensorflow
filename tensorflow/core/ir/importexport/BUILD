@@ -3,10 +3,12 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/core:dependency_allowlist",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -95,6 +97,7 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:float8",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -217,6 +220,7 @@ tf_cc_binary(
         ":graphdef_export",
         ":graphdef_import",
         ":load_proto",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:ops",  # Ops need to be registered for import.
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",

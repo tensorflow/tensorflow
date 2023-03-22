@@ -329,7 +329,7 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_CANCELLED, static_cast<TF_Code>(tensorflow::error::CANCELLED));
   EXPECT_EQ(TF_UNKNOWN, static_cast<TF_Code>(tensorflow::error::UNKNOWN));
   EXPECT_EQ(TF_INVALID_ARGUMENT,
-            static_cast<TF_Code>(tensorflow::error::INVALID_ARGUMENT));
+            static_cast<TF_Code>(absl::StatusCode::kInvalidArgument));
   EXPECT_EQ(TF_DEADLINE_EXCEEDED,
             static_cast<TF_Code>(tensorflow::error::DEADLINE_EXCEEDED));
   EXPECT_EQ(TF_NOT_FOUND, static_cast<TF_Code>(tensorflow::error::NOT_FOUND));

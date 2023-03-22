@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_BRIDGE_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_BRIDGE_H_
 
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/lib/core/status.h"
@@ -29,7 +31,8 @@ namespace TFTPU {
 // bridge fails the old bridge will run. This is used for logging and doesn't
 // affect any logic.
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
-                             bool fallback_enabled = false);
+                             bool fallback_enabled = false,
+                             const std::string& module_name = "anonymous");
 
 // Run all the passes involved in transforming the graph before execution so
 // that it is suitable for targeting TPUs. When enable_logging is true, enables
@@ -44,6 +47,9 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
 
 namespace TF {
 
+inline constexpr char kStandardPipelineBefore[] = "standard_pipeline_before";
+inline constexpr char kStandardPipelineAfter[] = "standard_pipeline_after";
+
 // Runs all passes involved in transforming or optimizing an MLIR graph without
 // any target specialization. When enable_logging is true, enables
 // tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner
@@ -53,7 +59,8 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_inliner);
 
 // Runs all passes for non TPU (GPU and CPU) graph.
-tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging);
+tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging,
+                                  const std::string& module_name = "anonymous");
 }  // namespace TF
 
 }  // namespace mlir

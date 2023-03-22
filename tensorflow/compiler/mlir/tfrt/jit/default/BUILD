@@ -1,6 +1,7 @@
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )

@@ -3,7 +3,10 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 cuda_py_test(
     name = "array_ops_test",
@@ -11,7 +14,6 @@ cuda_py_test(
     srcs = ["array_ops_test.py"],
     shard_count = 10,
     tags = [
-        "noasan",  # times out
         "optonly",  # times out
     ],
     deps = [
@@ -382,10 +384,6 @@ cuda_py_test(
     name = "large_concat_op_test",
     size = "medium",
     srcs = ["large_concat_op_test.py"],
-    tags = [
-        "nomsan",
-        "notsan",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -440,7 +438,8 @@ cuda_py_test(
 
 cuda_py_test(
     name = "pad_op_test",
-    size = "small",
+    size = "medium",
+    timeout = "moderate",
     srcs = ["pad_op_test.py"],
     tags = ["no_mac"],  # test is times out on mac b/186262388
     xla_tags = [
@@ -504,7 +503,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     shard_count = 2,
-    tags = ["noasan"],  # http://b/32635055
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

@@ -33,7 +33,7 @@ cc_library(
             "intel/intel_init.c",
             "intel/filter_sse2_intrinsics.c",
         ],
-        "@org_tensorflow//tensorflow:linux_ppc64le": [
+        "@org_tensorflow//tensorflow/tsl:linux_ppc64le": [
             "powerpc/powerpc_init.c",
             "powerpc/filter_vsx_intrinsics.c",
         ],
@@ -61,7 +61,7 @@ genrule(
     name = "snappy_stubs_public_h",
     srcs = ["scripts/pnglibconf.h.prebuilt"],
     outs = ["pnglibconf.h"],
-    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12c0/' $< >$@",
+    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12d0/' $< >$@",
 )
 
 config_setting(

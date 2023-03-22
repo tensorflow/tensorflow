@@ -19,11 +19,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 
-namespace tfrt {
-class AsyncValue;
-}  // namespace tfrt
 namespace tensorflow {
 
 // The implementation of a Tensor for an AsyncValue and PjRtBuffer. We used it
@@ -63,6 +61,7 @@ class AsyncValueAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override;
 
   bool AllocatesOpaqueHandle() const override { return true; }
+  string Name() override { return "async-value"; }
 };
 
 }  // namespace tensorflow

@@ -32,7 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -107,6 +108,11 @@ Literal CreateScalar(PrimitiveType primitive_type, Args... args) {
       return CreateScalarImpl<S32>(F<S32>{}, std::forward<Args>(args)...);
     case S64:
       return CreateScalarImpl<S64>(F<S64>{}, std::forward<Args>(args)...);
+    case F8E5M2:
+      return CreateScalarImpl<F8E5M2>(F<F8E5M2>{}, std::forward<Args>(args)...);
+    case F8E4M3FN:
+      return CreateScalarImpl<F8E4M3FN>(F<F8E4M3FN>{},
+                                        std::forward<Args>(args)...);
     case F16:
       return CreateScalarImpl<F16>(F<F16>{}, std::forward<Args>(args)...);
     case BF16:
@@ -150,7 +156,9 @@ template <typename T>
 struct IsReal {
   static constexpr bool value =
       std::is_integral<T>::value || std::is_floating_point<T>::value ||
-      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value;
+      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value ||
+      std::is_same<tsl::float8_e5m2, T>::value ||
+      std::is_same<tsl::float8_e4m3fn, T>::value;
 };
 
 template <typename T>
@@ -181,13 +189,31 @@ std::enable_if_t<std::is_floating_point<NativeT>::value, NativeT> GetMinImpl() {
 }
 
 template <typename NativeT>
-std::enable_if_t<Is16BitFloat<NativeT>::value, NativeT> GetMaxImpl() {
+std::enable_if_t<Is16BitFloat<NativeT>::value ||
+                     std::is_same<NativeT, tsl::float8_e5m2>::value,
+                 NativeT>
+GetMaxImpl() {
   return static_cast<NativeT>(std::numeric_limits<float>::infinity());
 }
 
 template <typename NativeT>
-std::enable_if_t<Is16BitFloat<NativeT>::value, NativeT> GetMinImpl() {
+std::enable_if_t<Is16BitFloat<NativeT>::value ||
+                     std::is_same<NativeT, tsl::float8_e5m2>::value,
+                 NativeT>
+GetMinImpl() {
   return static_cast<NativeT>(-std::numeric_limits<float>::infinity());
+}
+
+template <typename NativeT>
+std::enable_if_t<std::is_same<NativeT, tsl::float8_e4m3fn>::value, NativeT>
+GetMaxImpl() {
+  return std::numeric_limits<NativeT>::max();
+}
+
+template <typename NativeT>
+std::enable_if_t<std::is_same<NativeT, tsl::float8_e4m3fn>::value, NativeT>
+GetMinImpl() {
+  return std::numeric_limits<NativeT>::lowest();
 }
 
 template <typename NativeT>

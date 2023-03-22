@@ -1,18 +1,5 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 // RUN: tf-quant-opt %s -quant-insert-quantized-functions | FileCheck %s
+// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=ptq target-opset=UNIFORM_QUANTIZED' | FileCheck --check-prefix=UQ-CHECK %s
 
 // Empty module
 module {
@@ -26,16 +13,43 @@ module {
 // CHECK-NOT: func private @internal_conv2d_fn
 // CHECK-NOT: func private @internal_matmul_fn
 // CHECK: func private @quantized_conv2d_with_bias_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["Conv2D", "BiasAdd"]
 // CHECK: func private @quantized_conv2d_with_bias_and_relu_fn
 // CHECK: func private @quantized_conv2d_with_bias_and_relu6_fn
 // CHECK: func private @quantized_conv2d_fn
 // CHECK: func private @quantized_conv2d_with_relu_fn
 // CHECK: func private @quantized_conv2d_with_relu6_fn
+// CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu_float_output_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["DepthwiseConv2D", "BiasAdd", "Relu"]
 // CHECK: func private @quantized_matmul_with_bias_fn
 // CHECK: func private @quantized_matmul_with_bias_and_relu_fn
 // CHECK: func private @quantized_matmul_with_bias_and_relu6_fn
 // CHECK: func private @quantized_matmul_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["MatMul"]
 // CHECK: func private @quantized_matmul_with_relu_fn
 // CHECK: func private @quantized_matmul_with_relu6_fn
+// CHECK: func private @quantized_conv3d_with_bias_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["Conv3D", "BiasAdd"]
+// CHECK: func private @quantized_batch_matmul_with_bias_fn
+// CHECK-SAME: tf_quant.quantized_ops = ["BatchMatMul", "BiasAdd"]
 // CHECK: func private @quantize_i8
 // CHECK: func private @dequantize_i8
+
+// UQ-CHECK-NOT: func private @dequantize_i8
+// UQ-CHECK-NOT: func private @internal_conv2d_fn
+// UQ-CHECK-NOT: func private @internal_requantize_qi8_fn
+// UQ-CHECK-NOT: func private @internal_requantize_no_activation_fn
+// UQ-CHECK-NOT: func private @internal_requantize_and_relu_fn
+// UQ-CHECK-NOT: func private @quantize_i8
+// UQ-CHECK: func private @quantized_conv2d_with_bias_fn
+// UQ-CHECK-SAME: tf_quant.quantized_ops = ["Conv2D", "BiasAdd"]
+// UQ-CHECK: func private @quantized_conv2d_with_bias_and_relu_fn
+// UQ-CHECK: func private @quantized_conv2d_with_bias_and_relu6_fn
+// UQ-CHECK: func private @quantized_conv2d_with_relu_fn
+// UQ-CHECK: func private @quantized_conv2d_with_relu6_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_fn
+// UQ-CHECK-SAME: tf_quant.quantized_ops = ["DepthwiseConv2D", "BiasAdd"]
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_bias_and_relu6_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu_fn
+// UQ-CHECK: func private @quantized_depthwise_conv2d_with_relu6_fn

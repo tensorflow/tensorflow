@@ -1,7 +1,10 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 # copybara:uncomment_begin
 #
@@ -17,10 +20,10 @@ package(licenses = ["notice"])
 #     name = "test_utilities",
 #     testonly = True,
 #     data = [
-#         "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
 #         "@llvm-project//llvm:FileCheck",
 #         "@llvm-project//llvm:not",
 #         "@llvm-project//mlir:run_lit.sh",
+#         "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
 #     ],
 # )
 #

@@ -22,8 +22,11 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -104,8 +107,11 @@ class Arguments {
     return *(new (&storage_.back()) T(std::forward<Args>(args)...));
   }
 
-  const Argument& operator[](size_t index) const {
-    return *reinterpret_cast<const Argument*>(storage_[index].data);
+  const auto& operator[](size_t index) const {
+    using T = std::conditional_t<sizeof...(Ts) == 1,
+                                 std::tuple_element_t<0, std::tuple<Ts...>>,
+                                 Argument>;
+    return *reinterpret_cast<const T*>(storage_[index].data);
   }
 
   size_t size() const { return storage_.size(); }
@@ -221,19 +227,20 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
   void* ptr_;
 };
 
+template <typename T>
+using EnableIfScalarType = typename std::enable_if_t<
+    std::disjunction_v<std::is_same<T, float>, std::is_same<T, int32_t>,
+                       std::is_same<T, int64_t>>>;
+
 //===----------------------------------------------------------------------===//
 // ScalarArg for passing integer or float scalar arguments.
 //===----------------------------------------------------------------------===//
 
 class ScalarArg final : public llvm::RTTIExtends<ScalarArg, Argument> {
-  template <typename T, typename... Ts>
-  static inline constexpr bool kIsOneOf = (std::is_same_v<T, Ts> || ...);
-
  public:
   static constexpr char ID = 0;  // NOLINT
 
-  template <typename T,
-            std::enable_if_t<kIsOneOf<T, float, int32_t, int64_t>>* = nullptr>
+  template <typename T, EnableIfScalarType<T>* = nullptr>
   explicit ScalarArg(T value)
       : type_(primitive_util::NativeToPrimitiveType<T>()), value_(value) {}
 
@@ -349,6 +356,77 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
 absl::Status VerifyMemrefArgument(unsigned index, const Type& type,
                                   const MemrefDesc& arg);
 
+//===----------------------------------------------------------------------===//
+// AsyncTokenArg for passing async token arguments
+//===----------------------------------------------------------------------===//
+
+class AsyncTokenArg final : public llvm::RTTIExtends<AsyncTokenArg, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit AsyncTokenArg(tsl::AsyncValueRef<tsl::Chain> value)
+      : storage_(AsyncRuntime::AsToken(value)) {}
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
+
+ private:
+  // In the runtime execution, we unpack args with pointer to pointer
+  // dereferening. We declare storage_ as a member variable (instead of a local
+  // inside the Pack function) to keep its address valid when unpacking.
+  AsyncRuntime::Token* storage_;
+};
+
+//===----------------------------------------------------------------------===//
+// AsyncScalarArg for passing async scalar arguments
+//===----------------------------------------------------------------------===//
+
+class AsyncScalarArg final
+    : public llvm::RTTIExtends<AsyncScalarArg, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  template <typename T, EnableIfScalarType<T>* = nullptr>
+  explicit AsyncScalarArg(tsl::AsyncValueRef<T> value)
+      : type_(primitive_util::NativeToPrimitiveType<T>()) {
+    auto write = [](const T* v, std::byte* store) {
+      T* store_t = reinterpret_cast<T*>(store);
+      *store_t = *v;
+    };
+
+    storage_ = AsyncRuntime::AsValue<T>(value, sizeof(T),
+                                        alignof(std::max_align_t), write);
+  }
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+
+  std::string ToString() const final;
+
+ private:
+  PrimitiveType type_;
+  AsyncRuntime::Value* storage_;
+};
+
+//===----------------------------------------------------------------------===//
+// AsyncMemrefArg for passing async memref arguments
+//===----------------------------------------------------------------------===//
+class AsyncMemrefArg final
+    : public llvm::RTTIExtends<AsyncMemrefArg, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit AsyncMemrefArg(tsl::AsyncValueRef<MemrefDesc> value);
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
+
+ private:
+  tsl::AsyncValueRef<MemrefDesc> value_;
+  AsyncRuntime::Value* storage_;
+};
 }  // namespace runtime
 }  // namespace xla
 

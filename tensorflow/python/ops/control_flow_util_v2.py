@@ -16,7 +16,7 @@
 """Utilities for V2 control flow."""
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.data.util import structure  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import function_def_to_graph
@@ -284,8 +284,7 @@ def output_all_intermediates():
     return _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
   if in_defun():
     return False
-  if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-      _is_tpu_strategy(distribution_strategy_context.get_strategy())):
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
     return False
   if (context.context().function_call_options.executor_type ==
       "SINGLE_THREADED_EXECUTOR"):
@@ -319,7 +318,24 @@ def get_func_graph(op, input_shapes, func_name):
   # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
   with op.graph.as_default():
     func_graph = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes)
+        fdef, input_shapes=input_shapes)
+
+  # TODO(xjun): Ideally we want to retrieve the gradient functions instead of
+  # re-create them. But the lifetime of gradient functions of PartitionedCall
+  # ops is attached to ParitionedCall ops in the original func_graph and
+  # when we are inside this function we don't have access to the original
+  # func_graph or PartitionedCall ops. See cl/499362867 and cl/273858076 for
+  # more context.
+  for operation in func_graph.get_operations():
+    if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
+      f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
+      try:
+        cf = function.ConcreteFunction(f.graph, attrs=f.definition.attr)
+      except AttributeError:
+        # f is not found or f is a _DefinedFunction that doesn't have a graph.
+        continue
+      operation._gradient_function = cf._get_gradient_function()  # pylint: disable=protected-access
+
   return func_graph
 
 

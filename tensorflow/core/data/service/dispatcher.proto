@@ -5,6 +5,28 @@ package tensorflow.data;
 import "tensorflow/core/data/service/common.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
+import "tensorflow/core/protobuf/snapshot.proto";
+
+// Next tag: 8
+message WorkerHeartbeatRequest {
+  string worker_address = 1;
+  repeated DataTransferServerInfo transfer_servers = 7;
+  repeated string worker_tags = 4;
+  // The UID of the worker Borg job, used for telemetry.
+  int64 worker_uid = 5;
+  repeated int64 current_tasks = 2;
+  // The status of any active snapshot tasks, keyed by snapshot path.
+  map<string, SnapshotTaskProgress> snapshot_task_progress = 6;
+  reserved 3;
+}
+
+// Next tag: 4
+message WorkerHeartbeatResponse {
+  repeated TaskDef new_tasks = 1;
+  repeated int64 tasks_to_delete = 2;
+  // Snapshots to process.
+  repeated SnapshotTaskDef snapshot_tasks = 3;
+}
 
 // Next tag: 3
 message TaskProgress {
@@ -12,22 +34,6 @@ message TaskProgress {
   int64 task_id = 1;
   // Whether the task has completed.
   bool completed = 2;
-}
-
-// Next tag: 6
-message WorkerHeartbeatRequest {
-  string worker_address = 1;
-  string transfer_address = 3;
-  repeated string worker_tags = 4;
-  // The UID of the worker Borg job, used for telemetry.
-  int64 worker_uid = 5;
-  repeated int64 current_tasks = 2;
-}
-
-// Next tag: 3
-message WorkerHeartbeatResponse {
-  repeated TaskDef new_tasks = 1;
-  repeated int64 tasks_to_delete = 2;
 }
 
 // Next tag: 3
@@ -220,6 +226,63 @@ message GetWorkersResponse {
   repeated WorkerInfo workers = 1;
 }
 
+// Next tag: 4
+message SnapshotRequest {
+  // The dataset to snapshot.
+  DatasetDef dataset = 1;
+
+  // The path to which to materialize the snapshot.
+  string path = 2;
+
+  // The metadata for the snapshot.
+  experimental.DistributedSnapshotMetadata metadata = 3;
+}
+
+// Next tag: 1
+message SnapshotResponse {}
+
+// Next tag: 5
+message GetSnapshotSplitRequest {
+  // The address of the worker requesting the split.
+  string worker_address = 4;
+
+  // The base path of the snapshot materialization.
+  string base_path = 1;
+
+  // The index of the snapshot stream from which to get the split.
+  int64 stream_index = 2;
+
+  // The index of the dataset source from which to get the split.
+  int64 source_index = 3;
+}
+
+// Next tag: 4
+message GetSnapshotSplitResponse {
+  oneof response {
+    // The split to process.
+    TensorProto split = 1;
+
+    // If true, there are no splits left to be processed for this stream.
+    bool end_of_splits = 2;
+  }
+
+  // The local split index within the stream source, starting at zero and
+  // incrementing by one for each split assigned to the worker. This local index
+  // is used by the worker to keep track of which split it has read up to. If
+  // `end_of_splits` is true, this equals the total number of splits.
+  int64 local_split_index = 3;
+}
+
+message GetSnapshotStreamsRequest {
+  // The path at which the snapshot is being materialized.
+  string path = 1;
+}
+
+message GetSnapshotStreamsResponse {
+  // Information about all streams for the snapshot.
+  repeated SnapshotStreamInfo streams = 1;
+}
+
 service DispatcherService {
   // Performs a periodic worker heartbeat.
   rpc WorkerHeartbeat(WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
@@ -274,4 +337,18 @@ service DispatcherService {
   // Returns the config of a data service cluster.
   rpc GetDataServiceConfig(GetDataServiceConfigRequest)
       returns (GetDataServiceConfigResponse);
+
+  // Initiates the process of materializing a dataset's output to disk.
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
+
+  // Gets the next split for the given stream of the given snapshot. Returns an
+  // error if there has been some miscommunication between the worker and
+  // dispatcher regarding stream assignment and the worker should stop (though
+  // due to stream leases this case should never happen).
+  rpc GetSnapshotSplit(GetSnapshotSplitRequest)
+      returns (GetSnapshotSplitResponse);
+
+  // Returns information about all streams for the given snapshot.
+  rpc GetSnapshotStreams(GetSnapshotStreamsRequest)
+      returns (GetSnapshotStreamsResponse);
 }

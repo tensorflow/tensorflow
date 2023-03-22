@@ -27,6 +27,7 @@ namespace tensorflow {
 namespace {
 
 constexpr int kOptimizeCrossHostEdgesTheshold = 8;
+constexpr int kOptimizeCrossHostDataEdgesTheshold = 2;
 
 // A helper for rewriting nodes assigned to a virtual composite device.
 class ReplicateHelper {
@@ -254,6 +255,9 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
     const absl::flat_hash_map<string, const std::vector<string>*>&
         composite_devices,
     Graph* graph) {
+  VLOG(1) << "Starting ReplicatePerReplicaNodesInFunctionGraph";
+  VLOG(1) << "Graph #nodes " << graph->num_nodes() << " #edges "
+          << graph->num_edges();
   std::set<string> composite_device_names;
   for (const auto& it : composite_devices) {
     composite_device_names.insert(it.first);
@@ -321,7 +325,12 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
       graph, kOptimizeCrossHostEdgesTheshold));
   TF_RETURN_IF_ERROR(OptimizeCrossHostControlInputEdges(
       graph, kOptimizeCrossHostEdgesTheshold));
+  TF_RETURN_IF_ERROR(OptimizeCrossHostDataOutputEdges(
+      graph, kOptimizeCrossHostDataEdgesTheshold));
 
+  VLOG(1) << "Finished ReplicatePerReplicaNodesInFunctionGraph";
+  VLOG(1) << "Graph #nodes " << graph->num_nodes() << " #edges "
+          << graph->num_edges();
   return OkStatus();
 }
 

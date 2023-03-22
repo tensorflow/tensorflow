@@ -42,8 +42,6 @@ def RuntimeFallback_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tfd";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -120,7 +118,7 @@ def PrintTftOp : RuntimeFallbackDialect_Op<"print_tft"> {
   let results = (outs TFRT_ChainType);
 }
 
-def ConvertTftToDhtOp : RuntimeFallbackDialect_Op<"convert_tft_to_dht", [NoSideEffect]> {
+def ConvertTftToDhtOp : RuntimeFallbackDialect_Op<"convert_tft_to_dht", [Pure]> {
   let summary = "convert TF tensor to TFRT DHT tensor operation";
   let description = [{
     The "tfd.convert_tft_to_dht" operation converts a TF tensor to a TFRT
@@ -140,7 +138,7 @@ def ConvertTftToDhtOp : RuntimeFallbackDialect_Op<"convert_tft_to_dht", [NoSideE
   let results = (outs TensorType, TFRT_ChainType);
 }
 
-def MoveDhtToTftOp : RuntimeFallbackDialect_Op<"move_dht_to_tft", [NoSideEffect]> {
+def MoveDhtToTftOp : RuntimeFallbackDialect_Op<"move_dht_to_tft", [Pure]> {
   let summary = "convert TFRT DHT tensor to DHT tensor operation";
   let description = [{
     The "tfd.move_dht_to_tft" operation moves a TFRT tensor into a TF Tensor.

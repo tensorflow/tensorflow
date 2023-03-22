@@ -107,6 +107,14 @@ function is_windows() {
   fi
 }
 
+function is_macos() {
+  if [[ "${PLATFORM}" =~ darwin* ]]; then
+    true
+  else
+    false
+  fi
+}
+
 function prepare_src() {
   if [ $# -lt 1 ] ; then
     echo "No destination dir provided"
@@ -152,61 +160,61 @@ function prepare_src() {
     fi
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+    cp -L \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+      "${TMPDIR}"
+    cp -LR \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
+      "${TMPDIR}"
+    # Prevents pip package bloat. See b/228948031#comment17.
+    rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
-      cp -L \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
-        "${TMPDIR}"
-      cp -LR \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-        "${TMPDIR}"
-      # Prevents pip package bloat. See b/228948031#comment17.
-      rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
-      copy_xla_aot_runtime_sources \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
-        "${XLA_AOT_RUNTIME_SOURCES}"
-      # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir=$(ls $RUNFILES | grep solib) || true
-      if [ -n "${so_lib_dir}" ]; then
-        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
-        if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
-          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
-        fi
-      fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
-      cp -L \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
-        "${TMPDIR}"
-      cp -LR \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
-        "${TMPDIR}"
-      # Prevents pip package bloat. See b/228948031#comment17.
-      rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
-      copy_xla_aot_runtime_sources \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
-        "${XLA_AOT_RUNTIME_SOURCES}"
-      # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir=$(ls $RUNFILES | grep solib) || true
-      if [ -n "${so_lib_dir}" ]; then
-        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
-        if [ -n "${mkl_so_dir}" ]; then
-          mkdir "${TMPDIR}/${so_lib_dir}"
-          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
-        fi
-      fi
+    fi
+    copy_xla_aot_runtime_sources \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
+      "${XLA_AOT_RUNTIME_SOURCES}"
+    # Copy MKL libs over so they can be loaded at runtime
+    # TODO(b/271299337): shared libraries that depend on libbfloat16.so.so have
+    # their NEEDED and RUNPATH set corresponding to a dependency on
+    # RUNFILES/_solib_local/libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so,
+    # which is a symlink to tensorflow/tsl/python/lib/core/libbfloat16.so in
+    # the Bazel build tree. We do not export the file in _solib_local (nor
+    # symlinks in general, I think Python wheels have poor support for them?)
+    so_lib_dir=$(ls $RUNFILES | grep solib)
+    if is_macos; then
+      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+    else
+      chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so libbfloat16.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+    fi
+    mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+    if [ -n "${mkl_so_dir}" ]; then
+      mkdir "${TMPDIR}/${so_lib_dir}"
+      cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
     fi
   fi
 
   mkdir -p ${TMPDIR}/third_party
   cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
+  cp -LR $RUNFILES/../local_config_cuda/cuda/_virtual_includes/cuda_headers_virtual/third_party/gpus ${TMPDIR}/third_party
 
   reorganize_includes "${TMPDIR}"
 
@@ -216,6 +224,12 @@ function prepare_src() {
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
+
+  # Copying symlinks with -L duplicates these libraries.
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.[0-9].*.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_cc.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_cc.[0-9].*.dylib
 
   # TODO(annarev): copy over API files from tensorflow/api/_vN to tensorflow/
   #   except tensorflow/api/_vN/lite/.
@@ -274,7 +288,6 @@ function usage() {
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
   echo "    --cpu                 build tensorflow_cpu"
-  echo "    --gpu                 build tensorflow_gpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
   echo "    --rocm                build tensorflow_rocm"
   echo "    --nightly_flag        build tensorflow nightly"
@@ -286,7 +299,6 @@ function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
   CPU_BUILD=0
-  GPU_BUILD=0
   GPUDIRECT_BUILD=0
   ROCM_BUILD=0
   NIGHTLY_BUILD=0
@@ -299,8 +311,6 @@ function main() {
       exit 1
     elif [[ "$1" == "--nightly_flag" ]]; then
       NIGHTLY_BUILD=1
-    elif [[ "$1" == "--gpu" ]]; then
-      GPU_BUILD=1
     elif [[ "$1" == "--cpu" ]]; then
       CPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
@@ -330,8 +340,8 @@ function main() {
     fi
   done
 
-  if [[ $(( GPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
-    echo "Only one of [--gpu, --cpu, --gpudirect, --rocm] may be provided."
+  if [[ $(( CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
+    echo "Only one of [--cpu, --gpudirect, --rocm] may be provided."
     usage
     exit 1
   fi
@@ -356,8 +366,6 @@ function main() {
 
   if [[ -n ${PROJECT_NAME} ]]; then
     PKG_NAME_FLAG="--project_name ${PROJECT_NAME}"
-  elif [[ ${NIGHTLY_BUILD} == "1" && ${GPU_BUILD} == "1" ]]; then
-    PKG_NAME_FLAG="--project_name tf_nightly_gpu"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${GPUDIRECT_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_gpudirect"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${ROCM_BUILD} == "1" ]]; then
@@ -366,8 +374,6 @@ function main() {
     PKG_NAME_FLAG="--project_name tf_nightly_cpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
-  elif [[ ${GPU_BUILD} == "1" ]]; then
-    PKG_NAME_FLAG="--project_name tensorflow_gpu"
   elif [[ ${GPUDIRECT_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
   elif [[ ${ROCM_BUILD} == "1" ]]; then

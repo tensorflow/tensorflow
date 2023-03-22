@@ -23,7 +23,7 @@ pip3.9 install --user --upgrade --ignore-installed cloud-tpu-client
 install_bazelisk
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
-tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
+tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-oss_excluded,-no_oss_py37"
 
 bazel_args=(
   --config=release_cpu_linux \
@@ -67,7 +67,6 @@ while [[ ! "${TPU_CREATED}" == "true" ]]; do
     sleep 1m
   fi
 done
-# TODO(juanantoniomc): Delete this log once we know the optimal sleep time.
 echo "Total retry time: $RETRY_COUNTER minutes."
 
 # Clean up script uses these files.

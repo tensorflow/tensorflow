@@ -1,70 +1,15 @@
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -108,9 +108,9 @@
-   return etp1 == etp2;
- }
- 
--bool isCompatibleForHloTypeInference(TypeRange l, TypeRange r) {
--  if (l.size() != r.size()) return false;
--  for (auto [lt, rt] : llvm::zip(l, r))
-+bool isCompatibleForHloTypeInference(TypeRange tp1, TypeRange tp2) {
-+  if (tp1.size() != tp2.size()) return false;
-+  for (auto [lt, rt] : llvm::zip(tp1, tp2))
-     if (!isCompatibleForHloTypeInference(lt, rt)) return false;
-   return true;
- }
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -559,19 +559,6 @@
- }
- 
- //===----------------------------------------------------------------------===//
--// AllReduceOp
--//===----------------------------------------------------------------------===//
--
--void AllReduceOp::build(
--    ::mlir::OpBuilder& ods_builder, ::mlir::OperationState& ods_state,
--    ::mlir::Type result_type, ::mlir::Value operand,
--    ::mlir::DenseIntElementsAttr replica_groups,
--    /*optional*/ ::mlir::stablehlo::ChannelHandleAttr channel_handle) {
--  AllReduceOp::build(ods_builder, ods_state, result_type, operand,
--                     replica_groups, channel_handle, nullptr);
--}
--
--//===----------------------------------------------------------------------===//
- // ReduceScatterOp
- //===----------------------------------------------------------------------===//
- 
-@@ -641,9 +628,9 @@
-     return failure();
- 
-   return verifyReduceScatter(*this,
--                             /*operand_types=*/{getOperand().getType()},
--                             /*result_types=*/{getType()},
--                             /*scatter_dimension=*/getScatterDimension());
-+                             /*operandTypes=*/{getOperand().getType()},
-+                             /*resultTypes=*/{getType()},
-+                             /*scatterDimension=*/getScatterDimension());
- }
- 
- //===----------------------------------------------------------------------===//
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
---- stablehlo/stablehlo/dialect/StablehloOps.td
-+++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1265,13 +1265,6 @@
-   );
-   let regions = (region SizedRegion<1>:$computation);
-   let results = (outs HLO_Tensor);
--  // use_global_device_ids is rarely used, so we add a simplified
--  // builder method for convenience.
--  let builders = [
--    OpBuilder<(ins
--      "::mlir::Type":$result_type, "::mlir::Value":$operand,
--      "::mlir::DenseIntElementsAttr":$replica_groups,
--      "::mlir::stablehlo::ChannelHandleAttr":$channel_handle)>];
- }
- 
- def StableHLO_ReduceScatterOp : StableHLO_Op<"reduce_scatter",
+diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+--- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
++++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
+@@ -17,3 +17,10 @@
+ # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
+ from ._stablehlo_ops_gen import *
+ from .._mlir_libs._stablehlo import *
++
++
++def get_earliest_forward_compatible_version():
++  """Return the earliest StableHLO version that the current StableHLO version
++    is still forward compatible with.
++  """
++  return "0.9.0"
 

@@ -24,7 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -65,7 +65,7 @@ class CompiledCollectiveOpGPUTest(test.TestCase):
 
     @def_function.function(jit_compile=True)
     def f():
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda i, _: i < 5, lambda i, t: (i + 1, all_reduce_sum(t)),
           (array_ops.zeros([]), constant_op.constant(1.0)))
 

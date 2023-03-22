@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
+#include <algorithm>
+#include <complex>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -479,8 +484,8 @@ TEST_F(XlaBuilderTest, AllToAllTuple) {
   // AllToAll is converted into a single all-to-all HloInstruction.
   EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
   auto expected_shape =
-      ShapeUtil::MakeShapeWithLayout(F32, /* dimensions= */ {2, 4},
-                                     /* minor_to_major= */ {0, 1});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /* dimensions= */ {2, 4},
+                                          /* minor_to_major= */ {0, 1});
   EXPECT_THAT(root, op::ShapeWithLayout(ShapeUtil::MakeTupleShape(
                         {expected_shape, expected_shape})));
   EXPECT_THAT(root, op::ReplicaGroups({{0, 1}}));
@@ -1446,5 +1451,65 @@ TEST_F(XlaBuilderTest, ComplexAbsConstant) {
             PrimitiveType::F32);
 }
 
+TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
+}
+
+TEST_F(XlaBuilderTest, OutfeedTokenSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  b.SetSharding(sharding_builder::Replicate());
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto it = std::find_if(module->entry_computation()->instructions().begin(),
+                         module->entry_computation()->instructions().end(),
+                         [](const HloInstruction* i) {
+                           return i->opcode() == HloOpcode::kOutfeed;
+                         });
+  EXPECT_NE(it, module->entry_computation()->instructions().end());
+  auto* outfeed = *it;
+  EXPECT_TRUE(outfeed->has_sharding());
+  EXPECT_TRUE(outfeed->sharding().IsTuple());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().size(), 2);
+  EXPECT_TRUE(outfeed->operand(1)->has_sharding());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().back(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+  EXPECT_EQ(outfeed->operand(1)->sharding(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+}
+
+TEST_F(XlaBuilderTest, NormalizeTupleSharding) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})});
+  b.SetSharding(sharding_builder::Replicate());
+  Parameter(&b, 0, tuple_param_shape, "p0");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->has_sharding());
+  EXPECT_TRUE(root->sharding().IsTuple());
+  EXPECT_EQ(root->sharding().tuple_elements().size(), 2);
+}
+
+TEST_F(XlaBuilderTest, InvalidSharding) {
+  XlaBuilder b(TestName());
+  Shape shape2d = ShapeUtil::MakeShape(F32, {6, 8});
+  Shape shape1d = ShapeUtil::MakeShape(F32, {5});
+  b.SetSharding(sharding_builder::Tile1D(shape1d, 4));
+  Parameter(&b, 0, shape2d, "p0");
+  auto statusor = b.Build();
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Number of tile assignment dimensions (excluding "
+                        "subgroups) is different than the input rank"));
+}
 }  // namespace
 }  // namespace xla

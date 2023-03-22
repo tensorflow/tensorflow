@@ -132,3 +132,33 @@ def StripSavedModuleMetadataPass : Pass<"tf-strip-saved-module-metadata", "Modul
   }];
   let constructor = "::mlir::tf_saved_model::CreateStripSavedModuleMetadataPass()";
 }
+
+def ConvertSessionInitializerToFunctionPass : Pass<"tf-saved-model-convert-session-initializer-to-function", "ModuleOp"> {
+  let summary = "Converts the session initializer to a function.";
+  let description = [{
+      This converts
+        "tf_saved_model.session_initializer"() {initializers = [@a, @b, @c]} : () -> ()
+      to
+	func.func @session_initializer() {
+	  call @a() : () -> ()
+	  call @b() : () -> ()
+	  call @c() : () -> ()
+	  return
+	}
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass()";
+}
+
+def AddFunctionsForExportedNamesPass : Pass<"tf-saved-model-add-functions-for-exported-names", "ModuleOp"> {
+  let summary = "Create a trampoline function for each exported name.";
+  let description = [{
+      This converts
+        func.func @foo() attributes {tf_saved_model.exported_names = ["a", "b", "c"]}
+      to
+        func.func @a() {return @foo_internal()}
+        func.func @b() {return @foo_internal()}
+        func.func @c() {return @foo_internal()}
+        func.func private @foo_internal()
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass()";
+}

@@ -491,7 +491,8 @@ def LegalizeConv2DBackpropInput : Pat<
      /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
-     /*stride_w=*/ ExtractI32At<2>:$strides)>;
+     /*stride_w=*/ ExtractI32At<2>:$strides,
+     /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
   : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
@@ -575,3 +576,15 @@ def LegalizeXlaDynamicUpdateSlice : Pat<
 def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
 
 def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;
+
+// =============================================================================
+// Training OPs
+// =============================================================================
+
+// `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`
+def LegalizeSigmoidGrad : Pat<(TF_SigmoidGradOp $y, $dy),
+  (TFL_MulOp $dy, (TFL_MulOp $y, (TFL_SubOp
+        (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+        $y, TFL_AF_None),
+  TFL_AF_None), TFL_AF_None)>;
+

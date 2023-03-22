@@ -3,6 +3,7 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_compatible_with = get_compatible_with_cloud(),
     default_visibility = [
         "//tensorflow/core:__subpackages__",

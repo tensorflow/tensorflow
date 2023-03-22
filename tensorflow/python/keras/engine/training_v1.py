@@ -64,6 +64,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 
 try:
@@ -1700,8 +1701,8 @@ class Model(training_lib.Model):
       The validated batch_size, auto-inferred from the first layer if not
       provided.
     """
-    if (isinstance(x, (dataset_ops.DatasetV1,
-                       dataset_ops.DatasetV2,
+    if (isinstance(x, (data_types.DatasetV1,
+                       data_types.DatasetV2,
                        data_utils.Sequence)) or
         tf_inspect.isgenerator(x)):
       if batch_size is not None:
@@ -1743,7 +1744,7 @@ class Model(training_lib.Model):
                                  per_replica_batch_size, static_batch_size))
 
         # Check Dataset/Iterator batch size is consistent with InputLayer.
-        if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
+        if isinstance(x, (data_types.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.IteratorBase)):
           ds_batch_size = tensor_shape.Dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
@@ -2153,7 +2154,7 @@ class Model(training_lib.Model):
     # TODO(anjalisridhar): Remove this check once we refactor the
     # _standardize_user_data code path. This check is already present elsewhere
     # in the codebase.
-    if isinstance(x, dataset_ops.DatasetV2):
+    if isinstance(x, data_types.DatasetV2):
       if shuffle:
         training_utils_v1.verify_dataset_shuffled(x)
 
@@ -2205,7 +2206,7 @@ class Model(training_lib.Model):
 
         x = ds.batch(batch_size, drop_remainder=drop_remainder)
       else:
-        assert isinstance(x, dataset_ops.DatasetV2)
+        assert isinstance(x, data_types.DatasetV2)
         training_utils_v1.validate_dataset_input(x, y, sample_weight,
                                                  validation_split)
     return x
@@ -2280,7 +2281,7 @@ class Model(training_lib.Model):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
-    if isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    if isinstance(x, (data_types.DatasetV1, data_types.DatasetV2)):
       # Graph mode dataset. We'll pass the dataset as-is (unless
       # `extract_tensors_from_dataset` is True, in which case we extract
       # the tensors from the dataset and we output them.
@@ -2366,7 +2367,7 @@ class Model(training_lib.Model):
       feed_input_shapes = self._feed_input_shapes
 
     # Standardize the inputs.
-    if not isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    if not isinstance(x, (data_types.DatasetV1, data_types.DatasetV2)):
       # TODO(fchollet): run static checks with dataset output shape(s).
       x = training_utils_v1.standardize_input_data(
           x,
@@ -2379,7 +2380,7 @@ class Model(training_lib.Model):
     # TODO(momernick): This should be capable of doing full input validation
     # at all times - validate that this is so and refactor the standardization
     # code.
-    if isinstance(x, dataset_ops.DatasetV2):
+    if isinstance(x, data_types.DatasetV2):
       x_shapes = dataset_ops.get_structure(x)
       if isinstance(x_shapes, tuple):
         # If the output of a Dataset is a tuple, we assume it's either of the
@@ -2471,8 +2472,8 @@ class Model(training_lib.Model):
                          str(x[0].shape[0]) + ' samples')
 
     # If dictionary inputs were provided, we return a dictionary as well.
-    if dict_inputs and not isinstance(x, (dataset_ops.DatasetV1,
-                                          dataset_ops.DatasetV2)):
+    if dict_inputs and not isinstance(x, (data_types.DatasetV1,
+                                          data_types.DatasetV2)):
       x = dict(zip(feed_input_names, x))
     return x, y, sample_weights
 
@@ -2485,7 +2486,7 @@ class Model(training_lib.Model):
     # If input data is a dataset iterator in graph mode or if it is an eager
     # iterator and only one batch of samples is required, we fetch the data
     # tensors from the iterator and then standardize them.
-    if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    if isinstance(inputs, (data_types.DatasetV1, data_types.DatasetV2)):
       inputs, targets, _ = training_utils_v1.extract_tensors_from_dataset(
           inputs)
     # We type-check that `inputs` and `targets` are either single arrays
@@ -2521,7 +2522,7 @@ class Model(training_lib.Model):
     # Build the model using the retrieved inputs (value or symbolic).
     # If values are generated from a dataset, then in symbolic-mode
     # placeholders will be created to match the value shapes.
-    if isinstance(orig_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+    if isinstance(orig_inputs, (data_types.DatasetV1, data_types.DatasetV2,
                                 iterator_ops.Iterator)):
       if not self.inputs:
         # For subclassed models, a robust input spec is not available so we
@@ -2559,8 +2560,8 @@ class Model(training_lib.Model):
                          'TensorFlow tensors. '
                          'You passed: x=' + str(orig_inputs) +
                          '; y=' + str(orig_target))
-    is_dataset = isinstance(orig_inputs, (dataset_ops.DatasetV1,
-                                          dataset_ops.DatasetV2,
+    is_dataset = isinstance(orig_inputs, (data_types.DatasetV1,
+                                          data_types.DatasetV2,
                                           iterator_ops.Iterator))
     if is_dataset or context.executing_eagerly():
       target_tensors = None

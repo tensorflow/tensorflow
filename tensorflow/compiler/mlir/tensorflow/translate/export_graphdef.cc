@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/regularization/util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -76,7 +77,7 @@ using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace {
 
@@ -135,7 +136,9 @@ class Exporter {
 
  private:
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
-      : graph_(graph), tf_dialect_(tf_dialect) {}
+      : graph_(graph), tf_dialect_(tf_dialect) {
+    graph_->ToGraphDef(&graphdef_);
+  }
 
   Status AddArgumentNode(BlockArgument arg, unsigned index,
                          llvm::StringRef name);
@@ -158,6 +161,7 @@ class Exporter {
   Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
 
   Graph* graph_;
+  GraphDef graphdef_;
   LegalizedOpOrValLocNameMapper op_to_name_;
   absl::flat_hash_map<Operation*, Node*> nodes_;
   llvm::DenseMap<BlockArgument, Node*> args_;
@@ -220,7 +224,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     *node_def->mutable_device() = device_attr.getValue().str();
 
   llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-      func.getArgAttrs(index);
+      mlir::function_interface_impl::getArgAttrs(func, index);
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr,
                                                             kAliasingAttr};
   TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
@@ -279,7 +283,8 @@ Status Exporter::AddEdgeBetweenNodes(Value src, Node* dst_node,
     TF_RET_CHECK(node_it != nodes_.end())
         << "Use of OpResult encountered before def!";
     if (input_result.getType().isa<mlir::tf_executor::ControlType>()) {
-      graph_->AddControlEdge(node_it->second, dst_node);
+      graph_->AddControlEdge(node_it->second, dst_node,
+                             /*allow_duplicates=*/true);
     } else {
       graph_->AddEdge(node_it->second, input_result.getResultNumber(), dst_node,
                       dst_index);
@@ -357,7 +362,8 @@ Status Exporter::AddEdge(Operation* inst) {
 
 Status Exporter::AddInstructionNode(Operation* inst) {
   std::unique_ptr<NodeDef> node_def;
-  auto name = op_to_name_.GetUniqueName(inst);
+  int graph_hash_value = graph_regularization::ComputeHash(graphdef_);
+  auto name = op_to_name_.GetUniqueName(inst, graph_hash_value);
   // Convert registered TF ops to NodeDef. Only registered ops are handled to
   // ensure that PopulateDerivedAttrs adds the correct attributes.
   TF_ASSIGN_OR_RETURN(node_def,
@@ -769,7 +775,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   return graphdef;
 }
 
-stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
+tsl::Status ConvertMlirFunctionToFunctionLibraryDef(
     FuncOp func, const GraphExportConfig& configs, FunctionDef* function_def) {
   Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
   FunctionDefLibrary flib;

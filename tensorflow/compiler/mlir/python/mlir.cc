@@ -25,13 +25,17 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -45,15 +49,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -81,16 +86,16 @@ static void RegisterPasses() {
     mlir::lmhlo::registerAllLmhloPasses();
     // These are in compiler/mlir/xla and not part of the above MHLO
     // passes.
-    mlir::mhlo::registerXlaPasses();
     mlir::mhlo::registerTfXlaPasses();
     mlir::mhlo::registerLegalizeTFPass();
-    mlir::mhlo::registerLegalizeTFControlFlowPass();
     mlir::mhlo::registerLegalizeTfTypesPassPass();
     mlir::tosa::registerLegalizeTosaPasses();
     mlir::tosa::registerTFtoTOSALegalizationPipeline();
     mlir::tosa::registerTFLtoTOSALegalizationPipeline();
     mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
     mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
+    mlir::xla_framework::registerXlaFrameworkPasses();
+    tensorflow::RegisterMlProgramPasses();
     return true;
   }();
   (void)unique_registration;
@@ -270,7 +275,8 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 
 std::string ExperimentalConvertSavedModelV1ToMlir(
     const std::string& saved_model_path, const std::string& exported_names_str,
-    const std::string& tags, bool lift_variables, bool upgrade_legacy,
+    const std::string& tags, bool lift_variables,
+    bool include_variables_in_initializers, bool upgrade_legacy,
     bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
@@ -291,9 +297,12 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   mlir::MLIRContext context;
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
+  import_options.lift_variables = lift_variables;
+  import_options.include_variables_in_initializers =
+      include_variables_in_initializers;
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, absl::Span<std::string>(exported_names),
-                                &context, import_options, lift_variables);
+                                &context, import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
@@ -351,6 +360,34 @@ std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
     return "// error";
   }
   return MlirModuleToString(*module, show_debug_info);
+}
+
+void ExperimentalWriteBytecode(const std::string& filename,
+                               const std::string& mlir_txt, TF_Status* status) {
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> module;
+  {
+    mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+    module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
+    if (!module) {
+      Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+      return;
+    }
+  }
+  mlir::FallbackAsmResourceMap fallback_resource_map;
+  mlir::BytecodeWriterConfig writer_config(fallback_resource_map);
+  std::string error;
+  std::unique_ptr<llvm::ToolOutputFile> outputFile =
+      mlir::openOutputFile(filename, &error);
+  if (!error.empty()) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 ("Unable to create output file" + error).c_str());
+    return;
+  }
+  outputFile->keep();
+  mlir::writeBytecodeToFile(*module, outputFile->os(), writer_config);
 }
 
 }  // namespace tensorflow

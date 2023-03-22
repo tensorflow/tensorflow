@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 
+#include <ostream>
+
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
@@ -56,24 +58,41 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
 void UpdateTpuTargetByBridgeCompatibility(
     tensorflow::tfrt_stub::GraphExecutionOptions& options,
     const tensorflow::GraphDef& graph_def) {
-  if (options.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kBridgeFallback) {
+  if (options.compile_options.device_target ==
+      tensorflow::TfrtDeviceInfraTarget::kBridgeFallback) {
     auto s = tfrt::CheckTpuMlirBridgeCompatibility(graph_def);
     if (!s.ok()) {
       LOG(INFO)
           << "TFRT detected Bridge unsupported feature, using TF fallback";
-      options.compile_options.tpu_target =
-          tensorflow::TfrtTpuInfraTarget::kTfFallback;
+      options.compile_options.device_target =
+          tensorflow::TfrtDeviceInfraTarget::kTfFallback;
     } else {
-      options.compile_options.tpu_target =
-          tensorflow::TfrtTpuInfraTarget::kTpurt;
+      options.compile_options.device_target =
+          tensorflow::TfrtDeviceInfraTarget::kTpurt;
     }
   }
-  if (!tfrt::CheckSpmdGraph(graph_def).ok()) {
-    options.compile_options.tpu_target =
-        tensorflow::TfrtTpuInfraTarget::kTfFallback;
+  // TODO(linchai): Once native support for SPMD models is fully rollout, remove
+  // the fallback logic.
+  if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
+        options.compile_options.tpu_fuse_ops)) {
+    options.compile_options.device_target =
+        tensorflow::TfrtDeviceInfraTarget::kTfFallback;
   }
-  LOG(INFO) << "TFRT uses TPU target " << options.compile_options.tpu_target;
+  LOG(INFO) << "TFRT uses device target "
+            << options.compile_options.device_target;
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const GraphExecutionOptions& options) {
+  return os << "{"
+            << "run_placer_grappler_on_functions = "
+            << options.run_placer_grappler_on_functions
+            << ", enable_grappler_function_optimizer = "
+            << options.enable_grappler_function_optimizer
+            << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
+            << ", runtime = " << options.runtime
+            << ", model_metadata = " << options.model_metadata.DebugString()
+            << ", compile_options = " << options.compile_options << "}";
 }
 
 }  // namespace tfrt_stub

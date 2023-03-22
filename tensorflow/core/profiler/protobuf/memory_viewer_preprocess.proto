@@ -95,4 +95,6 @@ message PreprocessResult {
   double maybe_live_out_mib = 15;
 
   repeated BufferAllocation indefinite_lifetimes = 16;
+
+  string allocation_timeline = 17;
 }

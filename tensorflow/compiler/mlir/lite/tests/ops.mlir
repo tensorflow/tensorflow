@@ -97,6 +97,22 @@ func.func @testGatherWithBatchDims(%arg0 : tensor<2xf32>, %arg1 : tensor<2xi32>)
 
 // -----
 
+// CHECK-LABEL: testGatherNd
+func.func @testGatherNd(%arg0 : tensor<?xf32>, %arg1 : tensor<?xi32>) -> tensor<?xf32> {
+  %0 = "tfl.gather_nd"(%arg0, %arg1) {axis = 1 : i32}: (tensor<?xf32>,tensor<?xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testGatherNdI16Indices
+func.func @testGatherNdI16Indices(%arg0 : tensor<?xf32>, %arg1 : tensor<?xi16>) -> tensor<?xf32> {
+  %0 = "tfl.gather_nd"(%arg0, %arg1) {axis = 1 : i32}: (tensor<?xf32>,tensor<?xi16>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: testAbs
 func.func @testAbs(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -304,6 +320,14 @@ func.func @testAdd(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testAddInt16
+func.func @testAddInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i16> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.add %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.add %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i16>
+  func.return %0#0 : tensor<? x i16>
+}
+
 // CHECK-LABEL: testSub
 func.func @testSub(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
@@ -432,6 +456,30 @@ func.func @testLess(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
   // CHECK: tfl.less(%arg0, %arg1)
   %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testLessInt16
+func.func @testLessInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.less(%arg0, %arg1)
+  %0 = "tfl.less"(%arg0, %arg1) : (tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testGreaterEqual
+func.func @testGreaterEqual(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
+  // CHECK: tfl.greater_equal(%arg0, %arg1)
+  %0 = "tfl.greater_equal"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testGreaterEqualInt16
+func.func @testGreaterEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.greater_equal(%arg0, %arg1)
+  %0 = "tfl.greater_equal"(%arg0, %arg1) : (tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1>
   func.return %0#0 : tensor<? x i1>
 }
 
@@ -1086,6 +1134,14 @@ func.func @testEqual(tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
   // CHECK: "tfl.equal"(%arg0, %arg1)
   %0 = "tfl.equal"(%arg0, %arg1) : (tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testEqualInt16
+func.func @testEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: "tfl.equal"(%arg0, %arg1)
+  %0 = "tfl.equal"(%arg0, %arg1) : (tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1>
   func.return %0#0 : tensor<? x i1>
 }
 
@@ -1764,16 +1820,6 @@ func.func @transpose_dynamic_shape(%arg0 : tensor<2x?xi32>) -> tensor<?x2xi32> {
 
 // -----
 
-func.func @transpose_perm_axis_invalid(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
-  // expected-error @+1 {{perm[1] must be in [0, rank)}}
-  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
-  func.return %0 : tensor<2x2xi32>
-}
-
-
-// -----
-
 func.func @transpose_perm_axis_duplicated(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
   %cst = arith.constant dense<[1, 1]> : tensor<2xi32>
   // expected-error @+1 {{perm[1] cannot have duplicated axis}}
@@ -1900,6 +1946,13 @@ func.func @testReluWithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1
 
 func.func @testRelu6WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>> {
   %0 = "tfl.relu6"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
+  func.return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
+}
+
+// -----
+
+func.func @testRelu0To1WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>> {
+  %0 = "tfl.relu_0_to_1"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
   func.return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
 }
 
@@ -2504,7 +2557,7 @@ func.func @testFullyConnectedWithBadOutputShape(%arg0: tensor<1x37xf32>, %arg1: 
 
 func.func @testTransposeConv(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
   func.return %0 : tensor<1x64x84x32xf32>
 }
 
@@ -2515,7 +2568,7 @@ func.func @testTransposeConvWithOutputThatHasDynamicSizes(%arg0: tensor<4xi32>, 
   // CHECK: %[[NONE:.*]] = "tfl.no_value"() {value} : () -> none
   // CHECK: "tfl.transpose_conv"(%arg0, %arg1, %arg2, %[[NONE]])
   %cst = "tfl.no_value"() {value = unit} : () -> none
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<?x?x?x?xf32>
   func.return %0 : tensor<?x?x?x?xf32>
 }
 
@@ -2541,7 +2594,7 @@ func.func @testConvolution2DTransposeNoBias(%arg0: tensor<32x4x4x128xf32>, %arg1
 func.func @testTransposeConvBadOutputRank(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<64x84x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
   // expected-error @+1 {{expect output type has rank = 4, got output type tensor<64x84x32xf32>}}
-  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<64x84x32xf32>
+  %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<64x84x32xf32>
   func.return %0 : tensor<64x84x32xf32>
 }
 
@@ -2551,7 +2604,7 @@ func.func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2:
   %cst = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   // expected-error @+1 {{expect output type tensor<1x64x84x32xf32>, got tensor<1x64x84x31xf32>}}
-  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
+  %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
   func.return %0 : tensor<1x64x84x31xf32>
 }
 

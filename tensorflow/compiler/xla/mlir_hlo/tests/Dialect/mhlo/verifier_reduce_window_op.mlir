@@ -19,6 +19,8 @@ func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
   func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
+// -----
+
 func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
     %arg1: tensor<4x?xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<?x?xf32>, tensor<*xi32>) {
@@ -39,6 +41,8 @@ func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
   func.return %0#0, %0#1 : tensor<?x?xf32>, tensor<*xi32>
 }
 
+// -----
+
 func.func @reduce_window_with_non_scalar_block_arg1(%arg0: tensor<4x2xf32>,
     %init0: tensor<4xf32>) -> tensor<2x1xf32> {
   %0 = "mhlo.reduce_window"(%arg0, %init0) ({
@@ -54,6 +58,8 @@ func.func @reduce_window_with_non_scalar_block_arg1(%arg0: tensor<4x2xf32>,
          : (tensor<4x2xf32>, tensor<4xf32>) -> (tensor<2x1xf32>)
   func.return %0 : tensor<2x1xf32>
 }
+
+// -----
 
 func.func @reduce_window_with_non_scalar_block_arg2(%arg0: tensor<4x2xf32>,
     %init0: tensor<2xf32>) -> tensor<2x1xf32> {
@@ -73,28 +79,10 @@ func.func @reduce_window_with_non_scalar_block_arg2(%arg0: tensor<4x2xf32>,
 
 // -----
 
-func.func @reduce_window_invalid_inputs() -> (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{expects the size of operands to be >= 2.}}
-  %0:2 = "mhlo.reduce_window"() ({
-         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
-                %b0: tensor<f32>, %b1: tensor<i32>):
-              %2 = mhlo.add %a0, %b0 : tensor<f32>
-              %3 = mhlo.add %a1, %b1 : tensor<i32>
-              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
-            })
-         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
-           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
-           window_strides = dense<[3, 1]> : tensor<2xi64> }
-         : () -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
-}
-
-// -----
-
 func.func @reduce_window_invalid_inputs(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x3xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{requires same shape for all inputs}}
+  // expected-error @+1 {{expects all inputs to have compatible shapes}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -241,7 +229,7 @@ func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
 
 // -----
 
-func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
+func.func @reduce_window_invalid_padding_attributes(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {
   // expected-error @+1 {{expects the shape of padding-attribute to be {N, 2}, but got {4, 1}.}}
@@ -262,10 +250,10 @@ func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
 
 // -----
 
-func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
-    %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
-    (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{expects the padding-entries to have even number of elements, but got 5 elements.}}
+func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
+                    %init0: tensor<f32>, %init1: tensor<i32>) ->
+                      (tensor<2x2xf32>, tensor<2x2xi32>) {
+  // expected-error @+1 {{expects the shape of window_dimensions attribute to be 1-D, but got {1, 2}}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -273,8 +261,96 @@ func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
               %3 = mhlo.add %a1, %b1 : tensor<i32>
               "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
             })
-         { padding = dense<[2, 2, 0, 0, 0]> : tensor<5xi64>,
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[[5, 1]]> : tensor<1x2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> }
+         : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
+              (tensor<2x2xf32>, tensor<2x2xi32>)
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
+
+// -----
+
+func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
+                    %init0: tensor<f32>, %init1: tensor<i32>) ->
+                      (tensor<2x2xf32>, tensor<2x2xi32>) {
+  // expected-error @+1 {{expects the shape of window_strides attribute to be 1-D, but got {1, 2}}}
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+                %b0: tensor<f32>, %b1: tensor<i32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[[3, 1]]> : tensor<1x2xi64> }
+         : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
+              (tensor<2x2xf32>, tensor<2x2xi32>)
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
+
+// -----
+
+func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
+    %arg1: tensor<4x?xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
+        (tensor<?x?xf32>, tensor<*xi32>) {
+  // expected-error @+1 {{expects the shape of base_dilations attribute to be 1-D, but got {1, 2}}}
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+                %b0: tensor<f32>, %b1: tensor<i32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64>,
+           base_dilations = dense<[[1, 1]]> : tensor<1x2xi64>,
+           window_dilations = dense<[1, 1]> : tensor<2xi64> }
+         : (tensor<*xf32>, tensor<4x?xi32>, tensor<f32>, tensor<i32>) ->
+              (tensor<?x?xf32>, tensor<*xi32>)
+  func.return %0#0, %0#1 : tensor<?x?xf32>, tensor<*xi32>
+}
+
+// -----
+
+func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
+    %arg1: tensor<4x?xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
+        (tensor<?x?xf32>, tensor<*xi32>) {
+  // expected-error @+1 {{expects the shape of window_dilations attribute to be 1-D, but got {1, 2}}}
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+                %b0: tensor<f32>, %b1: tensor<i32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64>,
+           base_dilations = dense<[1, 1]> : tensor<2xi64>,
+           window_dilations = dense<[[1, 1]]> : tensor<1x2xi64> }
+         : (tensor<*xf32>, tensor<4x?xi32>, tensor<f32>, tensor<i32>) ->
+              (tensor<?x?xf32>, tensor<*xi32>)
+  func.return %0#0, %0#1 : tensor<?x?xf32>, tensor<*xi32>
+}
+
+// -----
+
+func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
+                    %init0: tensor<f32>, %init1: tensor<i32>) ->
+                      (tensor<2x2xf32>, tensor<2x2xi32>) {
+  // expected-error @+1 {{expects the shape of window_dimensions attribute to be 1-D}}
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+                %b0: tensor<f32>, %b1: tensor<i32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[[5, 1]]> : tensor<1x2xi64>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
@@ -374,7 +450,7 @@ func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         tensor<2x2xf32> {
-  // expected-error @+1 {{expects 2 result values, but got 1.}}
+  // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>'}}
   %0 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -396,7 +472,7 @@ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<2x2xf32>, tensor<2x3xi32>) {
-  // expected-error @+1 {{expects result at index 1 to have compatible shape with the corresponding inferred type, but got 'tensor<2x3xi32>' and 'tensor<2x2xi32>' resp.}}
+  // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>', 'tensor<2x3xi32>'}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -418,7 +494,7 @@ func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<2x2xi32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{expects the element-type of reduce-op's return-value at index 0 to match the element-type of reducer-block's corresponding return-value, but got 'i32' and 'f32' resp.}}
+  // expected-error @+1 {{inferred type(s) 'tensor<2x2xf32>', 'tensor<2x2xi32>' are incompatible with return type(s) of operation 'tensor<2x2xi32>', 'tensor<2x2xi32>'}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -488,26 +564,6 @@ func.func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
               %3 = mhlo.add %a1, %b1 : tensor<i32>
               "mhlo.return"(%2,%3,%2) : (tensor<f32>, tensor<i32>, tensor<f32>)
                   -> ()
-            })
-         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
-           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
-           window_strides = dense<[3, 1]> : tensor<2xi64> }
-         : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
-              (tensor<2x2xf32>, tensor<2x2xi32>)
-  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
-}
-
-// -----
-
-func.func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
-    %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
-    (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error@+1 {{Reduction-region here must produce tensor-typed result(s), but produces 'f32' instead}}
-  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
-         ^bb0(%a0: f32, %a1: i32, %b0: f32, %b1: i32):
-              %2 = "llvm.add" (%a0, %b0) : (f32, f32) -> f32
-              %3 = "llvm.add" (%a1, %b1) : (i32, i32) -> i32
-              "mhlo.return"(%2,%3) : (f32, i32) -> ()
             })
          { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,

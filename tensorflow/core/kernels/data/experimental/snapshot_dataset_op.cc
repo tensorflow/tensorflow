@@ -14,17 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/snapshot_dataset_op.h"
 
+#include <algorithm>
+#include <deque>
+#include <memory>
 #include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/time/clock.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -32,31 +35,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/snappy.h"
-#if !defined(IS_SLIM_BUILD)
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_inputstream.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
-#endif  // IS_SLIM_BUILD
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cord.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/core/util/batch_util.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -158,7 +142,9 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality();
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -770,8 +756,7 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
-    params.external_state_policy =
-        SerializationContext::ExternalStatePolicy::kIgnore;
+    params.external_state_policy = ExternalStatePolicy::POLICY_IGNORE;
     OP_REQUIRES_OK(ctx,
                    AsGraphDef(input, SerializationContext(params), &graph_def));
     OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
@@ -921,8 +906,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
-    params.external_state_policy =
-        SerializationContext::ExternalStatePolicy::kIgnore;
+    params.external_state_policy = ExternalStatePolicy::POLICY_IGNORE;
 
     GraphDef graph_def;
     OP_REQUIRES_OK(ctx,
@@ -1007,8 +991,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "SnapshotDatasetOp::Dataset"; }
 
-    int64_t CardinalityInternal() const override {
-      return input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return input_->Cardinality(options);
     }
 
     Status InputDatasets(
@@ -1598,9 +1582,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                           Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           int64_t code_int;
           TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
-          error::Code code = static_cast<error::Code>(code_int);
+          absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-          if (code != error::Code::OK) {
+          if (code != absl::StatusCode::kOk) {
             tstring error_message;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(ErrorMessageKey(index), &error_message));

@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Host.h"
+#include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -125,7 +125,9 @@ SimpleOrcJIT::SimpleOrcJIT(
               std::move(post_optimization_hook), std::move(post_codegen_hook))),
       main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
       gdb_jit_event_listener_(
-          llvm::JITEventListener::createGDBRegistrationListener()) {
+          llvm::JITEventListener::createGDBRegistrationListener()),
+      perf_jit_event_listener_(
+          llvm::JITEventListener::createPerfJITEventListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 
@@ -156,6 +158,9 @@ SimpleOrcJIT::SimpleOrcJIT(
   main_jit_dylib_->addGenerator(
       std::make_unique<RuntimeSymbolGenerator>(*this));
   object_layer_.registerJITEventListener(*this);
+  if (perf_jit_event_listener_) {
+    object_layer_.registerJITEventListener(*perf_jit_event_listener_);
+  }
 
   // Copied from LLJIT, required to find symbols on Windows.
   if (target_triple_.isOSBinFormatCOFF()) {
@@ -210,7 +215,7 @@ llvm::JITEvaluatedSymbol SimpleOrcJIT::ResolveRuntimeSymbol(
   if (func_addr == nullptr) {
     LOG(ERROR)
         << "Unable to resolve runtime symbol: `" << name.str()
-        << "'.  Hint: if the symbol a custom call target, make sure you've "
+        << "'. Hint: if the symbol a custom call target, make sure you've "
            "registered it with the JIT using "
            "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
     return nullptr;

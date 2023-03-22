@@ -18,8 +18,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
-#include "tensorflow/core/tpu/tpu_executor_api.h"
 
 namespace ApiConverter {
 static SE_ExecutableRunOptions ToC(
@@ -66,7 +66,7 @@ static SE_ExecutableRunOptions ToC(
 
 namespace xla {
 
-using ::tensorflow::tpu::ExecutorApiFn;
+using ::stream_executor::tpu::ExecutorApiFn;
 
 TpuExecutable::~TpuExecutable() {
   ExecutorApiFn()->TpuExecutable_FreeFn(se_executable_);

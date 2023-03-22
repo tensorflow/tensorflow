@@ -16,10 +16,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
 #include <deque>
+#include <iterator>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -45,8 +51,13 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -81,6 +92,7 @@ constexpr int kUnknownCardinality = -2;
 // This constant is a magic number that is used (as a prefix) to identify keys
 // used for serialization of iterator state.
 constexpr char kFullNameRandomHex[] = "60d899aa0d8ce4351e7c3b419e92d25b";
+constexpr int kFullNameRandomHexLen = std::size(kFullNameRandomHex) - 1;
 constexpr char kPipe[] = "|";
 constexpr char kColon[] = ":";
 
@@ -91,6 +103,7 @@ constexpr char kMetadata[] = "metadata";
 constexpr char kCardinalityAttrForRewrite[] = "_cardinality";
 
 class DatasetBase;
+class IteratorContext;
 class SerializationContext;
 
 inline bool IsTFDataFunction(const FunctionDef& func) {
@@ -163,6 +176,17 @@ class IteratorStateWriter {
 // Generates a full name key for iterator checkpointing. All keys generated for
 // iterator checkpoints should go through this function.
 std::string FullName(const std::string& prefix, const std::string& name);
+
+// Interface for objects that can be checkpointed.
+class Checkpointable {
+ public:
+  Checkpointable() = default;
+  virtual ~Checkpointable() = default;
+
+  virtual Status Save(SerializationContext* ctx,
+                      IteratorStateWriter* writer) = 0;
+  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) = 0;
+};
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
@@ -378,6 +402,322 @@ class SplitProvider {
 // Returns the runner threadpool size from an OpKernelContext.
 int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx);
 
+// In-memory representation of a checkpoint. The checkpoint is represented as a
+// collection of key-value pairs and are expected to be written using the
+// `IteratorStateWriter` interface.
+//
+// The implementation is not thread-safe.
+class MemoryCheckpoint : public IteratorStateWriter {
+ public:
+  // IdRegistry maintains the mapping between a string key and an integer.
+  // The main purpose of this registry is to allow us using integers as map keys
+  // in MemoryCheckpoint to reduce the cost in checkpoint merging.
+  class IdRegistry {
+   public:
+    IdRegistry() = default;
+
+    // Inserts the key into the registry and get the integer id for the key.
+    // If the key already exists in the registry, the corresponding id is
+    // directly returned.
+    int64_t InsertKey(const std::string& key) {
+      mutex_lock l(mu_);
+      if (key_to_id_.contains(key)) {
+        return key_to_id_[key];
+      }
+      int64_t id = next_id_++;
+      id_to_key_[id] = key;
+      key_to_id_[key] = id;
+      return id;
+    }
+
+    // Gets all ids for keys starting with the given prefix.
+    std::vector<int64_t> GetIdsWithPrefix(const std::string& prefix) {
+      mutex_lock l(mu_);
+      std::vector<int64_t> ids;
+      for (const auto& [key, id] : key_to_id_) {
+        if (key.length() >= kFullNameRandomHexLen + 1 + prefix.length() &&
+            key.compare(kFullNameRandomHexLen + 1, prefix.length(), prefix) ==
+                0) {
+          ids.push_back(id);
+        }
+      }
+      return ids;
+    }
+
+    // Gets the key corresponding to the given id.
+    std::string GetKey(int64_t id) {
+      mutex_lock l(mu_);
+      if (!id_to_key_.contains(id)) {
+        LOG(ERROR) << "Failed find key in IdRegistry: " << id
+                   << ", max id is: " << next_id_ - 1;
+      }
+      return id_to_key_[id];
+    }
+
+    // Removes the given ids from the registry along with their corresponding
+    // keys.
+    void RemoveIds(const std::vector<int64_t>& ids) {
+      mutex_lock l(mu_);
+      for (const auto& id : ids) {
+        key_to_id_.erase(id_to_key_[id]);
+        id_to_key_.erase(id);
+      }
+    }
+
+   private:
+    mutex mu_;
+    int64_t next_id_ TF_GUARDED_BY(mu_) = 0;
+    absl::flat_hash_map<int64_t, std::string> id_to_key_ TF_GUARDED_BY(mu_);
+    absl::flat_hash_map<std::string, int64_t> key_to_id_ TF_GUARDED_BY(mu_);
+  };
+
+  MemoryCheckpoint() = delete;
+  explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry)
+      : id_registry_(registry) {}
+
+  MemoryCheckpoint(MemoryCheckpoint&& other) = default;
+
+  static MemoryCheckpoint CreateRootCheckpoint(
+      std::shared_ptr<IdRegistry> registry) {
+    return MemoryCheckpoint(/*id_registry*/ registry, /*is_root=*/true);
+  }
+
+  // BEGIN implementation of `IteratorStateWriter` interface
+  Status WriteScalar(StringPiece key, int64_t val) override {
+    auto id = id_registry_->InsertKey(string(key));
+    int_values_[id] = val;
+    return OkStatus();
+  }
+  Status WriteScalar(StringPiece name, StringPiece key, int64_t val) override {
+    return WriteScalar(FullName(string(name), string(key)), val);
+  }
+  Status WriteScalar(StringPiece key, const tstring& val) override {
+    auto id = id_registry_->InsertKey(string(key));
+    str_values_[id] = val;
+    return OkStatus();
+  }
+  Status WriteScalar(StringPiece name, StringPiece key,
+                     const tstring& val) override {
+    return WriteScalar(FullName(string(name), string(key)), val);
+  }
+  Status WriteTensor(StringPiece key, const Tensor& val) override {
+    auto id = id_registry_->InsertKey(string(key));
+    tensor_values_[id] = val;
+    return OkStatus();
+  }
+  Status WriteTensor(StringPiece name, StringPiece key,
+                     const Tensor& val) override {
+    return WriteTensor(FullName(string(name), string(key)), val);
+  }
+  // END implementation of `IteratorStateWriter` interface
+
+  // String representation for the in-memory checkpoint suitable for debugging.
+  std::string DebugString() const {
+    std::string result = absl::StrCat("status=", status_.ToString(),
+                                      ", "
+                                      "root=",
+                                      (is_root_ ? "true" : "false"), "\n");
+    absl::StrAppend(&result, "number of integers: ", int_values_.size(), "\n");
+
+    absl::StrAppend(&result, "number of strings: ", str_values_.size(), "\n");
+    absl::StrAppend(&result, "number of tensors: ", tensor_values_.size(),
+                    "\n");
+
+    absl::StrAppend(&result,
+                    "number of expired prefixes: ", expired_prefixes_.size(),
+                    "\n");
+    return result;
+  }
+
+  // Returns the status of the in-memory checkpoint.
+  Status GetStatus() const { return status_; }
+
+  // Merges key-values pair of another checkpoint with this checkpoint. If a key
+  // exists with another checkpoint, then the key-value pair from the `other`
+  // argument is used.
+  //
+  // Merge also garbage collects expired prefixes.
+  void Merge(MemoryCheckpoint* other) {
+    if (!status_.ok()) {
+      return;
+    }
+
+    if (!other->status_.ok()) {
+      status_ = other->status_;
+      int_values_.clear();
+      str_values_.clear();
+      tensor_values_.clear();
+    }
+
+    for (const auto& [k, v] : other->int_values_) {
+      int_values_[k] = v;
+    }
+    for (const auto& [k, v] : other->str_values_) {
+      str_values_[k] = v;
+    }
+    for (const auto& [k, v] : other->tensor_values_) {
+      tensor_values_[k] = v;
+    }
+
+    // Get the expired prefixes from `other`. Since the info only needs to be
+    // propagated once downstream, we also clean the `expired_prefixes_` of
+    // `other` here.
+    for (const auto& prefix : other->expired_prefixes_) {
+      Purge(prefix);
+    }
+
+    other->expired_prefixes_.clear();
+    VLOG(5) << "MemoryCheckpoint::Merge " << DebugString();
+  }
+
+  // Purge removes all keys with given prefix from checkpoint. It also adds the
+  // prefix for tracking unless it is the root checkpoint.
+  void Purge(const std::string& prefix) {
+    std::vector<int64_t> ids = id_registry_->GetIdsWithPrefix(prefix);
+    for (const auto& id : ids) {
+      int_values_.erase(id);
+      str_values_.erase(id);
+      tensor_values_.erase(id);
+    }
+    if (!is_root_) {
+      expired_prefixes_.insert(prefix);
+    } else {
+      // We no longer need the mapping after change has been propagated all the
+      // way to root.
+      id_registry_->RemoveIds(ids);
+    }
+  }
+
+  // Stores the in-memory checkpoint to the given writer.
+  Status Save(IteratorStateWriter* writer) const {
+    for (const auto& [id, value] : int_values_) {
+      auto key = id_registry_->GetKey(id);
+      TF_RETURN_IF_ERROR(writer->WriteScalar(key, value));
+    }
+    for (const auto& [id, value] : str_values_) {
+      auto key = id_registry_->GetKey(id);
+      TF_RETURN_IF_ERROR(writer->WriteScalar(key, value));
+    }
+    for (const auto& [id, value] : tensor_values_) {
+      auto key = id_registry_->GetKey(id);
+      TF_RETURN_IF_ERROR(writer->WriteTensor(key, value));
+    }
+    return OkStatus();
+  }
+
+  // Updates the status of the in-memory checkpoint with the given status.
+  void UpdateStatus(Status status) { status_.Update(status); }
+
+ private:
+  explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry, bool is_root)
+      : is_root_(is_root), id_registry_(registry) {}
+  TF_DISALLOW_COPY_AND_ASSIGN(MemoryCheckpoint);
+
+  Status status_ = OkStatus();
+  // Only set to true for the checkpoint in IteratorResource.
+  // Root checkpoint does not track expired prefixes.
+  const bool is_root_ = false;
+  absl::flat_hash_map<int64_t, int64_t> int_values_;
+  absl::flat_hash_map<int64_t, std::string> str_values_;
+  absl::flat_hash_map<int64_t, Tensor> tensor_values_;
+
+  // Keeps track of expired prefixes for propagation. Cleaned after it's merged.
+  absl::flat_hash_set<std::string> expired_prefixes_;
+
+  std::shared_ptr<IdRegistry> id_registry_;
+};
+
+// Aggregates runtime support needed for dataset and iterator serialization.
+class SerializationContext {
+ public:
+  // Handles the external state according to the external state policy.
+  Status HandleCheckExternalStateStatus(Status s) {
+    if (s.ok()) {
+      return s;
+    }
+    switch (params_.external_state_policy) {
+      case ExternalStatePolicy::POLICY_WARN:
+        LOG(WARNING) << s.ToString();
+        return OkStatus();
+      case ExternalStatePolicy::POLICY_IGNORE:
+        VLOG(2) << "Ignoring error status: " << s.ToString();
+        return OkStatus();
+      case ExternalStatePolicy::POLICY_FAIL:
+        return s;
+      default:
+        return errors::InvalidArgument("Unexpected value of external policy: ",
+                                       params_.external_state_policy);
+    }
+  }
+
+  struct Params {
+    explicit Params() = default;
+
+    explicit Params(OpKernelContext* ctx)
+        : resource_mgr(ctx->resource_manager()),
+          device_name(ctx->device()->attributes().name()) {}
+
+    std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
+
+    // Indicates what to do if the dataset depends on external state.
+    ExternalStatePolicy external_state_policy =
+        ExternalStatePolicy::POLICY_WARN;
+
+    // Indicates whether the serialization is for rewrites.
+    //
+    // If true:
+    //   * A dataset that doesn't implement serialization is replaced with a
+    //     placeholder returned in `input_list`.
+    //   * Data tensors are replaced with a placeholder returned in
+    //     `input_list`.
+    //   * Datasets that use random seeds should not serialize the random seeds.
+    //     This doesn't affect datasets that use fixed seeds; fixed seeds will
+    //     always be preserved.
+    //   * Cardinality is serialized as an unregistered attribute
+    //     `_cardinality`.
+    // If false:
+    //   * A dataset that doesn't implement serialization should result in an
+    //     error.
+    //   * Data tensors (potentially large) should be serialized.
+    //   * Datasets that use random seeds should serialize the random seeds.
+    bool is_graph_rewrite = false;
+
+    // A resource manager for looking up resources during serialization.
+    ResourceMgr* resource_mgr;
+
+    // The name of the device doing the serialization.
+    std::string device_name;
+
+    // Determines whether checkpointing should represent input pipeline state
+    // symbolically, using cursors into source iterators, or explicitly, by
+    // storing internal state of each iterator.
+    bool symbolic_checkpoint = false;
+  };
+
+  explicit SerializationContext(Params params) : params_(params) {}
+
+  std::vector<std::pair<string, Tensor>>* input_list() {
+    return params_.input_list;
+  }
+
+  ExternalStatePolicy external_state_policy() const {
+    return params_.external_state_policy;
+  }
+
+  bool is_graph_rewrite() const { return params_.is_graph_rewrite; }
+
+  const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+
+  const std::string& device_name() const { return params_.device_name; }
+
+  bool symbolic_checkpoint() const { return params_.symbolic_checkpoint; }
+
+ private:
+  Params params_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
+};
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -402,14 +742,16 @@ class IteratorContext {
           interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
           model(ctx->model()),
-          options(ctx->options()),
           resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
+          symbolic_checkpoint(ctx->symbolic_checkpoint()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()) {}
+          thread_pool(ctx->thread_pool()),
+          id_registry(ctx->id_registry()),
+          warm_start(ctx->warm_start()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -492,18 +834,43 @@ class IteratorContext {
     // using C++ based implementation for tf.data options (on 4/12/2021).
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
+    // Indicates whether to use symbolic checkpointing.
+    bool symbolic_checkpoint = false;
+
     // A factory for creating threads to perform blocking work.
     std::shared_ptr<ThreadFactory> thread_factory = nullptr;
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
+
+    std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry =
+        std::make_shared<MemoryCheckpoint::IdRegistry>();
+
+    // If `true` background threads of asynchronous operations are started when
+    // the iterator is created. Otherwise, they are started upon first `GetNext`
+    // request. Default value is set to false to ensure backward compatibility.
+    bool warm_start = false;
   };
 
-  explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
+  explicit IteratorContext(IteratorContext* ctx)
+      : IteratorContext(Params{ctx}) {}
 
-  explicit IteratorContext(OpKernelContext* ctx) : params_(Params{ctx}) {}
+  explicit IteratorContext(OpKernelContext* ctx)
+      : IteratorContext(Params{ctx}) {}
 
-  explicit IteratorContext(Params params) : params_(std::move(params)) {}
+  explicit IteratorContext(Params params)
+      : params_(std::move(params)),
+        checkpoint_(MemoryCheckpoint{params_.id_registry}) {}
+
+  IteratorContext(const IteratorContext& other)
+      : IteratorContext(Params{other.params_}) {
+    // MemoryCheckpoint should not be copied over as the child context should
+    // not care what's in the checkpoint of parent context.
+  }
+
+  std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry() {
+    return params_.id_registry;
+  }
 
   Allocator* allocator(AllocatorAttributes attrs) {
     return params_.allocator_getter(attrs);
@@ -529,13 +896,13 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
+  MemoryCheckpoint* checkpoint() { return &checkpoint_; }
+
   int64 interleave_depth() { return params_.interleave_depth; }
 
   bool is_restoring() { return params_.is_restoring; }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
-
-  const Options* options() { return params_.options; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -553,11 +920,15 @@ class IteratorContext {
     return params_.stats_aggregator;
   }
 
+  bool symbolic_checkpoint() { return params_.symbolic_checkpoint; }
+
   const std::shared_ptr<ThreadFactory>& thread_factory() {
     return params_.thread_factory;
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  bool warm_start() { return params_.warm_start; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -574,6 +945,52 @@ class IteratorContext {
     }
   }
 
+  // Merges the given checkpoint with the checkpoint of this context.
+  //
+  // The intended for this API is that methods, such as
+  // `IteratorBase::Initialize`, `IteratorBase::GetNextInternal`, or
+  // `IteratorBase::RestoreInternal` that store data in the in-memory
+  // checkpoint, use a separate instance of `IteratorContext` for a nested call,
+  // then the checkpoint collected by the `IteratorContext` instance passed into
+  // the callee should be merged into the `IteratorContext` of the caller:
+  //
+  // ```
+  // Status GetNextInternal(IteratorContext* ctx, ...) {
+  //   ...
+  //   IteratorContext nested_ctx(...);
+  //   TF_RETURN_IF_ERROR(input_impl_->GetNext(&nested_ctx, ...));
+  //   ctx->MergeCheckpoint(nested_ctx->checkpoint());
+  //   ...
+  // }
+  // ```
+  void MergeCheckpoint(MemoryCheckpoint* checkpoint) {
+    if (symbolic_checkpoint()) {
+      checkpoint_.Merge(checkpoint);
+    }
+  }
+
+  // Removes any keys with the given prefix from the checkpoint.
+  //
+  // The intended use for this API is to clean the stale state in checkpoint,
+  // e.g. when a pipeline created by `flat_map` is exhausted, the state
+  // associated with the iterator of that pipeline is no longer needed and
+  // should be removed.
+  void PurgeCheckpoint(const std::string& prefix) {
+    if (symbolic_checkpoint()) {
+      checkpoint_.Purge(prefix);
+    }
+  }
+
+  // Saves the state of the given iterator into the checkpoint.
+  void SaveCheckpoint(Checkpointable* iterator) {
+    if (symbolic_checkpoint()) {
+      SerializationContext::Params params;
+      params.symbolic_checkpoint = true;
+      SerializationContext ctx(std::move(params));
+      checkpoint_.UpdateStatus(iterator->Save(&ctx, &checkpoint_));
+    }
+  }
+
   std::unique_ptr<Thread> StartThread(const string& name,
                                       std::function<void()> fn) {
     if (params_.thread_factory) {
@@ -584,108 +1001,22 @@ class IteratorContext {
     }
   }
 
- private:
-  Params params_;
-};
-
-// Aggregates runtime support needed for dataset and iterator serialization.
-class SerializationContext {
- public:
-  // Enum describing what to do during serialization when external state is
-  // encountered.
-  enum class ExternalStatePolicy : int64 {
-    // Proceed with serialization, but log a warning about what state will be
-    // lost.
-    kWarn = 0,
-    // Proceed with serialization without logging any warning.
-    kIgnore = 1,
-    // Fail the serialization with an error.
-    kFail = 2,
-  };
-
-  // Handles the CheckExternalState status according to the external state
-  // policy.
-  Status HandleCheckExternalStateStatus(Status s) {
-    if (s.ok()) {
-      return s;
+  // Updates the status of the checkpoint with the given status.
+  void UpdateCheckpointStatus(std::function<Status()> status_fn) {
+    if (symbolic_checkpoint()) {
+      checkpoint_.UpdateStatus(status_fn());
     }
-    switch (params_.external_state_policy) {
-      case ExternalStatePolicy::kWarn:
-        LOG(WARNING) << s.ToString();
-        return OkStatus();
-      case ExternalStatePolicy::kIgnore:
-        VLOG(2) << "Ignoring error status: " << s.ToString();
-        return OkStatus();
-      case ExternalStatePolicy::kFail:
-        return s;
-    }
-    LOG(FATAL) << "Control should never reach here";
   }
-
-  struct Params {
-    explicit Params() {}
-
-    explicit Params(OpKernelContext* ctx)
-        : resource_mgr(ctx->resource_manager()),
-          device_name(ctx->device()->attributes().name()) {}
-
-    std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
-
-    // Indicates what to do if the dataset depends on external state.
-    ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
-
-    // Indicates whether the serialization is for rewrites.
-    //
-    // If true:
-    //   * A dataset that doesn't implement serialization is replaced with a
-    //     placeholder returned in `input_list`.
-    //   * Data tensors are replaced with a placeholder returned in
-    //     `input_list`.
-    //   * Datasets that use random seeds should not serialize the random seeds.
-    //     This doesn't affect datasets that use fixed seeds; fixed seeds will
-    //     always be preserved.
-    //   * Cardinality is serialized as an unregistered attribute
-    //     `_cardinality`.
-    // If false:
-    //   * A dataset that doesn't implement serialization should result in an
-    //     error.
-    //   * Data tensors (potentially large) should be serialized.
-    //   * Datasets that use random seeds should serialize the random seeds.
-    bool is_graph_rewrite = false;
-
-    // A resource manager for looking up resources during serialization.
-    ResourceMgr* resource_mgr;
-
-    // The name of the device doing the serialization.
-    std::string device_name;
-  };
-
-  explicit SerializationContext(Params params) : params_(params) {}
-
-  std::vector<std::pair<string, Tensor>>* input_list() {
-    return params_.input_list;
-  }
-
-  ExternalStatePolicy external_state_policy() const {
-    return params_.external_state_policy;
-  }
-
-  bool is_graph_rewrite() const { return params_.is_graph_rewrite; }
-
-  const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
-
-  const std::string& device_name() const { return params_.device_name; }
 
  private:
   Params params_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
+  MemoryCheckpoint checkpoint_;
 };
 
 // Represents the current position in a range of outputs, where the
 // range of outputs is typically represented by an `DatasetBase`,
 // defined below.
-class IteratorBase {
+class IteratorBase : public Checkpointable {
  public:
   virtual ~IteratorBase() {
     for (auto rit = cleanup_fns_.rbegin(); rit != cleanup_fns_.rend(); ++rit) {
@@ -711,6 +1042,10 @@ class IteratorBase {
   // Implementations must explicitly set `*end_of_sequence = false` if an
   // `OkStatus()` status is returned and the iterator is not at the end of the
   // sequence.
+  //
+  // `out_tensors` and `end_of_sequence` are output parameters. `*out_tensors`
+  // and `*end_of_sequence` should not be read by implementations of `GetNext`
+  // before they are assigned.
   //
   // This method is thread-safe.
   //
@@ -753,6 +1088,9 @@ class IteratorBase {
   // this iterator.
   virtual const string& prefix() const = 0;
 
+  // Indicates whether the iterator is compatible with symbolic checkpointing.
+  virtual bool SymbolicCheckpointCompatible() const { return false; }
+
   // Performs initialization that needs to happen outside of a constructor to
   // properly propagate errors.
   virtual Status Initialize(IteratorContext* ctx) { return OkStatus(); }
@@ -761,7 +1099,7 @@ class IteratorBase {
   Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
 
   // Saves the state of this iterator.
-  virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer) override {
     int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
@@ -769,24 +1107,35 @@ class IteratorBase {
     return OkStatus();
   }
 
- protected:
-  // Returns a node that models this iterator.
-  virtual std::shared_ptr<model::Node> CreateNode(
-      IteratorContext* ctx, model::Node::Args args) const = 0;
-
   // Restores the state of this iterator.
-  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
+  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) override {
     int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
+    ctx->SaveCheckpoint(this);
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return OkStatus();
   }
 
+  // Returns the total number of bytes buffered by the iterator across all nodes
+  // in the subtree for which autotuning is enabled.
+  int64_t TotalBufferedBytes() const {
+    if (node_) return node_->TotalBufferedBytes();
+    return 0;
+  }
+
+ protected:
+  // Returns a node that models this iterator.
+  virtual std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const = 0;
+
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
   Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
+    if (ctx->symbolic_checkpoint()) {
+      return OkStatus();
+    }
     return input->Save(ctx, writer);
   }
 
@@ -839,8 +1188,8 @@ class IteratorBase {
   std::vector<std::function<void()>> cleanup_fns_;
   std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
-  int64_t id_ = 0;
-  int64_t parent_id_ = 0;
+  uint64_t id_ = 0;
+  uint64_t parent_id_ = 0;
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -909,14 +1258,14 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
-  // Initializes the dataset.
-  void Initialize(const Metadata& metadata);
-
   const Metadata& metadata() const { return metadata_; }
 
   const Options& options() const { return options_; }
 
   int64_t num_sources() const { return num_sources_; }
+
+  // Initializes the dataset using the given metadata.
+  void Initialize(const Metadata& metadata);
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -950,6 +1299,7 @@ class DatasetBase : public core::RefCounted {
     TF_RETURN_IF_ERROR(MakeIterator(&restore_ctx,
                                     /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(&restore_ctx, reader));
+    ctx->MergeCheckpoint(restore_ctx.checkpoint());
     *iterator = std::move(it);
     return OkStatus();
   }
@@ -992,14 +1342,9 @@ class DatasetBase : public core::RefCounted {
   // Returns the cardinality of this dataset based on the options.
   int64_t Cardinality(CardinalityOptions options) const;
 
-  // Internal implementation of cardinality for a dataset.
-  // TODO(shilpakrish): Remove this overload once all callers are migrated
-  // to the API which passes in the options parameter.
-  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
-  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
-
   // Internal implementation of cardinality for a dataset based on the options.
-  virtual int64_t CardinalityInternal(CardinalityOptions options) const {
+  virtual int64_t CardinalityInternal(CardinalityOptions options) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(cardinality_mu_) {
     return kUnknownCardinality;
   }
 

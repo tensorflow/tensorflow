@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/gru_cell.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"

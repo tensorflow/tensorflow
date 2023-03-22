@@ -881,7 +881,7 @@ PartialTensorShape PartialTensorShape::Concatenate(int64_t size) const {
 
 Status PartialTensorShape::ConcatenateWithStatus(
     int64_t size, PartialTensorShape* out) const {
-  out = const_cast<PartialTensorShape*>(this);
+  *out = *this;
   return out->AddDimWithStatus(size);
 }
 
@@ -901,7 +901,7 @@ Status PartialTensorShape::ConcatenateWithStatus(
     *out = PartialTensorShape();
     return OkStatus();
   }
-  out = const_cast<PartialTensorShape*>(this);
+  *out = *this;
   for (auto dim : shape) {
     Status s = out->AddDimWithStatus(dim.size);
     if (!s.ok()) return s;
@@ -929,7 +929,7 @@ Status PartialTensorShape::MergeWith(const PartialTensorShape& shape,
 
   if (result == this) {
     return errors::Internal(
-        "PartialTensorShape::MergeWith: cannot merge shape with itself");
+        "PartialTensorShape::MergeWith: Cannot output result to itself");
   }
 
   result->Clear();

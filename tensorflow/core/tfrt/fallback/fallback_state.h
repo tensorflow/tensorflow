@@ -45,7 +45,10 @@ class FallbackState {
   // Create GraphExecutionState from the `graph_def`. The result will contain a
   // preprocessed graph with runtime information such as devices.
   StatusOr<std::unique_ptr<GraphExecutionState>> CreateGraphExecutionState(
-      GraphDef graph_def) const;
+      GraphDef graph_def, bool run_placer = true) const;
+
+  // Adds `func_def` to the function library.
+  Status AddFunctionDef(const FunctionDef &func_def);
 
   const SessionOptions &session_options() const { return session_options_; }
 

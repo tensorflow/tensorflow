@@ -93,6 +93,17 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
+  def testBfloat16GPU(self):
+    with test_util.use_gpu():
+      p1 = np.random.rand(2, 3).astype(dtypes.bfloat16.as_numpy_dtype)
+      p2 = np.random.rand(2, 3).astype(dtypes.bfloat16.as_numpy_dtype)
+      x1 = constant_op.constant(p1)
+      x2 = constant_op.constant(p2)
+      c = array_ops.concat([x1, x2], 0)
+      result = self.evaluate(c)
+    self.assertAllEqual(result[:2, :], p1)
+    self.assertAllEqual(result[2:, :], p2)
+
   def testRefType(self):
     with test_util.use_gpu():
       p1 = np.random.rand(4, 4).astype("f")

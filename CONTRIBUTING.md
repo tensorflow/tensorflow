@@ -40,7 +40,7 @@ approved. - Note: As a friendly reminder we may reach out to you if the PR is
 awaiting your response for more than 2 weeks.
 
 **4. Approved** - Once the PR is approved, it gets `kokoro:force-run` label
-applied and it initiates CI/CD tests. - We can't move forward if theses tests
+applied and it initiates CI/CD tests. - We can't move forward if these tests
 fail. - In such situations, we may request you to make further changes to your
 PR for the tests to pass. - Once the tests pass, we now bring all the code in
 the internal code base, using a job called "copybara".
@@ -137,13 +137,12 @@ TensorFlow coding style.
 
 Include a license at the top of new files.
 
-* [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
-* [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
-* [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
-* [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
-* [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_sanity.sh#L2)
-* [HTML license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/tf-backend.html#L2)
-* [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
+*   [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
+*   [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
+*   [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
+*   [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
+*   [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_build.sh#L2)
+*   [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
 
 Bazel BUILD files also need to include a license section, e.g.,
 [BUILD example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/BUILD#L61).
@@ -185,10 +184,10 @@ top level tensorflow directory.
 
 #### Coding style for other languages
 
-* [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
-* [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
-* [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
-* [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
+*   [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
+*   [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
+*   [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html)
+*   [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
 
 #### Running sanity check
 
@@ -232,7 +231,6 @@ There are two ways to run TensorFlow unit tests.
 
     ```bash
     export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
-
     export flags="--config=opt --config=cuda -k"
     ```
 
@@ -245,7 +243,7 @@ There are two ways to run TensorFlow unit tests.
     For a single component e.g. softmax op:
 
     ```bash
-    bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
+    bazel test ${flags} tensorflow/python/kernel_tests/nn_ops:softmax_op_test
     ```
 
     For a single/parameterized test e.g. `test_capture_variables` in

@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -400,7 +401,6 @@ py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
@@ -408,6 +408,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//third_party/py/numpy",
     ],
@@ -466,6 +467,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
@@ -480,6 +482,7 @@ py_library(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )
@@ -568,11 +571,12 @@ cuda_py_test(
         ":debug_utils",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
     ],
 )
 

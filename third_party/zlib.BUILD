@@ -33,7 +33,7 @@ cc_library(
     ],
     hdrs = ["zlib.h"],
     copts = select({
-        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow/tsl:windows": [],
         "//conditions:default": [
             "-Wno-shift-negative-value",
             "-DZ_HAVE_UNISTD_H",

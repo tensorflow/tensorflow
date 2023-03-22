@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
+#include <algorithm>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -27,7 +29,9 @@ namespace hlo_query {
 bool IsCollectiveCommunicationOp(HloOpcode op) {
   return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
          op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
-         op == HloOpcode::kReduceScatter;
+         op == HloOpcode::kReduceScatter || op == HloOpcode::kAllReduceStart ||
+         op == HloOpcode::kAllGatherStart ||
+         op == HloOpcode::kCollectivePermuteStart;
 }
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {

@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -33,25 +33,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
 namespace tensorflow {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
-
-bool IsSessionInitializer(mlir::func::FuncOp op) {
-  auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
-      op->getParentOfType<mlir::ModuleOp>());
-  if (!session_initializer_op) return false;
-
-  for (auto sym_ref : session_initializer_op.getInitializers()) {
-    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
-      return true;
-  }
-
-  return false;
-}
 
 mlir::TF::ResourceHandle GetResourceHandle(mlir::Operation *op) {
   llvm::StringRef device;
@@ -78,7 +69,7 @@ struct HoistInfo {
 
   // Mapping from the old values produced by hoisted ops before hoisting to the
   // new values after hoisting.
-  mlir::BlockAndValueMapping value_mapping;
+  mlir::IRMapping value_mapping;
 
   // `hoisted_values` is to keep all values that are produced by hoisted ops
   // but used by non-hoisted ops. These values will be replaced by results of
@@ -155,7 +146,7 @@ void ReplaceHoistedValues(
           builder.getStrArrayAttr(container_arr));
       get_resource_op->setAttr("device", builder.getStringAttr(device));
 
-      auto new_values = get_resource_op.results();
+      auto new_values = get_resource_op.getResults();
       for (auto iter : llvm::zip(old_values, new_values)) {
         auto old_value = std::get<0>(iter);
         auto new_value = std::get<1>(iter);
@@ -165,10 +156,11 @@ void ReplaceHoistedValues(
   }
 }
 
-bool OnlyHasReadEffect(mlir::Operation *op) {
+bool OnlyHasReadOrNoEffect(mlir::Operation *op) {
   auto interface = llvm::dyn_cast<mlir::MemoryEffectOpInterface>(op);
   if (!interface) return false;
-  return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
+  return interface.onlyHasEffect<mlir::MemoryEffects::Read>() ||
+         interface.hasNoEffect();
 }
 
 bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
@@ -177,7 +169,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
 
   // Non-side-effecting ops can be hoisted.
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return true;
+  if (mlir::isMemoryEffectFree(op)) return true;
 
   // ResourceHandle ops can be hoisted.
   if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op))
@@ -186,7 +178,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   // If it is ReadVariableOp and the variable is readonly, it can be hoisted.
   if (auto read_var_op = llvm::dyn_cast<mlir::TF::ReadVariableOp>(op)) {
     if (auto var_handle_op = llvm::dyn_cast_or_null<mlir::TF::VarHandleOp>(
-            read_var_op.resource().getDefiningOp())) {
+            read_var_op.getResource().getDefiningOp())) {
       if (read_only_vars.count(GetResourceHandle(var_handle_op)) > 0)
         return true;
     }
@@ -197,7 +189,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   if (auto lookup_table_size_op =
           llvm::dyn_cast<mlir::TF::LookupTableSizeV2Op>(op)) {
     if (auto hash_table_op = llvm::dyn_cast_or_null<mlir::TF::HashTableV2Op>(
-            lookup_table_size_op.table_handle().getDefiningOp())) {
+            lookup_table_size_op.getTableHandle().getDefiningOp())) {
       if (read_only_vars.count(GetResourceHandle(hash_table_op)) > 0)
         return true;
     }
@@ -332,7 +324,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     const auto &vars = iter.second;
     if (std::all_of(vars.begin(), vars.end(), [](mlir::Operation *op) {
           for (auto *user : op->getUsers()) {
-            if (!OnlyHasReadEffect(user)) return false;
+            if (!OnlyHasReadOrNoEffect(user)) return false;
           }
           return true;
         })) {
@@ -458,7 +450,7 @@ class LowerTFSavedModelPass
     mlir::OpBuilder builder(&getContext());
     auto resource_id = builder.getStringAttr("tf.resource_name");
     auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
-    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
+    auto path_id = builder.getStringAttr(kTfSavedModelIndexPathAttr);
 
     module.walk([resource_id, bound_id, path_id,
                  &builder](mlir::Operation *op) mutable {
@@ -478,7 +470,7 @@ class LowerTFSavedModelPass
           func_op.removeResultAttr(i, path_id);
         }
         if (auto exported_names = func_op->getAttrOfType<mlir::ArrayAttr>(
-                "tf_saved_model.exported_names")) {
+                kTfSavedModelExportedNamesAttr)) {
           bool is_session_initializer = IsSessionInitializer(func_op);
 
           // Create a function for each exported name.
@@ -486,7 +478,7 @@ class LowerTFSavedModelPass
           // TODO(b/148477882): TFRT dialect should have similar concepts of
           // exported names so that a function can be referenced by multiple
           // exported names.
-          func_op->removeAttr("tf_saved_model.exported_names");
+          func_op->removeAttr(kTfSavedModelExportedNamesAttr);
           for (auto exported_name : exported_names) {
             auto exported_func_op = func_op.clone();
             exported_func_op.setName(exported_name.cast<mlir::StringAttr>());
@@ -565,14 +557,14 @@ class ConvertReferenceVariableToResourceVariablePass
 mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     mlir::TF::VariableV2Op var_op) {
   auto tensor_type =
-      mlir::TF::DropRefType(var_op.ref().getType()).cast<mlir::TensorType>();
+      mlir::TF::DropRefType(var_op.getRef().getType()).cast<mlir::TensorType>();
 
   llvm::SmallVector<mlir::TF::IdentityOp, 4> identity_ops;
   llvm::SmallVector<mlir::TF::AssignOp, 4> assign_ops;
   llvm::SmallVector<std::pair<mlir::Operation *, unsigned>, 4>
       side_effect_free_ops;
 
-  for (mlir::OpOperand &use : var_op.ref().getUses()) {
+  for (mlir::OpOperand &use : var_op.getRef().getUses()) {
     mlir::Operation *user = use.getOwner();
 
     if (auto identity = llvm::dyn_cast<mlir::TF::IdentityOp>(user)) {
@@ -581,11 +573,11 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     } else if (auto assign = llvm::dyn_cast<mlir::TF::AssignOp>(user)) {
       // Conservatively we only allow the case that the output of this tf.Assign
       // is not consumed by any other ops.
-      if (assign.output_ref().use_empty()) {
+      if (assign.getOutputRef().use_empty()) {
         assign_ops.push_back(assign);
         continue;
       }
-    } else if (mlir::MemoryEffectOpInterface::hasNoEffect(user)) {
+    } else if (mlir::isMemoryEffectFree(user)) {
       side_effect_free_ops.push_back({user, use.getOperandNumber()});
       continue;
     }
@@ -603,7 +595,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
           {}, mlir::TF::ResourceType::get(
                   llvm::ArrayRef<mlir::TensorType>{tensor_type},
                   builder.getContext())),
-      var_op.container(), var_op.shared_name());
+      var_op.getContainer(), var_op.getSharedName());
 
   for (auto op : identity_ops) {
     // Set insertion point to this identity_op so that the side-effect
@@ -611,7 +603,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     builder.setInsertionPoint(op);
     auto read_var_op = builder.create<mlir::TF::ReadVariableOp>(
         op.getLoc(), op.getType(), var_handle_op);
-    op.replaceAllUsesWith(read_var_op.value());
+    op.replaceAllUsesWith(read_var_op.getValue());
     op.erase();
   }
 
@@ -620,7 +612,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // dominating the newly created op.
     builder.setInsertionPoint(op);
     builder.create<mlir::TF::AssignVariableOp>(op.getLoc(), var_handle_op,
-                                               op.value());
+                                               op.getValue());
     op.erase();
   }
 
@@ -633,7 +625,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // Create a new read variable op, so that the side-effects are preserved.
     auto read_var_op = builder.create<mlir::TF::ReadVariableOp>(
         op->getLoc(), tensor_type, var_handle_op);
-    op->setOperand(idx, read_var_op.value());
+    op->setOperand(idx, read_var_op.getValue());
   }
 
   return mlir::success();
@@ -650,7 +642,7 @@ void ConvertReferenceVariableToResourceVariablePass::runOnOperation() {
 
   // First, we collect all variables' corresponding tf.VariableV2 ops.
   module.walk([&ref_vars](mlir::TF::VariableV2Op op) {
-    if (op.shared_name().empty()) {
+    if (op.getSharedName().empty()) {
       op.emitOpError()
           << "unable to convert reference variables with empty shared_names.";
       return mlir::WalkResult::interrupt();
@@ -661,7 +653,7 @@ void ConvertReferenceVariableToResourceVariablePass::runOnOperation() {
       device = device_attr.getValue();
     }
 
-    ref_vars[{device, op.container(), op.shared_name()}].push_back(op);
+    ref_vars[{device, op.getContainer(), op.getSharedName()}].push_back(op);
 
     return mlir::WalkResult::advance();
   });

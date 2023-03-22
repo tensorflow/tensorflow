@@ -19,7 +19,15 @@ limitations under the License.
 #include <utility>
 
 #ifdef NCCL_ENABLED
+#if TENSORFLOW_USE_ROCM
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif
+#else
 #include "third_party/nccl/nccl.h"
+#endif
 #endif  // NCCL_ENABLED
 
 #include "tensorflow/compiler/xla/util.h"

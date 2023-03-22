@@ -18,7 +18,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <functional>
+#include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
@@ -26,42 +27,21 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <type_traits>
-#include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
 namespace array_impl {
 
-// conjunction
-//
-// Performs a compile-time logical AND operation on the passed types (which
-// must have  `::value` members convertible to `bool`. Short-circuits if it
-// encounters any `false` members (and does not compare the `::value` members
-// of any remaining arguments).
-//
-// This metafunction is designed to be a drop-in replacement for the C++17
-// `std::conjunction` metafunction.
-template <typename... Ts>
-struct conjunction;
-
-template <typename T, typename... Ts>
-struct conjunction<T, Ts...>
-    : std::conditional<T::value, conjunction<Ts...>, T>::type {};
-
-template <>
-struct conjunction<> : std::true_type {};
-
 // A type trait that is valid when all elements in a parameter pack are of
 // integral type. Not using an alias template to work around MSVC 14.00 bug.
 template <typename... Ts>
-struct pack_is_integral : conjunction<std::is_integral<Ts>...> {};
+struct pack_is_integral : std::conjunction<std::is_integral<Ts>...> {};
 
 // Compares three same-sized vectors elementwise. For each item in `values`,
 // returns false if any of values[i] is outside the half-open range [starts[i],
@@ -87,29 +67,37 @@ class Array {
   // nests, especially if one or more dimensions is one as the compiler just
   // sees a single-element integer initializer. These typedefs allow casting
   // explicitly with less typing.
-  using InitializerList1D = std::initializer_list<T>;
-  using InitializerList2D = std::initializer_list<InitializerList1D>;
-  using InitializerList3D = std::initializer_list<InitializerList2D>;
-  using InitializerList4D = std::initializer_list<InitializerList3D>;
+  template <typename D>
+  using InitializerList1D = std::initializer_list<D>;
+  template <typename D>
+  using InitializerList2D = std::initializer_list<InitializerList1D<D>>;
+  template <typename D>
+  using InitializerList3D = std::initializer_list<InitializerList2D<D>>;
+  template <typename D>
+  using InitializerList4D = std::initializer_list<InitializerList3D<D>>;
 
   using value_type = T;
 
   // Creates a new array with the specified dimensions and initialized elements.
   explicit Array(absl::Span<const int64_t> sizes)
-      : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]()) {}
+      : sizes_(sizes.size()),
+        values_(calculate_elements(sizes), default_init_t{}) {
+    std::memcpy(sizes_.data.get(), sizes.data(),
+                sizeof(int64_t) * sizes.size());
+  }
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.
   Array(absl::Span<const int64_t> sizes, T value)
-      : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]) {
+      : Array(sizes, no_default_init_t{}) {
     Fill(value);
   }
 
   // Creates a 2D array from the given nested initializer list. The outer
   // initializer list is the first dimension, the inner is the second dimension.
   // For example, {{1, 2, 3}, {4, 5, 6}} results in an array with n1=2 and n2=3.
-  Array(InitializerList2D values)
-      : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
+  Array(InitializerList2D<T> values)
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
@@ -129,7 +117,7 @@ class Array {
                               std::is_same<T, double>::value) &&
                              std::is_same<T2, float>::value>::type>
   Array(std::initializer_list<T2> values)
-      : Array(ToInt64Vector({values.size()})) {
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       values_[idx] = static_cast<T>(it1);
@@ -138,16 +126,18 @@ class Array {
     CHECK(idx == num_elements());
   }
 
-  // Creates a 2D array of a floating-point type (half, bfloat16, float,
+  // Creates a 2D array of a floating-point type (float8, half, bfloat16, float,
   // or double) from an initializer list of float values.
   template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
+                             (std::is_same<T, tsl::float8_e4m3fn>::value ||
+                              std::is_same<T, tsl::float8_e5m2>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, bfloat16>::value ||
                               std::is_same<T, float>::value ||
                               std::is_same<T, double>::value) &&
                              std::is_same<T2, float>::value>::type>
   Array(std::initializer_list<std::initializer_list<T2>> values)
-      : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
@@ -160,9 +150,8 @@ class Array {
 
   // Creates a 3D array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
-  Array(InitializerList3D values)
-      : Array(ToInt64Vector({values.size(), values.begin()->size(),
-                             values.begin()->begin()->size()})) {
+  Array(InitializerList3D<T> values)
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
@@ -185,8 +174,7 @@ class Array {
                              std::is_same<T2, float>::value>::type>
   Array(std::initializer_list<std::initializer_list<std::initializer_list<T2>>>
             values)
-      : Array(ToInt64Vector({values.size(), values.begin()->size(),
-                             values.begin()->begin()->size()})) {
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
@@ -201,10 +189,8 @@ class Array {
 
   // Creates a 4D array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
-  Array(InitializerList4D values)
-      : Array(ToInt64Vector({values.size(), values.begin()->size(),
-                             values.begin()->begin()->size(),
-                             values.begin()->begin()->begin()->size()})) {
+  Array(InitializerList4D<T> values)
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
@@ -230,9 +216,7 @@ class Array {
   Array(std::initializer_list<
         std::initializer_list<std::initializer_list<std::initializer_list<T2>>>>
             values)
-      : Array(ToInt64Vector({values.size(), values.begin()->size(),
-                             values.begin()->begin()->size(),
-                             values.begin()->begin()->begin()->size()})) {
+      : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
@@ -248,43 +232,29 @@ class Array {
   }
 
   Array(const Array<T>& other)
-      : sizes_(other.sizes_), values_(new T[num_elements()]) {
-    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
-              &values_[0]);
-  }
+      : sizes_(other.sizes_.Clone()), values_(other.values_.Clone()) {}
 
-  Array(Array<T>&& other)
-      : sizes_(std::move(other.sizes_)), values_(std::move(other.values_)) {}
+  Array(Array<T>&& other) = default;
 
   Array<T>& operator=(const Array<T>& other) {
-    sizes_ = other.sizes_;
-    values_.reset(new T[num_elements()]);
-    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
-              &values_[0]);
+    sizes_ = other.sizes_.Clone();
+    values_ = other.values_.Clone();
     return *this;
   }
 
-  Array<T>& operator=(Array<T>&& other) {
-    sizes_ = std::move(other.sizes_);
-    values_ = std::move(other.values_);
-    return *this;
-  }
+  Array<T>& operator=(Array<T>&& other) = default;
 
   // Fills the array with the specified value.
-  void Fill(const T& value) {
-    std::fill(&values_[0], &values_[0] + num_elements(), value);
-  }
+  void Fill(const T& value) { std::fill(begin(), end(), value); }
 
   // Fills the array with sequentially increasing values.
-  void FillIota(const T& value) {
-    std::iota(&values_[0], &values_[0] + num_elements(), value);
-  }
+  void FillIota(const T& value) { std::iota(begin(), end(), value); }
 
   // Fills the array with a repeating sequence:
   //   [value, value + 1, ..., value + length - 1, value, ... ]
   void FillRepeatedIota(const T& value, int64_t length) {
     for (int64_t i = 0; i < num_elements(); i += length) {
-      std::iota(&values_[i], &values_[std::min(i + length, num_elements())],
+      std::iota(begin() + i, begin() + std::min(i + length, num_elements()),
                 value);
     }
   }
@@ -340,33 +310,34 @@ class Array {
   void SetValues(const Container& container) {
     CHECK_EQ(std::distance(std::begin(container), std::end(container)),
              num_elements());
-    std::copy(std::begin(container), std::end(container), &values_[0]);
+    std::copy(std::begin(container), std::end(container), begin());
   }
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array.
-  void Each(std::function<void(absl::Span<const int64_t>, T*)> f) {
-    std::vector<int64_t> index(sizes_.size());
+  void Each(absl::FunctionRef<void(absl::Span<const int64_t>, T*)> f) {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      f(index, &values_[i]);
+      f(index.span(), &values_[i]);
     }
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
-  void Each(std::function<void(absl::Span<const int64_t>, T)> f) const {
-    std::vector<int64_t> index(sizes_.size());
+  void Each(absl::FunctionRef<void(absl::Span<const int64_t>, T)> f) const {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      f(index, values_[i]);
+      f(index.span(), values_[i]);
     }
   }
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // OkStatus().
-  Status EachStatus(std::function<Status(absl::Span<const int64_t>, T*)> f) {
-    std::vector<int64_t> index(sizes_.size());
+  Status EachStatus(
+      absl::FunctionRef<Status(absl::Span<const int64_t>, T*)> f) {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index, &values_[i]);
+      Status s = f(index.span(), &values_[i]);
       if (!s.ok()) {
         return s;
       }
@@ -378,10 +349,10 @@ class Array {
   // If a callback returns a non-OK status, returns that else returns
   // OkStatus().
   Status EachStatus(
-      std::function<Status(absl::Span<const int64_t>, T)> f) const {
-    std::vector<int64_t> index(sizes_.size());
+      absl::FunctionRef<Status(absl::Span<const int64_t>, T)> f) const {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index, values_[i]);
+      Status s = f(index.span(), values_[i]);
       if (!s.ok()) {
         return s;
       }
@@ -399,6 +370,7 @@ class Array {
   typename std::enable_if<array_impl::pack_is_integral<Dims...>::value,
                           const T&>::type
   operator()(Dims... dims) const {
+    CHECK_EQ(sizeof...(dims), num_dimensions());
     // We are using a std::array to avoid having to allocate memory in this
     // function for performance reasons.
     std::array<int64_t, sizeof...(dims)> indexes{
@@ -412,23 +384,21 @@ class Array {
   typename std::enable_if<array_impl::pack_is_integral<Dims...>::value,
                           T&>::type
   operator()(Dims... dims) {
-    // We are using a std::array to avoid having to allocate memory in this
-    // function for performance reasons.
-    std::array<int64_t, sizeof...(dims)> indexes{
-        {static_cast<int64_t>(dims)...}};
-    return values_[calculate_index(indexes)];
+    return const_cast<T&>(const_cast<const Array*>(this)->operator()(
+        std::forward<Dims>(dims)...));
   }
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
   const T& operator()(absl::Span<const int64_t> indexes) const {
+    CHECK_EQ(indexes.size(), num_dimensions());
     return values_[calculate_index(indexes)];
   }
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
   T& operator()(absl::Span<const int64_t> indexes) {
-    return values_[calculate_index(indexes)];
+    return const_cast<T&>(const_cast<const Array*>(this)->operator()(indexes));
   }
 
   // Low-level accessor for stuff like memcmp, handle with care. Returns pointer
@@ -437,37 +407,33 @@ class Array {
     // TODO(tberghammer): Get rid of the const_cast. Currently it is needed
     // because the Eigen backend needs a non-const pointers even for reading
     // from the array.
-    return const_cast<Array*>(this)->values_.get();
+    return const_cast<Array*>(this)->values_.data.get();
   }
 
   // Returns the size of the dimension at the given index.
   int64_t dim(int64_t n) const {
-    const int64_t sizes_size = sizes_.size();
-    CHECK(n < sizes_size);
+    DCHECK_LT(n, sizes_.size);
     return sizes_[n];
   }
 
   // Returns a vector containing the dimensions of the array.
-  const std::vector<int64_t>& dimensions() const { return sizes_; }
+  absl::Span<const int64_t> dimensions() const { return sizes_.span(); }
 
-  int64_t num_dimensions() const { return sizes_.size(); }
+  int64_t num_dimensions() const { return sizes_.size; }
 
   // Returns the total number of elements in the array.
-  int64_t num_elements() const {
-    return std::accumulate(sizes_.begin(), sizes_.end(), 1LL,
-                           std::multiplies<int64_t>());
-  }
+  int64_t num_elements() const { return values_.size; }
 
-  const T* begin() const { return &values_[0]; }
-  T* begin() { return &values_[0]; }
-  const T* end() const { return &values_[num_elements()]; }
-  T* end() { return &values_[num_elements()]; }
+  const T* begin() const { return values_.data.get(); }
+  T* begin() { return values_.data.get(); }
+  const T* end() const { return values_.data.get() + num_elements(); }
+  T* end() { return values_.data.get() + num_elements(); }
 
   bool operator==(const Array<T>& other) const {
-    if (sizes_.size() != other.sizes_.size()) {
+    if (sizes_.size != other.sizes_.size) {
       return false;
     }
-    for (int64_t i = 0, end = sizes_.size(); i < end; ++i) {
+    for (int64_t i = 0, end = sizes_.size; i < end; ++i) {
       if (sizes_[i] != other.sizes_[i]) {
         return false;
       }
@@ -488,16 +454,16 @@ class Array {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
-    std::vector<int64_t> sizes;
-    std::transform(starts.begin(), starts.end(), limits.begin(),
-                   std::back_inserter(sizes),
-                   [](int64_t start, int64_t limit) { return limit - start; });
-    Array<T> result(sizes);
+    OwnedBuffer<int64_t> sizes(starts.size());
+    for (int64_t i = 0; i < starts.size(); ++i) {
+      sizes[i] = limits[i] - starts[i];
+    }
+    Array<T> result(sizes.span());
 
-    std::vector<int64_t> index(sizes_.size());
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     int64_t slice_i = 0;
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      if (array_impl::all_inside_range(index, starts, limits)) {
+      if (array_impl::all_inside_range(index.span(), starts, limits)) {
         // Even though the bounds of result are different to our bounds, we're
         // iterating in the same order. So we can simply write successive linear
         // indices instead of recalculating a multi-dimensional index.
@@ -511,14 +477,15 @@ class Array {
   void UpdateSlice(const Array<T>& from,
                    absl::Span<const int64_t> start_indices) {
     CHECK_EQ(from.num_dimensions(), num_dimensions());
-    std::vector<int64_t> limit_indices;
-    std::transform(start_indices.begin(), start_indices.end(),
-                   from.dimensions().begin(), std::back_inserter(limit_indices),
-                   std::plus<int64_t>{});
-    std::vector<int64_t> index(sizes_.size());
+    OwnedBuffer<int64_t> limit_indices(start_indices.size());
+    for (int64_t i = 0; i < start_indices.size(); ++i) {
+      limit_indices[i] = from.sizes_[i] + start_indices[i];
+    }
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     int64_t from_i = 0;
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      if (array_impl::all_inside_range(index, start_indices, limit_indices)) {
+      if (array_impl::all_inside_range(index.span(), start_indices,
+                                       limit_indices)) {
         // Even though the bounds of from are different to our bounds, we're
         // iterating in the same order. So we can simply write successive linear
         // indices instead of recalculating a multi-dimensional index.
@@ -530,86 +497,167 @@ class Array {
   // Performs an in-place reshape, modifying the dimensions but not the
   // underlying data.
   void Reshape(absl::Span<const int64_t> new_dimensions) {
-    int64_t old_num_elements = num_elements();
-    sizes_ = std::vector<int64_t>(new_dimensions.begin(), new_dimensions.end());
-    CHECK_EQ(num_elements(), old_num_elements);
+    const int64_t new_num_elements =
+        std::accumulate(new_dimensions.begin(), new_dimensions.end(), 1LL,
+                        std::multiplies<int64_t>());
+    CHECK_EQ(new_num_elements, num_elements());
+    if (sizes_.size != new_dimensions.size()) {
+      sizes_ = OwnedBuffer<int64_t>(new_dimensions.size());
+    }
+    std::memcpy(sizes_.data.get(), new_dimensions.data(),
+                new_dimensions.size() * sizeof(int64_t));
   }
 
   // Performs a permutation of dimensions.
   void TransposeDimensions(absl::Span<const int64_t> permutation) {
-    std::vector<int64_t> permuted_dims(permutation.size());
+    CHECK_EQ(sizes_.size, permutation.size());
+    OwnedBuffer<int64_t> permuted_dims(permutation.size());
     for (int64_t i = 0; i < permutation.size(); ++i) {
       permuted_dims[i] = this->dim(permutation[i]);
     }
-    Array<T> permuted(permuted_dims);
-    std::vector<int64_t> src_indices(sizes_.size(), -1);
+    Array<T> permuted(permuted_dims.span());
+    OwnedBuffer<int64_t> src_indices(sizes_.size, -1);
     permuted.Each([&](absl::Span<const int64_t> indices, T* value) {
-      CHECK_EQ(sizes_.size(), indices.size());
-      for (int64_t i = 0; i < sizes_.size(); ++i) {
+      for (int64_t i = 0; i < sizes_.size; ++i) {
         src_indices[permutation[i]] = indices[i];
       }
-      *value = (*this)(src_indices);
+      *value = (*this)(src_indices.span());
     });
     *this = std::move(permuted);
   }
 
   template <typename H>
   friend H AbslHashValue(H h, const Array& array) {
-    return H::combine(std::move(h), absl::MakeSpan(array.begin(), array.end()),
-                      array.dimensions());
+    return H::combine(std::move(h), array.values_.span(), array.dimensions());
   }
 
   // Returns a string representation of the array suitable for debugging.
   std::string ToString() const {
-    if (sizes_.empty()) {
+    if (sizes_.size == 0) {
       return "";
     }
-    std::vector<std::string> pieces;
-    std::vector<int64_t> index(sizes_.size());
+    std::string result;
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     do {
       // Emit leading spaces and opening square brackets
-      if (index.back() == 0) {
-        for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
+      if (index[index.size - 1] == 0) {
+        for (int64_t i = sizes_.size - 1; i >= 0; --i) {
           if (i == 0 || index[i - 1] != 0) {
-            for (int64_t j = 0; j < sizes_.size(); ++j) {
-              pieces.push_back(j < i ? " " : "[");
+            for (int64_t j = 0; j < sizes_.size; ++j) {
+              absl::StrAppend(&result, j < i ? " " : "[");
             }
             break;
           }
         }
       }
-      int value_index = calculate_index(index);
+      int value_index = calculate_index(index.span());
       if (value_index < num_elements()) {
-        pieces.push_back(absl::StrCat(values_[value_index]));
+        absl::StrAppend(&result, values_[value_index]);
       }
 
       // Emit comma if it isn't the last element
-      if (index.back() < sizes_.back() - 1) {
-        pieces.push_back(", ");
+      if (index[index.size - 1] < sizes_[sizes_.size - 1] - 1) {
+        absl::StrAppend(&result, ", ");
       }
 
       // Emit closing square brackets
-      for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
+      for (int64_t i = sizes_.size - 1; i >= 0; --i) {
         if (index[i] < sizes_[i] - 1) {
           break;
         }
-        pieces.push_back("]");
+        absl::StrAppend(&result, "]");
         if (i != 0 && index[i - 1] < sizes_[i - 1] - 1) {
-          pieces.push_back(",\n");
+          absl::StrAppend(&result, ",\n");
         }
       }
     } while (next_index(&index));
-    return absl::StrJoin(pieces, "");
+    return result;
   }
 
  private:
-  // Converts an initializer_list of type U to a vector of type int64_t. Used by
-  // the initializer list based constructors to convert the size type into
-  // int64_t to be passed to the size based constructor.
-  template <typename U>
-  static std::vector<int64_t> ToInt64Vector(
-      const std::initializer_list<U>& data) {
-    return std::vector<int64_t>(data.begin(), data.end());
+  struct default_init_t {};
+  struct no_default_init_t {};
+  // A fixed sized dynamically allocated buffer to replace std::vector usage. It
+  // saves one word for storing capacity which is always the same as size and it
+  // provides the ability to leave its elements uninitialized if the element
+  // type is trivially destructible.
+  template <typename D>
+  struct OwnedBuffer {
+    explicit OwnedBuffer(size_t size)
+        : data(std::is_trivially_destructible_v<D> ? new D[size]
+                                                   : new D[size]()),
+          size(size) {}
+    explicit OwnedBuffer(size_t size, default_init_t)
+        : data(new D[size]()), size(size) {}
+
+    explicit OwnedBuffer(size_t size, D init) : OwnedBuffer(size) {
+      std::fill(data.get(), data.get() + size, init);
+    }
+
+    OwnedBuffer(OwnedBuffer&& other)
+        : data(std::move(other.data)), size(other.size) {
+      other.size = 0;
+    }
+
+    OwnedBuffer& operator=(OwnedBuffer&& other) {
+      data = std::move(other.data);
+      size = other.size;
+      other.size = 0;
+      return *this;
+    }
+
+    OwnedBuffer Clone() const {
+      OwnedBuffer clone(size);
+      std::memcpy(clone.data.get(), data.get(), size * sizeof(D));
+      return clone;
+    }
+
+    D& operator[](int64_t index) { return data[index]; }
+    const D& operator[](int64_t index) const { return data[index]; }
+
+    absl::Span<const D> span() const {
+      return absl::MakeConstSpan(data.get(), size);
+    }
+
+    std::unique_ptr<D[]> data;
+    size_t size;
+  };
+
+  explicit Array(absl::Span<const int64_t> sizes, no_default_init_t)
+      : sizes_(sizes.size()), values_(calculate_elements(sizes)) {
+    std::memcpy(sizes_.data.get(), sizes.data(),
+                sizeof(int64_t) * sizes.size());
+  }
+
+  // Extracts the dimensions of an initializer_list to an array type int64_t.
+  // Used by the initializer list based constructors to convert the size type
+  // into int64_t to be passed to the size based constructor.
+  template <typename D>
+  static std::array<int64_t, 1> ToInt64Array(const InitializerList1D<D>& data) {
+    return std::array<int64_t, 1>{static_cast<int64_t>(data.size())};
+  }
+
+  template <typename D>
+  static std::array<int64_t, 2> ToInt64Array(const InitializerList2D<D>& data) {
+    return std::array<int64_t, 2>{static_cast<int64_t>(data.size()),
+                                  static_cast<int64_t>(data.begin()->size())};
+  }
+
+  template <typename D>
+  static std::array<int64_t, 3> ToInt64Array(const InitializerList3D<D>& data) {
+    return std::array<int64_t, 3>{
+        static_cast<int64_t>(data.size()),
+        static_cast<int64_t>(data.begin()->size()),
+        static_cast<int64_t>(data.begin()->begin()->size())};
+  }
+
+  template <typename D>
+  static std::array<int64_t, 4> ToInt64Array(const InitializerList4D<D>& data) {
+    return std::array<int64_t, 4>{
+        static_cast<int64_t>(data.size()),
+        static_cast<int64_t>(data.begin()->size()),
+        static_cast<int64_t>(data.begin()->begin()->size()),
+        static_cast<int64_t>(data.begin()->begin()->begin()->size())};
   }
 
   // Returns the linear index from the list of per-dimension indexes. Function
@@ -617,11 +665,10 @@ class Array {
   // memory allocation.
   // The returned value may be larger than or equal to the number of elements if
   // the indexes exceed the array's corresponding dimension size.
-  template <typename U>
-  int64_t calculate_index(const U& indexes) const {
-    CHECK_EQ(sizes_.size(), indexes.size());
+  int64_t calculate_index(absl::Span<const int64_t> indexes) const {
+    DCHECK_EQ(sizes_.size, indexes.size());
     int64_t index = 0;
-    for (int64_t i = 0; i < sizes_.size(); ++i) {
+    for (int64_t i = 0; i < sizes_.size; ++i) {
       index *= sizes_[i];
       index += indexes[i];
     }
@@ -630,9 +677,9 @@ class Array {
 
   // Advances the specified set of indexes and returns true if we haven't
   // wrapped around (i.e. result isn't {0, 0, ...}).
-  bool next_index(std::vector<int64_t>* index) const {
-    CHECK_EQ(index->size(), sizes_.size());
-    for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
+  bool next_index(OwnedBuffer<int64_t>* index) const {
+    DCHECK_EQ(index->size, sizes_.size);
+    for (int64_t i = sizes_.size - 1; i >= 0; --i) {
       (*index)[i]++;
       if ((*index)[i] < sizes_[i]) {
         return true;
@@ -642,15 +689,20 @@ class Array {
     return false;
   }
 
-  std::vector<int64_t> sizes_;
-  std::unique_ptr<T[]> values_;
+  static size_t calculate_elements(absl::Span<const int64_t> sizes) {
+    return std::accumulate(sizes.begin(), sizes.end(), 1LL,
+                           std::multiplies<int64_t>());
+  }
+
+  OwnedBuffer<int64_t> sizes_;
+  OwnedBuffer<T> values_;
 };
 
 // Specialization of FillRandom() method for complex64 type. Uses real part of
 // the stddev parameter as the standard deviation value.
 template <>
-void Array<complex64>::FillRandom(const complex64& stddev, const double mean,
-                                  const int seed);
+void Array<complex64>::FillRandom(const complex64& stddev, double mean,
+                                  int seed);
 
 }  // namespace xla
 

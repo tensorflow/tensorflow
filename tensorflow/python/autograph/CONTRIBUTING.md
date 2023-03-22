@@ -42,8 +42,11 @@ See the [AutoGraph style guide](STYLE_GUIDE.md).
 
 ## Unit tests
 
-Please include unit tests when contributing new features ([example here](converters/continue_statements_test.py)), as they help to a) prove that your code works correctly, and b) guard against future breaking
-changes to lower the maintenance cost.
+Please include unit tests when contributing new features
+([example here](converters/continue_statements_test.py)), as they help to prove
+that your code works correctly, and guard against future breaking changes to
+lower the maintenance cost.
+
 It's also helpful to check that any
 changes you propose do not break existing unit tests. You can run tests using the command,
 

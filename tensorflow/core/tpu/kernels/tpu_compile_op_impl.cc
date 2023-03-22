@@ -15,15 +15,15 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_impl.h"
 
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 Status TpuCompileOpKernelImpl::Compile(
     const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
@@ -32,9 +31,9 @@ namespace tensorflow {
 
 using mlir::MLIRContext;
 
-static stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-Import(const GraphOptimizationPassOptions& options, const Graph& graph,
-       MLIRContext* context) {
+static tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import(
+    const GraphOptimizationPassOptions& options, const Graph& graph,
+    MLIRContext* context) {
   // TODO(fengliuai): get debug info at runtime.
   GraphDebugInfo debug_info;
   GraphImportConfig specs;

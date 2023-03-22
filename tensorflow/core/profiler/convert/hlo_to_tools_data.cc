@@ -42,8 +42,7 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   static constexpr int kMemorySpaceColor = 0;         // HBM
 
   auto result_or = ConvertHloProtoToPreprocessResult(
-      hlo_proto, kSmallBufferSize,
-      GetHeapSimulatorTraceId(hlo_proto, kMemorySpaceColor), kMemorySpaceColor);
+      hlo_proto, kSmallBufferSize, kMemorySpaceColor);
   if (!result_or.ok()) {
     return errors::Internal(
         "Failed to convert HLO proto to memory viewer result: ",

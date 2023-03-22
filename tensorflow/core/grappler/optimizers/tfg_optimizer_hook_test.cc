@@ -98,7 +98,7 @@ TEST(TFGOptimizerTest, TestCustomPipelineName) {
         std::make_unique<mlir::tfg::TestPass>());
   });
   EXPECT_EQ(optimizer.name(),
-            "tfg_optimizer{tfg.graph(grappler-hook-test-pass)}");
+            "tfg_optimizer{any(tfg.graph(grappler-hook-test-pass))}");
 }
 
 TEST(TFGOptimizerTest, TestImportErrorReturnsAborted) {

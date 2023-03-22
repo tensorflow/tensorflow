@@ -722,8 +722,13 @@ TEST_F(ExtendGraphTest, ExtendGraph) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
-                          tensorflow::tfrt_stub::FallbackState::Create({}, {}));
+  SessionOptions session_options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  session_options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(session_options, {}));
 
   TfrtGraphExecutionState::Options options;
   options.run_placer_grappler_on_functions = false;

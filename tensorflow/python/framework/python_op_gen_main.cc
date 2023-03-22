@@ -13,32 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/framework/python_op_gen.h"
-
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/python/framework/op_reg_offset.pb.h"
+#include "tensorflow/python/framework/python_op_gen.h"
+#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
+#include "tensorflow/tsl/lib/io/random_inputstream.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace {
 
+constexpr char kUsage[] =
+    "This tool generates python wrapper for tensorflow ops.";
+
 Status ReadOpListFromFile(const string& filename,
                           std::vector<string>* op_list) {
   std::unique_ptr<RandomAccessFile> file;
-  TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename, &file));
+  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename, &file));
   std::unique_ptr<io::InputBuffer> input_buffer(
       new io::InputBuffer(file.get(), 256 << 10));
   string line_contents;
@@ -60,56 +75,43 @@ Status ReadOpListFromFile(const string& filename,
   return OkStatus();
 }
 
-// The argument parsing is deliberately simplistic to support our only
-// known use cases:
-//
-// 1. Read all op names from a file.
-// 2. Read all op names from the arg as a comma-delimited list.
-//
-// Expected command-line argument syntax:
-// ARG ::= '@' FILENAME
-//       |  OP_NAME [',' OP_NAME]*
-//       |  ''
-Status ParseOpListCommandLine(const char* arg, std::vector<string>* op_list) {
-  std::vector<string> op_names = str_util::Split(arg, ',');
-  if (op_names.size() == 1 && op_names[0].empty()) {
-    return OkStatus();
-  } else if (op_names.size() == 1 && op_names[0].substr(0, 1) == "@") {
-    const string filename = op_names[0].substr(1);
-    return tensorflow::ReadOpListFromFile(filename, op_list);
-  } else {
-    *op_list = std::move(op_names);
-  }
+Status ReadOpRegOffsetsFromFile(absl::string_view filename,
+                                OpRegOffsets* op_reg_offsets) {
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(
+      Env::Default()->NewRandomAccessFile(std::string(filename), &file));
+  io::RandomAccessInputStream input_stream(file.get());
+  io::BufferedInputStream in(&input_stream, 1 << 20);
+  string contents;
+  TF_RETURN_IF_ERROR(in.ReadAll(&contents));
+  op_reg_offsets->ParseFromString(contents);
   return OkStatus();
 }
 
-// Use the name of the current executable to infer the C++ source file
-// where the REGISTER_OP() call for the operator can be found.
-// Returns the name of the file.
-// Returns an empty string if the current executable's name does not
-// follow a known pattern.
-string InferSourceFileName(const char* argv_zero) {
-  StringPiece command_str = io::Basename(argv_zero);
-
-  // For built-in ops, the Bazel build creates a separate executable
-  // with the name gen_<op type>_ops_py_wrappers_cc containing the
-  // operators defined in <op type>_ops.cc
-  const char* kExecPrefix = "gen_";
-  const char* kExecSuffix = "_py_wrappers_cc";
-  if (absl::ConsumePrefix(&command_str, kExecPrefix) &&
-      str_util::EndsWith(command_str, kExecSuffix)) {
-    command_str.remove_suffix(strlen(kExecSuffix));
-    return strings::StrCat(command_str, ".cc");
-  } else {
-    return string("");
+std::vector<string> GetSourceFileListFromOpRegOffsets(
+    const OpRegOffsets& offsets) {
+  std::unordered_set<string> source_file_list;
+  for (const auto& offset : offsets.offsets()) {
+    source_file_list.insert(offset.filepath());
   }
+  return std::vector<string>(source_file_list.begin(), source_file_list.end());
 }
 
-void PrintAllPythonOps(const std::vector<string>& op_list,
-                       const std::vector<string>& api_def_dirs,
-                       const string& source_file_name,
-                       bool op_list_is_allowlist,
-                       const std::unordered_set<string> type_annotate_ops) {
+// Generates Python wapper functions for the registered ops given ApiDefs in
+// `api_def_dirs` and write the result to `out_path` or print to stdout if
+// `out_path` is empty.
+//
+// The ops in `hidden_op_list` will be private in python and the ops in
+// `op_allowlist` will be skipped.
+//
+// If `source_file_name` is not empty, a comment block will be generated
+// to show the source file name that the generated file is generated from.
+Status PrintAllPythonOps(absl::Span<const string> api_def_dirs,
+                         absl::Span<const string> source_file_list,
+                         const string& out_path,
+                         const OpRegOffsets& op_reg_offsets,
+                         absl::Span<const string> op_allowlist = {},
+                         absl::Span<const string> hidden_op_list = {}) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
 
@@ -119,68 +121,121 @@ void PrintAllPythonOps(const std::vector<string>& op_list,
 
     for (const auto& api_def_dir : api_def_dirs) {
       std::vector<string> api_files;
-      TF_CHECK_OK(env->GetMatchingPaths(io::JoinPath(api_def_dir, "*.pbtxt"),
-                                        &api_files));
-      TF_CHECK_OK(api_def_map.LoadFileList(env, api_files));
+      TF_RETURN_IF_ERROR(env->GetMatchingPaths(
+          io::JoinPath(api_def_dir, "*.pbtxt"), &api_files));
+      TF_RETURN_IF_ERROR(api_def_map.LoadFileList(env, api_files));
     }
     api_def_map.UpdateDocs();
   }
 
-  if (op_list_is_allowlist) {
-    std::unordered_set<string> allowlist(op_list.begin(), op_list.end());
-    OpList pruned_ops;
+  OpList pruned_ops;
+  if (!op_allowlist.empty()) {
+    std::unordered_set<string> allowlist(op_allowlist.begin(),
+                                         op_allowlist.end());
     for (const auto& op_def : ops.op()) {
       if (allowlist.find(op_def.name()) != allowlist.end()) {
         *pruned_ops.mutable_op()->Add() = op_def;
       }
     }
-    PrintPythonOps(pruned_ops, api_def_map, {}, source_file_name,
-                   type_annotate_ops);
   } else {
-    PrintPythonOps(ops, api_def_map, op_list, source_file_name,
-                   type_annotate_ops);
+    pruned_ops = ops;
   }
+
+  string result = GetPythonOps(pruned_ops, api_def_map, op_reg_offsets,
+                               hidden_op_list, source_file_list);
+
+  if (out_path.empty()) {
+    printf("%s", result.c_str());
+  } else {
+    std::unique_ptr<tensorflow::WritableFile> file;
+    TF_RETURN_IF_ERROR(
+        tensorflow::Env::Default()->NewWritableFile(out_path, &file));
+    TF_RETURN_IF_ERROR(file->Append(result));
+  }
+
+  return OkStatus();
 }
 
 }  // namespace
 }  // namespace tensorflow
 
 int main(int argc, char* argv[]) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
-
-  tensorflow::string source_file_name =
-      tensorflow::InferSourceFileName(argv[0]);
-
-  // Usage:
-  //   gen_main api_def_dir1,api_def_dir2,...
-  //       [ @FILENAME | OpName[,OpName]* ] [0 | 1]
-  if (argc < 2) {
+  std::string api_def_dirs_raw;
+  std::string op_allowlist_raw;
+  std::string op_allowlist_filename;
+  std::string hidden_op_list_raw;
+  std::string hidden_op_list_filename;
+  std::string op_reg_offset_filename;
+  std::string out_path;
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag(
+          "api_def_dirs", &api_def_dirs_raw,
+          "A comma separated directory list of where the api def files are."),
+      tsl::Flag("op_allowlist", &op_allowlist_raw,
+                "A comma separated list of allowed op names. All other ops "
+                "will be ignored. op_allowlist and op_allowlist_filename "
+                "cannot be set at the same time."),
+      tsl::Flag("op_allowlist_filename", &op_allowlist_filename,
+                "The name of the file that contains a list of allowed ops. "
+                "op_allowlist and op_allowlist_filename cannot be set at the "
+                "same time."),
+      tsl::Flag("hidden_op_list", &hidden_op_list_raw,
+                "A comma separated list of hidden op names. hidden_op_list and "
+                "hidden_op_list_filename cannot be set at the same time."),
+      tsl::Flag("hidden_op_list_filename", &hidden_op_list_filename,
+                "The name of the file that contains a list of hidden ops. "
+                "hidden_op_list and hidden_op_list_filename cannot be set at "
+                "the same time."),
+      tsl::Flag("op_reg_offset_filename", &op_reg_offset_filename,
+                "The name of the file that contains mapping between op names "
+                "and its location of op registration."),
+      tsl::Flag("out_path", &out_path,
+                "The destination of the output Python source. The result will "
+                "be printed into stdout if out_path is empty."),
+  };
+  const std::string kUsageString = absl::StrCat(
+      tensorflow::kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
+  const bool parse_result = tsl::Flags::Parse(&argc, argv, flag_list);
+  tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
+  if (!parse_result ||
+      (!op_allowlist_raw.empty() && !op_allowlist_filename.empty()) ||
+      (!hidden_op_list_raw.empty() && !hidden_op_list_filename.empty())) {
+    LOG(ERROR) << kUsageString;
     return -1;
   }
-  std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
-      argv[1], ",", tensorflow::str_util::SkipEmpty());
-
-  // Add op name here to generate type annotations for it
-  const std::unordered_set<tensorflow::string> type_annotate_ops{};
-
-  if (argc == 2) {
-    tensorflow::PrintAllPythonOps({}, api_def_dirs, source_file_name,
-                                  false /* op_list_is_allowlist */,
-                                  type_annotate_ops);
-  } else if (argc == 3) {
-    std::vector<tensorflow::string> hidden_ops;
-    TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &hidden_ops));
-    tensorflow::PrintAllPythonOps(hidden_ops, api_def_dirs, source_file_name,
-                                  false /* op_list_is_allowlist */,
-                                  type_annotate_ops);
-  } else if (argc == 4) {
-    std::vector<tensorflow::string> op_list;
-    TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &op_list));
-    tensorflow::PrintAllPythonOps(op_list, api_def_dirs, source_file_name,
-                                  tensorflow::string(argv[3]) == "1",
-                                  type_annotate_ops);
-  } else {
-    return -1;
+  std::vector<std::string> op_allowlist;
+  if (!op_allowlist_raw.empty()) {
+    op_allowlist =
+        tsl::str_util::Split(op_allowlist_raw, ',', tsl::str_util::SkipEmpty());
+  } else if (!op_allowlist_filename.empty()) {
+    TF_CHECK_OK(
+        tensorflow::ReadOpListFromFile(op_allowlist_filename, &op_allowlist));
   }
+
+  std::vector<std::string> hidden_op_list;
+  if (!hidden_op_list_raw.empty()) {
+    hidden_op_list = tsl::str_util::Split(hidden_op_list_raw, ',',
+                                          tsl::str_util::SkipEmpty());
+  } else if (!hidden_op_list_filename.empty()) {
+    TF_CHECK_OK(tensorflow::ReadOpListFromFile(hidden_op_list_filename,
+                                               &hidden_op_list));
+  }
+
+  tensorflow::OpRegOffsets op_reg_offsets;
+  if (!op_reg_offset_filename.empty()) {
+    TF_CHECK_OK(tensorflow::ReadOpRegOffsetsFromFile(op_reg_offset_filename,
+                                                     &op_reg_offsets));
+  }
+
+  std::vector<std::string> source_file_list =
+      tensorflow::GetSourceFileListFromOpRegOffsets(op_reg_offsets);
+
+  std::vector<std::string> api_def_dirs =
+      tsl::str_util::Split(api_def_dirs_raw, ",", tsl::str_util::SkipEmpty());
+
+  TF_CHECK_OK(tensorflow::PrintAllPythonOps(api_def_dirs, source_file_list,
+                                            out_path, op_reg_offsets,
+                                            op_allowlist, hidden_op_list));
+
   return 0;
 }
