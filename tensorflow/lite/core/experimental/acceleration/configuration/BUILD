@@ -40,7 +40,6 @@ cc_library(
 cc_test(
     name = "stable_delegate_registry_test",
     srcs = ["stable_delegate_registry_test.cc"],
-    tags = tf_gpu_tests_tags(),
     deps = [
         ":stable_delegate_registry",
         "@com_google_googletest//:gtest_main",
