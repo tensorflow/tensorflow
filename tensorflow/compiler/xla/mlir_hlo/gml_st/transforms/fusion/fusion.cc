@@ -22,6 +22,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
+#include "gml_st/utils/tensor_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -126,6 +127,107 @@ LogicalResult fuseTensorCast(PatternRewriter& rewriter, tensor::CastOp castOp,
   return success();
 }
 
+// TODO(vuson): maybe overload this function instead of templating it.
+// Fuse a reshape op being used by an extract_slice op (inside a loop) into the
+// loop by reversing the order of these two ops (and fixing their
+// operands/result accordingly). For example, fusing a tensor.collapse_shape:
+//
+//   %1 = tensor.collapse_shape %0 [[0], [1, 2]] :
+//            tensor<10x10x1xf32> into tensor<10x10xf32>
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %1[%a1, %a2] [1, 8] [1, 1] :
+//              tensor<10x10xf32> to tensor<1x?xf32>
+//
+// into
+//
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %0[%a1, %a2, 0] [1, 8, 1] [1, 1, 1] :
+//              tensor<10x10x1xf32> to tensor<1x?x1xf32>
+//     %1 = tensor.collapse_shape %3 [[0], [1, 2]] :
+//              tensor<1x?x1xf32> into tensor<1x?xf32>
+//
+// This also works for tensor.expand_shape instead of tensor.collapse_shape:
+//
+//   %1 = tensor.expand_shape %0 [[0], [1, 2]] :
+//            tensor<10x10xf32> into tensor<10x10x1xf32>
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %1[%a1, %a2, 0] [1, 8, 1] [1, 1, 1] :
+//              tensor<10x10x1xf32> to tensor<1x?x1xf32>
+//
+// into
+//
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %0[%a1, %a2] [1, 8] [1, 1] :
+//              tensor<10x10xf32> to tensor<1x?xf32>
+//     %1 = tensor.expand_shape %2 [[0], [1, 2]] :
+//              tensor<1x?xf32> into tensor<1x?x1xf32>
+template <typename TensorReshapeOp>
+LogicalResult fuseTensorReshape(PatternRewriter& rewriter,
+                                TensorReshapeOp reshapeOp,
+                                tensor::ExtractSliceOp sliceOp) {
+  if (!isDegenerateReshapeOp(reshapeOp)) return failure();
+
+  auto newSliceSrcType = reshapeOp.getSrcType();
+  llvm::ArrayRef<int64_t> newSliceSrcShape = newSliceSrcType.getShape();
+  auto newSliceRank = newSliceSrcType.getRank();
+  // If the source type of reshape op is a rank-0 tensor, there will be no
+  // extract_slice possible from that source value, let's bail out.
+  if (newSliceRank == 0) return failure();
+
+  auto one = rewriter.getIndexAttr(1);
+  auto zero = rewriter.getIndexAttr(0);
+  SmallVector<OpFoldResult> newOffsets(newSliceRank, zero);
+  SmallVector<OpFoldResult> newSizes(newSliceRank, one);
+  SmallVector<OpFoldResult> newStrides(newSliceRank, one);
+
+  llvm::ArrayRef<int64_t> sliceSrcShape = sliceOp.getSourceType().getShape();
+  auto reassociation = reshapeOp.getReassociationIndices();
+  constexpr bool isExpanding =
+      std::is_same<TensorReshapeOp, tensor::ExpandShapeOp>::value;
+  llvm::ArrayRef<int64_t> shape =
+      isExpanding ? sliceSrcShape : newSliceSrcShape;
+  // For each reassociation indices, a degenerate reshape op only has at most
+  // 1 non-unit-dimension. If there is none, it means the source shape already
+  // has some unit-dimensions (e.g. tensor<1x1x1xf32> collapsed into
+  // tensor<1xf32>)
+  assert(
+      static_cast<size_t>(
+          llvm::count_if(reassociation,
+                         [&](auto indices) {
+                           return llvm::count_if(indices, [&](int64_t idx) {
+                                    return shape[idx] != 1;
+                                  }) <= 1;
+                         })) == reassociation.size() &&
+      "Degenerate reshape op should only have at most 1 non-unit dimension for "
+      "each reassociation indices");
+  for (const auto& [enumIdx, indices] : llvm::enumerate(reassociation)) {
+    auto findIt =
+        llvm::find_if(indices, [&](int64_t idx) { return shape[idx] != 1; });
+    // No non-unit dimension, which means the source shape already has some
+    // unit-dimensions. The default values for offset/size/stride (0/1/1) should
+    // be usable. Skip updating offset/size/stride for this dimension.
+    if (findIt == indices.end()) continue;
+    auto newIdx = isExpanding ? enumIdx : *findIt;
+    auto idx = isExpanding ? *findIt : enumIdx;
+    newOffsets[newIdx] = sliceOp.getMixedOffsets()[idx];
+    newSizes[newIdx] = sliceOp.getMixedSizes()[idx];
+    newStrides[newIdx] = sliceOp.getMixedStrides()[idx];
+  }
+
+  RankedTensorType newSliceResultType =
+      tensor::ExtractSliceOp::inferCanonicalRankReducedResultType(
+          newSliceRank, newSliceSrcType, newOffsets, newSizes, newStrides);
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPointAfter(sliceOp);
+  auto newSlice = rewriter.create<tensor::ExtractSliceOp>(
+      sliceOp.getLoc(), newSliceResultType, reshapeOp.getSrc(), newOffsets,
+      newSizes, newStrides);
+
+  rewriter.replaceOpWithNewOp<TensorReshapeOp>(sliceOp, sliceOp.getResultType(),
+                                               newSlice, reassociation);
+  return success();
+}
+
 // Iterates over tensor::ExtractSliceOp inside the block, finds a suitable
 // candidate for fusion and fuses it. The fusion candidate should satisfy the
 // filter function and not have uses outside of the block. Fails if nothing
@@ -189,6 +291,22 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     if (auto extractSliceOp = dyn_cast<tensor::ExtractSliceOp>(candidateUser)) {
       if (auto castOp = dyn_cast<tensor::CastOp>(fusionCandidate)) {
         if (succeeded(fuseTensorCast(rewriter, castOp, extractSliceOp))) {
+          return success();
+        }
+        continue;
+      }
+      if (auto collapseShapeOp =
+              dyn_cast<tensor::CollapseShapeOp>(fusionCandidate)) {
+        if (succeeded(
+                fuseTensorReshape(rewriter, collapseShapeOp, extractSliceOp))) {
+          return success();
+        }
+        continue;
+      }
+      if (auto expandShapeOp =
+              dyn_cast<tensor::ExpandShapeOp>(fusionCandidate)) {
+        if (succeeded(
+                fuseTensorReshape(rewriter, expandShapeOp, extractSliceOp))) {
           return success();
         }
         continue;
