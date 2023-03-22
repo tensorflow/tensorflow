@@ -112,6 +112,7 @@ cc_library(
         ":small_constant_optimization",
         ":tensor_layout",
         ":tensor_with_layout",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",

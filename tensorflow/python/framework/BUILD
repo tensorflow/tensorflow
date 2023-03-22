@@ -754,6 +754,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
@@ -775,7 +776,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
@@ -840,6 +840,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
@@ -861,7 +862,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ] + if_static(
         extra_deps = [
             "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
@@ -912,9 +912,11 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
     srcs = ["python_api_dispatcher_wrapper.cc"],
-    hdrs = ["python_api_dispatcher.h"],
-    deps = [
+    hdrs = [
+        "python_api_dispatcher.h",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
+    ],
+    deps = [
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
@@ -965,6 +967,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
@@ -986,7 +989,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ] + if_static(
         extra_deps = [
             "//tensorflow/tsl/protobuf:coordination_service_proto_cc",

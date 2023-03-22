@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
@@ -51,6 +52,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
 
 #define RETURN_STATUS(status, code, message)   \
   {                                            \
@@ -190,9 +193,10 @@ class TensorWithLayoutTf
 
   // Given a single tensor, wraps it with a single device mesh and a single
   // device layout.
-  static std::unique_ptr<TensorWithLayoutTf> Wrap(
-      parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
-      const Layout& layout, TF_Status* status);
+  static std::unique_ptr<TensorWithLayoutTf> Wrap(TensorHandlePtr single_tensor,
+                                                  const Mesh& mesh,
+                                                  const Layout& layout,
+                                                  TF_Status* status);
 
   // Creates a dummy TensorWithLayoutTf without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayoutTf> Dummy(
@@ -253,8 +257,8 @@ class TensorWithLayoutTf
     const_value_node_ = std::make_unique<ConstValueNode>(const_value);
   }
 
-  TensorWithLayoutTf(parallel_device::TensorHandlePtr single_tensor,
-                     const Mesh& mesh, const Layout& layout,
+  TensorWithLayoutTf(TensorHandlePtr single_tensor, const Mesh& mesh,
+                     const Layout& layout,
                      const std::vector<int64_t>& local_shape,
                      std::optional<TF_DataType> dtype = std::nullopt,
                      std::optional<NodeDef> const_value = std::nullopt)
@@ -271,7 +275,7 @@ class TensorWithLayoutTf
   // Holds the tensor but not the underlying device. This is only used when the
   // `layout_` is a single device layout and the `mesh_` is a single device
   // mesh.
-  parallel_device::TensorHandlePtr single_tensor_;
+  TensorHandlePtr single_tensor_;
 
   Layout layout_;
 

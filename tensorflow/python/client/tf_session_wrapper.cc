@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/python_api.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -50,7 +51,7 @@ limitations under the License.
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace pybind11 {
 namespace detail {

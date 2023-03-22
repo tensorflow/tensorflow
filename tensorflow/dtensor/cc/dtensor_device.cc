@@ -846,9 +846,9 @@ namespace {
 
 // Verifies that all components have the same dtype and shape.
 // The component shape will be set upon success.
-void VerifyPackTensorShapeAndDtype(
-    std::vector<parallel_device::TensorHandlePtr>& components,
-    std::vector<int64_t>* component_shape, TF_Status* status) {
+void VerifyPackTensorShapeAndDtype(std::vector<TensorHandlePtr>& components,
+                                   std::vector<int64_t>* component_shape,
+                                   TF_Status* status) {
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
   auto size = TFE_TensorHandleNumDims(components[0].get(), status);
   if (TF_GetCode(status) != TF_OK) return;
@@ -957,7 +957,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    std::vector<parallel_device::TensorHandlePtr> components;
+    std::vector<TensorHandlePtr> components;
     components.reserve(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       TFE_TensorHandle* input = inputs[i];
@@ -1098,13 +1098,13 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
     auto local_devices = target_parallel_device->mesh_config().local_devices();
 
-    std::vector<parallel_device::TensorHandlePtr> indices_components;
-    std::vector<parallel_device::TensorHandlePtr> values_components;
-    std::vector<parallel_device::TensorHandlePtr> dense_shapes_components;
+    std::vector<TensorHandlePtr> indices_components;
+    std::vector<TensorHandlePtr> values_components;
+    std::vector<TensorHandlePtr> dense_shapes_components;
 
     // Just a nice trick to make code cleaner to pack each of indices, values,
     // shapes.
-    std::vector<std::vector<parallel_device::TensorHandlePtr>*> components{
+    std::vector<std::vector<TensorHandlePtr>*> components{
         &indices_components, &values_components, &dense_shapes_components};
     std::vector<TFE_TensorHandle**> input_vectors{indices, values, shapes};
     for (int component_index = 0; component_index < 3; ++component_index) {
@@ -1284,7 +1284,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
                        .c_str());
       return tensor_with_layouts;
     }
-    parallel_device::TensorHandlePtr single_tensor(copied_tensor);
+    TensorHandlePtr single_tensor(copied_tensor);
     std::unique_ptr<TensorWithLayoutTf> tensor_with_layout =
         TensorWithLayoutTf::Wrap(std::move(single_tensor), *single_device_mesh,
                                  *single_device_layout, status);

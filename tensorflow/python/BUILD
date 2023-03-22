@@ -3804,7 +3804,7 @@ pywrap_tensorflow_macro(
     ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
-        ":safe_ptr",
+        ":safe_pyobject_ptr",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
@@ -3819,6 +3819,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:logging",
         "//tensorflow/c:ops",
         "//tensorflow/c:python_api",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
@@ -3920,7 +3921,8 @@ filegroup(
     srcs = [
         ":ndarray_tensor",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
-        ":safe_ptr",  # checkpoint_reader
+        ":safe_pyobject_ptr",  # checkpoint_reader
+        "//tensorflow/c:safe_ptr",  # checkpoint_reader
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
@@ -4528,9 +4530,10 @@ tf_python_pybind_extension(
     srcs = ["mlir_wrapper.cc"],
     hdrs = [
         "//tensorflow/c:headers",
+        "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
@@ -4583,6 +4586,7 @@ cc_library(
         "//tensorflow/python/lib/core:basic_hdrs",
         "//tensorflow/tsl/python/lib/core:basic_hdrs",
         "//tensorflow/c:headers",
+        "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -4620,6 +4624,7 @@ tf_python_pybind_extension(
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
         "//tensorflow/c:headers",
+        "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -4629,7 +4634,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//tensorflow/python/util:util_hdr",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
@@ -4686,11 +4691,12 @@ tf_python_pybind_extension(
     name = "_pywrap_parallel_device",
     srcs = [
         "//tensorflow/c:headers",
+        "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager/parallel_device:headers",
         "//tensorflow/c/eager/parallel_device:sources",
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
@@ -4836,8 +4842,8 @@ alias(
 )
 
 alias(
-    name = "safe_ptr",
-    actual = "//tensorflow/python/lib/core:safe_ptr",
+    name = "safe_pyobject_ptr",
+    actual = "//tensorflow/python/lib/core:safe_pyobject_ptr",
 )
 
 alias(

@@ -13,16 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_SAFE_PTR_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_SAFE_PTR_H_
-
-#include <Python.h>
+#ifndef TENSORFLOW_C_SAFE_PTR_H_
+#define TENSORFLOW_C_SAFE_PTR_H_
 
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
 namespace detail {
@@ -68,4 +65,4 @@ Safe_TF_BufferPtr make_safe(TF_Buffer* buffer);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_SAFE_PTR_H_
+#endif  // TENSORFLOW_C_SAFE_PTR_H_

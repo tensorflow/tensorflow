@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_cancellation_manager_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 

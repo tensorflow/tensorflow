@@ -22,6 +22,29 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "safe_ptr_hdr",
+    srcs = ["safe_ptr.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+cc_library(
+    name = "safe_ptr",
+    srcs = [
+        "safe_ptr.cc",
+        "//tensorflow/c/eager:headers",
+    ],
+    hdrs = ["safe_ptr.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":c_api_internal",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Public targets
 

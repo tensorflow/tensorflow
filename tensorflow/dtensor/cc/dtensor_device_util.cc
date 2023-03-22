@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -70,7 +71,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
   absl::Span<const std::string> local_devices = target_mesh.local_devices();
   const int num_local_devices = local_devices.size();
 
-  std::vector<parallel_device::TensorHandlePtr> components;
+  std::vector<TensorHandlePtr> components;
   components.reserve(num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
     // Create tensor copies to each local devices specifie by `target_mesh`.
@@ -353,8 +354,8 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
-    parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
-    const Layout& layout, TF_Status* status) {
+    TensorHandlePtr single_tensor, const Mesh& mesh, const Layout& layout,
+    TF_Status* status) {
   if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "Input mesh or layout is not for single device.");

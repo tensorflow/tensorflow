@@ -38,6 +38,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -60,7 +61,6 @@ cc_library(
         "//tensorflow/python:pybind11_status",
         "//tensorflow/python/lib/core:py_seq_tensor",
         "//tensorflow/python/lib/core:py_util",
-        "//tensorflow/python/lib/core:safe_ptr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
@@ -222,13 +222,14 @@ tf_python_pybind_extension(
     srcs = ["custom_device_testutil.cc"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:custom_device_testutil",
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -252,7 +253,10 @@ py_test(
     deps = [
         ":context",
         ":custom_device_testutil",
-        ":test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
