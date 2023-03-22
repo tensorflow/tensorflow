@@ -30,6 +30,14 @@ jobs:
       - name: Awaiting response issues
         uses: actions/stale@v5
         with:
+          #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
+          exempt-issue-labels: 'override-stale'
+          #Comma separated list of labels that can be assigned to PRs to exclude them from being marked as stale
+          exempt-pr-labels: "override-stale"
+          #Limit the No. of API calls in one run default value is 30.
+          operations-per-run: 1000
+          #Prevent to remove stale label when PRs or issues are updated.
+          remove-stale-when-updated: false
           days-before-issue-stale: 7
           days-before-issue-close: 7
           stale-issue-label: "stale"
@@ -50,6 +58,14 @@ jobs:
       - name: Contribution issues
         uses: actions/stale@v5
         with:
+          #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
+          exempt-issue-labels: 'override-stale'
+          #Comma separated list of labels that can be assigned to PRs to exclude them from being marked as stale
+          exempt-pr-labels: "override-stale"
+          #Limit the No. of API calls in one run default value is 30.
+          operations-per-run: 1000
+          #Prevent to remove stale label when PRs or issues are updated.
+          remove-stale-when-updated: false
           days-before-issue-stale: 180
           days-before-issue-close: 365
           stale-issue-label: "stale"
