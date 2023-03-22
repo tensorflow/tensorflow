@@ -33,9 +33,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
+#include "pybind11/pybind11.h"             // from @pybind11
+#include "pybind11/pytypes.h"              // from @pybind11
+#include "pybind11/stl.h"                  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -90,27 +90,50 @@ namespace py = pybind11;
   return it == registry->registrations_.end() ? nullptr : it->second.get();
 }
 
-/*static*/ std::vector<py::object> GetSortedPyDictKeys(PyObject* py_dict) {
-  std::vector<py::object> keys;
-  keys.reserve(PyDict_Size(py_dict));
-  PyObject* key;
-  Py_ssize_t pos = 0;
-  while (PyDict_Next(py_dict, &pos, &key, /*value=*/nullptr)) {
-    keys.push_back(py::reinterpret_borrow<py::object>(key));
+/*static*/ std::vector<py::object> GetSortedPyDictKeys(py::dict dict) {
+  py::list keys = py::reinterpret_steal<py::list>(PyDict_Keys(dict.ptr()));
+  try {
+    // Sort directly if possible.
+    if (PyList_Sort(keys.ptr())) {
+      throw py::error_already_set();
+    }
+  } catch (py::error_already_set& ex1) {
+    if (ex1.matches(PyExc_TypeError)) {
+      // Found incomparable keys (e.g. `int` vs. `str`, or user-defined types).
+      try {
+        // Sort with
+        // `(f'{o.__class__.__module__}.{o.__class__.__qualname__}', o)`
+        auto sort_key_fn = py::cpp_function([](const py::object& o) {
+          py::handle t = o.get_type();
+          py::str qualname{absl::StrFormat(
+              "%s.%s",
+              static_cast<std::string>(
+                  py::getattr(t, "__module__").cast<py::str>()),
+              static_cast<std::string>(
+                  py::getattr(t, "__qualname__").cast<py::str>()))};
+          return py::make_tuple(qualname, o);
+        });
+        keys.attr("sort")(py::arg("key") = sort_key_fn);
+      } catch (py::error_already_set& ex2) {
+        if (ex2.matches(PyExc_TypeError)) {
+          // Found incomparable user-defined key types.
+          // The keys remain in the insertion order.
+          PyErr_Clear();
+        } else {
+          throw;
+        }
+      }
+    } else {
+      throw;
+    }
   }
 
-  int ret = 0;
-  std::stable_sort(keys.begin(), keys.end(),
-                   [&ret](const py::object& a, const py::object& b) {
-                     int cmp =
-                         PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
-                     if (cmp == -1) ret = -1;
-                     return cmp;
-                   });
-  if (ret == -1) {
-    throw py::error_already_set();
+  std::vector<py::object> keys_vec;
+  keys_vec.reserve(dict.size());
+  for (const auto& key : keys) {
+    keys_vec.emplace_back(key);
   }
-  return keys;
+  return keys_vec;
 }
 
 /*static*/ bool IsSortedPyDictKeysEqual(absl::Span<const py::object> lhs,
@@ -206,7 +229,7 @@ void PyTreeDef::FlattenIntoImpl(
       case PyTreeKind::kDict: {
         py::dict dict = py::reinterpret_borrow<py::dict>(handle);
 
-        std::vector<py::object> keys = GetSortedPyDictKeys(dict.ptr());
+        std::vector<py::object> keys = GetSortedPyDictKeys(dict);
         for (py::handle key : keys) {
           recurse(dict[key]);
         }
@@ -451,7 +474,7 @@ py::list PyTreeDef::FlattenUpTo(py::handle xs) const {
               absl::StrFormat("Expected dict, got %s.", py::repr(object)));
         }
         py::dict dict = py::reinterpret_borrow<py::dict>(object);
-        std::vector<py::object> keys = GetSortedPyDictKeys(dict.ptr());
+        std::vector<py::object> keys = GetSortedPyDictKeys(dict);
         if (!IsSortedPyDictKeysEqual(keys, node.sorted_dict_keys)) {
           // Convert to a py::list for py::repr to avoid having to stringify a
           // vector. This is error path so it is fine to pay conversion cost.
