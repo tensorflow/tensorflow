@@ -3722,9 +3722,9 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnSoftmaxFwdTensor(
 
   // Create output tensor of the divide op.
   cudnnBackendTensorReordering_t tensor_ordering =
-      use_dropout
-          ? cudnnBackendTensorReordering_t::CUDNN_TENSOR_REORDERING_F16x16
-          : CUDNN_TENSOR_REORDERING_NONE;
+      use_dropout ? cudnn_frontend::cudnnBackendTensorReordering_t::
+                        CUDNN_TENSOR_REORDERING_F16x16
+                  : CUDNN_TENSOR_REORDERING_NONE;
   TF_ASSIGN_OR_RETURN(
       auto divide_output_tensor,
       CreateCudnnTensor(dims, strides, 'd', dtype, 1, -1,
