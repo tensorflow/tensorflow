@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstdlib>
 #include <functional>
 #include <initializer_list>
 #include <limits>
@@ -493,6 +494,15 @@ class SingleOpModel {
                                           const std::vector<float>& data) {
     std::vector<int8_t> q = QuantizeTensor(index, data);
     PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
+  }
+
+  void SignedSymmetricQuantizeAndPopulate4Bit(int index,
+                                              const std::vector<float>& data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    t->type = kTfLiteInt4;
+    std::vector<int8_t> q =
+        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
+    PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
   }
 
   // Quantize and populate data for filter with per channel quantization.
