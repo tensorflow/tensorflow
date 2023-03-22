@@ -456,7 +456,6 @@ void eliminateCopies(Block& block) {
     op = dealloc->getNextNode();
     copy->erase();
     dealloc->erase();
-    if (alloc) alloc->erase();
   }
 }
 
