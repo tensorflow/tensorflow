@@ -16,7 +16,7 @@
 """Utilities for V2 control flow."""
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.data.util import structure  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import function_def_to_graph
@@ -284,8 +284,7 @@ def output_all_intermediates():
     return _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
   if in_defun():
     return False
-  if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-      _is_tpu_strategy(distribution_strategy_context.get_strategy())):
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
     return False
   if (context.context().function_call_options.executor_type ==
       "SINGLE_THREADED_EXECUTOR"):

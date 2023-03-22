@@ -87,10 +87,10 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:net",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:subprocess",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-        "//tensorflow/tsl/platform:path",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -99,8 +99,8 @@ cc_library(
     srcs = ["grpc_service.cc"],
     hdrs = ["grpc_service.h"],
     deps = [
-        ":xla_service_proto_cc",
         ":xla_service_cc_grpc_proto",
+        ":xla_service_proto_cc",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",

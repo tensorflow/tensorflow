@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -35,10 +34,11 @@ tsl::Status CPluginVariable::GetTensorInternal() {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Tensor* c_tensor =
       TF_GetTensorFromVariableInfo(var_info_, c_status_ptr.get());
+  TF_TensorPtr c_tensor_ptr(c_tensor);
   if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
     return StatusFromTF_Status(c_status_ptr.get());
   }
-  TF_RETURN_IF_ERROR(TF_TensorToTensor(c_tensor, &tensor_));
+  TF_RETURN_IF_ERROR(TF_TensorToTensor(c_tensor_ptr.get(), &tensor_));
   tensor_obtained_ = true;
   return tsl::OkStatus();
 }

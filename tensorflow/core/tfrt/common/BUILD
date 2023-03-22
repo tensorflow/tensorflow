@@ -1,5 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -79,6 +83,8 @@ cc_library(
     ],
 )
 
+# This target does not have depend on GPU and XLA compilation to have a small size.
+# Uses this target if you do not need to create a PJRT client.
 cc_library(
     name = "pjrt_util",
     srcs = [
@@ -95,6 +101,29 @@ cc_library(
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+    ],
+)
+
+# Uses this target if you need to create a PJRT client.
+# TODO(b/269308144): consider adding a PJRT client factory to separate the
+# dependenceis of different PJRT clients.
+cc_library(
+    name = "create_pjrt_client_util",
+    srcs = [
+        "create_pjrt_client_util.cc",
+    ],
+    hdrs = [
+        "create_pjrt_client_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":pjrt_util",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -121,8 +150,27 @@ tf_cc_test(
         ":global_state",
         ":pjrt_state",
         ":pjrt_util",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "create_pjrt_client_util_test",
+    srcs = ["create_pjrt_client_util_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":create_pjrt_client_util",
+        ":global_state",
+        ":pjrt_state",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/core:framework",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",

@@ -257,8 +257,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality) {
       return n;
     }
@@ -395,8 +395,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureInitialElementsCreated();
+        EnsureThreadsStarted();
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -515,7 +520,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       {
         mutex_lock l(*mu_);
-        DCHECK(!threads_initialized_);
+        DCHECK(!threads_started_);
         DCHECK(!initial_elements_created_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
@@ -547,6 +552,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       while (last_valid_current_element_ >= 0 &&
              !current_elements_[last_valid_current_element_]) {
         last_valid_current_element_--;
+      }
+      if (ctx->warm_start()) {
+        EnsureInitialElementsCreated();
+        EnsureThreadsStarted();
       }
       VLOG(2) << "Parallel interleave iterator restored";
       VLOG(4) << "State after restore:\n" << DebugString();
@@ -690,14 +699,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     void EnsureThreadsStarted() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!threads_initialized_) {
+      if (!threads_started_) {
         IncrementOutstandingThreads();
         thread_pool_->Schedule([this]() { WorkerManagerThread(); });
         if (ctx_->stats_aggregator()) {
           IncrementOutstandingThreads();
           thread_pool_->Schedule([this]() { StatsThread(); });
         }
-        threads_initialized_ = true;
+        threads_started_ = true;
       }
     }
 
@@ -1250,9 +1259,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       int64_t code_int;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(iterator_name, CodeKey(idx), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             iterator_name, ErrorMessageKey(idx), &error_message));
@@ -1554,8 +1563,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Identifies whether the current_elements_ vector has been initialized.
     bool initial_elements_created_ TF_GUARDED_BY(mu_) = false;
 
-    // Identifies whether the element threads have been initialized.
-    bool threads_initialized_ TF_GUARDED_BY(mu_) = false;
+    // Identifies whether the element threads have been started.
+    bool threads_started_ TF_GUARDED_BY(mu_) = false;
 
     // Used for coordination between the main thread, the manager threads, and
     // the worker threads.

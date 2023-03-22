@@ -71,7 +71,10 @@ void UpdateTpuTargetByBridgeCompatibility(
           tensorflow::TfrtDeviceInfraTarget::kTpurt;
     }
   }
-  if (!tfrt::CheckSpmdGraph(graph_def).ok()) {
+  // TODO(linchai): Once native support for SPMD models is fully rollout, remove
+  // the fallback logic.
+  if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
+        options.compile_options.tpu_fuse_ops)) {
     options.compile_options.device_target =
         tensorflow::TfrtDeviceInfraTarget::kTfFallback;
   }

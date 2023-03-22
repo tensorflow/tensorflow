@@ -127,7 +127,7 @@ cc_test(
         ":tflite_tensor_view",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -249,7 +249,7 @@ cc_test(
     deps = [
         ":test_util",
         "//tensorflow/lite:cc_api",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest_main",
     ],
 )

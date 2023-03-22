@@ -69,13 +69,14 @@ import weakref
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function.trace_type import default_types
+from tensorflow.core.function import trace_type
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import compiler_ir
+from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -83,7 +84,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -383,7 +385,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Capture the handle ahead of time in order to avoid querying the shape
         # of the handle which helps async execution performance
         graph.capture(self._handle, shape=())
-        control_flow_ops.cond(
+        cond.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
 
@@ -391,62 +393,6 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 JIT_COMPILE_FUNCTIONS = (
     os.getenv("TF_FUNCTION_JIT_COMPILE_DEFAULT", "false").lower()
     in ("true", "1"))
-
-RUN_FUNCTIONS_EAGERLY = False
-
-
-@tf_export("config.run_functions_eagerly")
-def run_functions_eagerly(run_eagerly):
-  """Enables / disables eager execution of `tf.function`s.
-
-  Calling `tf.config.run_functions_eagerly(True)` will make all
-  invocations of `tf.function` run eagerly instead of running as a traced graph
-  function. This can be useful for debugging. As the code now runs line-by-line,
-  you can add arbitrary `print` messages or pdb breakpoints to monitor the
-  inputs/outputs of each Tensorflow operation. However, you should avoid using
-  this for actual production because it significantly slows down execution.
-
-  >>> def my_func(a):
-  ...  print(f'a: {a}')
-  ...  return a + a
-  >>> a_fn = tf.function(my_func)
-
-  >>> # A side effect the first time the function is traced
-  >>> # In tracing time, `a` is printed with shape and dtype only
-  >>> a_fn(tf.constant(1))
-  a: Tensor("a:0", shape=(), dtype=int32)
-  <tf.Tensor: shape=(), dtype=int32, numpy=2>
-
-  >>> # `print` is a python side effect, it won't execute as the traced function
-  >>> # is called
-  >>> a_fn(tf.constant(2))
-  <tf.Tensor: shape=(), dtype=int32, numpy=4>
-
-  >>> # Now, switch to eager running
-  >>> tf.config.run_functions_eagerly(True)
-  >>> # The code now runs eagerly and the actual value of `a` is printed
-  >>> a_fn(tf.constant(2))
-  a: 2
-  <tf.Tensor: shape=(), dtype=int32, numpy=4>
-
-  >>> # Turn this back off
-  >>> tf.config.run_functions_eagerly(False)
-
-  Note: This flag has no effect on functions passed into tf.data transformations
-  as arguments. tf.data functions are never executed eagerly and are always
-  executed as a compiled Tensorflow Graph.
-
-  Args:
-    run_eagerly: Boolean. Whether to run functions eagerly.
-  """
-  global RUN_FUNCTIONS_EAGERLY
-  RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
-
-
-@tf_export("config.functions_run_eagerly")
-def functions_run_eagerly():
-  """Returns the value of the `run_functions_eagerly` setting."""
-  return RUN_FUNCTIONS_EAGERLY
 
 
 def _evaluate_var_is_initialized(variables):
@@ -460,7 +406,7 @@ def _evaluate_var_is_initialized(variables):
       # Stack all the var_is_initialized values into one tensor and interpret
       # the numpy value. This will reduce the number of RPCs between client and
       # worker in the remote case.
-      return array_ops.stack(var_is_initialized).numpy()
+      return array_ops_stack.stack(var_is_initialized).numpy()
     except errors.UnimplementedError:
       # Some devices do not support implicit copy-off to host. Fall back to
       # variable-by-variable processing.
@@ -472,7 +418,7 @@ def _evaluate_var_is_initialized(variables):
           # each replica and assert that they're identical.
           components = parallel_device.unpack(var_is_initialized[index])
           with ops.device(None):
-            components = array_ops.stack(components)
+            components = array_ops_stack.stack(components)
             all_initialized = math_ops.reduce_all(components).numpy()
             any_initialized = math_ops.reduce_any(components).numpy()
           if all_initialized != any_initialized:
@@ -861,7 +807,7 @@ class Function(core.GenericFunction, trackable.Trackable):
 
   @property
   def _run_functions_eagerly(self):
-    return RUN_FUNCTIONS_EAGERLY
+    return eager_function_run.RUN_FUNCTIONS_EAGERLY
 
   @traceback_utils.filter_traceback
   def __call__(self, *args, **kwds):
@@ -976,7 +922,7 @@ class Function(core.GenericFunction, trackable.Trackable):
                 v.handle))
       # We want to call no_variable_creation if possible because it avoids
       # recomputing potentially expensive initializers.
-      return control_flow_ops.cond(
+      return cond.cond(
           condition,
           lambda: self._no_variable_creation_fn(*inner_args, **inner_kwds),
           functools.partial(
@@ -1259,8 +1205,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
 
-  def __tf_tracing_type__(self, signature_context):
-    return default_types.Weakref(weakref.ref(self))
+  def __tf_tracing_type__(self, _):
+    return trace_type.Weakref(weakref.ref(self))
 
   def __get__(self, instance, owner):
     """Makes it possible to decorate instance methods."""

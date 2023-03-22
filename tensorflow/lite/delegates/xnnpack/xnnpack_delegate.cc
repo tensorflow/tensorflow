@@ -405,10 +405,11 @@ class VariableHolder {
                                                const TfLiteTensor* tensor,
                                                TfLiteContext* logging_context) {
     if (tensor->type != kTfLiteFloat32) {
-      TF_LITE_KERNEL_LOG(logging_context,
-                         "failed to associate variable tensors with tensor %d: "
-                         "only kTfLiteFloat32 variable tensors are supported",
-                         local_id);
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to associate variable tensors with tensor %d: "
+          "only kTfLiteFloat32 variable tensors are supported",
+          local_id);
       return kTfLiteError;
     }
     const uint32_t global_id = GetGlobalId(local_id);
@@ -420,19 +421,19 @@ class VariableHolder {
       // Not inserted.
       if (it.first->second.type != tensor->type) {
         // Make sure that existing type matches.
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "mismatch between existing type of "
-                           "variable tensor id %d: expected %d, got %d",
-                           local_id, tensor->type, it.first->second.type);
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "mismatch between existing type of "
+                                 "variable tensor id %d: expected %d, got %d",
+                                 local_id, tensor->type, it.first->second.type);
         return kTfLiteError;
       }
       auto const& dims = it.first->second.dims;
       for (size_t i = 0; i < dims.size(); i++) {
         if (dims[i] != tensor->dims->data[i]) {
-          TF_LITE_KERNEL_LOG(logging_context,
-                             "mismatch between dimension %d of "
-                             "variable tensor id %d: expected %d, got %d",
-                             i, local_id, dims[i], tensor->dims->data[i]);
+          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                   "mismatch between dimension %d of "
+                                   "variable tensor id %d: expected %d, got %d",
+                                   i, local_id, dims[i], tensor->dims->data[i]);
           return kTfLiteError;
         }
       }
@@ -573,6 +574,8 @@ class Delegate {
     }
 #endif
   }
+
+  TfLiteXNNPackDelegateOptions options() const { return options_; }
 
  private:
   TfLiteDelegate delegate_ = {
@@ -2409,6 +2412,9 @@ class Subgraph {
                             node, context->tensors, sub_params,
                             xnnpack_tensors);
       }
+      case kTfLiteBuiltinTanh:
+        return VisitTanhNode(subgraph, delegate, logging_context, node_index,
+                             node, context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinTranspose: {
         return VisitTransposeNode(subgraph, delegate, logging_context,
                                   node_index, node, context->tensors,
@@ -4970,6 +4976,42 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus VisitTanhNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_tanh(
+          subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate TANH node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitTransposeNode(
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
@@ -6022,6 +6064,11 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 
   options.handle_variable_ops = false;
   return options;
+}
+
+TfLiteXNNPackDelegateOptions GetOptions(const void* delegate_data) {
+  return static_cast<const tflite::xnnpack::Delegate*>(delegate_data)
+      ->options();
 }
 
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(

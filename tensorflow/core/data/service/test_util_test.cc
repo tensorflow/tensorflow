@@ -168,9 +168,7 @@ TEST(TestUtilTest, ChooseFromDatasets) {
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
   EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
               IsOkAndHolds(ElementsAre("a", "b", "c", "a", "b", "c", "a", "b",
-                                       "c", "a", "b", "c", "a", "b", "c", "a",
-                                       "b", "c", "a", "b", "c", "a", "b", "c",
-                                       "a", "b", "c", "a", "b", "c")));
+                                       "c", "a", "b", "c", "a", "b", "c")));
 }
 
 }  // namespace

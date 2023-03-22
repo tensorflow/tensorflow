@@ -25,7 +25,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -455,6 +457,40 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           hash_key=2,
           out_values_type=dtypes.string,
           out_row_splits_type=dtypes.int64))
+
+  def testRaggedCrossInvalidValue(self):
+    # Test case in GitHub isseu 59114.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError), 'Invalid RaggedTensor'
+    ):
+      ragged_values_0_tensor = ops.convert_to_tensor(np.ones([3], dtype=str))
+      ragged_values_0 = array_ops.identity(ragged_values_0_tensor)
+      ragged_values = [
+          ragged_values_0,
+      ]
+      ragged_row_splits_0_tensor = random_ops.random_uniform(
+          [4], minval=-256, maxval=257, dtype=dtypes.int64
+      )
+      ragged_row_splits_0 = array_ops.identity(ragged_row_splits_0_tensor)
+      ragged_row_splits = [
+          ragged_row_splits_0,
+      ]
+      self.evaluate(
+          gen_ragged_array_ops.RaggedCross(
+              ragged_values=ragged_values,
+              ragged_row_splits=ragged_row_splits,
+              sparse_indices=[],
+              sparse_values=[],
+              sparse_shape=[],
+              dense_inputs=[],
+              input_order='R',
+              hashed_output=False,
+              num_buckets=0,
+              hash_key=956888297470,
+              out_values_type=7,
+              out_row_splits_type=9,
+          )
+      )
 
 
 if __name__ == '__main__':

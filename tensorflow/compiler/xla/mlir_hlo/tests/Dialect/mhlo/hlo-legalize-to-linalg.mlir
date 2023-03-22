@@ -1957,6 +1957,15 @@ func.func @iota_f32() -> tensor<7x10xf32> {
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
 
+// CHECK-PRIMITIVE-LABEL: func @iota_f32
+// CHECK-PRIMITIVE: %[[EMPTY:.*]] = tensor.empty()
+// CHECK-PRIMITIVE: linalg.map outs(%[[EMPTY]] : tensor<7x10xf32>
+// CHECK-PRIMITIVE-SAME: {someattr}
+// CHECK-PRIMITIVE:        %[[INDEX:.*]] = linalg.index 1
+// CHECK-PRIMITIVE-NEXT:   %[[INT_CAST:.*]] = arith.index_cast %[[INDEX]] : index to i64
+// CHECK-PRIMITIVE-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i64 to f32
+// CHECK-PRIMITIVE-NEXT:   linalg.yield %[[FLOAT_CAST]]
+
 // -----
 
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
@@ -3019,6 +3028,24 @@ func.func @map_mixed(%arg0: tensor<?xf32>,
 // CHECK: linalg.generic
 
 // CHECK-PRIMITIVE-LABEL: @map_mixed
+// CHECK-PRIMITIVE: linalg.map
+
+// -----
+
+func.func @map_one_arg(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.map"(%arg0) ({
+  ^bb0(%arg2: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg2 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+  : (tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @map_one_arg
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @map_one_arg
 // CHECK-PRIMITIVE: linalg.map
 
 // -----
@@ -5941,4 +5968,163 @@ func.func @normal_convolution_with_zero_sized_dimension_in_output(%arg0: tensor<
     {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
     : (tensor<3x9x0x2xi16>, tensor<4x5x2x2xi16>) -> tensor<3x9x0x2xi16>
   return %0 : tensor<3x9x0x2xi16>
+}
+
+// -----
+
+// CHECK: #[[MAP0:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1 * 2 + d4, d2 * 2 + d5, d3)>
+// CHECK: #[[MAP1:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d4, d5)>
+// CHECK: #[[MAP2:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3)>
+// CHECK: #[[MAP3:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d3, d5)>
+// CHECK: #[[MAP4:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
+
+// CHECK-LABEL: func.func @select_and_scatter
+
+// CHECK-DAG: %[[C2:.+]] = arith.constant 2 : index
+// CHECK-DAG: %[[CN1:.+]] = arith.constant -1 : i32
+// CHECK: %[[EMPTY_VAL:.+]] = tensor.empty() : tensor<2x4x4x1xf32>
+// CHECK: %[[EMPTY_IDX:.+]] = tensor.empty() : tensor<2x4x4x1xi32>
+// CHECK: %[[FILL_IDX:.+]] = linalg.fill ins(%[[CN1]] : i32) outs(%[[EMPTY_IDX]] : tensor<2x4x4x1xi32>)
+// CHECK: %[[WINDOW:.+]] = tensor.empty() : tensor<2x2xf32>
+// CHECK: %[[SELECT_GENERIC:.+]]:2 = linalg.generic
+// CHECK-SAME: indexing_maps = [#map, #map1, #map2, #map2]
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel", "reduction", "reduction"]}
+// CHECK-SAME: ins(%arg0, %[[WINDOW]] : tensor<2x8x8x1xf32>, tensor<2x2xf32>)
+// CHECK-SAME: outs(%[[EMPTY_VAL]], %[[FILL_IDX]] : tensor<2x4x4x1xf32>, tensor<2x4x4x1xi32>)
+// CHECK: ^bb0(%[[VAL:.+]]: f32, %[[IDX:.+]]: f32, %[[OLD_VAL:.+]]: f32, %[[OLD_IDX:.+]]: i32):
+// CHECK:   %[[CMPF:.+]] = arith.cmpf oge, %[[VAL]], %[[OLD_VAL]] : f32
+// CHECK:   %[[CMPI:.+]] = arith.cmpi eq, %[[OLD_IDX]], %[[CN1]] : i32
+// CHECK:   %[[PRED:.+]] = arith.ori %[[CMPF]], %[[CMPI]] : i1
+// CHECK:   %[[IDX4:.+]] = linalg.index 4 : index
+// CHECK:   %[[IDX5:.+]] = linalg.index 5 : index
+// CHECK:   %[[MUL:.+]] = arith.muli %[[IDX4]], %[[C2]] : index
+// CHECK:   %[[ADD:.+]] = arith.addi %[[MUL]], %[[IDX5]] : index
+// CHECK:   %[[CAST:.+]] = arith.index_cast %[[ADD]] : index to i32
+// CHECK:   %[[SEL_IDX:.+]] = arith.select %[[PRED]], %[[CAST]], %[[OLD_IDX]] : i32
+// CHECK:   %[[SEL_VAL:.+]] = arith.select %[[PRED]], %[[VAL]], %[[OLD_VAL]] : f32
+// CHECK:   linalg.yield %[[SEL_VAL]], %[[SEL_IDX]] : f32, i32
+
+// CHECK: %[[SCATTER_EMPTY:.+]] = tensor.empty() : tensor<2x4x2x4x2x1xf32>
+// CHECK: %[[INIT:.+]] = tensor.extract %arg2[] : tensor<f32>
+// CHECK: %[[FILL:.+]] = linalg.fill ins(%[[INIT]] : f32) outs(%[[SCATTER_EMPTY]] : tensor<2x4x2x4x2x1xf32>) -> tensor<2x4x2x4x2x1xf32>
+// CHECK: %[[SCATTER:.+]] = linalg.generic
+// CHECK-SAME: indexing_maps = [#map3, #map3, #map4]
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]}
+// CHECK-SAME: ins(%[[SELECT_GENERIC]]#1, %arg1 : tensor<2x4x4x1xi32>, tensor<2x4x4x1xf32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<2x4x2x4x2x1xf32>)
+// CHECK: ^bb0(%[[IDX:.+]]: i32, %[[UPDATE:.+]]: f32, %[[OLD:.+]]: f32):
+// CHECK:   %[[NEW:.+]] = arith.addf %[[UPDATE]], %[[OLD]] : f32
+// CHECK:   %[[IDX2:.+]] = linalg.index 2 : index
+// CHECK:   %[[IDX4:.+]] = linalg.index 4 : index
+// CHECK:   %[[MUL:.+]] = arith.muli %[[IDX2]], %[[C2]] : index
+// CHECK:   %[[ADD:.+]] = arith.addi %[[MUL]], %[[IDX4]] : index
+// CHECK:   %[[CAST:.+]] = arith.index_cast %[[ADD]] : index to i32
+// CHECK:   %[[CMP:.+]] = arith.cmpi eq, %[[CAST]], %[[IDX]] : i32
+// CHECK:   %[[SELECT:.+]] = arith.select %[[CMP]], %[[NEW]], %[[OLD]] : f32
+// CHECK:   linalg.yield %[[SELECT]]
+
+// CHECK: %[[COLLAPSE:.+]] = tensor.collapse_shape %[[SCATTER]]
+// CHECK-NEXT{literal}: [[0], [1, 2], [3, 4], [5]]
+// CHECK: return %[[COLLAPSE]] : tensor<2x8x8x1xf32>
+
+func.func @select_and_scatter(%arg0 : tensor<2x8x8x1xf32>, %arg1 : tensor<2x4x4x1xf32>, %arg2 : tensor<f32>) -> tensor<2x8x8x1xf32> {
+  %0 = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+    %9 = mhlo.compare  GE, %arg3, %arg4,  FLOAT : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    mhlo.return %9 : tensor<i1>
+  }, {
+  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+    %9 = mhlo.add %arg3, %arg4 : tensor<f32>
+    mhlo.return %9 : tensor<f32>
+  }) {
+    padding = dense<0> : tensor<4x2xi64>,
+    window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+    window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>
+  } : (tensor<2x8x8x1xf32>, tensor<2x4x4x1xf32>, tensor<f32>) -> tensor<2x8x8x1xf32>
+
+  return %0 : tensor<2x8x8x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @compare_complex
+func.func @compare_complex(%a: tensor<complex<f32>>, %b: tensor<complex<f32>>)
+    -> tensor<i1> {
+// CHECK-NOT: mhlo.compare
+// CHECK:     tensor.empty()
+// CHECK:     linalg.generic
+// CHECK-NEXT:  ^bb0(%[[LHS:[^:]*]]: complex<f32>, %[[RHS:[^:]*]]: complex<f32>
+// CHECK-DAG:     %[[LHS_REAL:.*]] = complex.re %[[LHS]]
+// CHECK-DAG:     %[[RHS_REAL:.*]] = complex.re %[[RHS]]
+// CHECK-DAG:     %[[LHS_IMAG:.*]] = complex.im %[[LHS]]
+// CHECK-DAG:     %[[RHS_IMAG:.*]] = complex.im %[[RHS]]
+// CHECK-DAG:     %[[REAL_EQ:.*]] = arith.cmpf oeq, %[[LHS_REAL]], %[[RHS_REAL]]
+// CHECK-DAG:     %[[REAL_ORD:.*]] = arith.cmpf ogt, %[[LHS_REAL]], %[[RHS_REAL]]
+// CHECK-DAG:     %[[IMAG_ORD:.*]] = arith.cmpf ogt, %[[LHS_IMAG]], %[[RHS_IMAG]]
+// CHECK-DAG:     %[[OR_LHS:.*]] = arith.andi %[[REAL_EQ]], %[[IMAG_ORD]]
+// CHECK-DAG:     %[[COND:.*]] = arith.ori %[[OR_LHS]], %[[REAL_ORD]]
+// CHECK-NEXT:    linalg.yield %[[COND]] : i1
+  %result = "mhlo.compare" (%a, %b)
+      {comparison_direction = #mhlo<comparison_direction GT>}
+    : (tensor<complex<f32>>, tensor<complex<f32>>) -> tensor<i1>
+  func.return %result : tensor<i1>
+}
+
+// -----
+
+// CHECK-LABEL: func @max_complex
+func.func @max_complex(%a: tensor<complex<f32>>, %b: tensor<complex<f32>>)
+    -> tensor<complex<f32>> {
+// CHECK-NOT: mhlo.maximum
+// CHECK:     tensor.empty()
+// CHECK:     linalg.generic
+// CHECK-NEXT:  ^bb0(%[[LHS:[^:]*]]: complex<f32>, %[[RHS:[^:]*]]: complex<f32>
+// CHECK-DAG:     %[[LHS_REAL:.*]] = complex.re %[[LHS]]
+// CHECK-DAG:     %[[RHS_REAL:.*]] = complex.re %[[RHS]]
+// CHECK-DAG:     %[[LHS_IMAG:.*]] = complex.im %[[LHS]]
+// CHECK-DAG:     %[[RHS_IMAG:.*]] = complex.im %[[RHS]]
+// CHECK-DAG:     %[[REAL_EQ:.*]] = arith.cmpf oeq, %[[LHS_REAL]], %[[RHS_REAL]]
+// CHECK-DAG:     %[[REAL_ORD:.*]] = arith.cmpf oge, %[[LHS_REAL]], %[[RHS_REAL]]
+// CHECK-DAG:     %[[IMAG_ORD:.*]] = arith.cmpf oge, %[[LHS_IMAG]], %[[RHS_IMAG]]
+// CHECK-DAG:     %[[OR_LHS:.*]] = arith.andi %[[REAL_EQ]], %[[IMAG_ORD]]
+// CHECK-DAG:     %[[COND:.*]] = arith.ori %[[OR_LHS]], %[[REAL_ORD]]
+// CHECK:         %[[RESULT:.*]] = arith.select %[[COND]], %[[LHS]], %[[RHS]]
+// CHECK-NEXT:    linalg.yield %[[RESULT]] : complex<f32>
+  %result = mhlo.maximum %a, %b : tensor<complex<f32>>
+  func.return %result : tensor<complex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: func @min_complex
+func.func @min_complex(%a: tensor<complex<f32>>, %b: tensor<complex<f32>>)
+    -> tensor<complex<f32>> {
+// CHECK-NOT: mhlo.minimum
+// CHECK:     tensor.empty()
+// CHECK:     linalg.generic
+// CHECK-NEXT:  ^bb0(%[[LHS:[^:]*]]: complex<f32>, %[[RHS:[^:]*]]: complex<f32>
+// CHECK-DAG:     %[[LHS_REAL:.*]] = complex.re %[[LHS]]
+// CHECK-DAG:     %[[RHS_REAL:.*]] = complex.re %[[RHS]]
+// CHECK-DAG:     %[[LHS_IMAG:.*]] = complex.im %[[LHS]]
+// CHECK-DAG:     %[[RHS_IMAG:.*]] = complex.im %[[RHS]]
+// CHECK-DAG:     %[[REAL_EQ:.*]] = arith.cmpf oeq, %[[LHS_REAL]], %[[RHS_REAL]]
+// CHECK-DAG:     %[[REAL_ORD:.*]] = arith.cmpf ole, %[[LHS_REAL]], %[[RHS_REAL]]
+// CHECK-DAG:     %[[IMAG_ORD:.*]] = arith.cmpf ole, %[[LHS_IMAG]], %[[RHS_IMAG]]
+// CHECK-DAG:     %[[OR_LHS:.*]] = arith.andi %[[REAL_EQ]], %[[IMAG_ORD]]
+// CHECK-DAG:     %[[COND:.*]] = arith.ori %[[OR_LHS]], %[[REAL_ORD]]
+// CHECK:         %[[RESULT:.*]] = arith.select %[[COND]], %[[LHS]], %[[RHS]]
+// CHECK-NEXT:    linalg.yield %[[RESULT]] : complex<f32>
+  %result = mhlo.minimum %a, %b : tensor<complex<f32>>
+  func.return %result : tensor<complex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: @clamp_complex
+func.func @clamp_complex(%min: tensor<8xcomplex<f32>>,
+      %operand: tensor<8xcomplex<f32>>, %max: tensor<8xcomplex<f32>>)
+    -> tensor<8xcomplex<f32>> {
+// CHECK-NOT: mhlo.clamp
+  %result = mhlo.clamp %min, %operand, %max : tensor<8xcomplex<f32>>
+  func.return %result : tensor<8xcomplex<f32>>
 }

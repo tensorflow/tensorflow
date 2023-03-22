@@ -15,37 +15,25 @@ limitations under the License.
 
 package org.tensorflow.lite.benchmark.delegateperformance;
 
-import android.util.Log;
-import java.util.HashMap;
-import tflite.BenchmarkEvent;
-import tflite.BenchmarkEventType;
-import tflite.BenchmarkMetric;
-import tflite.BenchmarkResult;
-import tflite.TFLiteSettings;
-import tflite.proto.benchmark.DelegatePerformance;
-import tflite.proto.benchmark.DelegatePerformance.LatencyResults;
+import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
 
-/**
- * Helper class for store the data before and after benchmark runs. Parses both latency and accuracy
- * benchmark results.
- */
+import tflite.TFLiteSettings;
+
+/** Helper class for store the data before and after benchmark runs. */
 final class TfLiteSettingsListEntry {
   private static final String TAG = "TfLiteSettingsListEntry";
 
   private final TFLiteSettings tfliteSettings;
   private final String filePath;
+  private final boolean isTestTarget;
 
-  private HashMap<String, Float> metrics = new HashMap<>();
-
-  private TfLiteSettingsListEntry(TFLiteSettings tfliteSettings, String filePath) {
-    if (tfliteSettings == null) {
-      throw new NullPointerException("Null tfliteSettings");
-    }
+  private TfLiteSettingsListEntry(
+      TFLiteSettings tfliteSettings, String filePath, boolean isTestTarget) {
+    checkNotNull(tfliteSettings);
+    checkNotNull(filePath);
     this.tfliteSettings = tfliteSettings;
-    if (filePath == null) {
-      throw new NullPointerException("Null filePath");
-    }
     this.filePath = filePath;
+    this.isTestTarget = isTestTarget;
   }
 
   TFLiteSettings tfliteSettings() {
@@ -56,50 +44,8 @@ final class TfLiteSettingsListEntry {
     return filePath;
   }
 
-  void setLatencyResults(LatencyResults latencyResults) {
-    if (latencyResults.getEventType()
-        != DelegatePerformance.BenchmarkEventType.BENCHMARK_EVENT_TYPE_END) {
-      Log.i(TAG, "The latency benchmarking is not completed successfully for " + filePath);
-      return;
-    }
-    for (DelegatePerformance.BenchmarkMetric metric : latencyResults.getMetricsList()) {
-      if (metric != null) {
-        metrics.put(metric.getName(), metric.getValue());
-      }
-    }
-  }
-
-  void setAccuracyResults(BenchmarkEvent accuracyEvent) {
-    if (accuracyEvent == null
-        || accuracyEvent.eventType() != BenchmarkEventType.END
-        || accuracyEvent.result() == null) {
-      Log.i(TAG, "The accuracy benchmarking is not completed successfully for " + filePath);
-      return;
-    }
-    BenchmarkResult accuracyResults = accuracyEvent.result();
-    for (int i = 0; i < accuracyResults.metricsLength(); i++) {
-      BenchmarkMetric metric = accuracyResults.metrics(i);
-      if (metric == null || metric.valuesLength() == 0) {
-        continue;
-      }
-      String metricName = metric.name();
-      float metricValue = metric.values(0);
-      if (metric.valuesLength() > 1) {
-        metricName += "(average)";
-        float sum = 0f;
-        for (int j = 0; j < metric.valuesLength(); j++) {
-          sum += metric.values(j);
-        }
-        metricValue = sum / metric.valuesLength();
-      }
-      metrics.put(metricName, metricValue);
-    }
-    metrics.put("ok", accuracyResults.ok() ? 1.0f : 0.0f);
-    metrics.put("max_memory_kb", (float) accuracyResults.maxMemoryKb());
-  }
-
-  HashMap<String, Float> metrics() {
-    return metrics;
+  boolean isTestTarget() {
+    return isTestTarget;
   }
 
   @Override
@@ -112,12 +58,13 @@ final class TfLiteSettingsListEntry {
         + "filePath="
         + filePath
         + ", "
-        + "metrics="
-        + metrics
+        + "isTestTarget="
+        + isTestTarget
         + "}";
   }
 
-  static TfLiteSettingsListEntry create(TFLiteSettings tfliteSettings, String filePath) {
-    return new TfLiteSettingsListEntry(tfliteSettings, filePath);
+  static TfLiteSettingsListEntry create(
+      TFLiteSettings tfliteSettings, String filePath, boolean isTestTarget) {
+    return new TfLiteSettingsListEntry(tfliteSettings, filePath, isTestTarget);
   }
 }

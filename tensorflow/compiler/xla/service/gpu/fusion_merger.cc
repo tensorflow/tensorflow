@@ -283,12 +283,6 @@ StatusOr<bool> FusionMerger::Run(
   VLOG(1) << "FusionMerger for module: " << module->name();
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Skip Softmax CustomCall computations.
-    if (computation->IsCustomCallComputation() &&
-        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
-
     VLOG(9) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(9, computation->ToString());

@@ -26,15 +26,15 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
 from tensorflow.python.types import doc_typealias
-from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.lib.core import _pywrap_custom_casts
 from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
+from tensorflow.tsl.python.lib.core import pywrap_bfloat16
 
-_np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
+_np_bfloat16 = pywrap_bfloat16.bfloat16_type()
 _np_float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
 _np_float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
 _pywrap_custom_casts.TF_register_custom_casts()
@@ -213,7 +213,7 @@ class DType(
     return self if all(self == other for other in types) else None
 
   @doc_controls.do_not_doc_inheritable
-  def placeholder_value(self, placeholder_context=None):
+  def placeholder_value(self, placeholder_context):
     """TensorShape does not support placeholder values."""
     raise NotImplementedError
 

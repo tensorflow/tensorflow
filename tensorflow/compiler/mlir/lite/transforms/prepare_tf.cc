@@ -72,7 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"

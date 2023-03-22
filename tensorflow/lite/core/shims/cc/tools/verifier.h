@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_CC_TOOLS_VERIFIER_H_
 
+/// For documentation, see third_party/tensorflow/lite/tools/verifier.h.
+#include "tensorflow/lite/tools/verifier.h"
+
 #include "tensorflow/lite/core/tools/verifier.h"
 
 namespace tflite_shims {

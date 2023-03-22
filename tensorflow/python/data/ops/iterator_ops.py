@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
@@ -80,13 +81,6 @@ GLOBAL_ITERATORS = "iterators"
 autograph_ctx = lazy_loader.LazyLoader(
     "autograph_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
-
-
-# Avoid circular dependency for `type_utils` which transitively depends
-# on Autograph which in turn depends on tf.data.
-type_utils = lazy_loader.LazyLoader(
-    "type_utils", globals(),
-    "tensorflow.python.framework.type_utils")
 
 
 def _device_stack_is_empty():
@@ -538,12 +532,14 @@ class Iterator(trackable.Trackable):
 
     return self._element_spec
 
+  # override
   def _serialize_to_tensors(self):
     serialized_iterator = gen_dataset_ops.serialize_iterator(
         self._iterator_resource,
         options_lib.ExternalStatePolicy.FAIL.value)
     return {"_STATE": serialized_iterator}
 
+  # override
   def _restore_from_tensors(self, restored_tensors):
     with ops.colocate_with(self._iterator_resource):
       return [gen_dataset_ops.deserialize_iterator(

@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 
@@ -153,6 +154,13 @@ class PjRtDevice {
   // reference will remain valid for the lifetime of the PjRtDevice.
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const = 0;
+
+  // Returns allocator stats for the device. Only some PjRtDevice
+  // implementations support allocator_stats, and those that do not will return
+  // an Unimplemented error.
+  virtual StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
+    return Unimplemented("GetAllocatorStats is not supported");
+  }
 };
 
 // Forward declaration.
@@ -240,6 +248,16 @@ class PjRtChunk {
   uint8_t* data() { return data_; }
   const uint8_t* data() const { return data_; }
   int64_t size() const { return size_; }
+  std::function<void(void*)> deleter() const { return deleter_; }
+
+  // Release the ownership of the data. Note that this does not free the data;
+  // the caller should copy `data()` and `deleter()` to manage the ownership
+  // before calling `release()`. This PjRtChunk is invalidated after calling.
+  void release() {
+    data_ = nullptr;
+    size_ = 0;
+    deleter_ = nullptr;
+  }
 
  private:
   // The ownership of the bytes pointed to by `data_` is controlled by the
@@ -739,7 +757,8 @@ class PjRtClient {
 
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
-  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+  virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
+      const {
     return host_memory_for_device_manager_.get();
   }
 

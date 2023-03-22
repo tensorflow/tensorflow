@@ -239,6 +239,9 @@ MinibenchmarkStatus Validator::LoadDelegate() {
       case Delegate_XNNPACK:
         delegate_name = "XNNPack";
         break;
+      case Delegate_EDGETPU:
+        delegate_name = "EdgeTpu";
+        break;
       default:
         return kMinibenchmarkDelegateNotSupported;
     }

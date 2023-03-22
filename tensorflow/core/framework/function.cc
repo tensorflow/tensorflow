@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -1215,63 +1216,113 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   return OkStatus();
 }
 
-FunctionLibraryDefinition::FunctionDefAndOpRegistration::
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in,
-                                 const StackTracesMap& stack_traces)
-    : fdef(fdef_in),
+FunctionRecord::FunctionRecord(const FunctionDef& fdef,
+                               const StackTracesMap& stack_traces,
+                               bool finalized)
+    : finalized_(finalized),
+      fdef_(fdef),
+      stack_traces_(stack_traces),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
-      op_registration_data(fdef.signature(), shape_inference::UnknownShape,
-                           true /* is_function */),
-      stack_traces(stack_traces) {}
+      op_registration_data_(fdef.signature(), shape_inference::UnknownShape,
+                            true /* is_function */) {}
+
+void FunctionRecord::finalize() {
+  if (!finalized_) {
+    finalized_ = true;
+  }
+}
+
+StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
+  if (finalized_) {
+    return Status(error::PERMISSION_DENIED,
+                  "Can not mutate FunctionDef after finalization.");
+  }
+
+  return &fdef_;
+}
+
+const FunctionDef& FunctionRecord::fdef() const { return fdef_; }
+
+const StackTracesMap& FunctionRecord::stack_traces() const {
+  return stack_traces_;
+}
+
+const OpRegistrationData& FunctionRecord::op_registration_data() const {
+  return op_registration_data_;
+}
+
+const bool FunctionRecord::finalized() const { return finalized_; }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
     : default_registry_(other.default_registry_) {
   tf_shared_lock l(other.mu_);
-  function_defs_ = other.function_defs_;
+  records_ = other.records_;
+  // Increment the Refs.
+  for (const auto& key_value_pair : records_) {
+    key_value_pair.second->Ref();
+  }
   func_grad_ = other.func_grad_;
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const OpRegistryInterface* default_registry,
     const FunctionDefLibrary& def_lib)
-    : default_registry_(default_registry),
-      function_defs_(def_lib.function_size()) {
+    : default_registry_(default_registry), records_(def_lib.function_size()) {
   for (const auto& fdef : def_lib.function()) {
     // The latter function definition wins.
-    auto& ptr = function_defs_[fdef.signature().name()];
-    ptr.reset(new FunctionDefAndOpRegistration(fdef));
+    auto iter = records_.find(fdef.signature().name());
+    if (iter != records_.end()) {
+      iter->second->Unref();
+    }
+    records_.insert(
+        {fdef.signature().name(), new FunctionRecord(fdef, {}, true)});
   }
   for (const auto& grad : def_lib.gradient()) {
     func_grad_[grad.function_name()] = grad.gradient_func();
   }
 }
 
-FunctionLibraryDefinition::~FunctionLibraryDefinition() {}
+FunctionLibraryDefinition::~FunctionLibraryDefinition() {
+  // Drop Ref Count for each FunctionRecord.
+  for (const auto& [function_name, record] : records_) {
+    DCHECK(record->finalized());
+    record->Unref();
+  }
+}
 
 bool FunctionLibraryDefinition::Contains(const string& func) const {
   tf_shared_lock l(mu_);
-  return function_defs_.find(func) != function_defs_.end();
+  return records_.find(func) != records_.end();
 }
 
 const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
   tf_shared_lock l(mu_);
   auto result = FindHelper(func);
   if (result) {
-    return &result->fdef;
+    return &result->fdef();
   } else {
     return nullptr;
   }
 }
 
-std::shared_ptr<FunctionLibraryDefinition::FunctionDefAndOpRegistration>
-FunctionLibraryDefinition::FindHelper(const string& func) const {
-  auto iter = function_defs_.find(func);
-  if (iter == function_defs_.end()) {
+core::RefCountPtr<FunctionRecord> FunctionLibraryDefinition::FindRecord(
+    const string& func) const {
+  tf_shared_lock l(mu_);
+  return FindHelper(func);
+}
+
+core::RefCountPtr<FunctionRecord> FunctionLibraryDefinition::FindHelper(
+    const string& func) const {
+  auto iter = records_.find(func);
+  if (iter == records_.end()) {
     return nullptr;
   } else {
-    return iter->second;
+    DCHECK(iter->second->finalized());
+    // Return a new Ref.
+    iter->second->Ref();
+    return core::RefCountPtr<FunctionRecord>(iter->second);
   }
 }
 
@@ -1279,44 +1330,28 @@ Status FunctionLibraryDefinition::AddFunctionDef(
     const FunctionDef& fdef, const StackTracesMap& stack_traces) {
   mutex_lock l(mu_);
   bool added;
-  return AddFunctionDefHelper(fdef, stack_traces, &added);
+  FunctionRecord* record = new FunctionRecord(fdef, stack_traces, true);
+  core::ScopedUnref scoped_unref(record);
+  Status status = AddHelper(record, &added);
+  return status;
 }
 
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
     const FunctionDef& fdef, const StackTracesMap& stack_traces, bool* added) {
-  *added = false;
-  std::shared_ptr<FunctionDefAndOpRegistration>& entry =
-      function_defs_[fdef.signature().name()];
-  if (entry) {
-    if (!FunctionDefsEqual(entry->fdef, fdef)) {
-      return errors::InvalidArgument(
-          "Cannot add function '", fdef.signature().name(),
-          "' because a different function with the same name already "
-          "exists.");
-    }
-    // Ignore duplicate FunctionDefs.
-    return OkStatus();
-  }
-  const OpDef* op_def;
-  if (default_registry_->LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
-    return errors::InvalidArgument(
-        "Cannot add function '", fdef.signature().name(),
-        "' because an op with the same name already exists.");
-  }
-  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef, stack_traces);
-  *added = true;
-  return OkStatus();
+  FunctionRecord* record = new FunctionRecord(fdef, stack_traces, true);
+  core::ScopedUnref scoped_unref(record);
+  Status status = AddHelper(record, added);
+  return status;
 }
 
-Status FunctionLibraryDefinition::AddHelper(
-    std::shared_ptr<FunctionDefAndOpRegistration> registration, bool* added) {
+Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
+                                            bool* added) {
   *added = false;
-  std::shared_ptr<FunctionDefAndOpRegistration>& entry =
-      function_defs_[registration->fdef.signature().name()];
-  if (entry) {
-    if (!FunctionDefsEqual(entry->fdef, registration->fdef)) {
+  auto iter = records_.find(registration->fdef().signature().name());
+  if (iter != records_.end()) {
+    if (!FunctionDefsEqual(iter->second->fdef(), registration->fdef())) {
       return errors::InvalidArgument(
-          "Cannot add function '", registration->fdef.signature().name(),
+          "Cannot add function '", registration->fdef().signature().name(),
           "' because a different function with the same name already "
           "exists.");
     }
@@ -1325,47 +1360,51 @@ Status FunctionLibraryDefinition::AddHelper(
   }
   const OpDef* op_def;
   if (default_registry_
-          ->LookUpOpDef(registration->fdef.signature().name(), &op_def)
+          ->LookUpOpDef(registration->fdef().signature().name(), &op_def)
           .ok()) {
     return errors::InvalidArgument(
-        "Cannot add function '", registration->fdef.signature().name(),
+        "Cannot add function '", registration->fdef().signature().name(),
         "' because an op with the same name already exists.");
   }
-  entry = std::move(registration);
+  registration->Ref();
+  registration->finalize();
+  records_.insert({registration->fdef().signature().name(), registration});
   *added = true;
   return OkStatus();
 }
 
 Status FunctionLibraryDefinition::CopyFunctionDefFrom(
-    const string& func, const FunctionLibraryDefinition& other) {
+    const string& name, const FunctionLibraryDefinition& other) {
   if (default_registry_ != other.default_registry_) {
     return errors::InvalidArgument(
-        "Cannot copy function '", func,
+        "Cannot copy function '", name,
         "' because CopyFunctionDefFrom() requires that both libraries have the "
         "same default registry.");
   }
-  std::shared_ptr<FunctionDefAndOpRegistration> function_def;
+  core::RefCountPtr<FunctionRecord> other_record;
   {
     tf_shared_lock l(other.mu_);
-    function_def = other.FindHelper(func);
+    other_record = other.FindHelper(name);
   }
-  if (!function_def) {
+  if (!other_record) {
     return errors::InvalidArgument(
-        "Cannot copy function '", func,
+        "Cannot copy function '", name,
         "' because no function with that name exists in the other library.");
   }
   {
     mutex_lock l(mu_);
-    std::shared_ptr<FunctionDefAndOpRegistration>& entry = function_defs_[func];
-    if (entry) {
-      if (!FunctionDefsEqual(entry->fdef, function_def->fdef)) {
+    auto iter = records_.find(name);
+    if (iter != records_.end()) {
+      if (!FunctionDefsEqual(iter->second->fdef(), other_record->fdef())) {
         return errors::InvalidArgument(
-            "Cannot copy function '", func,
+            "Cannot copy function '", name,
             "' because a different function with the same name already "
             "exists.");
       }
     } else {
-      entry = std::move(function_def);
+      other_record->Ref();
+      DCHECK(other_record->finalized());
+      records_.insert({name, other_record.get()});
     }
   }
   return OkStatus();
@@ -1409,8 +1448,8 @@ Status FunctionLibraryDefinition::AddLibrary(
   std::vector<string> funcs_with_grads;
   Status s;
   bool added;
-  for (auto iter : clone.function_defs_) {
-    s = AddHelper(iter.second, &added);
+  for (const auto& [name, record] : clone.records_) {
+    s = AddHelper(record, &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
       if (!remove_status.ok()) {
@@ -1419,7 +1458,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       return s;
     }
     if (added) {
-      funcs.push_back(iter.second->fdef.signature().name());
+      funcs.push_back(record->fdef().signature().name());
     }
   }
   for (auto iter : clone.func_grad_) {
@@ -1504,18 +1543,23 @@ Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
 }
 
 Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
-  const auto& i = function_defs_.find(func);
-  if (i == function_defs_.end()) {
+  auto iter = records_.find(func);
+  if (iter == records_.end()) {
     return errors::InvalidArgument("Tried to remove non-existent function '",
                                    func, "'.");
   }
-  function_defs_.erase(i);
+  iter->second->Unref();
+  records_.erase(iter);
   return OkStatus();
 }
 
 void FunctionLibraryDefinition::Clear() {
   mutex_lock l(mu_);
-  function_defs_.clear();
+  // Drop Ref Count for each FunctionRecord.
+  for (const auto& [name, record] : records_) {
+    record->Unref();
+  }
+  records_.clear();
   func_grad_.clear();
 }
 
@@ -1560,9 +1604,9 @@ string FunctionLibraryDefinition::FindGradientHelper(const string& func) const {
 Status FunctionLibraryDefinition::LookUp(
     const string& op, const OpRegistrationData** op_reg_data) const {
   tf_shared_lock l(mu_);
-  auto iter = function_defs_.find(op);
-  if (iter != function_defs_.end()) {
-    *op_reg_data = &iter->second->op_registration_data;
+  auto iter = records_.find(op);
+  if (iter != records_.end()) {
+    *op_reg_data = &iter->second->op_registration_data();
     return OkStatus();
   }
   return default_registry_->LookUp(op, op_reg_data);
@@ -1572,7 +1616,7 @@ string FunctionLibraryDefinition::UniqueFunctionName(StringPiece prefix) const {
   tf_shared_lock l(mu_);
   int index = 0;
   string name = strings::StrCat(prefix, index);
-  while (function_defs_.find(name) != function_defs_.end()) {
+  while (records_.find(name) != records_.end()) {
     ++index;
     name = strings::StrCat(prefix, index);
   }
@@ -1602,13 +1646,13 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     // uses func's attrs.
     if (!grad_name.empty()) {
       if (const auto helper = FindHelper(grad_name)) {
-        return &(helper->fdef);
+        return &(helper->fdef());
       } else {
         return nullptr;
       }
     }
     if (const auto helper = FindHelper(func_name)) {
-      return &(helper->fdef);
+      return &(helper->fdef());
     } else {
       return nullptr;
     }
@@ -1618,8 +1662,8 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
 std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
   std::vector<string> function_names;
   tf_shared_lock l(mu_);
-  function_names.reserve(function_defs_.size());
-  for (const auto& it : function_defs_) {
+  function_names.reserve(records_.size());
+  for (const auto& it : records_) {
     function_names.emplace_back(it.first);
   }
   return function_names;
@@ -1628,8 +1672,8 @@ std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   tf_shared_lock l(mu_);
-  for (const auto& f : function_defs_) {
-    *lib.add_function() = f.second->fdef;
+  for (const auto& f : records_) {
+    *lib.add_function() = f.second->fdef();
   }
   for (const auto& g : func_grad_) {
     GradientDef* gd = lib.add_gradient();

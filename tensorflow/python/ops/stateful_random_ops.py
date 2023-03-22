@@ -22,6 +22,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
@@ -626,7 +627,7 @@ class Generator(autotrackable.AutoTrackable):
     with ds_context.enter_or_assert_strategy(self._distribution_strategy):
       replica_id = get_replica_id()
       if replica_id is not None:
-        replica_id = array_ops.stack([replica_id, 0], axis=0)
+        replica_id = array_ops_stack.stack([replica_id, 0], axis=0)
         replica_id = math_ops.cast(replica_id, dtypes.uint64)
         # Conceptually: key = hash(key, replica_id)
         key = gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
@@ -909,7 +910,7 @@ class Generator(autotrackable.AutoTrackable):
       # The two seeds for stateless random ops don't have individual semantics
       # and are scrambled together, so setting one to zero is fine.
       zeros = array_ops.zeros_like(keys)
-      return array_ops.stack([keys, zeros])
+      return array_ops_stack.stack([keys, zeros])
     else:
       raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
@@ -959,7 +960,7 @@ class Generator(autotrackable.AutoTrackable):
     if alg in (a.value for a in Algorithm):
       keys = self._make_int64_keys(shape=[count])
       return [Generator(state=_key_to_state(alg, key), alg=alg)
-              for key in array_ops.unstack(keys, num=count)]
+              for key in array_ops_stack.unstack(keys, num=count)]
     else:
       raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 

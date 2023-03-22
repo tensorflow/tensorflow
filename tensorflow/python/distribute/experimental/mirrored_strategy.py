@@ -26,12 +26,18 @@ from tensorflow.dtensor.python import input_util
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
 # Default dimension name used for the mesh created when user provide a list
@@ -99,6 +105,65 @@ class MirroredStrategy(distribute_lib.Strategy):
           device_type=device_type)
     return mesh
 
+  def reduce(self, reduce_op, value, axis):
+    # Due to the limitation of using scalar in DTensor (e.g. the rank 0 tensor
+    # loss the batch shard information), we need to override the default
+    # reduce in addition to the strategy.extend._reduce_to()
+    # Most of the logic here is a mimic of the parent class, except for how
+    # mean and sum are calculated in a global context.
+    distribute_lib._require_cross_replica_or_default_context_extended(  # pylint: disable=protected-access
+        self.extended)
+    if isinstance(reduce_op, str):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+
+    distributed_input = _is_distributed_value(value)
+    if not distributed_input and axis is None:
+      # For any value that isn't distributed and doesn't need a reduction within
+      # the replica.
+      destinations = (device_util.current() or
+                      self.extended._default_device or  # pylint: disable=protected-access
+                      '/device:CPU:0')
+      devices = cross_device_ops_lib.get_devices_from(destinations)
+      with ops.device(devices[0]):
+        return array_ops.identity(
+            cross_device_ops_lib.reduce_non_distributed_value(
+                reduce_op, value, destinations, self.num_replicas_in_sync))
+
+    value = _convert_inputs_to_dtensor(value, self._mesh)
+    # At this point, the value is a DTensor instance now.
+    # There will be a final reduction step cross replica. In order to maintain
+    # the shape of each local replica, we need to add a new dim to the front.
+    # E.g. 2 replica with local shape as (4, 5, 6), the global tensor shape
+    # should be (8, 5, 6), we will reshape into (2, 4, 5, 6) and then do a
+    # reduction on axis 0.
+    if reduce_op == reduce_util.ReduceOp.MEAN:
+      reduce_op = math_ops.reduce_mean
+    else:
+      reduce_op = math_ops.reduce_sum
+
+    # TODO(scottzhu): Make sure we handle dynamic/uneven shape in future.
+    if d_api.fetch_layout(value).is_fully_replicated():
+      # In case of fully mirrored dtensor, we only need to do one reduce, and
+      # don't need to care about any per-replica logic.
+      if axis is not None:
+        value = reduce_op(value, axis=axis)
+    else:
+      new_shape = [self.num_replicas_in_sync, -1]
+      if len(value.shape) > 1:
+        new_shape.extend(array_ops.shape(value)[1:])
+      value = array_ops.reshape(value, new_shape)
+      if axis is not None:
+        # we do a reduce_sum/mean within each of the replica when axis is not
+        # None. Add 1 to the axis since there is a new dim added by reshape in
+        # front.
+        value = reduce_op(value, axis=axis + 1)
+      value = reduce_op(value, axis=0)
+
+    # Note that we return a DTensor instance here, which should have the same
+    # value as the original MirroredStrategy, but with a different type. User
+    # might want a tf.Tensor for the status quo.
+    return value
+
 
 class MirroredExtended(distribute_lib.StrategyExtendedV2):
   """Strategy extension contains the concrete logic for variable creation."""
@@ -119,6 +184,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # strategy.extended.colocate_vars_with(variable)
     kwargs.pop('colocate_with', None)
 
+    # Ignore expected_shape, which is from the v1 Variable. Keras was somehow
+    # using the v1 Variable, but didn't specify that value particularly.
+    kwargs.pop('expected_shape', None)
+
     # Make sure to call DVariable initializer under the scope so that it will
     # have the proper replicated layout. The initial_value is multi-typed,
     # eg it can be a tensor, or a python/numpy type, or a callable that
@@ -129,11 +198,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # TODO(scottzhu): The layout information should be injected via kwargs, or
     # lazily set later.
     initial_value = kwargs.pop('initial_value')
+    dtype = kwargs.get('dtype', None)
     def new_initial_value():
       if callable(initial_value):
-        init_var = ops.convert_to_tensor(initial_value())
+        init_var = ops.convert_to_tensor(initial_value(), dtype=dtype)
       else:
-        init_var = ops.convert_to_tensor(initial_value)
+        init_var = ops.convert_to_tensor(initial_value, dtype=dtype)
       rank = init_var.shape.rank
       return d_api.copy_to_mesh(
           init_var, layout.Layout.replicated(self._mesh, rank))
@@ -167,6 +237,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # This method is mostly used in the input relate context and high level API.
     # In the single client mesh DTensor context, this is False.
     return False
+
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
 
   def _experimental_distribute_dataset(self, dataset, options):
     # Strategy always assume the user input data is a batched dataset for
@@ -303,33 +376,77 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     d_args = nest.map_structure(map_fn, args)
     d_kwargs = nest.map_structure(map_fn, kwargs)
 
-    with self._container_strategy().scope():
-      # TODO(scottzhu): Add support for get_replica_context() within the fn.
-      dtensor_result = fn(*d_args, **d_kwargs)
+    with d_api.default_mesh(self._mesh):
+      with self._container_strategy().scope():
+        with dtensor_util.DTensorReplicaContext(self._container_strategy()):
+          dtensor_result = fn(*d_args, **d_kwargs)
 
     return nest.map_structure(
         dtensor_util.DTensorDistributedValue,
         dtensor_result)
 
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    if isinstance(value, dtensor_util.DTensorDistributedValue):
+      value = value.get_dtensor()
+    if not d_api.is_dtensor(value):
+      # This is the current behavior for mirrored strategy, should we raise an
+      # error for unsupported types?
+      return value
+
+    # Unpack the dtensor components and gather the tensors on the axis
+    components = d_api.unpack(value)
+    return array_ops.concat(components, axis=axis)
+
+  def _use_merge_call(self):
+    # This is method for V1 StrategyExtended by still used by
+    # tf.__internal__.distribute.strategy_supports_no_merge_call
+    return False
+
 
 def _convert_inputs_to_dtensor(inputs, mesh):
   """Convert any input types to DTensor instance."""
-  if d_api.is_dtensor(inputs):
-    return inputs
-  elif isinstance(inputs, dtensor_util.DTensorDistributedValue):
+  if isinstance(inputs, dtensor_util.DTensorDistributedValue):
     return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
+  elif isinstance(inputs, input_util._DTensorIterator):   # pylint: disable=protected-access
+    return inputs
+  elif tensor_util.is_tensor(inputs):
+    if context.executing_eagerly():
+      if d_api.is_dtensor(inputs):
+        return inputs
+      else:
+        # For a non-dtensor input in eager context, we could choose to replica
+        # them into per-replica and then pack them into dtensor. However, this
+        # will cause an eager/graph discrepancy since we can't do this check in
+        # the graph context. For now, we will ask user to provide a distributed
+        # value for inputs.
+        _raise_unsupported_input_type_error(inputs)
+    else:
+      # For graph context, since we can't check if they are dtensor or not. We
+      # will assume the value is already distributed. This is a critical use
+      # case for keras, where all the inputs are pre-distributed via strategy,
+      # and the train function execute within graph context.
+      return inputs
   else:
-    # For the rest of the types, we will convert it to dtensor.
-    # Any of the inputs will be replicate to all the devices.
-    rank = len(inputs.shape)
-    replicated_layout = layout.Layout.replicated(mesh, rank=rank)
-    return d_api.copy_to_mesh(inputs, replicated_layout)
+    # For any other types.
+    _raise_unsupported_input_type_error(inputs)
+
+
+def _raise_unsupported_input_type_error(inputs):
+  raise ValueError('Unsupported input types for MirroredStrategy. '
+                   'Please use `strategy.distribute_dataset` or '
+                   '`strategy.distribute_values_from_function` to '
+                   f'distribute inputs. Received input type: {type(inputs)}')
+
+
+def _is_distributed_value(value):
+  return isinstance(
+      value, values_lib.DistributedValues) or d_api.is_dtensor(value)
 
 
 def _convert_per_replica_to_dtensor(per_replica_value, mesh):
-  """Convert a PreReplica result to a DTensor instance.
+  """Convert a PerReplica result to a DTensor instance.
 
   Args:
     per_replica_value: A PerReplica instance whose value will be converted

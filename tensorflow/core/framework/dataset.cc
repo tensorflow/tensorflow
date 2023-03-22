@@ -767,7 +767,8 @@ Status DatasetBase::MakeSplitProviders(
 int64_t DatasetBase::Cardinality() const {
   mutex_lock l(cardinality_mu_);
   if (cardinality_ == kUnknownCardinality) {
-    cardinality_ = CardinalityInternal();
+    CardinalityOptions options;
+    cardinality_ = CardinalityInternal(options);
   }
   return cardinality_;
 }
@@ -874,6 +875,9 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.NumElements() == 0) {
+    return errors::InvalidArgument("Empty resouce handle");
+  }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
   if (ctx->device_name() != handle.device()) {
     return errors::InvalidArgument("Trying to access resource ", handle.name(),
@@ -924,6 +928,17 @@ string DatasetBaseIterator::BuildTraceMeName() {
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);
   }
+  if (model_node() != nullptr) {
+    if (model_node()->buffered_elements() > 0) {
+      strings::StrAppend(
+          &result, ",buffered_elements=",
+          static_cast<long long>(model_node()->buffered_elements()));
+      strings::StrAppend(
+          &result, ",buffered_bytes_MB=",
+          static_cast<long long>(
+              static_cast<double>(model_node()->buffered_bytes()) * 1e-6));
+    }
+  }
   strings::StrAppend(&result, "#");
   return result;
 }
@@ -935,11 +950,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
-    auto output = node_->output();
-    if (output) {
-      output->record_stop(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
   }
@@ -963,9 +979,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
-    auto output = node_->output();
-    if (output) {
-      output->record_start(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_start(now_nanos);
     }
   }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
@@ -986,10 +1001,12 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
@@ -999,7 +1016,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_start(now_nanos);
     }
   }

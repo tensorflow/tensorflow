@@ -25,12 +25,12 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
@@ -49,6 +49,7 @@ REGISTER_OP("FloatInt32Int32FT")
     .Output("b: int32")
     .Output("c: int32");
 REGISTER_OP("FloatWithoutInt32").Output("a: float");
+REGISTER_OP("StringWithoutInt32").Output("a: string");
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -73,21 +74,22 @@ class Int32FulltypeTest : public ::testing::Test {
 
   void AddTensorFT(FullTypeDef& t, tensorflow::FullTypeId out_t_id,
                    tensorflow::FullTypeId data_t_id) {
-    FullTypeDef data_t;
-    data_t.set_type_id(data_t_id);
     FullTypeDef out_t;
-    out_t.set_type_id(out_t_id);
-    (*out_t.add_args()) = data_t;
+    FullTypeDef data_t;
+    if (out_t_id != TFT_UNSET) {
+      data_t.set_type_id(data_t_id);
+      out_t.set_type_id(out_t_id);
+      (*out_t.add_args()) = data_t;
+    }
     (*t.add_args()) = out_t;
   }
 
-  // Invokes the Placer on "graph". If no DeviceSet is specified, the
-  // placement will use the default DeviceSet (of 10 CPU and 10 GPU devices).
+  // Invokes the automatic annotator on "graph"
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
-  Status Int32FulltypeAnnotate(Graph* graph) {
-    Int32Fulltype int32_fulltype(graph);
-    return int32_fulltype.Run();
+  Status Int32FulltypeAnnotate(Graph* graph, bool ints_on_device = false) {
+    Int32FulltypePass int32_fulltype;
+    return int32_fulltype.ProcessGraph(graph, ints_on_device);
   }
 
   // Returns the node in "graph" with the given name.
@@ -168,9 +170,42 @@ TEST_F(Int32FulltypeTest, ModifyFT) {
   ASSERT_EQ(ft.args(2).args(0).type_id(), TFT_INT32);
 }
 
+// Test that TFT_UNSET for int32 is changed to TFT_SHAPE_TENSOR without
+// changing other kinds of full type information.
+TEST_F(Int32FulltypeTest, ModifyUnsetFT) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* node = ops::SourceOp("FloatInt32Int32FT",
+                               b.opts().WithName("float_int32_int32"));
+    node->mutable_def()->mutable_experimental_type()->set_type_id(TFT_PRODUCT);
+    FullTypeDef& t = *node->mutable_def()->mutable_experimental_type();
+    AddTensorFT(t, TFT_UNSET, TFT_FLOAT);
+    AddTensorFT(t, TFT_UNSET, TFT_INT32);
+    AddTensorFT(t, TFT_UNSET, TFT_INT32);
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Int32FulltypeAnnotate(&g));
+
+  Node* node = GetNodeByName(g, "float_int32_int32");
+  ASSERT_TRUE(node->def().has_experimental_type());
+  const FullTypeDef& ft = node->def().experimental_type();
+  ASSERT_EQ(ft.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft.args_size(), 3);
+  ASSERT_EQ(ft.args(0).type_id(), TFT_UNSET);  // unchanged
+  ASSERT_EQ(ft.args(0).args_size(), 0);
+  ASSERT_EQ(ft.args(1).type_id(), TFT_SHAPE_TENSOR);  // changed
+  ASSERT_EQ(ft.args(1).args_size(), 1);
+  ASSERT_EQ(ft.args(1).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(ft.args(2).type_id(), TFT_SHAPE_TENSOR);  // changed
+  ASSERT_EQ(ft.args(2).args_size(), 1);
+  ASSERT_EQ(ft.args(2).args(0).type_id(), TFT_INT32);
+}
+
 // Test NOT creating full type information for a node that does not have
 // any int32 outputs.
-TEST_F(Int32FulltypeTest, NotCreateFT) {
+TEST_F(Int32FulltypeTest, NotCreateFTFloat) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -183,6 +218,96 @@ TEST_F(Int32FulltypeTest, NotCreateFT) {
 
   Node* node = GetNodeByName(g, "float_without_int32");
   ASSERT_FALSE(node->def().has_experimental_type());
+}
+
+// Test NOT creating full type information for a node that does not have
+// any int32 outputs (but does have a string HOST_MEMORY output).
+TEST_F(Int32FulltypeTest, NotCreateFTString) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("StringWithoutInt32",
+                  b.opts().WithName("string_without_int32"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Int32FulltypeAnnotate(&g));
+
+  Node* node = GetNodeByName(g, "string_without_int32");
+  ASSERT_FALSE(node->def().has_experimental_type());
+}
+
+// Test NOT creating full type information when ints_on_device is true.
+TEST_F(Int32FulltypeTest, NotCreateFTIntsOnDevice) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("FloatInt32", b.opts().WithName("float_int32"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Int32FulltypeAnnotate(&g, /*ints_on_device=*/true));
+
+  Node* node = GetNodeByName(g, "float_int32");
+  ASSERT_FALSE(node->def().has_experimental_type());
+}
+
+// Test error handling when TFT_TENSOR does not have exactly one arg.
+TEST_F(Int32FulltypeTest, BadTensorFT) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* node =
+        ops::SourceOp("FloatInt32", b.opts().WithName("float_without_int32"));
+    node->mutable_def()->mutable_experimental_type()->set_type_id(TFT_PRODUCT);
+    FullTypeDef& t = *node->mutable_def()->mutable_experimental_type();
+    t.add_args()->set_type_id(TFT_UNSET);
+    t.add_args()->set_type_id(TFT_TENSOR);
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  const auto& status = Int32FulltypeAnnotate(&g);
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("which has 0 args instead of 1."));
+}
+
+// Test error handling when fulltype does not start with TFT_PRODUCT.
+TEST_F(Int32FulltypeTest, BadFTWithoutProduct) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* node =
+        ops::SourceOp("FloatInt32", b.opts().WithName("float_without_int32"));
+    node->mutable_def()->mutable_experimental_type()->set_type_id(TFT_FLOAT);
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  const auto& status = Int32FulltypeAnnotate(&g);
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("does not start with TFT_PRODUCT."));
+}
+
+// Test error handling when TFT_PRODUCT does not match outputs.
+TEST_F(Int32FulltypeTest, BadProductFT) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* node =
+        ops::SourceOp("FloatInt32", b.opts().WithName("float_without_int32"));
+    node->mutable_def()->mutable_experimental_type()->set_type_id(TFT_PRODUCT);
+
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  const auto& status = Int32FulltypeAnnotate(&g);
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr("has 0 outputs but output_types has 2 outputs."));
 }
 
 }  // namespace

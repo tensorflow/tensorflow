@@ -209,7 +209,8 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 // and attached to a "compile" operation, whose result is fed to an "execute"
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
-Status MlirBridgePass::Run(const ConfigProto& config_proto,
+Status MlirBridgePass::Run(const std::string& function_name,
+                           const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph,
                            const FunctionLibraryDefinition& function_library) {
   static absl::once_flag flag;
@@ -259,11 +260,12 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
     }
     VLOG(1) << "Running MLIR TPU Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
-    return mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1),
-                                  fallback_enabled);
+    return mlir::TFTPU::TPUBridge(module,
+                                  /*enable_logging=*/VLOG_IS_ON(1),
+                                  fallback_enabled, function_name);
   }
   VLOG(1) << "Running MLIR non-TPU Bridge";
-  return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1));
+  return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1), function_name);
 }
 
 MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(

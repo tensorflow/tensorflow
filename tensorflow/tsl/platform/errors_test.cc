@@ -30,7 +30,7 @@ TEST(AppendToMessageTest, PayloadsAreCopied) {
 }
 
 TEST(Status, GetAllPayloads) {
-  Status s_error(error::INTERNAL, "Error message");
+  Status s_error(absl::StatusCode::kInternal, "Error message");
   s_error.SetPayload("Error key", absl::Cord("foo"));
   auto payloads_error_status = errors::GetPayloads(s_error);
   ASSERT_EQ(payloads_error_status.size(), 1);
@@ -43,7 +43,7 @@ TEST(Status, GetAllPayloads) {
 
 TEST(Status, OKStatusInsertPayloadsFromErrorStatus) {
   // An OK status will should not change after InsertPayloads() calls.
-  Status s_error(error::INTERNAL, "Error message");
+  Status s_error(absl::StatusCode::kInternal, "Error message");
   s_error.SetPayload("Error key", absl::Cord("foo"));
   Status s_ok = Status();
 
@@ -54,7 +54,7 @@ TEST(Status, OKStatusInsertPayloadsFromErrorStatus) {
 
 TEST(Status, ErrorStatusInsertPayloadsFromOKStatus) {
   // An InsertPayloads() call should not take effect from empty inputs.
-  Status s_error(error::INTERNAL, "Error message");
+  Status s_error(absl::StatusCode::kInternal, "Error message");
   s_error.SetPayload("Error key", absl::Cord("foo"));
   Status s_ok = Status();
 
@@ -63,10 +63,10 @@ TEST(Status, ErrorStatusInsertPayloadsFromOKStatus) {
 }
 
 TEST(Status, ErrorStatusInsertPayloadsFromErrorStatus) {
-  Status s_error1(error::INTERNAL, "Error message");
+  Status s_error1(absl::StatusCode::kInternal, "Error message");
   s_error1.SetPayload("Error key 1", absl::Cord("foo"));
   s_error1.SetPayload("Error key 2", absl::Cord("bar"));
-  Status s_error2(error::INTERNAL, "Error message");
+  Status s_error2(absl::StatusCode::kInternal, "Error message");
   s_error2.SetPayload("Error key", absl::Cord("bar"));
   ASSERT_EQ(s_error2.GetPayload("Error key"), "bar");
 

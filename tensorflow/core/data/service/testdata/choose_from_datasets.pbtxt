@@ -5,13 +5,10 @@
 #
 # import tensorflow as tf
 #
-# datasets = [tf.data.Dataset.from_tensors("a").repeat(10),
-#             tf.data.Dataset.from_tensors("b").repeat(10),
-#             tf.data.Dataset.from_tensors("c").repeat(10)]
-#
-# Define a dataset containing `[0, 1, 2, 0, 1, 2, 0, 1, 2, ...]`.
+# datasets = [tf.data.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
+#             tf.data.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
+#             tf.data.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"])]
 # choice_dataset = tf.data.Dataset.range(3).repeat()
-#
 # dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
 #
 # g = tf.compat.v1.GraphDef()
@@ -90,7 +87,7 @@ node {
   attr {
     key: "metadata"
     value {
-      s: "\n\020RangeDataset:103"
+      s: "\n\016RangeDataset:3"
     }
   }
   attr {
@@ -161,7 +158,7 @@ node {
   attr {
     key: "metadata"
     value {
-      s: "\n\021RepeatDataset:105"
+      s: "\n\017RepeatDataset:5"
     }
   }
   attr {
@@ -212,15 +209,18 @@ node {
       tensor {
         dtype: DT_STRING
         tensor_shape {
+          dim {
+            size: 5
+          }
         }
-        string_val: "a"
+        tensor_content: "\001\001\001\001\001aaaaa"
       }
     }
   }
 }
 node {
-  name: "TensorDataset/_7"
-  op: "TensorDataset"
+  name: "TensorSliceDataset/_7"
+  op: "TensorSliceDataset"
   input: "Const/_6"
   attr {
     key: "Toutput_types"
@@ -231,9 +231,15 @@ node {
     }
   }
   attr {
+    key: "is_files"
+    value {
+      b: false
+    }
+  }
+  attr {
     key: "metadata"
     value {
-      s: "\n\020TensorDataset:97"
+      s: "\n\024TensorSliceDataset:0"
     }
   }
   attr {
@@ -243,6 +249,12 @@ node {
         shape {
         }
       }
+    }
+  }
+  attr {
+    key: "replicate_on_split"
+    value {
+      b: false
     }
   }
   experimental_type {
@@ -267,30 +279,46 @@ node {
   attr {
     key: "dtype"
     value {
-      type: DT_INT64
+      type: DT_STRING
     }
   }
   attr {
     key: "value"
     value {
       tensor {
-        dtype: DT_INT64
+        dtype: DT_STRING
         tensor_shape {
+          dim {
+            size: 5
+          }
         }
-        int64_val: 10
+        tensor_content: "\001\001\001\001\001bbbbb"
       }
     }
   }
 }
 node {
-  name: "RepeatDataset/_9"
-  op: "RepeatDataset"
-  input: "TensorDataset/_7"
+  name: "TensorSliceDataset/_9"
+  op: "TensorSliceDataset"
   input: "Const/_8"
+  attr {
+    key: "Toutput_types"
+    value {
+      list {
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    key: "is_files"
+    value {
+      b: false
+    }
+  }
   attr {
     key: "metadata"
     value {
-      s: "\n\020RepeatDataset:98"
+      s: "\n\024TensorSliceDataset:1"
     }
   }
   attr {
@@ -303,11 +331,9 @@ node {
     }
   }
   attr {
-    key: "output_types"
+    key: "replicate_on_split"
     value {
-      list {
-        type: DT_STRING
-      }
+      b: false
     }
   }
   experimental_type {
@@ -341,15 +367,18 @@ node {
       tensor {
         dtype: DT_STRING
         tensor_shape {
+          dim {
+            size: 5
+          }
         }
-        string_val: "b"
+        tensor_content: "\001\001\001\001\001ccccc"
       }
     }
   }
 }
 node {
-  name: "TensorDataset/_11"
-  op: "TensorDataset"
+  name: "TensorSliceDataset/_11"
+  op: "TensorSliceDataset"
   input: "Const/_10"
   attr {
     key: "Toutput_types"
@@ -360,9 +389,15 @@ node {
     }
   }
   attr {
+    key: "is_files"
+    value {
+      b: false
+    }
+  }
+  attr {
     key: "metadata"
     value {
-      s: "\n\020TensorDataset:99"
+      s: "\n\024TensorSliceDataset:2"
     }
   }
   attr {
@@ -372,6 +407,12 @@ node {
         shape {
         }
       }
+    }
+  }
+  attr {
+    key: "replicate_on_split"
+    value {
+      b: false
     }
   }
   experimental_type {
@@ -391,206 +432,12 @@ node {
   }
 }
 node {
-  name: "Const/_12"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT64
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT64
-        tensor_shape {
-        }
-        int64_val: 10
-      }
-    }
-  }
-}
-node {
-  name: "RepeatDataset/_13"
-  op: "RepeatDataset"
-  input: "TensorDataset/_11"
-  input: "Const/_12"
-  attr {
-    key: "metadata"
-    value {
-      s: "\n\021RepeatDataset:100"
-    }
-  }
-  attr {
-    key: "output_shapes"
-    value {
-      list {
-        shape {
-        }
-      }
-    }
-  }
-  attr {
-    key: "output_types"
-    value {
-      list {
-        type: DT_STRING
-      }
-    }
-  }
-  experimental_type {
-    type_id: TFT_PRODUCT
-    args {
-      type_id: TFT_DATASET
-      args {
-        type_id: TFT_PRODUCT
-        args {
-          type_id: TFT_TENSOR
-          args {
-            type_id: TFT_STRING
-          }
-        }
-      }
-    }
-  }
-}
-node {
-  name: "Const/_14"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_STRING
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_STRING
-        tensor_shape {
-        }
-        string_val: "c"
-      }
-    }
-  }
-}
-node {
-  name: "TensorDataset/_15"
-  op: "TensorDataset"
-  input: "Const/_14"
-  attr {
-    key: "Toutput_types"
-    value {
-      list {
-        type: DT_STRING
-      }
-    }
-  }
-  attr {
-    key: "metadata"
-    value {
-      s: "\n\021TensorDataset:101"
-    }
-  }
-  attr {
-    key: "output_shapes"
-    value {
-      list {
-        shape {
-        }
-      }
-    }
-  }
-  experimental_type {
-    type_id: TFT_PRODUCT
-    args {
-      type_id: TFT_DATASET
-      args {
-        type_id: TFT_PRODUCT
-        args {
-          type_id: TFT_TENSOR
-          args {
-            type_id: TFT_STRING
-          }
-        }
-      }
-    }
-  }
-}
-node {
-  name: "Const/_16"
-  op: "Const"
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT64
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT64
-        tensor_shape {
-        }
-        int64_val: 10
-      }
-    }
-  }
-}
-node {
-  name: "RepeatDataset/_17"
-  op: "RepeatDataset"
-  input: "TensorDataset/_15"
-  input: "Const/_16"
-  attr {
-    key: "metadata"
-    value {
-      s: "\n\021RepeatDataset:102"
-    }
-  }
-  attr {
-    key: "output_shapes"
-    value {
-      list {
-        shape {
-        }
-      }
-    }
-  }
-  attr {
-    key: "output_types"
-    value {
-      list {
-        type: DT_STRING
-      }
-    }
-  }
-  experimental_type {
-    type_id: TFT_PRODUCT
-    args {
-      type_id: TFT_DATASET
-      args {
-        type_id: TFT_PRODUCT
-        args {
-          type_id: TFT_TENSOR
-          args {
-            type_id: TFT_STRING
-          }
-        }
-      }
-    }
-  }
-}
-node {
-  name: "DirectedInterleaveDataset/_18"
+  name: "DirectedInterleaveDataset/_12"
   op: "DirectedInterleaveDataset"
   input: "RepeatDataset/_5"
-  input: "RepeatDataset/_9"
-  input: "RepeatDataset/_13"
-  input: "RepeatDataset/_17"
+  input: "TensorSliceDataset/_7"
+  input: "TensorSliceDataset/_9"
+  input: "TensorSliceDataset/_11"
   attr {
     key: "N"
     value {
@@ -640,7 +487,7 @@ node {
 node {
   name: "dataset"
   op: "_Retval"
-  input: "DirectedInterleaveDataset/_18"
+  input: "DirectedInterleaveDataset/_12"
   attr {
     key: "T"
     value {
@@ -657,5 +504,5 @@ node {
 library {
 }
 versions {
-  producer: 1372
+  producer: 1393
 }

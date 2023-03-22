@@ -18,6 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <optional>
+#include <queue>
+#include <string>
+#include <string_view>
 #include <vector>
 
 // clang-format off
@@ -83,7 +86,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
@@ -93,6 +95,15 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+constexpr char kEnabled[] = "enabled";
+constexpr char kDisabled[] = "disabled";
+
+auto* function_compile_counter =
+    monitoring::Counter<2>::New("/tensorflow/core/tf_function_compile",
+                                "The number of times that TF function is "
+                                "called for different compilation options.",
+                                "device", "compilation_option");
 
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
@@ -281,18 +292,6 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   return OkStatus();
 }
 
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
-
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64_t b) {
-  auto x = tensorflow::FingerprintCat64(a.low64, b);
-  return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
-
 const KernelDef* GetKernelDef(const EagerOperation& op, const NodeDef* node_def,
                               const Device* op_device) {
   if (node_def == nullptr || op_device == nullptr) return nullptr;
@@ -380,11 +379,11 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
                                     Fprint128* fingerprint) {
   if (shape.unknown_rank()) {
     char c = '?';
-    *fingerprint = FingerprintCat128(*fingerprint, c);
+    *fingerprint = tsl::FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
       int64_t dim = shape.dim_size(i);
-      *fingerprint = FingerprintCat128(*fingerprint, dim);
+      *fingerprint = tsl::FingerprintCat128(*fingerprint, dim);
     }
   }
 }
@@ -461,7 +460,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (op->GetDeviceParsedName().type == "TPU" ||
+  if (op->GetDeviceParsedName().type == tensorflow::DEVICE_TPU ||
       op->GetDeviceParsedName().type == "XLA_GPU" ||
       op->GetDeviceParsedName().type == "XLA_CPU") {
     VLOG(2) << "Compiling " << op->Name()
@@ -473,6 +472,112 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   }
 #endif
 
+  return OkStatus();
+}
+
+// Check if `op` has tf.StatefulPartitionedCall op with _XlaMustCompile, sets
+// `has_jit_compile` and `device`.
+Status HasNestedJitCompile(const EagerOperation& op, const EagerContext& ctx,
+                           bool* has_jit_compile, string* device) {
+  *has_jit_compile = false;
+
+  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
+  const std::string kXlaMustCompile = "_XlaMustCompile";
+  if (!op.is_function()) {
+    return OkStatus();
+  }
+
+  std::queue<std::string> function_names;
+  function_names.push(op.Name());
+
+  while (!function_names.empty()) {
+    const string& function_name = function_names.front();
+
+    const FunctionDef* function_def =
+        ctx.pflr()->GetFunctionLibraryDefinition()->Find(function_name);
+    if (function_def == nullptr) {
+      return errors::NotFound("Failed to find function '", function_name, "'");
+    }
+    function_names.pop();
+    for (const NodeDef& node : function_def->node_def()) {
+      if (node.op() == kStatefulPartitionedCallOp) {
+        auto attr = node.attr().find(kXlaMustCompile);
+        if (attr != node.attr().end() && attr->second.b() == true) {
+          *has_jit_compile = true;
+          auto device_attr = node.attr().find("device");
+          if (device_attr != node.attr().end()) {
+            *device = device_attr->second.s();
+          }
+          return OkStatus();
+        } else {
+          auto attr = node.attr().find("f");
+          if (attr != node.attr().end() &&
+              !attr->second.func().name().empty()) {
+            function_names.push(attr->second.func().name());
+          }
+        }
+      }
+    }
+  }
+  return OkStatus();
+}
+
+string CanonicalizeDeviceType(std::string_view device_type) {
+  string canonical_device_type = "Unknown";
+  if (device_type == "XLA_CPU" || device_type == tensorflow::DEVICE_CPU) {
+    canonical_device_type = tensorflow::DEVICE_CPU;
+  }
+  if (device_type == "XLA_GPU" || device_type == tensorflow::DEVICE_GPU) {
+    canonical_device_type = tensorflow::DEVICE_GPU;
+  }
+  if (device_type == tensorflow::DEVICE_TPU) {
+    canonical_device_type = tensorflow::DEVICE_TPU;
+  }
+  return canonical_device_type;
+}
+
+Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
+                            bool compile_with_xla, bool has_tpu_replication) {
+  if (has_tpu_replication) {
+    function_compile_counter->GetCell(tensorflow::DEVICE_TPU, kEnabled)
+        ->IncrementBy(1);
+    return OkStatus();
+  }
+
+  string compilation_option = kDisabled;
+  if (!compile_with_xla) {
+    bool nested_jit_compile;
+    string device;
+    TF_RETURN_IF_ERROR(
+        HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    if (nested_jit_compile) {
+      if (!device.empty()) {
+        tsl::DeviceNameUtils::ParsedName device_parsed_name;
+        if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name)) {
+          return errors::InvalidArgument("Malformed device specification: '",
+                                         device);
+        }
+        VLOG(1) << "Compilation Device Type: " << device_parsed_name.type;
+
+        function_compile_counter
+            ->GetCell(CanonicalizeDeviceType(device_parsed_name.type), kEnabled)
+            ->IncrementBy(1);
+        return OkStatus();
+      } else {
+        compilation_option = kEnabled;
+      }
+    }
+  }
+
+  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
+  if (device_type == tensorflow::DEVICE_TPU || compile_with_xla) {
+    compilation_option = kEnabled;
+  }
+
+  VLOG(1) << "Compilation Device Type: " << device_type;
+
+  function_compile_counter->GetCell(device_type, compilation_option)
+      ->IncrementBy(1);
   return OkStatus();
 }
 
@@ -944,12 +1049,12 @@ StatusOr<Fprint128> GetKernelCacheKey(
   Fprint128 cache_key = op_cache_key;
   /// Include soft placement policy in cache key since the placement strategy
   // can change and thus affect which kernel is picked.
-  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
+  cache_key = tsl::FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
 
   // Include run_eager_op_as_function policy in cache key since the execution
   // strategy can change and affect which kernel is picked.
   VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
-  cache_key = FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
+  cache_key = tsl::FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
 
   // When running in eager_op_as_function mode Send/Recv ops need to be
   // placed on the same rendezvous to match the behaviour of eager mode.
@@ -958,11 +1063,11 @@ StatusOr<Fprint128> GetKernelCacheKey(
       ctx.GetReuseRendezvousForFunctions();
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
-  cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
+  cache_key = tsl::FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
 
   for (int i = 0, end = input_device_ptrs.size(); i < end; ++i) {
-    cache_key = FingerprintCat128(cache_key,
-                                  Fingerprint128(input_device_ptrs[i]->name()));
+    cache_key = tsl::FingerprintCat128(
+        cache_key, Fingerprint128(input_device_ptrs[i]->name()));
 
     auto input_resource = input_resource_variable_dtypes_and_shapes.find(i);
     if (input_resource != input_resource_variable_dtypes_and_shapes.end()) {
@@ -970,8 +1075,8 @@ StatusOr<Fprint128> GetKernelCacheKey(
       const DtypeAndPartialTensorShape& dtype_and_shape =
           input_resource->second;
       // Add _Arg index, dtype and shape to "cache_key".
-      cache_key = FingerprintCat128(cache_key, i);
-      cache_key = FingerprintCat128(cache_key, dtype_and_shape.dtype);
+      cache_key = tsl::FingerprintCat128(cache_key, i);
+      cache_key = tsl::FingerprintCat128(cache_key, dtype_and_shape.dtype);
       AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
     }
   }
@@ -1073,7 +1178,7 @@ Status SetOpDevice(EagerContext& ctx, EagerOperation* op, Device** device) {
 Fprint128 GetDeviceCacheKey(EagerOperation* op, const EagerContext& ctx) {
   Fprint128 device_cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
   device_cache_key =
-      FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
+      tsl::FingerprintCat128(device_cache_key, ctx.AllowSoftPlacement());
   return device_cache_key;
 }
 
@@ -1146,6 +1251,13 @@ Status GetOrCreateKernelAndDevice(
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
 
+    if (device == nullptr) {
+      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
+    } else {
+      VLOG(1) << "Device for [" << op->Name()
+              << "] already set to: " << device->name();
+    }
+
     bool run_function_with_flr = false;
     absl::optional<string> xla_compile_device_type;
     if (op->is_function()) {
@@ -1157,7 +1269,8 @@ Status GetOrCreateKernelAndDevice(
       bool has_tpu_replication = false;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
       TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
-
+      TF_RETURN_IF_ERROR(
+          UpdateCompileCounter(op, ctx, compile_with_xla, has_tpu_replication));
       if (compile_with_xla && !has_tpu_replication) {
         if (ctx.JitCompileRewrite()) {
           xla_compile_device_type = op->GetDeviceParsedName().type;
@@ -1176,15 +1289,8 @@ Status GetOrCreateKernelAndDevice(
       GetFuncAttr(op, ctx, kOutputsOnOpDevice, &function_outputs_on_op_device)
           .IgnoreError();
     }
-
     VLOG(2) << op->Name() << " function_outputs_on_op_device: "
             << function_outputs_on_op_device;
-    if (device == nullptr) {
-      TF_RETURN_IF_ERROR(SetOpDevice(ctx, op, &device));
-    } else {
-      VLOG(1) << "Device for [" << op->Name()
-              << "] already set to: " << device->name();
-    }
 
     // Note: We wrap the eager op AFTER the device has been inferred to ensure
     // that placement of the NodeDef in the function is exactly the same as in

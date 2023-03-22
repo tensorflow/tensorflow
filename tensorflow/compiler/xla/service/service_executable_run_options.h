@@ -53,7 +53,7 @@ class ServiceExecutableRunOptions {
   StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal) const {
     return borrow_stream_
                ? borrow_stream_(device_ordinal)
-               : Status(tsl::error::UNIMPLEMENTED, "No stream cache");
+               : Status(absl::StatusCode::kUnimplemented, "No stream cache");
   }
 
  private:

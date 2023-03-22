@@ -673,7 +673,7 @@ CoordinationServiceStandaloneImpl::GetTaskState(
       error = cluster_state_[task_name]->GetStatus();
     }
     *state_info.mutable_task() = task;
-    state_info.set_error_code(error.code());
+    state_info.set_error_code(error.raw_code());
     state_info.set_error_message(error.error_message());
     if (!error.ok()) {
       *state_info.mutable_error_payload()->mutable_source_task() = task;
@@ -734,7 +734,7 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
 
   auto request = std::make_shared<ReportErrorToTaskRequest>();
   auto response = std::make_shared<ReportErrorToTaskResponse>();
-  request->set_error_code(error.code());
+  request->set_error_code(error.raw_code());
   request->set_error_message(error.error_message());
   CoordinatedTask* error_source =
       request->mutable_error_payload()->mutable_source_task();
@@ -766,7 +766,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   }
   assert(!error.ok());
   ReportErrorToTaskRequest request;
-  request.set_error_code(error.code());
+  request.set_error_code(error.raw_code());
   request.set_error_message(error.error_message());
   CoordinationServiceError* payload = request.mutable_error_payload();
   *payload->mutable_source_task() = source_task;

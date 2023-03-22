@@ -721,6 +721,11 @@ const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
+core::RefCountPtr<FunctionRecord> EagerContext::FindRecord(
+    const string& name) const {
+  return func_lib_def_.FindRecord(name);
+}
+
 std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
   mutex_lock ml(metadata_mu_);
   auto result = std::make_unique<RunMetadata>();
@@ -889,6 +894,42 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return OkStatus();
 }
 
+Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
+  // Only client context can remove function on remote worker context.
+  if (!remote_device_manager_.Owned()) {
+    return OkStatus();
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  auto request = std::make_shared<eager::EnqueueRequest>();
+  request->set_context_id(GetContextId());
+
+  eager::RemoveFunctionOp* remove_function =
+      request->add_queue()->mutable_remove_function();
+  *remove_function->mutable_function_name() = function_name;
+
+  auto remote_contexts = GetRemoteContexts();
+  for (const auto& target : remote_contexts) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
+
+    auto response = std::make_shared<eager::EnqueueResponse>();
+    eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
+        /*call_opts=*/nullptr, request.get(), response.get(),
+        [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to remove function remotely due to "
+                       << status.error_message()
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
+          }
+        });
+  }
+#endif  // !IS_MOBILE_PLATFORM
+  return OkStatus();
+}
+
 Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -999,25 +1040,74 @@ std::vector<string> EagerContext::ListFunctionNames() {
   return func_lib_def_.ListFunctionNames();
 }
 
+Status EagerContext::AddRemoveFunctionNotifier(const string& func,
+                                               std::function<void()> notifier) {
+  mutex_lock l(remove_function_notifiers_mu_);
+  auto iter = remove_function_notifiers_.find(func);
+  if (iter != remove_function_notifiers_.end()) {
+    iter->second.push_back(notifier);
+  } else {
+    std::vector<std::function<void()>> notifiers = {notifier};
+    remove_function_notifiers_.insert({func, notifiers});
+  }
+  return OkStatus();
+}
+
+tensorflow::ImmediateExecutionContext::CacheStats
+EagerContext::GetCacheStats() {
+  CacheStats stats;
+  {
+    mutex_lock l(cache_mu_);
+    stats.kernel_cache_size = kernel_cache_.size();
+    for (const auto& iter : registered_functions_) {
+      stats.func_kernel_cache_entries[iter.first] =
+          iter.second->cached_kernel_keys->size();
+    }
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    stats.device_cache_size = device_cache_.size();
+  }
+  return stats;
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
-  mutex_lock l(cache_mu_);
-  auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
-  if (registered_function == nullptr) {
-    return errors::InvalidArgument("Tried to remove non-existent function '",
-                                   func, "'.");
-  }
-  bool is_last_ref = registered_function->RefCountIsOne();
-  if (is_last_ref) {
-    for (auto& key : *registered_function->cached_kernel_keys) {
-      kernel_cache_.erase(key);
+  std::vector<std::function<void()>> notifiers;
+  bool is_last_ref = false;
+  {
+    mutex_lock l(cache_mu_);
+    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+    if (registered_function == nullptr) {
+      return errors::InvalidArgument("Tried to remove non-existent function '",
+                                     func, "'.");
     }
-    registered_functions_.erase(func);
+    is_last_ref = registered_function->RefCountIsOne();
+    if (is_last_ref) {
+      for (auto& key : *registered_function->cached_kernel_keys) {
+        kernel_cache_.erase(key);
+      }
+      registered_functions_.erase(func);
+    }
+    registered_function->Unref();
+    if (is_last_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+
+      mutex_lock l(remove_function_notifiers_mu_);
+      auto iter = remove_function_notifiers_.find(func);
+      if (iter != remove_function_notifiers_.end()) {
+        notifiers = std::move(iter->second);
+      }
+      remove_function_notifiers_.erase(func);
+    }
   }
-  registered_function->Unref();
+  // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
+  // will cause error.
   if (is_last_ref) {
-    // TODO(fishx): Remove remote function as well.
-    return func_lib_def_.RemoveFunction(func);
+    for (const auto& notifier : notifiers) {
+      notifier();
+    }
+    return MaybeRemoveFunctionRemotely(func);
   }
   return OkStatus();
 }
@@ -1103,9 +1193,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
+
   // The kernel name can be either a primitive op or a function.
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
+    VLOG(5) << "Cached key size of kernel " << kernel->name()
+            << " is: " << registered_function->cached_kernel_keys->size();
   }
 }
 

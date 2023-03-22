@@ -62,6 +62,12 @@ struct ContractionWithSqueezeAndBiasAdd {
   Operation* bias_add;
 };
 
+struct FusedBatchNormEx {
+  Operation* fused_batch_norm;
+  Value side_input;
+  Operation* activation;
+};
+
 class OpPropertyHelper : public OpCatHelper {
  public:
   OpPropertyHelper() = default;

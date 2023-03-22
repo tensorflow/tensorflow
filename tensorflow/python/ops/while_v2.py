@@ -22,6 +22,7 @@ performance parity.
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function.capture import capture_container
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -52,20 +53,6 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import variable_utils
 
 # pylint: disable=protected-access
-
-# Controls parallelism in the presence of side-effecting ops like variable
-# operations, print, py_function, etc. Can be set to True, False, or
-# "stateless_cond" (default).
-# Note that loops without side-effecting operations always execute with maximum
-# parallelism, ignoring this setting. When False, loops with side-effecting ops
-# execute sequentially, one iteration at a time.
-# When True, loops with side-effecting ops may execute parts of different
-# iterations in parallel; caution: if the loop condition contains
-# side-effecting ops, this mode produces unspecified results.
-# Setting it to "stateless_cond" automatically sets this mode to True when
-# the loop condition is free of side-effecting ops.
-# TODO(b/152548567): Change this to "stateless_cond".
-glob_stateful_parallelism = False
 
 
 def while_loop(cond,
@@ -167,12 +154,6 @@ def while_loop(cond,
             cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
 
-    if glob_stateful_parallelism == "stateless_cond":
-      stateful_parallelism = (not any(
-          op._is_stateful for op in cond_graph.get_operations()))
-    else:
-      stateful_parallelism = glob_stateful_parallelism
-
     def wrapped_body(loop_counter, maximum_iterations_arg, *args):
       """Loop body augmented with counter update.
 
@@ -228,8 +209,7 @@ def while_loop(cond,
         signature=func_graph_signature,
         func_graph=util.WhileBodyFuncGraph(
             body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
-        add_control_dependencies=add_control_dependencies,
-        acd_record_initial_resource_uses=stateful_parallelism)
+        add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
@@ -299,7 +279,8 @@ def while_loop(cond,
     _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
-        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+        list(cond_graph._function_captures.control) + list(  # pylint: disable=protected-access
+            body_graph._function_captures.control)):  # pylint: disable=protected-access
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)
@@ -312,8 +293,7 @@ def while_loop(cond,
           output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
           name=scope,
-          num_original_outputs=num_original_outputs,
-          stateful_parallelism=stateful_parallelism)
+          num_original_outputs=num_original_outputs)
     if not ops.get_default_graph().building_function:
       # In V1 graph mode, return identities for each output of the While op,
       # rather than the output of the While op directly. This makes pruning work
@@ -362,11 +342,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   except:  # pylint: disable=bare-except
     num_original_outputs = len(while_op.outputs)
 
-  try:
-    stateful_parallelism = while_op.get_attr("_stateful_parallelism")
-  except:  # pylint: disable=bare-except
-    stateful_parallelism = False
-
   num_intermediates = len(while_op.outputs) - num_original_outputs
   grads = [
       _preprocess_grad(grad, body_out, while_in, while_out)  # pylint: disable=g-complex-comprehension
@@ -393,8 +368,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   body_grad_graph, args = _create_grad_func(
       ys, xs, non_none_grads, cond_graph, body_graph,
-      util.unique_grad_fn_name(body_graph.name), op, maximum_iterations,
-      stateful_parallelism)
+      util.unique_grad_fn_name(body_graph.name), op, maximum_iterations)
 
   if body_grad_graph.while_op_needs_rewrite:
     # Modify 'op' to output the intermediate accumulators needed by the grad
@@ -458,8 +432,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name,
-      num_original_outputs=len(body_grad_graph.outputs),
-      stateful_parallelism=stateful_parallelism)
+      num_original_outputs=len(body_grad_graph.outputs))
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -467,8 +440,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
 
 def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
-                    parallel_iterations, name, num_original_outputs,
-                    stateful_parallelism):
+                    parallel_iterations, name, num_original_outputs):
   """Builds the functional StatelessWhile/While op."""
   cond_stateful_ops = [
       op for op in cond_graph.get_operations() if op._is_stateful
@@ -496,8 +468,6 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
     # This is needed so we do not compute derivative wrt these extra outputs.
     while_op._set_attr("_num_original_outputs",
                        attr_value_pb2.AttrValue(i=num_original_outputs))
-    while_op._set_attr("_stateful_parallelism",
-                       attr_value_pb2.AttrValue(b=stateful_parallelism))
     # The while op may be created inside a tf.function, in which case ops
     # needs to capture "through" it when taking gradients; outer_graph is used
     # as a sanity check that capturing only happens from parent to child.
@@ -654,7 +624,7 @@ def _get_graph(while_op, func_attr_name, attr_graph_name):
 
 
 def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
-                      maximum_iterations, stateful_parallelism):
+                      maximum_iterations):
   """Builds and returns the gradient FuncGraph of `func_graph` and its args.
 
   The returned grad_func_graph must be called with the returned
@@ -669,7 +639,6 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
     name: Name of the returned gradient function.
     while_op: The forward While op.
     maximum_iterations: Tensor. The maximum number of iterations.
-    stateful_parallelism: Bool, see tf.while_loop.
 
   Returns:
     2-tuple of (grad_func_graph, args).
@@ -699,8 +668,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
       args, {},
       func_graph=_WhileBodyGradFuncGraph(name, cond_graph, body_graph,
                                          maximum_iterations, while_op,
-                                         body_graph_inputs, body_graph_outputs),
-      acd_record_initial_resource_uses=stateful_parallelism)
+                                         body_graph_inputs, body_graph_outputs))
 
   # Update the list of outputs with tensors corresponding to the captured
   # tensors. We capture 3 types of tensors when building the grad fn:
@@ -1136,7 +1104,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       return captured_tensor
 
     if tensor.graph is not self._forward_graph:
-      already_captured = self.captured(tensor)
+      already_captured = id(tensor) in self._function_captures.by_val_captures  # pylint: disable=protected-access
       captured_tensor = super(_WhileBodyGradFuncGraph, self)._capture_helper(
           tensor, name)
       if not already_captured:
@@ -1348,8 +1316,7 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
         c_graph, types,
         compat.as_str(_build_cond_placeholders_name_prefix(cond_graph)))
   placeholder_ops = [
-      _OperationWithOutputs(ph.oper, cond_graph)
-      for ph in placeholders
+      ops.Operation._from_c_op(ph.oper, cond_graph) for ph in placeholders
   ]
 
   tensors = []
@@ -1362,19 +1329,15 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   # newly created placeholders.
   tuples = zip(body_graph_captures, tensors)
   keys = [id(t) for t in body_graph_captures]
-  cond_graph._captures.update(zip(keys, tuples))
+  for k, v in zip(keys, tuples):
+    capture = capture_container.CaptureContainer(v[0], v[1], k, False)
+    cond_graph._function_captures._by_val[k] = capture  # pylint: disable=protected-access
   cond_graph.inputs.extend(tensors)
 
 
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     handle_data_util.copy_handle_data(src_t, tgt_t)
-
-
-def _graph_name(graph):
-  if isinstance(graph, func_graph_module.FuncGraph):
-    return graph.name
-  return "Base"
 
 
 def _pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, loop_vars):
@@ -1421,30 +1384,6 @@ def _build_accumulator_name(tensor):
 def _is_loop_invariant(tensor, inputs, outputs):
   return (any(tensor is t for t in inputs) and
           any(tensor is t for t in outputs))
-
-
-class _OperationWithOutputs(ops.Operation):
-  """Operation with pre-built `TF_Output`s.
-
-  The C API for creating the extra placeholders for the cond graph returns
-  SWIG wrapped TF_Output* pointers which we can use directly for
-  `Operation.outputs`. The default constructor for `Operation` does not provide
-  a way of specifying pre-built output tensors and always creates them. This is
-  a performance overhead. It is not clear if adding that feature to the
-  `Operation` API would be generally useful so for now we just have our own
-  lightweight `Operation` implementation. Note that this does not extract a
-  stacktrace as well since we don't expect this operation to be used.
-
-  TODO(b/143286622): This should not be required once captures are separated
-  from regular loop vars.
-  """
-
-  def __init__(self, c_op, g):
-    self._c_op = c_op
-    self._graph = g
-    self._outputs = None  # Initialized by _duplicate_body_captures_in_cond().
-    self._id_value = g._add_op(self, self.name)
-    self._is_stateful = False
 
 
 def _set_read_only_resource_inputs_attr(op, branch_graphs):

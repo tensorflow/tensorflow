@@ -39,15 +39,9 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
+alias(
     name = "_pywrap_bfloat16",
-    srcs = ["bfloat16_wrapper.cc"],
-    hdrs = ["bfloat16.h"],
-    deps = [
-        "//tensorflow/tsl/python/lib/core:bfloat16_hdr",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
+    actual = "//tensorflow/tsl/python/lib/core:pywrap_bfloat16",
 )
 
 tf_python_pybind_extension(

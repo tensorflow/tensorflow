@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/core/async/c/async_kernel.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-// TODO(b/191883048): This interface should only depend on C API instead of
-// internal definitions.
-#include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
 
 namespace tflite {
 namespace delegates {
@@ -33,9 +31,7 @@ namespace delegates {
 class BackendAsyncKernelInterface {
  public:
   BackendAsyncKernelInterface();
-  virtual ~BackendAsyncKernelInterface() {
-    if (kernel_) delete kernel_;
-  }
+  virtual ~BackendAsyncKernelInterface() { TfLiteAsyncKernelDelete(kernel_); }
 
   // Returns the TfLiteAsyncKernel instance.
   // kernel_ will be filled with the implementation of the class.
@@ -46,15 +42,17 @@ class BackendAsyncKernelInterface {
 
   // Buffer operations
   // ======================
-  // Registers the buffer to `handle`.
-  // `buffer` and `attrs` lifespan is not gauranteed after the function call.
+  // Registers the TfLiteBackendBuffer to `handle`.
+  // `TfLiteBackendBuffer` is a wrapper around a platform-specific buffer
+  // object (e.g. AHardwareBuffer).
+  // `buffer` and `attrs` lifespan is not guaranteed after the function call.
   // kernels should read the stored attributes instead of caching the
   // attribute map.
   // `io_type` specifies whether this buffer is used as an input buffer
   // or an output buffer. If a buffer is both used as input and output,
   // specify it as output. Not null.
-  // `attrs` describes the attributes of the buffer. It's gauranteed to be
-  // of kTfLiteBufferAttrMap type and not null.
+  // `attrs` describes the attributes of the buffer. It's guaranteed to be
+  // of kTfLiteAttrMapTypeBuffer type and not null.
   // `handle` is the buffer handle assigned by TfLite runtime to recognize
   // this piece of buffer.
   // In `attrs`, the application must provide the type of the buffer.
@@ -96,16 +94,16 @@ class BackendAsyncKernelInterface {
 
   // Reconciliations
   // ===================
-  // Inspects the buffer types supported by the backend.
+  // Inspects the buffer object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // buffer.
-  virtual std::vector<const char*> SupportedBufferTypes(
+  virtual const std::vector<const char*>& SupportedBufferTypes(
       TfLiteIoType io_type) const = 0;
 
   // Inspects the sync object types supported by the backend.
   // `io_type` specify whether the call returns supported input or output
   // sync object.
-  virtual std::vector<const char*> SupportedSynchronizations(
+  virtual const std::vector<const char*>& SupportedSynchronizations(
       TfLiteIoType io_type) const = 0;
 
   // Reconciles buffer or sync attributes for tensor at tensor_index.
@@ -118,8 +116,8 @@ class BackendAsyncKernelInterface {
   // Returns true if the attribute map type is recognizable and there's no
   // conflicting attribute.
   virtual bool ReconcileRestrictions(
-      TfLiteOpaqueContext* context, TfLiteOpaqueNode* node, int tensor_index,
-      const TfLiteAttributeMap* user_provided_attributes,
+      const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node,
+      int tensor_index, const TfLiteAttributeMap* user_provided_attributes,
       TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const = 0;
 
   // Sets the input / output buffer / sync attributes.

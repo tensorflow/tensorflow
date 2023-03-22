@@ -22,18 +22,18 @@ import weakref
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function.capture import capture_container
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import quarantine
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -41,7 +41,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_impl
@@ -52,6 +51,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -322,7 +322,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       def loop_body(_):
         return variable_scope.get_variable('a', shape=())
 
-      return control_flow_ops.while_loop(loop_test, loop_body, [0.0])
+      return while_loop.while_loop(loop_test, loop_body, [0.0])
 
     self.assertEqual(test_function().shape, [])
 
@@ -602,10 +602,14 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([3, 1], func([[0], [1.0], [1]]))
     self.assertAllEqual([2, 2], func(numpy.array([[1, 1], [2, 2]])))
 
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `func` failed'
+    ):
       func([0.0, 1.0, 2.0])  # Wrong shape.
 
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `func` failed'
+    ):
       func([['wrong dtype']])
 
   def testNestedInputSignatures(self):
@@ -715,12 +719,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     defined = quarantine.defun_with_attributes(foo, input_signature=signature)
     a = array_ops.ones([1])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError,
+                                'Binding inputs to tf.function `foo` failed'):
       defined([a, a, a], [a])
 
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError,
+                                'Binding inputs to tf.function `foo` failed'):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
@@ -737,7 +741,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'Parameter .* was expected to be of type .* but is .*'):
+        TypeError, 'Binding inputs to tf.function `foo` failed'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -831,17 +835,23 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     # Different number of rows
     rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
-    with self.assertRaisesRegex(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt3)
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegex(ValueError, 'Structure .* does not match'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt4)
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
-    with self.assertRaisesRegex(ValueError, 'does not match'):
+    with self.assertRaisesRegex(
+        TypeError, 'Binding inputs to tf.function `f` failed'
+    ):
       defined(rt5)
 
   def testInputSignatureWithKeywordOnlyArgs(self):
@@ -1091,10 +1101,10 @@ class DefunTest(test.TestCase, parameterized.TestCase):
   def testEagerCaptures(self):
     with context.eager_mode():
       large_tensor = array_ops.ones(shape=(256,))
-      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertGreater(256, capture_container._EAGER_CONST_THRESHOLD)
 
       small_tensor = array_ops.ones(shape=(4,))
-      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertLessEqual(4, capture_container._EAGER_CONST_THRESHOLD)
 
       v = resource_variable_ops.ResourceVariable(0.0)
 
@@ -2018,9 +2028,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testClearFunctionCallbacks(self):
     quarantine.add_function_callback(lambda f: None)
     quarantine.add_function_callback(lambda f: None)
-    self.assertLen(monomorphic_function._function_callbacks, 2)
+    self.assertLen(atomic_function.function_callbacks, 2)
     quarantine.clear_function_callbacks()
-    self.assertEmpty(monomorphic_function._function_callbacks)  # pylint:disable=protected-access
+    self.assertEmpty(atomic_function.function_callbacks)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNoneGradient(self):
@@ -2311,7 +2321,7 @@ class DevicePlacementTest(test.TestCase, parameterized.TestCase):
     self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
 
-if __name__ == '__main__':
+def setUpModule():
   ops.enable_eager_execution()
   cpus = config.list_physical_devices('CPU')
   # Set 4 virtual CPUs
@@ -2321,4 +2331,7 @@ if __name__ == '__main__':
       context.LogicalDeviceConfiguration(),
       context.LogicalDeviceConfiguration()
   ])
+
+
+if __name__ == '__main__':
   test.main()

@@ -122,7 +122,6 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            dnums.kernel_spatial_dimensions().end());
       break;
     case FilterLayout::kOutputInputYX4:   // OIHW_VECT_C
-    case FilterLayout::kOutputInputYX32:  // OIHW_VECT_C
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       filter_layout.insert(filter_layout.end(),

@@ -11,3 +11,5 @@
 func.func @func_to_outline(%arg0: memref<?xf32>) -> memref<?xf32> {
   func.return %arg0 : memref<?xf32>
 }
+
+// CHECK: func private @func_to_outline(%arg0: memref<?xf32>) -> memref<?xf32> attributes {llvm.linkage = #llvm.linkage<internal>}

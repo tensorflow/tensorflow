@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
@@ -203,7 +202,8 @@ Status SessionMgr::CreateSession(
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
     }
-    auto device_mgr = MakeUnique<StaticDeviceMgr>(std::move(renamed_devices));
+    auto device_mgr =
+        std::make_unique<StaticDeviceMgr>(std::move(renamed_devices));
     LookupLocalDevice cb = [&device_mgr](StringPiece name, Device** device) {
       return device_mgr->LookupDevice(name, device);
     };
@@ -211,12 +211,12 @@ Status SessionMgr::CreateSession(
                     &cluster_devices);
     std::unique_ptr<DynamicDeviceMgr> remote_devices;
     if (!cluster_device_attributes.empty()) {
-      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      remote_devices = std::make_unique<DynamicDeviceMgr>();
       TF_RETURN_IF_ERROR(
           remote_devices->AddDevices(std::move(cluster_devices)));
     }
 
-    auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
+    auto graph_mgr = std::make_unique<GraphMgr>(worker_env_, device_mgr.get());
     worker_session.reset(new WorkerSession(
         session, worker_name,
         std::unique_ptr<WorkerCacheInterface>(worker_cache),
@@ -232,14 +232,15 @@ Status SessionMgr::CreateSession(
                     &cluster_devices);
     std::unique_ptr<DynamicDeviceMgr> remote_devices;
     if (!cluster_device_attributes.empty()) {
-      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      remote_devices = std::make_unique<DynamicDeviceMgr>();
       TF_RETURN_IF_ERROR(
           remote_devices->AddDevices(std::move(cluster_devices)));
     }
     // Borrow the WorkerEnv's DeviceMgr for the WorkerSession, so
     // that resources using it can use its devices after the
     // WorkerSession has been deleted.
-    auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, worker_env_->device_mgr);
+    auto graph_mgr =
+        std::make_unique<GraphMgr>(worker_env_, worker_env_->device_mgr);
     worker_session = WorkerSession::CreateWithBorrowedDeviceMgr(
         session, worker_name,
         std::unique_ptr<WorkerCacheInterface>(worker_cache),

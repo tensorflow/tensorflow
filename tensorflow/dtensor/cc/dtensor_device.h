@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_status.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -34,8 +35,10 @@ namespace dtensor {
 // `device_name` arg should match the `device_name` argument to
 // TFE_RegisterCustomDevice, and is the name of the custom device itself
 // (e.g. pass it to `tf.device` to place operations on it from Python).
+// TODO(b/268241383): Remove the `status = nullptr` overload.
 void AllocateDTensorDevice(absl::string_view device_name,
-                           TFE_CustomDevice* device, void** device_info);
+                           TFE_CustomDevice* device, void** device_info,
+                           TF_Status* status = nullptr);
 
 // Add a mesh to the `DTensorDevice` indicated by `device_info`.
 //
@@ -125,11 +128,13 @@ TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
 bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                      void* device_info, TF_Status* status);
 
-// Returns a dictionary with cache hits and cache miss information.
-// Cache hit count is mapped under 'hit', and cache miss count is mapped under
-// 'miss'.
-std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
-    TFE_Context* context, void* device_info, TF_Status* status);
+// Returns a dictionary with cache stats.
+// 'hit': cache hit count,
+// 'miss': cache miss count,
+// 'size': number of entries in the cache.
+std::unordered_map<std::string, int> GetFunctionCacheStats(TFE_Context* context,
+                                                           void* device_info,
+                                                           TF_Status* status);
 
 // Sets the layouts for the elements emitted by an iterator resource tensor.
 void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,

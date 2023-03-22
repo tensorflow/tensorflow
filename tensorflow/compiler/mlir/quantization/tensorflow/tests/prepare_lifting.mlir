@@ -1,4 +1,5 @@
 // RUN: tf-quant-opt %s -quant-prepare-lifting | FileCheck %s
+// RUN: tf-quant-opt %s -quant-prepare-lifting='target-opset=XLA' | FileCheck --check-prefix=XLA-CHECK %s
 
 func.func @decompose_batch_norm(%arg0: tensor<*xf32>) -> (tensor<*xf32>) {
   %cst = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
@@ -267,3 +268,20 @@ func.func @batch_norm_with_q_dq(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf
 // CHECK: %[[conv:.*]] = "tf.Conv2D"(%[[dq_input]], %[[dq_weight]])
 // CHECK: %[[bias:.*]] = "tf.BiasAdd"(%[[conv]], %[[cst_0]]) {data_format = "NHWC"}
 // CHECK: %[[relu6:.*]] = "tf.Relu6"(%[[bias]])
+
+func.func @xla_dot_v2(%arg0: tensor<?x2x3xf32>, %arg1: tensor<3x4x5xf32>) -> (tensor<?x2x4x5xf32>) {
+  %0 = "tf.XlaDotV2"(%arg0, %arg1) {device = "", dimension_numbers = "\0A\01\02\12\01\00", precision_config = ""} : (tensor<?x2x3xf32>, tensor<3x4x5xf32>) -> tensor<?x2x4x5xf32>
+  func.return %0 : tensor<?x2x4x5xf32>
+}
+
+// CHECK: func @xla_dot_v2
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<[3, 20]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() {value = dense<[-1, 2, 4, 5]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK: %[[reshape:.*]] = "tf.Reshape"(%arg1, %[[cst]]) : (tensor<3x4x5xf32>, tensor<2xi64>) -> tensor<3x20xf32>
+// CHECK: %[[batch_matmul:.*]] = "tf.BatchMatMulV2"(%arg0, %[[reshape]]) {adj_x = false, adj_y = false} : (tensor<?x2x3xf32>, tensor<3x20xf32>) -> tensor<?x2x20xf32>
+// CHECK: %[[reshape_0:.*]] = "tf.Reshape"(%[[batch_matmul]], %[[cst_0]]) : (tensor<?x2x20xf32>, tensor<4xi64>) -> tensor<?x2x4x5xf32>
+// CHECK: return %[[reshape_0]] : tensor<?x2x4x5xf32>
+
+// XLA-CHECK: func @xla_dot_v2
+// XLA-CHECK: %[[einsum:.*]] = "tf.Einsum"(%arg0, %arg1) {equation = "abc,cde->abde"} : (tensor<?x2x3xf32>, tensor<3x4x5xf32>) -> tensor<?x2x4x5xf32>
+// XLA-CHECK: return %[[einsum]] : tensor<?x2x4x5xf32>

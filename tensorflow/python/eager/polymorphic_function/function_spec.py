@@ -17,7 +17,6 @@
 import functools
 import inspect
 from typing import Any, Dict, Tuple
-import weakref
 
 import numpy as np
 import six
@@ -31,7 +30,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 
 # Sentinel value used by with ConcreteFunction's structured signature to
@@ -41,8 +39,7 @@ BOUND_VALUE = object()
 
 
 def to_fullargspec(function_type: function_type_lib.FunctionType,
-                   default_values: Dict[str, Any],
-                   is_bound_method: bool) -> inspect.FullArgSpec:
+                   default_values: Dict[str, Any]) -> inspect.FullArgSpec:
   """Generates backwards compatible FullArgSpec from FunctionType."""
   args = []
   varargs = None
@@ -67,9 +64,6 @@ def to_fullargspec(function_type: function_type_lib.FunctionType,
       varargs = parameter.name
     elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
       varkw = parameter.name
-
-  if (is_bound_method and (not args or args[0] != "self")):
-    args.insert(0, "self")
 
   return inspect.FullArgSpec(
       args,
@@ -205,8 +199,6 @@ class FunctionSpec(object):
     default_values = function_type_lib.FunctionType.get_default_values(
         python_function)
 
-    is_bound_method = inspect.ismethod(python_function)
-
     if input_signature is not None:
       input_signature = tuple(input_signature)
       function_type = function_type_lib.add_type_constraints(
@@ -220,7 +212,6 @@ class FunctionSpec(object):
     return FunctionSpec(
         function_type,
         default_values,
-        is_bound_method,
         is_pure=is_pure,
         jit_compile=jit_compile,
         name=name)
@@ -228,7 +219,6 @@ class FunctionSpec(object):
   @classmethod
   def from_fullargspec_and_signature(cls,
                                      fullargspec,
-                                     is_bound_method,
                                      input_signature,
                                      is_pure=False,
                                      name=None,
@@ -241,14 +231,12 @@ class FunctionSpec(object):
       function_type = function_type_lib.add_type_constraints(
           function_type, input_signature, default_values)
 
-    return FunctionSpec(function_type, default_values, is_bound_method, is_pure,
+    return FunctionSpec(function_type, default_values, is_pure,
                         name, jit_compile)
 
-  # TODO(fmuham): Remove redundant is_bound_method.
   def __init__(self,
                function_type,
                default_values,
-               is_bound_method,
                is_pure=False,
                name=None,
                jit_compile=None):
@@ -257,7 +245,6 @@ class FunctionSpec(object):
     Args:
       function_type: A FunctionType describing the python function signature.
       default_values: Dictionary mapping parameter names to default values.
-      is_bound_method: True if the underlying function is a bound method.
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
       name: Name of the function
@@ -265,9 +252,7 @@ class FunctionSpec(object):
     """
     self._function_type = function_type
     self._default_values = default_values
-    self._fullargspec = to_fullargspec(function_type, default_values,
-                                       is_bound_method)
-    self._is_bound_method = is_bound_method
+    self._fullargspec = to_fullargspec(function_type, default_values)
     self._is_pure = is_pure
     self._jit_compile = jit_compile
 
@@ -288,12 +273,6 @@ class FunctionSpec(object):
   @property
   def fullargspec(self):
     return self._fullargspec
-
-  # TODO(fmuham): Remove redundant property.
-  @property
-  def is_method(self):
-    """Returns True if the function is a method with a class instance bound."""
-    return self._is_bound_method
 
   # TODO(fmuham): Replace usages with FunctionType and remove.
   @property
@@ -331,7 +310,7 @@ class FunctionSpec(object):
       kwargs: Any,
       captures: Any = None,
   ) -> Tuple[function_type_lib.FunctionType,
-             trace_type.WeakrefDeletionObserver]:
+             trace_type.InternalTracingContext]:
     """Generates function type given the function arguments."""
     if captures is None:
       captures = dict()
@@ -405,7 +384,6 @@ class FunctionSpec(object):
     if self.is_pure:
       args, kwargs = _convert_variables_to_tensors(args, kwargs)
     args, kwargs = self.bind_function_inputs(args, kwargs)
-    args, kwargs = cast_inputs(args, kwargs, self.input_signature)
     filtered_flat_args = filter_function_inputs(args, kwargs)
 
     return args, kwargs, filtered_flat_args
@@ -426,7 +404,7 @@ class FunctionSpec(object):
           args, sanitized_kwargs, self.default_values)
     except Exception as e:
       raise TypeError(
-          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`."
+          f"Binding inputs to tf.function `{self._name}` failed due to `{e}`. "
           f"Received args: {args} and kwargs: {sanitized_kwargs} for signature:"
           f" {self.function_type}."
       ) from e
@@ -464,122 +442,37 @@ def _to_tensor_or_tensor_spec(x):
           ops.convert_to_tensor(x))
 
 
-def _deterministic_dict_values(dictionary):
-  return tuple(dictionary[key] for key in sorted(dictionary))
-
-
 def _convert_variables_to_tensors(args, kwargs):
   args = [_to_tensor_or_tensor_spec(x) for x in args]
   kwargs = {kw: _to_tensor_or_tensor_spec(x) for kw, x in kwargs.items()}
   return tuple(args), kwargs
 
 
-def cast_inputs(args, kwargs, input_signature):
-  """Casts args, kwargs to TF values based on an optional input_signature."""
-  if input_signature is None:
-    args = cast_numpy_inputs(args)
-  else:
-    args = cast_inputs_to_signature(args, input_signature)
-  kwargs = cast_numpy_inputs(kwargs)
-
-  return args, kwargs
-
-
-def cast_numpy_inputs(inputs):
-  """Converts numpy array inputs to tensors."""
-  flat_inputs = composite_tensor_utils.flatten_with_variables(inputs)
-
-  # Check for NumPy arrays in arguments and convert them to Tensors.
-  # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
-  # finding a way to store them directly in the cache key (currently not
-  # possible since ndarrays are not hashable).
-  need_packing = False
-  filtered_flat_inputs = []
-  for index, value in enumerate(flat_inputs):
-    if isinstance(value,
-                  (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
-      filtered_flat_inputs.append(value)
-    elif hasattr(value, "__array__") and not (
-        hasattr(value, "_should_act_as_resource_variable") or
-        isinstance(value, (np.str_, type, composite_tensor.CompositeTensor))):
-      # This case is equivalent to _is_ndarray(value) == True
-      a = value.__array__()
-      if not isinstance(a, np.ndarray):
-        raise TypeError(f"The output of __array__ must be an np.ndarray, "
-                        f"got {type(a)} from {value}.")
-      flat_inputs[index] = constant_op.constant(a)
-      filtered_flat_inputs.append(flat_inputs[index])
-      need_packing = True
-  if need_packing:
-    return nest.pack_sequence_as(
-        structure=inputs,
-        flat_sequence=nest.flatten(flat_inputs, expand_composites=True),
-        expand_composites=True)
-  else:
-    return inputs
-
-
-def cast_inputs_to_signature(inputs, input_signature):
-  """Converts inputs to pass into a function with an explicit signature."""
-
-  flat_input_signature = tuple(
-      nest.flatten(input_signature, expand_composites=True))
-
-  def format_error_message(inputs, input_signature):
-    return ("  inputs: (\n" + "    " + ",\n    ".join(str(i) for i in inputs) +
-            ")\n" + "  input_signature: (\n" + "    " +
-            ",\n    ".join(str(i) for i in input_signature) + ")")
-
-  try:
-    flatten_inputs = nest.flatten_up_to(
-        input_signature,
-        inputs[:len(input_signature)],
-        expand_composites=True,
-        check_types=False)  # lists are convert to tuples for `tf.data`.
-  except ValueError:
-    raise ValueError("Structure of Python function inputs does not match "
-                     "input_signature:\n"
-                     f"{format_error_message(inputs, input_signature)}.")
-
-  need_packing = False
-  for index, (value,
-              spec) in enumerate(zip(flatten_inputs, flat_input_signature)):
-    if (isinstance(spec, tensor_spec.TensorSpec) and
-        not isinstance(value, tensor_spec.TensorSpec) and
-        not _pywrap_utils.IsTensor(value)):
-      try:
-        flatten_inputs[index] = ops.convert_to_tensor(
-            value, dtype_hint=spec.dtype)
-        need_packing = True
-      except ValueError:
-        raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be convertible to "
-                         "tensors:\n"
-                         f"{format_error_message(inputs, input_signature)}.")
-
-  if any(not spec.is_compatible_with(other)
-         for spec, other in zip(flat_input_signature, flatten_inputs)):
-    raise ValueError("Python inputs incompatible with input_signature:\n"
-                     f"{format_error_message(inputs, input_signature)}.")
-
-  if need_packing:
-    inputs = nest.pack_sequence_as(
-        structure=input_signature,
-        flat_sequence=flatten_inputs,
-        expand_composites=True)
-
-  return inputs
-
-
+# TODO(fmuham): Migrate to use TraceType/FunctionType _to_tensors.
 def filter_function_inputs(args, kwargs):
   """Filters and flattens args and kwargs."""
   flat_inputs = composite_tensor_utils.flatten_with_variables(
       args) + composite_tensor_utils.flatten_with_variables(kwargs)
 
-  for inp in flat_inputs:
-    # TODO(b/183107079): Allow these once they're handled properly.
-    if isinstance(inp, weakref.ref):
-      raise ValueError(f"weakref input {inp} not supported for tf.function.")
+  for index, flat_input in enumerate(flat_inputs):
+    if hasattr(flat_input, "__array__") and not (
+        hasattr(flat_input, "_should_act_as_resource_variable")
+        or isinstance(
+            flat_input,
+            (
+                ops.Tensor,
+                resource_variable_ops.BaseResourceVariable,
+                np.str_,
+                type,
+                composite_tensor.CompositeTensor,
+            ),
+        )
+    ):
+      ndarray = flat_input.__array__()
+      if not isinstance(ndarray, np.ndarray):
+        raise TypeError(f"The output of __array__ must be an np.ndarray, "
+                        f"got {type(ndarray)} from {flat_input}.")
+      flat_inputs[index] = constant_op.constant(ndarray)
 
   filtered_flat_inputs = [
       t for t in flat_inputs

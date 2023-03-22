@@ -50,7 +50,6 @@ def TFL_Dialect : Dialect {
     Operation *materializeConstant(OpBuilder &builder, Attribute value,
                                    Type type, Location loc) override;
   }];
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//

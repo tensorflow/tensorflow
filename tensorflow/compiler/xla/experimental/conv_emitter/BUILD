@@ -70,6 +70,7 @@ xla_cc_test(
     deps = [
         ":conv_emitter",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/tsl/platform:test",

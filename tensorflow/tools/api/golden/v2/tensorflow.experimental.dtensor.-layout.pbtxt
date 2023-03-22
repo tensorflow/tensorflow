@@ -1,7 +1,24 @@
 path: "tensorflow.experimental.dtensor.Layout"
 tf_class {
   is_instance: "<class \'tensorflow.dtensor.python.layout.Layout\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'tensorflow.python._pywrap_dtensor_device.Layout\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  member {
+    name: "mesh"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "sharding_specs"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'sharding_specs\', \'mesh\'], varargs=None, keywords=None, defaults=None"
@@ -12,15 +29,15 @@ tf_class {
   }
   member_method {
     name: "batch_sharded"
-    argspec: "args=[\'mesh\', \'batch_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'mesh\', \'batch_dim\', \'rank\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "delete"
     argspec: "args=[\'self\', \'dims\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "from_str"
-    argspec: "args=[\'layout_str\'], varargs=None, keywords=None, defaults=None"
+    name: "from_proto"
+    argspec: "args=[\'layout_proto\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_string"
@@ -31,11 +48,11 @@ tf_class {
     argspec: "args=[\'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "is_fully_replicated"
+    name: "is_batch_parallel"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "mesh_proto"
+    name: "is_fully_replicated"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -53,10 +70,6 @@ tf_class {
   member_method {
     name: "replicated"
     argspec: "args=[\'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "serialized_string"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_string"

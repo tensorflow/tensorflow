@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Host.h"
+#include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -215,7 +215,7 @@ llvm::JITEvaluatedSymbol SimpleOrcJIT::ResolveRuntimeSymbol(
   if (func_addr == nullptr) {
     LOG(ERROR)
         << "Unable to resolve runtime symbol: `" << name.str()
-        << "'.  Hint: if the symbol a custom call target, make sure you've "
+        << "'. Hint: if the symbol a custom call target, make sure you've "
            "registered it with the JIT using "
            "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
     return nullptr;

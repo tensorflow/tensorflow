@@ -146,8 +146,7 @@ StatusOr<NcclComm::Lock> LockNcclComm(
       const NcclUniqueIdCallback* unique_id_callback,
       GetNcclUniqueIdCallback(params.nccl_unique_id_callback, is_local));
 
-  se::StreamExecutor* executor = params.stream->parent();
-  se::gpu::ScopedActivateExecutorContext scoped_context(executor);
+  se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
 
   return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
                          num_local_participants, *unique_id_callback, rank);
@@ -201,7 +200,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 std::string NcclCollectiveThunk::GetDeviceString(
     const NcclExecuteParams& nccl_params) {
-  int device_ordinal = nccl_params.stream->parent()->device_ordinal();
+  int device_ordinal = nccl_params.stream_executor->device_ordinal();
   GlobalDeviceId global_device_id = nccl_params.GetGlobalDeviceId().value();
   DeviceAssignment::LogicalID logical_id =
       nccl_params.device_assn->LogicalIdForDevice(global_device_id).value();

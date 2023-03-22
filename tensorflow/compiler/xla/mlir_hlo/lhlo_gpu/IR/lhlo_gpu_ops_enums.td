@@ -66,6 +66,10 @@ def ConvolutionBackendConfigAttr : AttrDef<
    I64ArrayParameter:$knob_ids,
    I64ArrayParameter:$knob_values,
    BoolParameter:$is_cudnn_frontend,
+   // If the convolution has CUDNN_TENSOR_NCHW_VECT_C layout (applicable to
+   // int8 data type only), this flag denotes that the filter (and bias, if
+   // present) are reordered using `cudnnReorderFilterAndBias`.
+   BoolParameter:$is_cudnn_reordered_int8,
    "int64_t":$workspace_size,
 
    // The following 3 attributes describe the layout as an array of integers

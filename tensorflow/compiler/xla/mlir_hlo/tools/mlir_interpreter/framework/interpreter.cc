@@ -45,6 +45,13 @@ SmallVector<InterpreterValue> interpret(InterpreterState& state,
   }
   state.getOptions().listener->beforeOp(operands, &op);
   auto results = fn(operands, &op, state);
+  for (auto* scope = state.getTopScope(); scope != nullptr;
+       scope = scope->getParentScope()) {
+    scope->verify();
+  }
+  if (state.hasFailure()) {
+    llvm::errs() << "Encountered failure while executing " << op << "\n";
+  }
   state.getOptions().listener->afterOp(results);
   state.step();
   return results;
@@ -63,23 +70,29 @@ SmallVector<InterpreterValue> interpret(InterpreterState& state, Region& region,
     scope.Set(value, interpreter_value);
   }
 
-  for (mlir::Operation& op : block.without_terminator()) {
+  std::optional<SmallVector<InterpreterValue>> blockResults;
+  for (mlir::Operation& op : block) {
     auto results = interpret(state, op);
     if (state.hasFailure()) return {};
-    if (results.size() != op.getNumResults()) {
-      llvm::errs() << "Unexpected number of results while interpreting "
-                   << op.getName().getStringRef() << ". Interpreter bug?\n";
-      llvm_unreachable("unexpected number of results");
-    }
-    for (auto [v, iv] : llvm::zip(op.getResults(), results)) {
-      scope.Set(v, iv);
+    if (op.hasTrait<OpTrait::IsTerminator>()) {
+      assert(!blockResults.has_value() && "Expected at most one terminator");
+      blockResults = results;
+    } else {
+      if (results.size() != op.getNumResults()) {
+        llvm::errs() << "Unexpected number of results while interpreting "
+                     << op.getName().getStringRef() << ". Interpreter bug?\n";
+        llvm_unreachable("unexpected number of results");
+      }
+      for (auto [v, iv] : llvm::zip(op.getResults(), results)) {
+        scope.Set(v, iv);
+      }
     }
   }
-  auto result = interpret(state, *block.getTerminator());
-  if (state.hasFailure()) return {};
-
-  state.getOptions().listener->leaveRegion(result);
-  return result;
+  if (!blockResults) {
+    blockResults = SmallVector<InterpreterValue>{};
+  }
+  state.getOptions().listener->leaveRegion(*blockResults);
+  return *std::move(blockResults);
 }
 
 InterpreterState::InterpreterState(const mlir::SymbolTable& symbols,
@@ -99,21 +112,25 @@ void InterpreterState::addFailure(llvm::StringRef failure) {
   options.errorHandler(failure);
 }
 
-InterpreterScope::~InterpreterScope() {
+void InterpreterScope::verify() const {
   for (auto& [_, value] : values) {
-    if (value.isTensor() && value.buffer()->hasOutOfBoundsAccess()) {
-      state.addFailure("Out of bounds access");
+    if (value.isTensor() && value.buffer() &&
+        !value.buffer()->getFailure().empty()) {
+      state.addFailure(value.buffer()->getFailure());
       break;
     }
   }
+}
 
+InterpreterScope::~InterpreterScope() {
+  verify();
   state.topScope = parentScope;
 }
 
 mlir::FailureOr<SmallVector<InterpreterValue>> runInterpreter(
     const mlir::SymbolTable& symbols, mlir::func::FuncOp function,
     ArrayRef<InterpreterValue> args, InterpreterOptions options) {
-  InterpreterState state{symbols, options};
+  InterpreterState state{symbols, std::move(options)};
   auto results = interpret(state, function.getBody(), args);
   if (state.hasFailure()) {
     return failure();

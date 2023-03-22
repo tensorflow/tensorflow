@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -193,6 +194,17 @@ inline std::vector<std::complex<double>> Split(const string& s,
     }
     std::complex<double> c(real, img);
     fields.push_back(c);
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<Eigen::half> Split(const string& s,
+                                      const string& delimiter) {
+  std::vector<Eigen::half> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(Eigen::half_impl::float_to_half_rtne(
+        strtof(s.data() + p.first, nullptr)));
   }
   return fields;
 }

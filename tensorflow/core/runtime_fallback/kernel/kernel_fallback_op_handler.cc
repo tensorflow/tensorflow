@@ -67,7 +67,6 @@ using tfrt::CoreRuntimeOp;
 using tfrt::ExecutionContext;
 using tfrt::Expected;
 using tfrt::OpAttrsRef;
-using tfrt::OpHandler;
 using tfrt::OpInvocation;
 using tfrt::OpMetadataFn;
 using tfrt::raw_ostream;

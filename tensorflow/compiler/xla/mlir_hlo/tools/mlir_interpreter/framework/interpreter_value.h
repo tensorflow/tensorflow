@@ -70,6 +70,8 @@ struct InterpreterValue {
   // type of the same size, and then to uint64. For example, the result for
   // int8_t{-1} is 255.
   uint64_t asUInt() const;
+  // For floating point scalars, casts them to double.
+  double asDouble() const;
   // Must be a tensor or memref.
   int64_t getByteSizeOfElement() const;
 
@@ -96,7 +98,7 @@ struct InterpreterValue {
   BufferView& view();
   const BufferView& view() const;
   // Returns the underlying tensor's buffer. Must be a tensor.
-  std::shared_ptr<Buffer> buffer();
+  std::shared_ptr<Buffer> buffer() const;
 
   bool isTensor() const;
 

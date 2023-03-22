@@ -65,6 +65,11 @@ typedef struct TF_Tensor TF_Tensor;
 typedef struct TF_KernelBuilder TF_KernelBuilder;
 typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
 typedef struct TF_OpKernelContext TF_OpKernelContext;
+typedef struct TF_AsyncOpKernelDoneCallback TF_AsyncOpKernelDoneCallback;
+
+// Run callback function for async kernel.
+TF_CAPI_EXPORT extern void TF_RunAsyncOpKernelDoneCallback(
+    TF_AsyncOpKernelDoneCallback*);
 
 // TF_InitKernel to do op/kernel registration.
 // Plugin should implement TF_InitKernel to register kernels. This function
@@ -103,6 +108,18 @@ TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewKernelBuilder(
     const char* op_name, const char* device_name,
     void* (*create_func)(TF_OpKernelConstruction*),
     void (*compute_func)(void*, TF_OpKernelContext*),
+    void (*delete_func)(void*));
+
+// Allocates a new kernel builder and returns a pointer to it.
+//
+// It is similar as TF_NewKernelBuilder, except compute_async_func.
+// It creates an AsyncOpKernel, and performs async computation through
+// compute_async_func.
+TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
     void (*delete_func)(void*));
 
 // Specifies that this kernel's attribute only supports the given type.

@@ -28,6 +28,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -41,15 +42,19 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -65,13 +70,21 @@ std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(
 
 template <typename T>
 inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
-                               int32_t zero_point) {
+                               int32_t zero_point,
+                               TfLiteType type = kTfLiteNoType) {
   std::vector<T> q;
+
+  T min = std::numeric_limits<T>::min();
+  T max = std::numeric_limits<T>::max();
+
+  if (type == kTfLiteInt4) {
+    min = -7;
+    max = 7;
+  }
+
   for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
-        std::numeric_limits<T>::min(),
-        std::min<float>(std::numeric_limits<T>::max(),
-                        std::round(zero_point + (f / scale))))));
+        min, std::min<float>(max, std::round(zero_point + (f / scale))))));
   }
   return q;
 }
@@ -457,8 +470,17 @@ class SingleOpModel {
   template <typename T>
   void QuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
-    auto q = Quantize<T>(data, t->params.scale, t->params.zero_point);
+    auto q = Quantize<T>(data, t->params.scale, t->params.zero_point, t->type);
     PopulateTensor(index, 0, q.data(), q.data() + q.size());
+  }
+
+  void QuantizeAndPopulate4bit(int index, const std::vector<float>& data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    t->type = kTfLiteInt4;
+    std::vector<int8_t> quantized_output =
+        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
+    PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
+                       quantized_output.data() + quantized_output.size());
   }
 
   void SymmetricQuantizeAndPopulate(int index, const std::vector<float>& data) {
@@ -705,6 +727,9 @@ class SingleOpModel {
         } else if (t.type == TensorType_INT16) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int16_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT4) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int8_t>(t.min, t.max, kTfLiteInt4);
         } else {
           LOG(FATAL) << "No support for the requested quantized type";
         }
@@ -1158,6 +1183,66 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
+
+// This Matcher can be used to check the dimensions of a `TfLiteTensor`
+// in a readable way. It will print a helpful error message in the
+// case of a failure.
+//
+// EXAMPLE:
+// TfLiteTensor* t = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+// t->dims = ConvertVectorToTfLiteIntArray({2, 2});
+// EXPECT_EQ(t, DimsAre({2, 2}));
+//
+// To check for scalar, simply pass empty initializer list: `DimsAre({})`.
+class DimsAreMatcher {
+ public:
+  using is_gtest_matcher = void;
+  explicit DimsAreMatcher(const std::vector<int>& dims) {
+    dims_ = std::shared_ptr<TfLiteIntArray>(ConvertVectorToTfLiteIntArray(dims),
+                                            TfLiteIntArrayFree);
+  }
+
+  // Required method to implement for matcher objects. We overload on
+  // both `TfLiteTensor*` and `TfLiteIntArray` for flexibility.
+  bool MatchAndExplain(TfLiteIntArray* arg,
+                       testing::MatchResultListener* result_listener) const {
+    if (arg == nullptr) {
+      *result_listener << "dims are null";
+      return false;
+    }
+    if (TfLiteIntArrayEqual(arg, dims_.get())) {
+      return true;
+    }
+    *result_listener << "has dims " << tflite::GetShapeDebugString(arg);
+    return false;
+  }
+
+  bool MatchAndExplain(TfLiteTensor* arg,
+                       testing::MatchResultListener* result_listener) const {
+    return MatchAndExplain(arg->dims, result_listener);
+  }
+
+  void DescribeTo(std::ostream* os) const {
+    *os << "dims equal to ";
+    *os << tflite::GetShapeDebugString(dims_.get());
+  }
+
+  void DescribeNegationTo(std::ostream* os) const {
+    *os << "dims not equal to ";
+    *os << tflite::GetShapeDebugString(dims_.get());
+  }
+
+ private:
+  // gUnit uses the implicit copy constructor of `DimsAreMatcher`. Use
+  // `std::shared_ptr` here so copies of `DimsAreMatcher` can share the
+  // same `TfLiteIntArray`.
+  std::shared_ptr<TfLiteIntArray> dims_;
+};
+
+inline DimsAreMatcher DimsAre(std::initializer_list<int> dims_list) {
+  return DimsAreMatcher(dims_list);
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

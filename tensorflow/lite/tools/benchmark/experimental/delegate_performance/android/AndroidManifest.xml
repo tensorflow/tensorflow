@@ -39,7 +39,6 @@
             android:name=".BenchmarkLatencyActivity"
             android:screenOrientation="portrait"
             android:label="TFLite Delegate Performance Benchmark - Latency"
-            android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
             android:noHistory="true">
         </activity>
@@ -48,7 +47,6 @@
             android:name=".BenchmarkAccuracyActivity"
             android:screenOrientation="portrait"
             android:label="TFLite Delegate Performance Benchmark - Accuracy"
-            android:theme="@android:style/Theme.NoDisplay"
             android:exported="true"
             android:noHistory="true">
         </activity>

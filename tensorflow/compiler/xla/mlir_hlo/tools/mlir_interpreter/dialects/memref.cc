@@ -36,6 +36,10 @@ namespace {
 InterpreterValue load(InterpreterState& state, memref::LoadOp,
                       const InterpreterValue& memref,
                       ArrayRef<int64_t> indices) {
+  if (!memref.buffer()) {
+    state.addFailure("null pointer dereference.");
+    return {};
+  }
   if (!memref.view().inBounds(indices)) {
     state.addFailure("array index out of bounds");
     return {};
@@ -54,17 +58,40 @@ void store(InterpreterState& state, memref::StoreOp,
 }
 
 // TODO(jreiffers): Support symbol operands.
-InterpreterValue alloc(InterpreterState&, memref::AllocOp alloc,
+InterpreterValue alloc(InterpreterState& state, memref::AllocOp alloc,
                        ArrayRef<int64_t> dynamicSizes) {
   auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
   auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
-  return InterpreterValue::makeTensor(ty.getElementType(), shape);
+  auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize += result.buffer()->getByteSize();
+    stats->peakHeapSize = std::max(stats->peakHeapSize, stats->heapSize);
+    ++stats->numAllocations;
+  }
+  return result;
+}
+
+InterpreterValue allocA(InterpreterState&, memref::AllocaOp alloc,
+                        ArrayRef<int64_t> dynamicSizes) {
+  auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
+  auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
+  auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
+  result.buffer()->setIsAlloca();
+  return result;
 }
 
 void dealloc(InterpreterState& state, memref::DeallocOp,
              InterpreterValue memref) {
+  if (!memref.buffer()) {
+    state.addFailure("attempting to deallocate null pointer.");
+    return;
+  }
   auto buffer = memref.buffer();
   const auto& view = memref.view();
+  if (auto* stats = state.getOptions().stats) {
+    stats->heapSize -= buffer->getByteSize();
+    ++stats->numDeallocations;
+  }
   if (view.getNumElements() * memref.getByteSizeOfElement() !=
       buffer->getByteSize()) {
     state.addFailure("Attempting to deallocate a subview");
@@ -143,8 +170,14 @@ llvm::SmallVector<InterpreterValue> collapseShape(
   return {out};
 }
 
-template <typename Op>
-InterpreterValue cast(InterpreterState& state, Op op, InterpreterValue memref) {
+InterpreterValue cast(InterpreterState&, memref::CastOp,
+                      InterpreterValue memref) {
+  return memref;
+}
+
+// TODO(jreiffers): Implement full expand_shape support.
+InterpreterValue expandShape(InterpreterState& state, memref::ExpandShapeOp op,
+                             InterpreterValue memref) {
   BufferView inputView = memref.view();
   auto outTy = op->getResultTypes()[0].template cast<MemRefType>();
   if (outTy.getNumDynamicDims() > 0) {
@@ -195,13 +228,13 @@ int64_t dim(InterpreterState& state, memref::DimOp,
 }
 
 REGISTER_MLIR_INTERPRETER_OP(alloc);
+REGISTER_MLIR_INTERPRETER_OP(allocA);
+REGISTER_MLIR_INTERPRETER_OP(cast);
 REGISTER_MLIR_INTERPRETER_OP(collapseShape);
-REGISTER_MLIR_INTERPRETER_OP(cast<memref::CastOp>);
 REGISTER_MLIR_INTERPRETER_OP(copy);
 REGISTER_MLIR_INTERPRETER_OP(dealloc);
 REGISTER_MLIR_INTERPRETER_OP(dim);
-// TODO(jreiffers): Implement full expand_shape support.
-REGISTER_MLIR_INTERPRETER_OP(cast<memref::ExpandShapeOp>);
+REGISTER_MLIR_INTERPRETER_OP(expandShape);
 REGISTER_MLIR_INTERPRETER_OP(getGlobal);
 REGISTER_MLIR_INTERPRETER_OP(load);
 REGISTER_MLIR_INTERPRETER_OP(store);

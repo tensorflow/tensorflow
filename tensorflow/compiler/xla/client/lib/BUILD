@@ -293,6 +293,7 @@ cc_library(
     hdrs = ["prng.h"],
     deps = [
         ":constants",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -555,6 +556,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/platform:test",
     ],
 )

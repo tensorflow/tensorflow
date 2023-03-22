@@ -5,7 +5,10 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow:__subpackages__",
         "//tensorflow:internal",
+        "//tensorflow_estimator:__subpackages__",
+        "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],
     licenses = ["notice"],
@@ -101,6 +104,7 @@ py_library(
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
+        "//tensorflow/python/platform",
         "@absl_py//absl:app",
     ],
 )
@@ -145,8 +149,6 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
-        "noasan",  # b/144707533
-        "notsan",  # b/160824139
     ],
     deps = [
         ":convert",
@@ -326,13 +328,13 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

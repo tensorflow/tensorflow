@@ -659,6 +659,9 @@ struct ArithmeticParams {
   // int64_t activation params.
   int64_t int64_activation_min;
   int64_t int64_activation_max;
+  // int16_t activation params.
+  int16_t int16_activation_min;
+  int16_t int16_activation_max;
 
   // Processed output dimensions.
   // Let input "a" be the one that broadcasts in the faster-changing dimension.
@@ -1023,6 +1026,12 @@ inline void SetActivationParams(int32_t min, int32_t max, P* params) {
 }
 
 template <typename P>
+inline void SetActivationParams(int16_t min, int16_t max, P* params) {
+  params->int16_activation_min = min;
+  params->int16_activation_max = max;
+}
+
+template <typename P>
 inline void SetActivationParams(int64_t min, int64_t max, P* params) {
   params->int64_activation_min = min;
   params->int64_activation_max = max;
@@ -1032,6 +1041,12 @@ template <typename P>
 inline void GetActivationParams(const P& params, int32_t* min, int32_t* max) {
   *min = params.quantized_activation_min;
   *max = params.quantized_activation_max;
+}
+
+template <typename P>
+inline void GetActivationParams(const P& params, int16_t* min, int16_t* max) {
+  *min = params.int16_activation_min;
+  *max = params.int16_activation_max;
 }
 
 template <typename P>

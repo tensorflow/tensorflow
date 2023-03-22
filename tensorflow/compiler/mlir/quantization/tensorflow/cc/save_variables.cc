@@ -38,10 +38,7 @@ namespace {
 
 using ::mlir::func::FuncOp;
 using ::mlir::tf_saved_model::GetInitializerFunction;
-using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using ::mlir::tf_saved_model::SessionInitializerOp;
 
 // Adds the tensor that initializes the variable through the provided
 // `assign_var_op` to the `bundle_writer` for saving to checkpoint. Returns the

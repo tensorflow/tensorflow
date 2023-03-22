@@ -37,8 +37,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
     const TacModule* module);
 
-// Create an instance of the RaiseTargetSubgraphsPass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass();
+// Create an instance of the RaiseTargetSubgraphsPass. If `skip_raise_cpu_ops`,
+// we skip clustering for CPU ops for better clustering of ops running on other
+// ML accelerators.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass(
+    bool skip_raise_cpu_ops = false);
 
 // Create an instance of the AlternativeSubgraphPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateAlternativeSubgraphPass(

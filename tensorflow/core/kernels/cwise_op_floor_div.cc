@@ -29,6 +29,7 @@ REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
 REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 #endif
+REGISTER(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, bfloat16);
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

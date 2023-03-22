@@ -43,12 +43,10 @@ limitations under the License.
 #include "tensorflow/core/util/proto/decode.h"
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::MakeUnique;
 using ::tensorflow::protobuf::Descriptor;
 using ::tensorflow::protobuf::DescriptorPool;
 using ::tensorflow::protobuf::DynamicMessageFactory;
@@ -699,8 +697,8 @@ class DecodeProtoOp : public OpKernel {
       DefaultValue default_value;
       OP_REQUIRES_OK(context, InitDefaultValueFromFieldDescriptor(
                                   dtype, field_descriptor, &default_value));
-      fields_.push_back(
-          MakeUnique<FieldInfo>(field_descriptor, output_index, default_value));
+      fields_.push_back(std::make_unique<FieldInfo>(
+          field_descriptor, output_index, default_value));
     }
 
     message_prototype_ = message_factory_.GetPrototype(message_desc);
