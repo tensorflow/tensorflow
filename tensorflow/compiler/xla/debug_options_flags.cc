@@ -329,14 +329,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_nans),
       debug_options->xla_cpu_fast_math_honor_nans(),
       "When xla_cpu_enable_fast_math is true then this controls whether we "
-      "allow operations to produce NaNs.  Ignored when "
+      "allow operations to produce NaNs. Ignored when "
       "xla_cpu_enable_fast_math is false."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_fast_math_honor_infs",
       bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_infs),
       debug_options->xla_cpu_fast_math_honor_infs(),
       "When xla_cpu_enable_fast_math is true then this controls whether we "
-      "allow operations to produce infinites.  Ignored when "
+      "allow operations to produce infinites. Ignored when "
       "xla_cpu_enable_fast_math is false."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_fast_math_honor_division",
@@ -406,10 +406,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag(
       "xla_disable_all_hlo_passes",
       bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
-      "Disables all HLO passes.  Notes that some passes are necessary for "
+      "Disables all HLO passes. Notes that some passes are necessary for "
       "correctness and the invariants that must be satisfied by 'fully "
       "optimized' HLO are different for different devices and may change "
-      "over time.  The only 'guarantee', such as it is, is that if you compile "
+      "over time. The only 'guarantee', such as it is, is that if you compile "
       "XLA and dump the optimized HLO for some graph, you should be able to "
       "run it again on the same device with the same build of XLA."));
   flag_list->push_back(
@@ -530,7 +530,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If multiple parameters, separate them by comma."));
   flag_list->push_back(tsl::Flag(
       "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
-      "Sets compiler fuel, useful for bisecting bugs in passes.  Format "
+      "Sets compiler fuel, useful for bisecting bugs in passes. Format "
       "--xla_fuel=PASS1=NUM1,PASS2=NUM2,..."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_to", string_setter_for(&DebugOptions::set_xla_dump_to),
@@ -837,7 +837,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_strict_dot_conv_math),
       debug_options->xla_cpu_strict_dot_conv_math(),
       "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
-      "generally (much) faster on our hardware.  Set this flag to true to "
+      "generally (much) faster on our hardware. Set this flag to true to "
       "disable this behavior."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_latency_hiding_schedule",

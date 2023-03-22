@@ -67,7 +67,7 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   }
   // If root_instruction is not specified use the last added instruction.
   HloInstruction* root =
-      root_instruction ? root_instruction : last_added_instruction_;
+      root_instruction ? root_instruction : last_added_instruction();
   CHECK_NE(nullptr, root);
   return absl::WrapUnique(new HloComputation(
       name_, parameter_count, &instructions_, root, fusion_instruction_));
@@ -90,7 +90,7 @@ HloComputation::HloComputation(
     if (instruction->opcode() == HloOpcode::kParameter) {
       int64_t param_no = instruction->parameter_number();
       CHECK(param_no >= 0 && param_no < parameter_count)
-          << "\nERROR: invalid parameter number.  Expected [0, "
+          << "\nERROR: invalid parameter number. Expected [0, "
           << parameter_count << "), got " << param_no;
       CHECK(param_instructions_[param_no] == nullptr)
           << "\nERROR: parameter number " << param_no
@@ -120,7 +120,7 @@ HloComputation::~HloComputation() {
 }
 
 HloInstruction* HloComputation::AddInstruction(
-    std::unique_ptr<HloInstruction> instruction, const std::string& new_name) {
+    std::unique_ptr<HloInstruction> instruction, absl::string_view new_name) {
   CHECK(instruction->opcode() != HloOpcode::kParameter)
       << "Parameter instructions cannot be added to a computation after "
       << "it has been built";
@@ -679,6 +679,10 @@ void HloComputation::Print(
   }
 }
 
+std::string HloComputation::ToString() const {
+  return ToString(HloPrintOptions::Default());
+}
+
 std::string HloComputation::ToString(const HloPrintOptions& options) const {
   return ToString(options, MakeInstructionPostOrder());
 }
@@ -762,7 +766,7 @@ HloComputation::CreateFromProto(
       if (instruction->opcode() == HloOpcode::kParameter) {
         int64_t param_no = instruction->parameter_number();
         TF_RET_CHECK(param_no >= 0 && param_no < parameter_count)
-            << "Invalid parameter number.  Expected [0, " << parameter_count
+            << "Invalid parameter number. Expected [0, " << parameter_count
             << "), got " << param_no;
         TF_RET_CHECK(!parameters_seen[param_no])
             << "Parameter number " << param_no
@@ -1097,7 +1101,7 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   // information on the new instruction we should copy the old sharding
   // information (if any).
   if (!new_instruction->has_sharding()) {
-    new_instruction->set_sharding(old_instruction->sharding_ptr());
+    new_instruction->copy_sharding(old_instruction);
   }
 
   TF_RETURN_IF_ERROR(
@@ -1380,7 +1384,8 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   // match the order in instructions_.
   SortClonedInstructions(*context, replace, *this, instructions_, instructions);
 
-  Builder builder(suffix.empty() ? name() : name() + "." + suffix);
+  Builder builder(suffix.empty() ? std::string(name())
+                                 : absl::StrCat(name(), ".", suffix));
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }

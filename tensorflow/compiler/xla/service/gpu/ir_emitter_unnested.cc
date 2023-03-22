@@ -2780,7 +2780,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
           // this once we get rid of this function, or don't rely on the op name
           // (which shouldn't be the identity) to generate LLVM symbols.
           instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(
-              module->name() + "_" + instr->name()));
+              absl::StrCat(module->name(), "_", instr->name())));
         }
       }
     }

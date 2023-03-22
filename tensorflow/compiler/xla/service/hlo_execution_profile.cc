@@ -50,7 +50,7 @@ HloProfileIndexMap::HloProfileIndexMap(
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
     const HloCostAnalysis& cost_analysis,
-    const std::string& entry_computation_name) {
+    absl::string_view entry_computation_name) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
@@ -87,7 +87,7 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     HloComputationInfo* computation_info =
         profile_printer_data->add_computation_infos();
 
-    computation_info->set_name(computation->name());
+    *computation_info->mutable_name() = std::string(computation->name());
     computation_info->set_profile_index(pair.second);
     computation_info->mutable_instruction_infos()->Reserve(
         computation->instruction_count());
@@ -117,7 +117,8 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
         {pair.first, pair.second});
   }
 
-  profile_printer_data->set_entry_computation(entry_computation_name);
+  *profile_printer_data->mutable_entry_computation() =
+      std::string(entry_computation_name);
 
   return profile_printer_data;
 }

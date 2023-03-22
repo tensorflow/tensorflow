@@ -1325,9 +1325,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                 subcomputation.allow_reassociation)
             .status());
   }
-  std::string function_name_prefix = entry_computation->name().empty()
-                                         ? "__compute"
-                                         : entry_computation->name();
+  absl::string_view function_name_prefix = entry_computation->name().empty()
+                                               ? "__compute"
+                                               : entry_computation->name();
   TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,
