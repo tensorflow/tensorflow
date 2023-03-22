@@ -1186,6 +1186,8 @@ std::unordered_map<std::string, int> DTensorDevice::GetFunctionCacheStats(
       {"size", stats.size},
       {"device_cache.size", eager_stats.device_cache_size},
       {"kernel_cache.size", eager_stats.kernel_cache_size},
+      {"local_rendezvous_cache.active.size",
+       eager_stats.local_rendezvous_cache_active_size},
   };
   for (const auto& iter : eager_stats.func_kernel_cache_entries) {
     result[absl::StrCat("kernel_cache.", iter.first, ".size")] = iter.second;

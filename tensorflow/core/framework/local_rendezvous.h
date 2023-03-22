@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 
+#include <optional>
 #include <vector>
 
 #include "tensorflow/core/framework/rendezvous.h"
@@ -42,7 +43,9 @@ class LocalRendezvous {
   // can make sure it outlives the async recv requests.
   // Pass in nullptr if the wrapping class is not refcounted.
   explicit LocalRendezvous(Rendezvous* owner, int num_shards)
-      : rc_owner_(owner), table_buckets_(num_shards > 0 ? num_shards : 1) {}
+      : table_buckets_(num_shards > 0 ? num_shards : 1) {
+    if (owner) rc_owner_.emplace(owner);
+  }
   ~LocalRendezvous();
 
   Status Send(const Rendezvous::ParsedKey& key,
@@ -55,6 +58,10 @@ class LocalRendezvous {
   Status status();
 
  private:
+  using OptionalOwnerPtr = std::optional<tsl::core::RefCountPtr<Rendezvous>>;
+
+  OptionalOwnerPtr GetOwnerRefCountPtr();
+
   struct Item;
 
   // By invariant, the item queue under each key is of the form
@@ -71,7 +78,7 @@ class LocalRendezvous {
   typedef gtl::FlatMap<uint64, ItemQueue> Table;
 
   // Pointer to the owner class of this LocalRendezvous if it is refcounted.
-  const Rendezvous* rc_owner_;
+  std::optional<tsl::core::WeakPtr<Rendezvous>> rc_owner_;
 
   struct TableBucket {
     mutex mu;
