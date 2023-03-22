@@ -45,6 +45,7 @@ class CreateTRTResourceHandle : public OpKernel {
  public:
   explicit CreateTRTResourceHandle(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("resource_name", &resource_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("container_ID", &container_ID_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -63,7 +64,7 @@ class CreateTRTResourceHandle : public OpKernel {
                 << resource_name_ << " on device " << ctx->device()->name();
         handle_.scalar<ResourceHandle>()() =
             MakeResourceHandle<TRTEngineCacheResource>(
-                ctx, std::string(kTfTrtContainerName), resource_name_);
+                ctx, this->container_ID_, resource_name_);
         initialized_ = true;
       }
     }
@@ -72,6 +73,7 @@ class CreateTRTResourceHandle : public OpKernel {
 
  private:
   string resource_name_;
+  string container_ID_;
   Tensor handle_;
   mutex mutex_;
   bool initialized_ TF_GUARDED_BY(mutex_) = false;
@@ -188,6 +190,7 @@ class SerializeTRTResource : public OpKernel {
  public:
   explicit SerializeTRTResource(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delete_resource", &delete_resource_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("container_ID", &container_ID_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("save_gpu_specific_engines",
                                      &save_gpu_specific_engines_));
   }
@@ -206,7 +209,7 @@ class SerializeTRTResource : public OpKernel {
     OP_REQUIRES(
         ctx,
         ctx->resource_manager()
-            ->Lookup(std::string(kTfTrtContainerName), resource_name, &resource)
+            ->Lookup(this->container_ID_, resource_name, &resource)
             .ok(),
         errors::NotFound("TRTEngineCacheResource not yet created"));
     core::ScopedUnref unref_me(resource);
@@ -287,14 +290,14 @@ class SerializeTRTResource : public OpKernel {
               << " on device " << ctx->device()->name();
       OP_REQUIRES_OK(ctx,
                      ctx->resource_manager()->Delete<TRTEngineCacheResource>(
-                         std::string(kTfTrtContainerName), resource_name));
+                         this->container_ID_, resource_name));
     }
   }
 
  private:
   bool delete_resource_ = false;
   bool save_gpu_specific_engines_ = true;
-
+  string container_ID_;
   TF_DISALLOW_COPY_AND_ASSIGN(SerializeTRTResource);
 };
 

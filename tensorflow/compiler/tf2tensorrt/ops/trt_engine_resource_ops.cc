@@ -25,6 +25,7 @@ namespace tensorflow {
 
 REGISTER_OP("CreateTRTResourceHandle")
     .Attr("resource_name: string")
+    .Attr("container_ID: string")
     .Output("resource_handle: resource")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
@@ -39,6 +40,7 @@ REGISTER_OP("InitializeTRTResource")
 REGISTER_OP("SerializeTRTResource")
     .Attr("delete_resource: bool = false")
     .Attr("save_gpu_specific_engines: bool = True")
+    .Attr("container_ID: string")
     .Input("resource_name: string")
     .Input("filename: string")
     .SetIsStateful()

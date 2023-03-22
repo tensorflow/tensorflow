@@ -205,6 +205,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
 
+  // ID of container used for resources lookups.
+  string container_ID_;
+
   // The function for TF native execution of the segment.
   NameAttrList func_;
 
@@ -510,6 +513,14 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   if (static_engine_) {
     if (profile_generation_mode_) profile_generation_mode_ = false;
   }
+
+  status = context->GetAttr("container_ID", &container_ID_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found 'container_ID' attribute in "
+            << context->device()->name();
+    container_ID_ = std::string(kTfTrtContainerName);
+  }
+
   if (use_implicit_batch_) {
     OP_REQUIRES(context, !profile_generation_mode_,
                 errors::InvalidArgument(
@@ -1087,7 +1098,7 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 
   // Get engine cache.
   return ctx->resource_manager()->LookupOrCreate(
-      std::string(kTfTrtContainerName), std::string(resource_name), cache_res,
+      this->container_ID_, std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return OkStatus();

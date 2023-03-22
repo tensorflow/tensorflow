@@ -349,7 +349,7 @@ Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
                      const std::vector<EngineInfo>& infos, int pos,
                      int default_max_batch_size, Graph* graph,
                      std::vector<Node*>* engine_nodes,
-                     grappler::Cluster* cluster) {
+                     grappler::Cluster* cluster, const string& model) {
   const auto& info = infos.at(pos);
   std::vector<tensorflow::TensorShapeProto> input_shape_protos;
   std::vector<tensorflow::TensorShapeProto> output_shape_protos;
@@ -488,6 +488,9 @@ Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
   NameAttrList function;
   function.set_name(StrCat(info.engine_name, "_native_segment"));
 
+  std::string convParam;
+  params.SerializeToString(&convParam);
+
   node_builder.Attr("input_shapes", input_shape_protos)
       .Attr("output_shapes", output_shape_protos)
       .Attr("static_engine",
@@ -503,6 +506,7 @@ Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
       .Attr("_use_implicit_batch", params.use_implicit_batch)
       .Attr("use_explicit_precision", params.use_explicit_precision)
       .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
+      .Attr("container_ID", GetContainerID(model, convParam))
       .Attr("OutT", out_types);
 
   if (!params.use_implicit_batch) {
@@ -902,9 +906,11 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
     engine.max_workspace_size_bytes = params.max_workspace_size_bytes;
     VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
             << engine.engine_name;
+    string model;
+    graph_def.SerializeToString(&model);
     auto status =
         CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
-                      &engine_nodes, cluster);
+                      &engine_nodes, cluster, model);
 
     string msg = StrCat("segment ", i, " consisting of ",
                         converted_segments.at(i).nodes.size(), " nodes by ",

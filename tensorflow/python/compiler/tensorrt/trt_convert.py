@@ -390,9 +390,8 @@ def get_tensorrt_rewriter_config(conversion_params,
 # TODO(laigd): we rely on the fact that all functions are fully inlined
 # before TF-TRT optimizer is called, as otherwise it may generate the same
 # name when optimizing a different function graph. Fix this.
-def _get_canonical_engine_name(name):
-  return name.split("/")[-1]
-
+def _get_canonical_engine_name(node):
+  return node.name.split("/")[-1]
 
 class TrtGraphConverter(object):
   """A converter for TF-TRT transformation for TF 1.x GraphDef/SavedModels.
@@ -750,7 +749,7 @@ class TrtGraphConverter(object):
             calibration_result = calibration_sess.run(
                 device_to_get_resource_op_map[node.device],
                 feed_dict={
-                    resource_name_input: _get_canonical_engine_name(node.name)
+                    resource_name_input: _get_canonical_engine_name(node)
                 })
             node.attr["calibration_data"].s = calibration_result
 
@@ -841,10 +840,6 @@ class TrtGraphConverter(object):
     # Ignore other meta graphs from the input SavedModel.
     saved_model_builder.save()
 
-def _get_resource_handle(name, device):
-  with ops.device(device):
-    return gen_trt_ops.create_trt_resource_handle(resource_name=name)
-
 
 def _remove_native_segments(input_func):
   """Remove native segments from the input TF-TRT Converted Function.
@@ -890,11 +885,13 @@ class _TRTEngineResource(resource.TrackableResource):
   """Class to track the serialized engines resource."""
 
   def __init__(self,
+               container_ID,
                resource_name,
                filename,
                maximum_cached_engines,
                device="GPU"):
     super(_TRTEngineResource, self).__init__(device=device)
+    self._container_ID = container_ID
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
@@ -902,7 +899,9 @@ class _TRTEngineResource(resource.TrackableResource):
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
-    return _get_resource_handle(self._resource_name, self._resource_device)
+    with ops.device(self._resource_device):
+      return gen_trt_ops.create_trt_resource_handle(
+          container_ID=self._container_ID,  resource_name=self._resource_name)
 
   def _initialize(self):
     gen_trt_ops.initialize_trt_resource(
@@ -911,7 +910,7 @@ class _TRTEngineResource(resource.TrackableResource):
         max_cached_engines_count=self._maximum_cached_engines)
 
   def _destroy_resource(self):
-    handle = _get_resource_handle(self._resource_name, self._resource_device)
+    handle = self._create_resource()
     with ops.device(self._resource_device):
       gen_resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=True)
@@ -1046,7 +1045,7 @@ def _annotate_variable_ops(func, graph_def):
 def _save_calibration_table(node):
   try:
     calibration_table = gen_trt_ops.get_calibration_data_op(
-        _get_canonical_engine_name(node.name))
+        _get_canonical_engine_name(node))
     node.attr["calibration_data"].s = calibration_table.numpy()
   except (errors.UnknownError, errors.NotFoundError):
     logging.warning("Warning calibration error for %s", node.name)
@@ -1600,7 +1599,8 @@ class TrtGraphConverterV2(object):
     def _serialize_and_track_engine(node):
       """Serialize TRT engines in the cache and track them."""
       # Don't dump the same cache twice.
-      canonical_engine_name = _get_canonical_engine_name(node.name)
+      canonical_engine_name = _get_canonical_engine_name(node)
+      container_ID = _to_string(node.attr["container_ID"].s)
       if canonical_engine_name in resource_map:
         return
 
@@ -1609,6 +1609,7 @@ class TrtGraphConverterV2(object):
 
       try:
         gen_trt_ops.serialize_trt_resource(
+            container_ID=container_ID,
             resource_name=canonical_engine_name,
             filename=filename,
             delete_resource=True,
@@ -1623,7 +1624,7 @@ class TrtGraphConverterV2(object):
 
       # TODO(laigd): add an option for the user to choose the device.
       resource_map[canonical_engine_name] = _TRTEngineResource(
-          canonical_engine_name, filename,
+          container_ID, canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)
 
     self._for_each_trt_node(self._converted_graph_def,

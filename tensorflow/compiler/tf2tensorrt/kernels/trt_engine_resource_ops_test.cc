@@ -238,10 +238,11 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   SetDevice(DEVICE_GPU, std::move(device));
 
   // Create a resource handle.
-  const string container(kTfTrtContainerName);
+  const auto container = GetContainerID("mymodel");
   const string resource_name = "myresource";
   Reset();
   TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTResourceHandle")
+                   .Attr("container_ID", container)
                    .Attr("resource_name", resource_name)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
@@ -297,6 +298,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   // resource manager.
   Reset();
   TF_ASSERT_OK(NodeDefBuilder("op", "SerializeTRTResource")
+                   .Attr("container_ID", container)
                    .Attr("delete_resource", true)
                    .Input(FakeInput(DT_STRING))
                    .Input(FakeInput(DT_STRING))

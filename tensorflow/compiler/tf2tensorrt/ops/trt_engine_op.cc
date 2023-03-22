@@ -43,6 +43,7 @@ REGISTER_OP("TRTEngineOp")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8'}")
     .Attr("calibration_data: string = ''")
     .Attr("use_calibration: bool = true")
+    .Attr("container_ID: string = ''")
     .Input("in_tensor: InT")
     .Output("out_tensor: OutT")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {

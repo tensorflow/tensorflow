@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
-
+#include "tensorflow/core/public/version.h"
 #endif
 
 namespace tensorflow {
@@ -138,6 +138,16 @@ void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
 void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   static absl::once_flag once;
   absl::call_once(once, InitializeTrtPlugins, trt_logger);
+}
+
+// Function to generate a containerID.
+string GetContainerID(const string& model, const string& convParam) {
+  const string containerID = string("TF") + TF_VERSION_STRING + "_TRT" +
+                       absl::StrJoin(GetLoadedTensorRTVersion(), ".");
+  std::stringstream ss;
+  ss << containerID << "_model" << std::hash<std::string>{}(model)
+     << "_param" << std::hash<std::string>{}(convParam);
+  return ss.str();
 }
 
 }  // namespace tensorrt

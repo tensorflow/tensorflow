@@ -116,6 +116,10 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
 Status GetTrtBindingIndex(int network_input_idx, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index);
+
+// Function defining container ID used for resources lookups.
+string GetContainerID(const string& model = "",
+                      const string& convParam = "NO_PARAM");
 }  // namespace tensorrt
 }  // namespace tensorflow
 

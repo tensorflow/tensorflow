@@ -55,6 +55,16 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
     ProfileStrategy profile_strategy = ProfileStrategy::kRange;
     bool allow_build_at_runtime = true;
     bool use_explicit_precision = false;
+    void SerializeToString(std::string* myString) const {
+        std::stringstream ss;
+        ss << trt_logger_name << max_batch_size << max_workspace_size_bytes
+           << (int)precision_mode << minimum_segment_size << is_dynamic_op
+           << max_cached_engines << use_calibration << use_implicit_batch
+           << (int)profile_strategy << allow_build_at_runtime
+           << use_explicit_precision;
+
+        *myString = ss.str();
+    }
   };
 
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
