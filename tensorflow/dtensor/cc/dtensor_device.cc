@@ -92,25 +92,33 @@ namespace dtensor {
 
 class DTensorDevice {
  public:
-  static StatusOr<DTensorDevice*> Create(absl::string_view name) {
+  static StatusOr<DTensorDevice*> Create(absl::string_view name, bool is_async,
+                                         int in_flight_nodes_limit) {
     std::string use_parallel_executor;
     TF_RETURN_IF_ERROR(tsl::ReadStringFromEnvVar(
         "DTENSOR_USE_PARALLEL_EXECUTOR", "", &use_parallel_executor));
-    if (use_parallel_executor.empty()) {
-      return new DTensorDevice(name, nullptr);
-    } else {
-      TF_ASSIGN_OR_RETURN(auto parallel_executor,
-                          CreateDefaultParallelExecutor());
-      return new DTensorDevice(name, std::move(parallel_executor));
+    std::unique_ptr<ParallelExecutor> parallel_executor;
+    if (!use_parallel_executor.empty()) {
+      TF_ASSIGN_OR_RETURN(parallel_executor, CreateDefaultParallelExecutor());
     }
+    return new DTensorDevice(name, std::move(parallel_executor), is_async,
+                             in_flight_nodes_limit);
   }
 
   bool use_parallel_executor() const { return parallel_executor_ != nullptr; }
 
-  void AddMesh(
-      Mesh mesh_config,
-      std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel,
-      bool is_host_mesh) {
+  void AddMesh(Mesh mesh_config, bool is_host_mesh) {
+    std::vector<std::string> underlying_devices;
+    underlying_devices.insert(underlying_devices.end(),
+                              mesh_config.local_devices().begin(),
+                              mesh_config.local_devices().end());
+
+    // DTensor uses multi-client setup which doesn't use remote eager, so we can
+    // enable eager async execution in ParallelDevice.
+    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
+        new tensorflow::parallel_device::ParallelDevice(
+            underlying_devices, is_async_, in_flight_nodes_limit_));
+
     auto mesh = std::make_unique<MeshWithParallelDevice>(std::move(mesh_config),
                                                          std::move(parallel));
     if (is_host_mesh) {
@@ -315,8 +323,11 @@ class DTensorDevice {
 
  private:
   DTensorDevice(absl::string_view name,
-                std::unique_ptr<ParallelExecutor> parallel_executor)
+                std::unique_ptr<ParallelExecutor> parallel_executor,
+                bool is_async, int in_flight_nodes_limit)
       : name_(name),
+        is_async_(is_async),
+        in_flight_nodes_limit_(in_flight_nodes_limit),
         module_manager_(
             new ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>()),
         function_manager_(new ExecutableManager<ExecutionFunctions>()),
@@ -417,6 +428,14 @@ class DTensorDevice {
 
   // The name of the device (the custom device)
   std::string name_;
+
+  // True if the nested eager executors shall run with EagerAsync mode.
+  bool is_async_;
+
+  // If nonzero, limit the number of in-flight EagerAsync nodes in nested
+  // Eager executors.
+  int in_flight_nodes_limit_;
+
   // Mesh configs with matching parallel devices.
   //
   // For now we just consider the first entry added to dtensor_device as the
@@ -2364,14 +2383,18 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
 
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info,
+                           bool is_async, int in_flight_nodes_limit,
                            TF_Status* status) {
   DTensorDevice* dtensor_device = nullptr;
   if (status) {
-    ASSIGN_OR_RETURN_C_STATUS(dtensor_device,
-                              DTensorDevice::Create(device_name), status);
+    ASSIGN_OR_RETURN_C_STATUS(
+        dtensor_device,
+        DTensorDevice::Create(device_name, is_async, in_flight_nodes_limit),
+        status);
   } else {
     // TODO(b/268241383): Remove this branch.
-    auto device_status = DTensorDevice::Create(device_name);
+    auto device_status =
+        DTensorDevice::Create(device_name, is_async, in_flight_nodes_limit);
     TF_CHECK_OK(device_status.status());
     dtensor_device = device_status.value();
   }
@@ -2385,8 +2408,7 @@ void AllocateDTensorDevice(absl::string_view device_name,
 }
 
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
-             TF_Status* status) {
+             bool is_host_mesh, TF_Status* status) {
   auto mesh_config_or_status = Mesh::FromString(serialized_mesh);
   if (!mesh_config_or_status.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
@@ -2396,18 +2418,9 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
     return;
   }
   auto mesh_config = mesh_config_or_status.value();
-  std::vector<std::string> underlying_devices;
-  underlying_devices.insert(underlying_devices.end(),
-                            mesh_config.local_devices().begin(),
-                            mesh_config.local_devices().end());
-  // DTensor uses multi-client setup which doesn't use remote eager, so we can
-  // enable eager async execution in ParallelDevice.
-  std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-      new tensorflow::parallel_device::ParallelDevice(
-          underlying_devices, is_async, in_flight_nodes_limit));
 
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->AddMesh(std::move(mesh_config), std::move(parallel), is_host_mesh);
+  device->AddMesh(std::move(mesh_config), is_host_mesh);
 }
 
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,

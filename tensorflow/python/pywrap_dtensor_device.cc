@@ -89,7 +89,8 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
 
 PYBIND11_MODULE(_pywrap_dtensor_device, m) {
   pybind11_protobuf::ImportNativeProtoCasters();
-  m.def("Allocate", [](const std::string& name) {
+  m.def("Allocate", [](const std::string& name, bool is_async,
+                       int in_flight_nodes_limit) {
     TFE_CustomDevice* device = new TFE_CustomDevice;
     std::unique_ptr<PyObject, decltype(&PyXDecref)> device_capsule(
         PyCapsule_New(device, "TFE_CustomDevice", &CallDelete_Device),
@@ -97,7 +98,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     void* device_info = nullptr;
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
-    AllocateDTensorDevice(name, device, &device_info, status.get());
+    AllocateDTensorDevice(name, device, &device_info, is_async,
+                          in_flight_nodes_limit, status.get());
     if (TF_GetCode(status.get()) != TF_OK) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
       throw py::error_already_set();
@@ -115,14 +117,13 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         PyTuple_Pack(2, device_capsule.get(), device_info_capsule.get()));
   });
   m.def("AddMesh", [](const py::capsule& device_info,
-                      const std::string& serialized_mesh, bool is_async,
-                      bool is_host_mesh, int in_flight_nodes_limit) {
+                      const std::string& serialized_mesh, bool is_host_mesh) {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
     AddMesh(
         serialized_mesh,
         PyCapsule_GetPointer(device_info.ptr(), "TFE_CustomDevice_DeviceInfo"),
-        is_async, is_host_mesh, in_flight_nodes_limit, status.get());
+        is_host_mesh, status.get());
     if (TF_GetCode(status.get()) != TF_OK) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
       throw py::error_already_set();
