@@ -654,6 +654,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SparseTensorDialect",
         "@pybind11",
         "@stablehlo//:chlo_ops",
