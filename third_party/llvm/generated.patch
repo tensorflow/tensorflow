@@ -18,3 +18,17 @@ diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/s
      ],
  )
  
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -6762,8 +6762,8 @@
+     deps = [
+         ":IR",
+         ":Support",
+-        "//third_party/llvm/llvm-project/llvm:Core",
+-        "//third_party/llvm/llvm-project/llvm:FrontendOpenMP",
++        "//llvm:Core",
++        "//llvm:FrontendOpenMP",
+     ],
+ )
+ 
