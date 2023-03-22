@@ -253,6 +253,7 @@ py_test(
         ":lite_v2_test_util",
         ":test_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_py_pb2",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",

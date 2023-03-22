@@ -23,6 +23,7 @@ import subprocess as _subprocess
 import tempfile as _tempfile
 import warnings
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.python import wrap_toco
@@ -554,6 +555,7 @@ def build_conversion_flags(
     guarantee_all_funcs_one_use=False,
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
+    quantization_options: quant_opts_pb2 = None,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -590,7 +592,8 @@ def build_conversion_flags(
       False)
     post_training_quantize: Boolean indicating whether to quantize the weights
       of the converted float model. Model size will be reduced and there will be
-      latency improvements (at the cost of accuracy). (default False)
+      latency improvements (at the cost of accuracy). (default False) If
+      quantization_options is set, all quantization arg will be ignored.
     quantize_to_float16: Boolean indicating whether to convert float buffers to
       float16. (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
@@ -645,6 +648,11 @@ def build_conversion_flags(
       graph.
     disable_fuse_mul_and_fc: Disable fusing input multiplication with
       fullyconnected operations. Useful when quantizing weights.
+    quantization_options: Config to indicate quantization options of each
+      components (ex: weight, bias, activation). This can be a preset method or
+      a custom method, and allows finer, modular control. This option will
+      override any other existing quantization flags. We plan on gradually
+      migrating all quantization-related specs into this option.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -725,6 +733,8 @@ def build_conversion_flags(
       enable_mlir_variable_quantization
   )
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
+  if quantization_options:
+    conversion_flags.quantization_options.CopyFrom(quantization_options)
   return conversion_flags
 
 
