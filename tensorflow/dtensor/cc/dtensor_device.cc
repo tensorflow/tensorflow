@@ -282,9 +282,8 @@ class DTensorDevice {
                                         TFE_TensorHandle* input,
                                         TF_Status* status);
 
-  TFE_TensorHandle* ToHostTensorHandle(TFE_Context* context,
-                                       TensorWithLayout* input,
-                                       TF_Status* status);
+  TFE_TensorHandle* ToTensorHandle(TFE_Context* context,
+                                   TensorWithLayout* input, TF_Status* status);
 
   // Return the layout for the input tensor.
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
@@ -754,66 +753,50 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
     return outputs;
   }
 
-  if (parallel_executor_) {
-    StatusOr<
-        std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
-        tensor_with_layouts = parallel_executor_->Disassemble(t);
-    if (!tensor_with_layouts.ok()) {
-      TF_SetStatus(status, TF_INTERNAL,
-                   "Failed to disassemble the TensorWithLayout.");
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+      tensor_with_layouts = Disassemble(t, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return outputs;
+  }
+  outputs.reserve(tensor_with_layouts.size());
+  for (auto& tensor_with_layout : tensor_with_layouts) {
+    // TODO(b/256016071): Eventually we may still support producing single
+    // device tensors with layouts instead of eager tensors, either in this API
+    // or in a new API.
+    outputs.push_back(
+        ToTensorHandle(context, tensor_with_layout.get(), status));
+    if (TF_GetCode(status) != TF_OK) {
       return outputs;
-    }
-    outputs.reserve(tensor_with_layouts->size());
-    for (auto& tensor_with_layout : *tensor_with_layouts) {
-      TFE_TensorHandle* output = MakeLayoutTensorHandle(
-          context, std::move(tensor_with_layout), status);
-      if (TF_GetCode(status) != TF_OK) {
-        return outputs;
-      }
-      outputs.push_back(output);
-    }
-  } else {
-    const int output_size = t->num_tensors();
-    outputs.resize(output_size);
-
-    for (int output_index = 0; output_index < output_size; ++output_index) {
-      outputs[output_index] = TFE_TensorHandleCopySharingTensor(
-          t->get_tensor(output_index), status);
-      if (TF_GetCode(status) != TF_OK) {
-        return outputs;
-      }
     }
   }
   return outputs;
 }
 
-TFE_TensorHandle* DTensorDevice::ToHostTensorHandle(TFE_Context* context,
-                                                    TensorWithLayout* input,
-                                                    TF_Status* status) {
-  if (!parallel_executor_) {
-    TF_SetStatus(
-        status, TF_UNIMPLEMENTED,
-        "ToHostTensorHandle has not been implemented for the case of not "
-        "using parallel executor.");
-    return nullptr;
-  }
-  StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
-  if (!tensor.ok()) {
-    TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
-    return nullptr;
-  }
-  Status tf_tensor_from_tensor_status;
-  TF_Tensor* tf_tensor =
-      TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
-  if (!tf_tensor_from_tensor_status.ok()) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 tf_tensor_from_tensor_status.ToString().c_str());
-    return nullptr;
-  }
-  TFE_TensorHandle* tensor_handle =
-      TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
-  if (TF_GetCode(status) != TF_OK) {
-    return nullptr;
+TFE_TensorHandle* DTensorDevice::ToTensorHandle(TFE_Context* context,
+                                                TensorWithLayout* input,
+                                                TF_Status* status) {
+  TFE_TensorHandle* tensor_handle = nullptr;
+  if (parallel_executor_) {
+    StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
+    if (!tensor.ok()) {
+      TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
+      return tensor_handle;
+    }
+    Status tf_tensor_from_tensor_status;
+    TF_Tensor* tf_tensor =
+        TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
+    if (!tf_tensor_from_tensor_status.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   tf_tensor_from_tensor_status.ToString().c_str());
+      return tensor_handle;
+    }
+    tensor_handle = TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return tensor_handle;
+    }
+  } else {
+    tensor_handle = TFE_TensorHandleCopySharingTensor(
+        llvm::cast<TensorWithLayoutTf>(input)->single_tensor(), status);
   }
   return tensor_handle;
 }
@@ -1250,11 +1233,13 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
   const int output_size = t->num_tensors();
   const parallel_device::ParallelDevice& parallel_device =
       mesh_with_parallel_device->parallel_device();
-  if (output_size != parallel_device.num_underlying_devices()) {
+  const int num_underlying_devices = parallel_device.num_underlying_devices();
+  if (output_size != num_underlying_devices &&
+      output_size != kSparseTensorNum * num_underlying_devices) {
     TF_SetStatus(status, TF_INTERNAL,
                  absl::StrCat("The output size is ", output_size,
                               " but the number of underlying devices is ",
-                              parallel_device.num_underlying_devices())
+                              num_underlying_devices)
                      .c_str());
     return tensor_with_layouts;
   }
@@ -1262,7 +1247,8 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
   tensor_with_layouts.reserve(output_size);
   for (int output_index = 0; output_index < output_size; ++output_index) {
     const std::string& underlying_device =
-        parallel_device.underlying_devices()[output_index];
+        parallel_device
+            .underlying_devices()[output_index % num_underlying_devices];
     TFE_TensorHandle* copied_tensor =
         TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
     if (TF_GetCode(status) != TF_OK) {
@@ -2305,7 +2291,7 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   }
   if (dev->use_parallel_executor()) {
     TFE_TensorHandle* handle =
-        dev->ToHostTensorHandle(context, typed_input, status);
+        dev->ToTensorHandle(context, typed_input, status);
     if (TF_GetCode(status) != TF_OK) {
       return nullptr;
     }

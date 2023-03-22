@@ -209,9 +209,7 @@ class TensorWithLayoutTf
 
   TensorType tensor_type() const override { return TensorType::kDense; }
 
-  TF_DataType dtype() const override {
-    return dtype_.has_value() ? dtype_.value() : tensor_->dtype();
-  }
+  TF_DataType dtype() const override;
 
   // Encodes the NodeDef via provided builder, if applicable.
   void EncodeAttributes(tensorflow::NodeDefBuilder& builder) const override {}
@@ -222,9 +220,13 @@ class TensorWithLayoutTf
     return tensor_->tensor(index);
   }
 
-  size_t num_tensors() const override { return tensor_->num_tensors(); }
+  size_t num_tensors() const override {
+    return layout_.IsSingleDevice() ? 1 : tensor_->num_tensors();
+  }
 
   parallel_device::ParallelTensor* tensor() const { return tensor_.get(); }
+
+  TFE_TensorHandle* single_tensor() const { return single_tensor_.get(); }
 
   std::string SummarizeValue() const override;
 
@@ -284,6 +286,7 @@ class TensorWithLayoutTf
   // The local shape of tensors placed on each of `tensor_`'s component devices.
   std::vector<int64_t> local_shape_;
 
+  // dtype of tensor_. Empty if the layout is Single Device.
   std::optional<TF_DataType> dtype_;
 
   std::unique_ptr<ConstValueNode> const_value_node_;
@@ -434,7 +437,9 @@ class SparseTensorWithLayout
 
   TensorType tensor_type() const override { return TensorType::kSparse; }
 
-  size_t num_tensors() const override { return 3 * indices_->num_tensors(); }
+  size_t num_tensors() const override {
+    return kSparseTensorNum * indices_->num_tensors();
+  }
 
   TFE_TensorHandle* get_tensor(size_t index) const override;
 

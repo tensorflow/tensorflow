@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -279,6 +280,16 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 
 char TensorWithLayoutTf::ID = 0;
 
+TF_DataType TensorWithLayoutTf::dtype() const {
+  if (dtype_.has_value()) {
+    return dtype_.value();
+  }
+  if (single_tensor_) {
+    return TFE_TensorHandleDataType(single_tensor_.get());
+  }
+  return tensor_->dtype();
+}
+
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
@@ -381,7 +392,10 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
 std::string TensorWithLayoutTf::SummarizeValue() const {
   std::string value_summary;
   Status status;
-  if (layout().IsFullyReplicated()) {
+  if (layout_.IsSingleDevice()) {
+    status =
+        tensorflow::unwrap(single_tensor_.get())->SummarizeValue(value_summary);
+  } else if (layout_.IsFullyReplicated()) {
     status =
         tensorflow::unwrap(tensor_->tensor(0))->SummarizeValue(value_summary);
   } else {
@@ -396,7 +410,8 @@ std::string TensorWithLayoutTf::SummarizeValue() const {
 }
 
 std::string TensorWithLayoutTf::DebugString() const {
-  auto dtype = static_cast<DataType>(tensor_->dtype());
+  TF_DataType tf_dtype = dtype();
+  auto dtype = static_cast<DataType>(tf_dtype);
 
   const auto& shape_vector = global_shape();
   return absl::StrCat("DTensor(", SummarizeValue(),
@@ -548,7 +563,7 @@ TF_DataType SparseTensorWithLayout::dtype() const {
 }
 
 TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
-  int num_sparse_tensors = num_tensors() / 3;
+  int num_sparse_tensors = num_tensors() / kSparseTensorNum;
   if (index < num_sparse_tensors) {
     return indices_->tensor(index);
   } else if (index < 2 * num_sparse_tensors) {
