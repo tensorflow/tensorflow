@@ -27,8 +27,7 @@ namespace xla {
 namespace gpu {
 
 // Filters GEMMs which are better to handle using Triton.
-bool IsTritonHandledGEMM(const HloInstruction&,
-                         se::CudaComputeCapability cuda_compute_capability);
+bool IsTritonHandledGEMM(const HloInstruction&, GpuVersion gpu_version);
 
 // Analysis of iteration of HLO shapes within a fusion around dot().
 class DotFusionAnalysis {
@@ -69,7 +68,7 @@ class DotFusionAnalysis {
 class GemmRewriterTriton : public HloModulePass {
  public:
   explicit GemmRewriterTriton(se::CudaComputeCapability cc)
-      : cuda_compute_capability_(cc) {}
+      : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 
   using HloPassInterface::Run;
@@ -78,7 +77,7 @@ class GemmRewriterTriton : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::CudaComputeCapability cuda_compute_capability_;
+  GpuVersion gpu_version_;
 };
 
 }  // namespace gpu
