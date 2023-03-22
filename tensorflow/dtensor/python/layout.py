@@ -248,16 +248,16 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     shape = ops.convert_to_tensor(self.shape())
     return (device_idx // strides) % shape
 
-  @staticmethod
-  def from_proto(proto: layout_pb2.MeshProto) -> 'Mesh':
+  @classmethod
+  def from_proto(cls, proto: layout_pb2.MeshProto) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
-    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
+    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
     _pywrap_dtensor_device.Mesh.__init__(mesh, proto)
     return mesh
 
-  @staticmethod
-  def from_string(mesh_str: str) -> 'Mesh':
-    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
+  @classmethod
+  def from_string(cls, mesh_str: str) -> 'Mesh':
+    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
     _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str)
     return mesh
 
@@ -459,12 +459,12 @@ class Layout(_pywrap_dtensor_device.Layout):
   def shape(self):
     return self.mesh.shape()
 
-  @staticmethod
+  @classmethod
   def batch_sharded(
-      mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
+      cls, mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
   ) -> 'Layout':
     """Returns a layout sharded on batch dimension."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
     _pywrap_dtensor_device.Layout.__init__(
         # Watchout for the different ordering.
         layout_obj,
@@ -485,24 +485,24 @@ class Layout(_pywrap_dtensor_device.Layout):
     ]
     return Layout(new_specs, self.mesh)
 
-  @staticmethod
-  def from_proto(layout_proto: layout_pb2.LayoutProto) -> 'Layout':
+  @classmethod
+  def from_proto(cls, layout_proto: layout_pb2.LayoutProto) -> 'Layout':
     """Creates an instance from a LayoutProto."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
     _pywrap_dtensor_device.Layout__init__(layout_obj, layout_proto)
     return layout_obj
 
-  @staticmethod
-  def from_string(layout_str: str) -> 'Layout':
+  @classmethod
+  def from_string(cls, layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
     _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str)
     return layout_obj
 
-  @staticmethod
-  def inner_sharded(mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
+  @classmethod
+  def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
     """Returns a layout sharded on inner dimension."""
-    return Layout.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
+    return cls.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
 
   # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_to_shard(self):
@@ -531,9 +531,9 @@ class Layout(_pywrap_dtensor_device.Layout):
       index = index + m * o
     return index
 
-  @staticmethod
-  def replicated(mesh: Mesh, rank: int) -> 'Layout':
+  @classmethod
+  def replicated(cls, mesh: Mesh, rank: int) -> 'Layout':
     """Returns a replicated layout of rank `rank`."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
     _pywrap_dtensor_device.Layout.__init__(layout_obj, mesh=mesh, rank=rank)
     return layout_obj

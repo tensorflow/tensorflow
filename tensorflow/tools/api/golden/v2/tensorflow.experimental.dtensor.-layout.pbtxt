@@ -29,7 +29,7 @@ tf_class {
   }
   member_method {
     name: "batch_sharded"
-    argspec: "args=[\'mesh\', \'batch_dim\', \'rank\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'cls\', \'mesh\', \'batch_dim\', \'rank\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "delete"
@@ -37,15 +37,15 @@ tf_class {
   }
   member_method {
     name: "from_proto"
-    argspec: "args=[\'layout_proto\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'layout_proto\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_string"
-    argspec: "args=[\'layout_str\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'layout_str\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "inner_sharded"
-    argspec: "args=[\'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_batch_parallel"
@@ -69,7 +69,7 @@ tf_class {
   }
   member_method {
     name: "replicated"
-    argspec: "args=[\'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_string"

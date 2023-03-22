@@ -49,11 +49,11 @@ tf_class {
   }
   member_method {
     name: "from_proto"
-    argspec: "args=[\'proto\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_string"
-    argspec: "args=[\'mesh_str\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'mesh_str\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "global_device_ids"
