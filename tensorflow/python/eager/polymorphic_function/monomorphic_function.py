@@ -548,8 +548,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function.call(context.context(),
-                                                  forward_inputs)
+          forward_outputs = forward_function.call(forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -1342,7 +1341,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         and executing_eagerly):
       # No tape is watching; skip to running the function.
       return self._build_call_outputs(self._inference_function.call(
-          ctx, args, cancellation_manager=cancellation_manager))
+          args, cancellation_manager=cancellation_manager))
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
@@ -1350,12 +1349,12 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
       flat_outputs = forward_function.call(
-          ctx, args_with_tangents, cancellation_manager=cancellation_manager)
+          args_with_tangents, cancellation_manager=cancellation_manager)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function.call(ctx, args_with_tangents)
+        flat_outputs = forward_function.call(args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 

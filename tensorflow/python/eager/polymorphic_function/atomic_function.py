@@ -179,13 +179,12 @@ class EagerDefinedFunction(object):
         function of the same signature name in the graph `g` or context.
     """
     if not g and self._bound_context.executing_eagerly():
-      ctx = self._bound_context
-      if ctx.has_function(self.name):
+      if self._bound_context.has_function(self.name):
         if overwrite:
-          ctx.remove_function(self.name)
-          ctx.add_function_def(self.definition)
+          self._bound_context.remove_function(self.name)
+          self._bound_context.add_function_def(self.definition)
       else:
-        ctx.add_function_def(self.definition)
+        self._bound_context.add_function_def(self.definition)
     else:
       g._add_function_recursive(self, overwrite)    # pylint: disable=protected-access
 
@@ -197,14 +196,13 @@ class EagerDefinedFunction(object):
   def stateful_ops(self):
     return self._stateful_ops
 
-  def call(self, ctx, args, cancellation_manager=None):
+  def call(self, args, cancellation_manager=None):
     """Calls this function with `args` as inputs.
 
     `ConcreteFunction` execution respects device annotations only if the
     function won't be compiled with xla.
 
     Args:
-      ctx: a Context object
       args: a list of arguments to supply this function with.
       cancellation_manager: a `CancellationManager` object that can be used to
         cancel function execution.
@@ -222,14 +220,14 @@ class EagerDefinedFunction(object):
           f"Signature specifies {len(list(self.signature.input_arg))} "
           f"arguments, got: {len(args)}.")
 
-    function_call_options = ctx.function_call_options
+    function_call_options = self._bound_context.function_call_options
     if function_call_options.config_proto_serialized is None:
       config = function_utils.get_disabled_rewriter_config()
     else:
       config = function_call_options.config_proto_serialized
     executor_type = function_call_options.executor_type or ""
 
-    executing_eagerly = ctx.executing_eagerly()
+    executing_eagerly = self._bound_context.executing_eagerly()
     attrs = ("executor_type", executor_type, "config_proto", config)
     if executing_eagerly:
       with _InterpolateFunctionError(self):
@@ -239,14 +237,14 @@ class EagerDefinedFunction(object):
               num_outputs=self._num_outputs,
               inputs=args,
               attrs=attrs,
-              ctx=ctx)
+              ctx=self._bound_context)
         else:
           outputs = execute.execute_with_cancellation(
               str(self.signature.name),
               num_outputs=self._num_outputs,
               inputs=args,
               attrs=attrs,
-              ctx=ctx,
+              ctx=self._bound_context,
               cancellation_manager=cancellation_manager)
       # Replace empty list with None
       outputs = outputs or None
