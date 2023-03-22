@@ -970,7 +970,8 @@ class TFLiteConverterBase:
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
+          conversion_metdata_fb.ModelOptimizationMode.
+          QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):
