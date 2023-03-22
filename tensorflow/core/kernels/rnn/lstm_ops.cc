@@ -424,6 +424,10 @@ class LSTMBlockCellOp : public OpKernel {
         ctx, cs_prev_tensor->dims() == 2,
         errors::InvalidArgument("cs_prev_tensor must be rank 2 but is rank ",
                                 cs_prev_tensor->dims(), "."));
+    OP_REQUIRES(ctx, 
+        cs_prev_tensor->dim_size(0) > 0 && cs_prev_tensor->dim_size(1) > 0,
+                errors::InvalidArgument("cs_prev_tensor is empty, has shape: (",
+                            cs_prev_tensor->dim_size(0), ",", cs_prev_tensor->dim_size(1), ")."));
     OP_REQUIRES(
         ctx, h_prev_tensor->dims() == 2,
         errors::InvalidArgument("h_prev_tensor must be rank 2 but is rank ",
