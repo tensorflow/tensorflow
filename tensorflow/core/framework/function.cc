@@ -1235,7 +1235,7 @@ void FunctionRecord::finalize() {
 
 StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
   if (finalized_) {
-    return Status(error::PERMISSION_DENIED,
+    return Status(absl::StatusCode::kPermissionDenied,
                   "Can not mutate FunctionDef after finalization.");
   }
 
