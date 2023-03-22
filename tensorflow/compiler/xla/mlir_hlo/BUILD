@@ -414,6 +414,7 @@ cc_library(
         "deallocation/transforms/deallocate.cc",
         "deallocation/transforms/deallocation_to_scf.cc",
         "deallocation/transforms/split_alloc_tensors.cc",
+        "deallocation/transforms/xla_buffer_arg_rewrite.cc",
     ],
     hdrs = ["deallocation/transforms/passes.h"],
     strip_include_prefix = ".",

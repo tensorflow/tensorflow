@@ -369,3 +369,106 @@ func.func @empty_region() {
 
 // Regression test. Just make sure this doesn't crash.
 // CHECK-LABEL: @empty_region
+
+// -----
+
+func.func @copy_to_out_param(
+    %arg0: memref<i32> { deallocation.restrict = true }) {
+  %foo = memref.alloc() : memref<i32>
+  "some.op"(%foo) : (memref<i32>) -> ()
+  memref.copy %foo, %arg0 : memref<i32> to memref<i32>
+  memref.dealloc %foo : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param(
+// CHECK-SAME: %[[ARG:.*]]: memref<i32>
+// CHECK-NEXT: "some.op"(%[[ARG]])
+// CHECK-NEXT: return
+
+
+// -----
+
+func.func @copy_to_out_param_no_restrict(
+    %arg0: memref<i32> { deallocation.restrict = false }) {
+  %foo = memref.alloc() : memref<i32>
+  "some.op"(%foo) : (memref<i32>) -> ()
+  memref.copy %foo, %arg0 : memref<i32> to memref<i32>
+  memref.dealloc %foo : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_no_restrict(
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: some.op
+// CHECK-NEXT: memref.copy
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_and_change_param(
+    %arg0: memref<2xindex> { deallocation.restrict = true }) {
+  %foo = memref.alloc() : memref<2xindex>
+  "some.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg0 : memref<2xindex> to memref<2xindex>
+  memref.dealloc %foo : memref<2xindex>
+  %c1 = arith.constant 1 : index
+  memref.store %c1, %arg0[%c1] : memref<2xindex>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_and_change_param(
+// CHECK-SAME: %[[ARG:.*]]: memref<2xindex>
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1
+// CHECK: "some.op"(%[[ARG]])
+// CHECK: memref.store %[[C1]], %[[ARG]]
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_and_change_src(
+    %arg0: memref<2xindex> { deallocation.restrict = true }) {
+  %c1 = arith.constant 1 : index
+  %foo = memref.alloc() : memref<2xindex>
+  "some.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg0 : memref<2xindex> to memref<2xindex>
+  memref.store %c1, %foo[%c1] : memref<2xindex>
+  "other.op"(%foo) : (memref<2xindex>) -> ()
+  memref.dealloc %foo : memref<2xindex>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_and_change_src(
+// CHECK-NEXT: arith.constant
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: some.op
+// CHECK-NEXT: memref.copy
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: other.op
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_and_change_src_and_copy(
+    %arg0: memref<2xindex> { deallocation.restrict = true },
+    %arg1: memref<2xindex> { deallocation.restrict = true }) {
+  %c1 = arith.constant 1 : index
+  %foo = memref.alloc() : memref<2xindex>
+  "some.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg0 : memref<2xindex> to memref<2xindex>
+  memref.store %c1, %foo[%c1] : memref<2xindex>
+  "other.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg1 : memref<2xindex> to memref<2xindex>
+  memref.dealloc %foo : memref<2xindex>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_and_change_src_and_copy
+// CHECK-SAME:    %[[ARG0:.*]]: memref<2xindex> {{{.*}}},
+// CHECK-SAME:    %[[ARG1:.*]]: memref<2xindex>
+// CHECK-NEXT: arith.constant
+// CHECK-NEXT: "some.op"(%[[ARG1]])
+// CHECK-NEXT: memref.copy %[[ARG1]], %[[ARG0]]
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: "other.op"(%[[ARG1]])
+// CHECK-NEXT: return

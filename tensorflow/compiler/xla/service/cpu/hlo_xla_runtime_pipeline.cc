@@ -240,6 +240,8 @@ static Status CreateHloXlaPipeline(
     CHECK(!options.sparse_bufferization)
         << "Sparse bufferization and experimental deallocation are mutually "
            "exclusive.";
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createXlaBufferArgRewritePass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocatePass());
     pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferReusePass());

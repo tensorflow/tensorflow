@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
@@ -407,6 +408,58 @@ bool doubleBuffer(Block& block) {
   return result;
 }
 
+void eliminateCopies(Block& block) {
+  auto* op = &block.front();
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        eliminateCopies(region.front());
+      }
+    }
+
+    auto copy = llvm::dyn_cast_or_null<memref::CopyOp>(op);
+    op = op->getNextNode();
+
+    auto dealloc = llvm::dyn_cast_or_null<memref::DeallocOp>(op);
+    if (!copy || !dealloc ||
+        copy.getTarget().getType() != copy.getSource().getType() ||
+        dealloc.getMemref() != copy.getSource()) {
+      continue;
+    }
+
+    bool targetIsFirstUseOfRestrictBbArg = false;
+    if (auto bbarg = llvm::dyn_cast<BlockArgument>(copy.getTarget())) {
+      if (auto func = llvm::dyn_cast<func::FuncOp>(
+              bbarg.getParentBlock()->getParentOp())) {
+        auto isRestrict = func.getArgAttrOfType<BoolAttr>(
+            bbarg.getArgNumber(), "deallocation.restrict");
+        targetIsFirstUseOfRestrictBbArg =
+            isRestrict && isRestrict.getValue() &&
+            !hasUsesBetween(&func.getBody().front().front(), copy, bbarg);
+      }
+    }
+
+    auto alloc = llvm::dyn_cast_or_null<memref::AllocOp>(
+        copy.getTarget().getDefiningOp());
+    bool targetIsFirstUseOfAlloc = alloc && !hasUsesBetween(alloc, copy, alloc);
+
+    if (!targetIsFirstUseOfRestrictBbArg && !targetIsFirstUseOfAlloc) {
+      continue;
+    }
+
+    // %a = alloc or %a is a bbarg with `restrict`.
+    // (some IR not using %a)
+    // copy %b, %a
+    // dealloc %b
+    copy.getSource().replaceAllUsesWith(copy.getTarget());
+    op = dealloc->getNextNode();
+    copy->erase();
+    dealloc->erase();
+    if (alloc) alloc->erase();
+  }
+}
+
 enum class BufferReuseMode {
   // Only reuse buffers if between a `dealloc` and `alloc` there are no further
   // `alloc`s that might later become a candidate for buffer reuse.
@@ -444,28 +497,6 @@ bool reuseBuffers(Block& block, BufferReuseMode mode) {
         op = alloc->getNextNode();
         dealloc.erase();
         alloc.erase();
-        result = true;
-        continue;
-      }
-    }
-
-    if (auto copy = llvm::dyn_cast_or_null<memref::CopyOp>(op)) {
-      auto alloc = llvm::dyn_cast_or_null<memref::AllocOp>(
-          copy.getTarget().getDefiningOp());
-      auto dealloc =
-          llvm::dyn_cast_or_null<memref::DeallocOp>(copy->getNextNode());
-      if (alloc && dealloc &&
-          alloc.getType() == dealloc.getMemref().getType() &&
-          !hasUsesBetween(/*start=*/alloc, /*end=*/copy, alloc)) {
-        // %a = alloc
-        // (some IR not using %a)
-        // copy %b, %a
-        // dealloc %b
-        alloc.replaceAllUsesWith(dealloc.getMemref());
-        op = dealloc->getNextNode();
-        copy->erase();
-        alloc->erase();
-        dealloc->erase();
         result = true;
         continue;
       }
@@ -624,11 +655,14 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     auto& block = getOperation().getBody().front();
     // This assumes invariants that it breaks, so it can only be run once.
     elideRedundantOwnershipArgs(block);
+    // Copy elimination requires small live-ranges to work well. We only extend
+    // live ranges afterwards, so running it more than once doesn't help.
+    eliminateCopies(block);
     do {
       // Eliminate dead code.
       (void)applyPatternsAndFoldGreedily(getOperation(), {});
-      // Only coalesce dealloc/alloc pairs that are immediate neighbors, to make
-      // sure we don't accidentally extend the live range of a buffer.
+      // Only coalesce dealloc/alloc pairs that are immediate neighbors, to
+      // make sure we don't accidentally extend the live range of a buffer.
       result = reuseBuffers(block, BufferReuseMode::CONSERVATIVE);
       // Make sure we rerun buffer reuse after every intermediate step.
       result |= hoistAllocs(block) || doubleBuffer(block) ||

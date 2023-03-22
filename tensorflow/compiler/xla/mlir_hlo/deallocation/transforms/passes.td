@@ -38,6 +38,23 @@ def DeallocatePass : Pass<"hlo-deallocate", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
 }
 
+def XlaBufferArgRewritePass :
+    Pass<"hlo-xla-buffer-arg-rewrite", "mlir::func::FuncOp"> {
+  let summary = "Rewrites XLA framework buffer arguments with alias information";
+  let description = [{
+    In the presence of variables, some results of the main function will alias
+    other parameters. This pass rewrites the main function to annotate results
+    for which this isn't the case with the `deallocation.restrict` attribute,
+    indicating that they do not alias with any other buffer and allowing the
+    buffer-reuse pass to optimize them.
+
+    The pass uses attributes present in XLA programs
+    (`xla_framework.input_mapping`, `xla_framework.result_mapping` and
+    `xla_framework.result_inner_mapping`, specifically).
+  }];
+  let constructor = "::mlir::deallocation::createXlaBufferArgRewritePass()";
+}
+
 def BufferReusePass : Pass<"hlo-buffer-reuse", "mlir::func::FuncOp"> {
   let summary = "Reuse buffers.";
   let description = [{
