@@ -99,7 +99,6 @@ tflite_cc_library_with_c_headers_test(
 cc_test(
     name = "nnapi_plugin_test",
     srcs = ["nnapi_plugin_test.cc"],
-    tags = tf_gpu_tests_tags(),
     deps = [
         ":nnapi_plugin",
         "//tensorflow/lite/core/c:common",
@@ -126,7 +125,6 @@ tflite_cc_library_with_c_headers_test(
 cc_test(
     name = "xnnpack_plugin_test",
     srcs = ["xnnpack_plugin_test.cc"],
-    tags = tf_gpu_tests_tags(),
     deps = [
         ":xnnpack_plugin",
         "//tensorflow/lite/core/c:common",
