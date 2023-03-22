@@ -136,6 +136,8 @@
     *   List of members of dtensor.Layout and dtensor.Mesh have slightly changed
         as part of efforts to consolidate the C++ and Python source
         code with pybind11. Most notably, Layout.serialized_string is removed.
+    *   Minor API changes to represent Single Device Layout for non-distributed
+        Tensors inside DTensor functions. Runtime support will be added soon.
 
 *   `tf.experimental.ExtensionType`:
 

@@ -381,6 +381,14 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         });
   py::class_<Mesh>(m, "Mesh")
       .def(py::init(&Mesh::CreateMesh))
+      .def(py::init([](absl::string_view single_device) {
+             auto mesh = Mesh::GetSingleDeviceMesh(single_device);
+             if (!mesh.ok()) {
+               throw py::value_error(mesh.status().error_message());
+             }
+             return *mesh;
+           }),
+           py::arg("single_device"), "Creates a single device mesh.")
       .def(py::init([](const tensorflow::dtensor::MeshProto& proto) {
              auto mesh = Mesh::ParseFromProto(proto);
              if (!mesh.ok()) {
@@ -388,7 +396,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
              }
              return *mesh;
            }),
-           "Returns a Mesh from a MeshProto.")
+           py::arg("mesh_proto"), "Returns a Mesh from a MeshProto.")
       .def(py::init([](std::string_view mesh_str) {
              auto mesh = Mesh::FromString(mesh_str);
              if (!mesh.ok()) {
@@ -396,14 +404,17 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
              }
              return *mesh;
            }),
-           "Returns a Mesh from a string.")
+           py::arg("mesh_str"), "Returns a Mesh from a string.")
       .def_property_readonly("name", &Mesh::name)
       .def_property_readonly("dim_names", &Mesh::MeshDimNames)
       .def_property_readonly("size", &Mesh::num_devices)
+      .def_property_readonly("single_device", &Mesh::single_device)
       .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
       .def("__eq__", &Mesh::operator==)
       .def("to_string", &Mesh::ToString,
            "Returns string representation of Mesh.")
+      .def("is_single_device", &Mesh::IsSingleDevice,
+           "Returns True if the mesh represents a non-distributed device.")
       .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
            "Returns True if a Mesh contains the given dimension name.")
       .def(
@@ -456,14 +467,15 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         return std::vector<int64_t>(location->begin(), location->end());
       });
   py::class_<Layout>(m, "Layout")
-      .def(py::init(
-          [](const std::vector<std::string>& sharding_specs, const Mesh& mesh) {
-            auto layout = Layout::GetLayout(sharding_specs, mesh);
-            if (!layout.ok()) {
-              throw py::value_error(layout.status().error_message());
-            }
-            return *layout;
-          }))
+      .def(py::init([](const std::vector<std::string>& sharding_specs,
+                       const Mesh& mesh) {
+             auto layout = Layout::GetLayout(sharding_specs, mesh);
+             if (!layout.ok()) {
+               throw py::value_error(layout.status().error_message());
+             }
+             return *layout;
+           }),
+           py::arg("sharding_specs"), py::arg("mesh"))
       .def(py::init([](const tensorflow::dtensor::LayoutProto& proto) {
              auto layout = Layout::FromProto(proto);
              if (!layout.ok()) {
@@ -471,7 +483,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
              }
              return *layout;
            }),
-           "Returns a Layout from a LayoutProto.")
+           py::arg("layout_proto"), "Returns a Layout from a LayoutProto.")
       .def(py::init([](std::string_view layout_str) {
              auto layout = Layout::FromString(layout_str);
              if (!layout.ok()) {
@@ -479,12 +491,20 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
              }
              return *layout;
            }),
-           "Returns a Layout from a string.")
+           py::arg("layout_str"), "Returns a Layout from a string.")
       .def(py::init(&Layout::ReplicatedOnMesh), py::arg("mesh"),
            py::arg("rank"), "Returns a replicated layout.")
       .def(py::init(&Layout::BatchShardedOnMesh), py::arg("mesh"),
            py::arg("rank"), py::arg("batch_dim"), py::arg("axis"),
            "Returns a batch sharded layout.")
+      .def(py::init([](const Mesh& mesh) {
+             auto layout = Layout::GetSingleDeviceLayout(mesh);
+             if (!layout.ok()) {
+               throw py::value_error(layout.status().error_message());
+             }
+             return *layout;
+           }),
+           py::arg("mesh"), "Returns a single device layout.")
       .def("__eq__", &Layout::operator==)
       .def(
           "as_proto",
@@ -504,6 +524,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
            "Returns True if all tensor axes are replicated.")
       .def("is_batch_parallel",
            [](const Layout& layout) { return layout.IsBatchParallel(); })
+      .def("is_single_device", &Layout::IsSingleDevice,
+           "Returns True if the Layout represents a non-distributed device.")
       .def(
           "num_shards",
           [](const Layout& layout, int dim) {

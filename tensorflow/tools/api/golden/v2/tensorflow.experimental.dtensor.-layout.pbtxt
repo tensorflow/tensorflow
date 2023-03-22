@@ -36,8 +36,16 @@ tf_class {
     argspec: "args=[\'self\', \'dims\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "from_device"
+    argspec: "args=[\'cls\', \'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_proto"
     argspec: "args=[\'cls\', \'layout_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_single_device_mesh"
+    argspec: "args=[\'cls\', \'mesh\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_string"
@@ -53,6 +61,10 @@ tf_class {
   }
   member_method {
     name: "is_fully_replicated"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_single_device"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

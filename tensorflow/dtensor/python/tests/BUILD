@@ -170,6 +170,63 @@ py_strict_test(
 )
 
 dtensor_test(
+    name = "layout_test",
+    srcs = ["layout_test.py"],
+    disable = [
+        "gpu",
+        "tpu",
+    ],
+    main = "layout_test.py",
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "layout_propagation_test",
+    srcs = ["layout_propagation_test.py"],
+    args = if_google(
+        [
+            "--vmodule=dtensor_mlir_passes=4",
+        ],
+        [],
+    ),
+    disable = [
+        "gpu",
+        "tpu",
+    ],
+    main = "layout_propagation_test.py",
+    shard_count = {
+        "cpu": 5,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
     name = "multi_client_test",
     srcs = ["multi_client_test.py"],
     additional_backends = [

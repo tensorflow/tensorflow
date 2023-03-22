@@ -252,13 +252,20 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   def from_proto(cls, proto: layout_pb2.MeshProto) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
     mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, proto)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_proto=proto)
     return mesh
 
   @classmethod
   def from_string(cls, mesh_str: str) -> 'Mesh':
     mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str=mesh_str)
+    return mesh
+
+  @classmethod
+  def from_device(cls, device: str) -> 'Mesh':
+    """Constructs a single device mesh from a device string."""
+    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, single_device=device)
     return mesh
 
   # TODO(b/242201545): implement this in Mesh C++ class
@@ -438,7 +445,7 @@ class Layout(_pywrap_dtensor_device.Layout):
              'valid mesh dimension or UNSHARDED.').format(
                  dim_sharding=dim_sharding))
 
-    super().__init__(sharding_specs, mesh)
+    super().__init__(sharding_specs=sharding_specs, mesh=mesh)
 
   def __repr__(self) -> str:
     return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
@@ -489,20 +496,34 @@ class Layout(_pywrap_dtensor_device.Layout):
   def from_proto(cls, layout_proto: layout_pb2.LayoutProto) -> 'Layout':
     """Creates an instance from a LayoutProto."""
     layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout__init__(layout_obj, layout_proto)
+    _pywrap_dtensor_device.Layout.__init__(
+        layout_obj, layout_proto=layout_proto
+    )
     return layout_obj
 
   @classmethod
   def from_string(cls, layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
     layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
-    _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str)
+    _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str=layout_str)
     return layout_obj
 
   @classmethod
   def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
     """Returns a layout sharded on inner dimension."""
     return cls.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
+
+  @classmethod
+  def from_single_device_mesh(cls, mesh: Mesh) -> 'Layout':
+    """Constructs a single device layout from a single device mesh."""
+    layout = _pywrap_dtensor_device.Layout.__new__(cls)
+    _pywrap_dtensor_device.Layout.__init__(layout, mesh=mesh)
+    return layout
+
+  @classmethod
+  def from_device(cls, device: str) -> 'Layout':
+    """Constructs a single device layout from a single device mesh."""
+    return cls.from_single_device_mesh(Mesh.from_device(device))
 
   # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_to_shard(self):

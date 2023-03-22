@@ -12,6 +12,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "single_device"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "size"
     mtype: "<type \'property\'>"
   }
@@ -48,6 +52,10 @@ tf_class {
     argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "from_device"
+    argspec: "args=[\'cls\', \'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_proto"
     argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
   }
@@ -69,6 +77,10 @@ tf_class {
   }
   member_method {
     name: "is_remote"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_single_device"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
