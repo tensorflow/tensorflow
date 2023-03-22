@@ -358,12 +358,14 @@ cc_library(
     srcs = ["xla_spmd/layout_to_xla_sharding.cc"],
     hdrs = ["xla_spmd/layout_to_xla_sharding.h"],
     deps = [
-        ":constants",
         ":dstatus",
         ":tensor_layout",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
