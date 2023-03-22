@@ -391,7 +391,7 @@ cc_library(
         "//tensorflow/lite:macros",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
-        "@pthreadpool//:pthreadpool",
+        "@pthreadpool",
     ] + select({
         # This select must match the similar select in `copts`
         "//tensorflow:linux_ppc64le": [],
