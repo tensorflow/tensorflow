@@ -30,6 +30,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/core/async:backend_async_kernel_interface",
         "//tensorflow/lite/core/async/c:types",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ],
 )
