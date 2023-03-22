@@ -545,10 +545,10 @@ TEST(ExecutableTest, AsyncScalarArg) {
 
 TEST(ExecutableTest, AsyncMemrefArg) {
   absl::string_view module = R"(
-    async.func @test(%arg0: !async.value<memref<?xf32>>) ->
-    !async.value<memref<?xf32>> {
-      %0 = async.await %arg0 : !async.value<memref<?xf32>>
-      return %0 : memref<?xf32>
+    async.func @test(%arg0: !async.value<memref<?x?xf32>>) ->
+    !async.value<memref<?x?xf32>> {
+      %0 = async.await %arg0 : !async.value<memref<?x?xf32>>
+      return %0 : memref<?x?xf32>
     }
   )";
 
@@ -556,22 +556,22 @@ TEST(ExecutableTest, AsyncMemrefArg) {
       MakeConstructedAsyncValueRef<OwnedMemref>();
   ResultConverterSet converter(AssertNoError,
                                ReturnAsyncMemref{result.AsPtr()});
-  std::vector<float> input = {42.0, 42.0, 42.0, 42.0};
+  std::vector<float> input = {42.0, 42.0, 42.0, 42.0, 42.0, 42.0, 42.0, 42.0};
   MemrefDesc memref{
-      PrimitiveType::F32, input.data(), 0, {4}, {4} /*fake strides*/};
+      PrimitiveType::F32, input.data(), 0, {4, 2}, {4, 2} /*fake strides*/};
   AsyncValueRef<MemrefDesc> async_memref =
       tsl::MakeAvailableAsyncValueRef<MemrefDesc>(std::move(memref));
 
   AsyncMemrefArg arg0(async_memref);
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
-
   ASSERT_TRUE(result.get().desc.has_value());
-  EXPECT_EQ(result.get()->rank(), 1);
+  EXPECT_EQ(result.get()->rank(), 2);
   EXPECT_EQ(result.get()->size(0), 4);
+  EXPECT_EQ(result.get()->size(1), 2);
 
   float* data = reinterpret_cast<float*>(result.get()->data());
-  EXPECT_TRUE(std::all_of(data, data + 4, [](float v) { return v == 42.0f; }));
+  EXPECT_TRUE(std::all_of(data, data + 8, [](float v) { return v == 42.0f; }));
 }
 
 TEST(ExecutableTest, AsyncMemrefRet) {
