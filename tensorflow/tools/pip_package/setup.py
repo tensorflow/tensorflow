@@ -156,6 +156,10 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
+      # Install the TensorFlow package built by Apple if the user is running
+      # macOS on an Apple Silicon machine.
+      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 DOCLINES = __doc__.split('\n')
