@@ -13,29 +13,182 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <utility>
 
 #include "deallocation/transforms/passes.h"
 #include "deallocation/utils/util.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace deallocation {
 namespace {
 
-// TODO(jreiffers): This pass needs many iterations to reach a fixed point.
+// Finds the start of a memref use chain (e.g. subview of cast of alloc). Stops
+// at block arguments and allocs. If `useDeallocateInvariants` is set, assumes
+// that hlo-deallocate was run previously and the invariants that it guarantees
+// still hold: each ranked memref block argument should have a corresponding
+// unranked ownership indicator argument.
+Value rootAlloc(Value v, bool useDeallocateInvariants) {
+  if (useDeallocateInvariants) {
+    if (auto bbarg = llvm::dyn_cast<BlockArgument>(v)) {
+      if (v.getType().isa<UnrankedMemRefType>()) {
+        return v;
+      }
+
+      auto memrefArgs = llvm::to_vector(llvm::make_filter_range(
+          bbarg.getParentBlock()->getArguments(),
+          [](BlockArgument arg) { return arg.getType().isa<MemRefType>(); }));
+      auto unrankedMemrefArgs = llvm::to_vector(llvm::make_filter_range(
+          bbarg.getParentBlock()->getArguments(), [](BlockArgument arg) {
+            return arg.getType().isa<UnrankedMemRefType>();
+          }));
+
+      // Find the ownership indicator for the block argument.
+      for (auto [memref, alloc] : llvm::zip(memrefArgs, unrankedMemrefArgs)) {
+        if (memref == bbarg) {
+          return alloc;
+        }
+      }
+
+      // There may not be an ownership indicator, for example if this is a
+      // function block argument.
+      return v;
+    }
+  }
+
+  if (llvm::isa_and_present<memref::SubViewOp, memref::CastOp,
+                            memref::ExpandShapeOp, memref::CollapseShapeOp,
+                            memref::ReshapeOp, memref::ViewOp,
+                            memref::ReinterpretCastOp, memref::TransposeOp>(
+          v.getDefiningOp())) {
+    return rootAlloc(v.getDefiningOp()->getOperand(0), useDeallocateInvariants);
+  }
+  return v;
+}
+
+// Eliminates redundant owernship arguments for memrefs that are always owned
+// by the block. This helps with hoisting and reuse.
+void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
+  bool isFor = llvm::isa<scf::ForOp>(op);
+  if (!llvm::isa<scf::WhileOp>(op) && !isFor) {
+    return;
+  }
+
+  SmallVector<size_t> resultIndices(op->getNumResults());
+  std::iota(resultIndices.begin(), resultIndices.end(), 0);
+
+  // Get the root allocs of all operands and arguments while the invariants are
+  // still intact.
+  DenseMap<Value, Value> rootAllocs;
+  for (auto operand : op->getOperands()) {
+    rootAllocs[operand] = rootAlloc(operand, true);
+  }
+  for (auto& region : op->getRegions()) {
+    for (auto arg : region.getArguments()) {
+      rootAllocs[arg] = rootAlloc(arg, true);
+    }
+    for (auto operand :
+         region.getBlocks().front().getTerminator()->getOperands()) {
+      rootAllocs[operand] = rootAlloc(operand, true);
+    }
+  }
+
+  for (auto& region : op->getRegions()) {
+    llvm::SmallVector<size_t> memrefArgIndices;
+    llvm::SmallVector<size_t> ownershipArgIndices;
+
+    llvm::SmallVector<Value> memrefArgs;
+    llvm::SmallVector<Value> ownershipArgs;
+    for (auto [index, arg] : llvm::enumerate(region.getArguments())) {
+      if (arg.getType().isa<UnrankedMemRefType>()) {
+        ownershipArgs.push_back(arg);
+        ownershipArgIndices.push_back(index);
+      } else if (arg.getType().isa<MemRefType>()) {
+        memrefArgs.push_back(arg);
+        memrefArgIndices.push_back(index);
+      }
+    }
+
+    // Only proceed if this region has the standard form after
+    // buffer-deallocation.
+    if (memrefArgs.size() != ownershipArgs.size()) continue;
+
+    llvm::SmallBitVector argsToDrop(ownershipArgs.size(), true);
+    auto predecessors = getPredecessorRegions(op, region.getRegionNumber());
+    for (const auto& pred : predecessors) {
+      for (unsigned i = 0; i < argsToDrop.size(); ++i) {
+        Value argRoot =
+            rootAllocs[pred.getPredecessorOperand(memrefArgIndices[i])];
+        Value ownerRoot =
+            rootAllocs[pred.getPredecessorOperand(ownershipArgIndices[i])];
+        bool same = argRoot && argRoot == ownerRoot;
+        argsToDrop[i] = argsToDrop[i] && same;
+      }
+    }
+
+    for (int64_t i = static_cast<int64_t>(argsToDrop.size()) - 1; i >= 0; --i) {
+      if (!argsToDrop[i]) continue;
+
+      for (auto& pred : predecessors) {
+        if ((pred.predecessorOp == op && isFor) ||
+            (pred.predecessorRegionIndex == 0 && !isFor)) {
+          resultIndices[ownershipArgIndices[i] - pred.successorValueIndex] =
+              memrefArgIndices[i] - pred.successorValueIndex;
+        }
+        pred.predecessorOp->eraseOperands(pred.predecessorOperandIndex +
+                                          ownershipArgIndices[i] -
+                                          pred.successorValueIndex);
+      }
+      // Cast to the right type.
+      OpBuilder b(&region.getBlocks().front().front());
+      region.getArgument(ownershipArgIndices[i])
+          .replaceAllUsesWith(b.create<memref::CastOp>(
+              region.getLoc(), ownershipArgs[i].getType(), memrefArgs[i]));
+      region.eraseArgument(ownershipArgIndices[i]);
+    }
+  }
+
+  auto newOp = moveRegionsToNewOpButKeepOldOp(op);
+  SmallVector<Value> results;
+  OpBuilder b(op.getContext());
+  b.setInsertionPointAfter(newOp);
+  for (auto [oldIndex, newIndex] : llvm::enumerate(resultIndices)) {
+    if (oldIndex == newIndex) {
+      results.push_back(newOp->getResult(newIndex));
+    } else {
+      results.push_back(b.create<memref::CastOp>(newOp.getLoc(),
+                                                 op->getResultTypes()[oldIndex],
+                                                 newOp->getResult(newIndex)));
+    }
+  }
+
+  op->replaceAllUsesWith(results);
+  op->erase();
+}
+
+void elideRedundantOwnershipArgs(Block& block) {
+  block.walk(
+      [](RegionBranchOpInterface rbi) { elideRedundantOwnershipArgs(rbi); });
+  block.walk([](memref::DeallocOp dealloc) {
+    dealloc.setOperand(rootAlloc(dealloc.getMemref(), false));
+  });
+}
 
 SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
                                SmallVector<Value> freeAllocs) {
@@ -80,9 +233,34 @@ SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
   return result;
 }
 
-void hoistAllocs(scf::WhileOp op) {
-  auto allocs = hoistAllocs(op, op.getBefore(), {});
-  hoistAllocs(op, op.getAfter(), allocs);
+bool hoistAllocs(scf::WhileOp op) {
+  auto beforeAllocs = hoistAllocs(op, op.getBefore(), {});
+  auto afterAllocs = hoistAllocs(op, op.getAfter(), beforeAllocs);
+  return !beforeAllocs.empty() || !afterAllocs.empty();
+}
+
+// Hoists allocs from while and for loops.
+bool hoistAllocs(Block& block) {
+  auto* op = &block.front();
+  bool result = false;
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        result |= hoistAllocs(region.front());
+      }
+    }
+
+    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
+      result |= hoistAllocs(whileOp);
+    }
+
+    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
+      result |= !hoistAllocs(forOp, forOp.getLoopBody(), {}).empty();
+    }
+    op = op->getNextNode();
+  }
+  return result;
 }
 
 template <typename T>
@@ -96,16 +274,27 @@ T findOp(Operation* start, std::function<bool(T)> predicate) {
   return {};
 }
 
-// Checks if v is used in [start; end)
-bool hasUsesBetween(Operation* start, Operation* end, Value v) {
+// Recursively checks if `pred` holds for any op in [start; end)
+bool anyMatchBetween(Operation* start, Operation* end,
+                     const std::function<bool(Operation*)>& predicate) {
   while (start != end) {
-    if (llvm::is_contained(start->getOperands(), v)) return true;
+    if (predicate(start)) return true;
     for (auto& region : start->getRegions()) {
-      if (hasUsesBetween(&region.front().front(), nullptr, v)) return true;
+      if (!region.empty() &&
+          anyMatchBetween(&region.front().front(), nullptr, predicate)) {
+        return true;
+      }
     }
     start = start->getNextNode();
   }
   return false;
+}
+
+// Recursively checks if `v` is used in [start; end)
+bool hasUsesBetween(Operation* start, Operation* end, Value v) {
+  return anyMatchBetween(start, end, [v](Operation* op) {
+    return llvm::is_contained(op->getOperands(), v);
+  });
 }
 
 std::pair<DenseMap<Type, SmallVector<memref::AllocOp>>,
@@ -150,6 +339,7 @@ void doubleBuffer(Operation* op, memref::AllocOp alloc,
 }
 
 RegionBranchOpInterface doubleBuffer(RegionBranchOpInterface op) {
+  // TODO(jreiffers): Implement double buffering for all regions.
   auto [allocations, deallocations] =
       findAllocsAndDeallocs(op->getRegion(op->getNumRegions() - 1).front());
 
@@ -187,22 +377,74 @@ RegionBranchOpInterface doubleBuffer(RegionBranchOpInterface op) {
   return newOp;
 }
 
-void reuseAndHoistBuffers(Block& block) {
-  // Look for dealloc(T) followed by alloc(T).
+bool doubleBuffer(Block& block) {
   auto* op = &block.front();
+  bool result = false;
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        result |= doubleBuffer(region.front());
+      }
+    }
+
+    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
+      if (auto db = doubleBuffer(whileOp); db != op) {
+        op = db;
+        result = true;
+      }
+    }
+
+    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
+      if (auto db = doubleBuffer(forOp); db != op) {
+        op = db;
+        result = true;
+      }
+    }
+
+    op = op->getNextNode();
+  }
+  return result;
+}
+
+enum class BufferReuseMode {
+  // Only reuse buffers if between a `dealloc` and `alloc` there are no further
+  // `alloc`s that might later become a candidate for buffer reuse.
+  CONSERVATIVE,
+  // Also reuse buffers if there are intermediate ops between `dealloc` and
+  // `alloc`. This may extend live-ranges of buffers (e.g. if the intermediate
+  // op contains a region), which may destroy reuse opportunities.
+  AGGRESSIVE
+};
+
+bool reuseBuffers(Block& block, BufferReuseMode mode) {
+  auto* op = &block.front();
+  bool result = false;
   while (op) {
     if (auto dealloc = llvm::dyn_cast<memref::DeallocOp>(op)) {
-      // Try to find an alloc op with the same shape. Only check the next alloc,
-      // so we don't increase the heap size in the meantime.
-      // TODO(jreiffers): Can we be smarter here?
-      auto alloc = findOp<memref::AllocOp>(
+      memref::AllocOp alloc = findOp<memref::AllocOp>(
           op->getNextNode(), [](memref::AllocOp) { return true; });
+
+      // In conservative mode, don't reuse buffers if there is a candidate alloc
+      // in between the dealloc/alloc pair that might still be matched with this
+      // dealloc. If we extend the live-range of the buffer past this alloc,
+      // this will prevent further reuse.
+      if (!alloc || (mode == BufferReuseMode::CONSERVATIVE &&
+                     anyMatchBetween(dealloc, alloc, [&](Operation* op) {
+                       return llvm::isa<memref::AllocOp>(op) &&
+                              op->getResultTypes().front() == alloc.getType();
+                     }))) {
+        op = op->getNextNode();
+        continue;
+      }
+
       if (alloc && alloc.getDynamicSizes().empty() &&
           alloc->getResultTypes()[0] == dealloc.getMemref().getType()) {
         alloc.replaceAllUsesWith(dealloc.getMemref());
         op = alloc->getNextNode();
         dealloc.erase();
         alloc.erase();
+        result = true;
         continue;
       }
     }
@@ -224,29 +466,21 @@ void reuseAndHoistBuffers(Block& block) {
         copy->erase();
         alloc->erase();
         dealloc->erase();
+        result = true;
         continue;
       }
-    }
-
-    if (auto whileOp = llvm::dyn_cast<scf::WhileOp>(op)) {
-      hoistAllocs(whileOp);
-      op = doubleBuffer(whileOp);
-    }
-
-    if (auto forOp = llvm::dyn_cast<scf::ForOp>(op)) {
-      hoistAllocs(forOp, forOp.getLoopBody(), {});
-      op = doubleBuffer(forOp);
     }
 
     for (auto& region : op->getRegions()) {
       if (!region.empty()) {
         assert(region.hasOneBlock());
-        reuseAndHoistBuffers(region.front());
+        result |= reuseBuffers(region.front(), mode);
       }
     }
 
     op = op->getNextNode();
   }
+  return result;
 }
 
 void promoteToStack(memref::DeallocOp dealloc) {
@@ -259,7 +493,7 @@ void promoteToStack(memref::DeallocOp dealloc) {
   dealloc->erase();
 }
 
-void simplifyLoopDeallocs(Block& block) {
+bool simplifyLoopDeallocs(Block& block) {
   // Tries to transform:
   //   %a:n = scf.while (...)
   //   dealloc %a#i
@@ -271,7 +505,7 @@ void simplifyLoopDeallocs(Block& block) {
   //   dealloc %alloc_j
 
   // This enables more buffer promotion/reuse.
-
+  bool result = false;
   for (auto& op : block.getOperations()) {
     auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op);
     if (!rbi) continue;
@@ -342,24 +576,40 @@ void simplifyLoopDeallocs(Block& block) {
         for (auto [dealloc, operand] :
              llvm::zip(deallocs, llvm::to_vector(equivalentOperands))) {
           dealloc.setOperand(operand);
+          result = true;
         }
       }
     }
   }
+  return result;
 }
 
 void promoteBuffers(Block& block) {
-  for (auto& op : llvm::make_early_inc_range(block)) {
-    if (auto alloc = llvm::dyn_cast<memref::AllocOp>(op)) {
-      // TODO(jreiffers): Add size heuristic.
+  // TODO(jreiffers): Use byte sizes instead.
+  int64_t remainingAllowedStackUse = 1 << 12;
+  for (auto* op = &block.front(); op;) {
+    auto alloc = llvm::dyn_cast<memref::AllocOp>(op);
+    op = op->getNextNode();
+
+    if (alloc) {
       if (!alloc.getMemref().getType().hasStaticShape()) continue;
 
-      auto dealloc = llvm::find_if(op.getUsers(), [&](Operation* user) {
+      auto dealloc = llvm::find_if(alloc->getUsers(), [&](Operation* user) {
         return user->getBlock() == &block && llvm::isa<memref::DeallocOp>(user);
       });
 
-      if (dealloc != op.getUsers().end()) {
-        promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
+      if (dealloc != alloc->getUsers().end()) {
+        if (op == *dealloc) {
+          op = op->getNextNode();
+          dealloc->erase();
+          alloc->erase();
+        } else {
+          int64_t numElements = alloc.getMemref().getType().getNumElements();
+          if (remainingAllowedStackUse >= numElements) {
+            remainingAllowedStackUse -= numElements;
+            promoteToStack(llvm::cast<memref::DeallocOp>(*dealloc));
+          }
+        }
       }
     }
   }
@@ -370,9 +620,24 @@ void promoteBuffers(Block& block) {
 
 struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
-    reuseAndHoistBuffers(getOperation().getBody().front());
-    simplifyLoopDeallocs(getOperation().getBody().front());
-    promoteBuffers(getOperation().getBody().front());
+    bool result;
+    auto& block = getOperation().getBody().front();
+    // This assumes invariants that it breaks, so it can only be run once.
+    elideRedundantOwnershipArgs(block);
+    do {
+      // Eliminate dead code.
+      (void)applyPatternsAndFoldGreedily(getOperation(), {});
+      // Only coalesce dealloc/alloc pairs that are immediate neighbors, to make
+      // sure we don't accidentally extend the live range of a buffer.
+      result = reuseBuffers(block, BufferReuseMode::CONSERVATIVE);
+      // Make sure we rerun buffer reuse after every intermediate step.
+      result |= hoistAllocs(block) || doubleBuffer(block) ||
+                simplifyLoopDeallocs(block);
+    } while (result);
+    // Now we can also coalesce distant dealloc/alloc pairs.
+    reuseBuffers(block, BufferReuseMode::AGGRESSIVE);
+    promoteBuffers(block);
+    (void)applyPatternsAndFoldGreedily(getOperation(), {});
   }
 };
 

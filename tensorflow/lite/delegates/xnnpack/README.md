@@ -59,6 +59,8 @@ The exact command depends on the target platform, e.g. for Android AAR you'd use
 ```
 bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --define android_dexmerger_tool=d8_dexmerger \
+  --define android_incremental_dexing_tool=d8_dexbuilder \
   --define tflite_with_xnnpack=true \
   //tensorflow/lite/java:tensorflow-lite
 ```
@@ -441,6 +443,10 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TANH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 #### `TRANSPOSE`
 
 * The first input and the output must be in 32-bit floating-point format.
@@ -687,6 +693,10 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TANH`
+
+* Inputs and outputs must be in 8-bit quantized format.
 
 #### `TRANSPOSE`
 

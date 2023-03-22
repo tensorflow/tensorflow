@@ -1,21 +1,50 @@
 # Release 2.13.0
 
-# Breaking Changes
+## Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
-# Known Caveats
+*  `tf.keras`
+
+    *  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and
+       `KerasRegressor`), which had been deprecated in August 2021.
+       We recommend using [SciKeras](https://github.com/adriangb/scikeras)
+       instead.
+    *  The default Keras model saving format is now the Keras v3 format:
+       calling `model.save("xyz.keras")` will no longer create a H5 file,
+       it will create a native Keras model file.
+       This will only be breaking for you if you were manually inspecting or
+       modifying H5 files saved by Keras under a `.keras` extension.
+       If this breaks you, simply add `save_format="h5"` to your `.save()` call
+       to revert back to the prior behavior.
+
+* The LMDB kernels have been changed to return an error. This is in preparation
+  for completely removing them from TensorFlow. The LMDB dependency that these
+  kernels are bringing to TensorFlow has been dropped, thus making the build
+  slightly faster and more secure.
+
+## Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
 * <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
-# Major Features and Improvements
+## Major Features and Improvements
 
 *   `tf.lite`:
 
     *   Add 16-bit and 64-bit float type support for built-in op `cast`.
+    *   The Python TF Lite Interpreter bindings now have an option
+        `experimental_disable_delegate_clustering` to turn-off delegate
+        clustering.
+    *   Add int16x8 support for the built-in op `exp`
+    *   Add int16x8 support for the built-in op `mirror_pad`
+    *   Add 16-bit int type support for built-in op `less`, `greater_than`,
+        `equal`
+    *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
+    *   Add int16 indices support for built-in op `gather` and `gather_nd`.
+    *   Add reference implementation for 16-bit int unquantized `add`.
 
 *   `tf.keras`
 
@@ -27,14 +56,91 @@
         graph). This can be used for integrating metrics from external Python
         libraries (like sklearn or pycocotools) into Keras as first-class Keras
         metrics.
+    *   Added `tf.keras.optimizers.Lion` optimizer.
+    *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
+        `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
+        exporting the model the best-scoring model as evaluated by a
+        `SidecarEvaluator` evaluator. The evaluator regularly evaluates the
+        model and exports it if the user-defined comparison function determines
+        that it is an improvement.
+    *   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay`
+        learning rate scheduler. You can now specify an initial and target
+        learning rate, and our scheduler will perform a linear interpolation
+        between the two after which it will begin a decay phase.
+    *   Added experimental support for an exactly-once visitation guarantee for
+        evaluating Keras models trained with
+        `tf.distribute.ParameterServerStrategy`, via the
+        `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
+    *   Added `tf.keras.__internal__.KerasTensor`,
+        `tf.keras.__internal__.SparseKerasTensor`, and
+        `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these
+        classes to do instance type checking and type annotations for
+        layer/model inputs and outputs.
+    *   All the `tf.keras.dtensor.experimental.optimizers` classes have been 
+        merged with `tf.keras.optimizers`. You can migrate your code to use
+        `tf.keras.optimizers` directly. The API namespace for
+        `tf.keras.dtensor.experimental.optimizers` will be removed in future
+        releases.
 
-# Bug Fixes and Other Changes
+*   `tf.function`:
+
+    *   ConcreteFunction (`tf.types.experimental.ConcreteFunction`) as generated
+        through `get_concrete_function` now performs holistic input validation
+        similar to calling `tf.function` directly. This can cause breakages
+        where existing calls pass Tensors with the wrong shape or omit certain
+        non-Tensor arguments (including default values).
+
+*   `tf.nn`
+
+    *   `tf.nn.embedding_lookup_sparse` and `tf.nn.safe_embedding_lookup_sparse`
+        now support ids and weights described by `tf.RaggedTensor`s.
+    *   Added a new boolean argument `allow_fast_lookup` to
+        `tf.nn.embedding_lookup_sparse` and
+        `tf.nn.safe_embedding_lookup_sparse`, which enables a simplified and
+        typically faster lookup procedure.
+
+*   `tf.data`
+    
+    *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
+        `Dataset.zip(a, b, c)`.
+
+*   `tf.SavedModel`
+
+    *   Introduce class method
+        `tf.saved_model.experimental.Fingerprint.from_proto(proto)`, which can
+        be used to construct a `Fingerprint` object directly from a protobuf.
+    *   Introduce member method
+        `tf.saved_model.experimental.Fingerprint.singleprint()`, which provides
+        a convenient way to uniquely identify a SavedModel.
+
+## Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-# Thanks to our Contributors
+*   `tf.distribute`
+
+    *   Opened an experimental API,
+        `tf.distribute.experimental.coordinator.get_current_worker_index`, for
+        retrieving the worker index from within a worker, when using parameter
+        server training with a custom training loop.
+
+*   `tf.experimental.dtensor`:
+
+    *   Deprecated `dtensor.run_on` in favor of `dtensor.default_mesh` to
+        correctly indicate that the context does not override the mesh that the
+        ops and functions will run on, it only sets a fallback default mesh.
+    *   List of members of dtensor.Layout and dtensor.Mesh have slightly changed
+        as part of efforts to consolidate the C++ and Python source
+        code with pybind11. Most notably, Layout.serialized_string is removed.
+
+*   `tf.experimental.ExtensionType`:
+
+    *   `tf.experimental.ExtensionType` now supports Python `tuple` as
+        the type annotation of its fields.
+
+## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
@@ -202,7 +308,15 @@ This release contains contributions from many people at Google, as well as:
         `rerandomize_each_iteration=True`, the `sample_from_datasets()`
         operation will use a different (deterministic) sequence of numbers every
         epoch.
-
+    *   Added a new field, `warm_start`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will start background threads of asynchronous
+        transformations upon iterator creation (as opposed to upon first call
+        to `GetNext`). To enable this behavior, set `warm_start=True` in
+        `tf.data.experimental.OptimizationOptions`. It should be noted that this
+        possibly improves the latency of the initial 'GetNext' call at the
+        expense of requiring more memory to hold prefetched elements between
+        the time of iterator construction and usage.
 *   `tf.test`:
 
     *   Added `tf.test.experimental.sync_devices`, which is useful for
@@ -1617,7 +1731,7 @@ This releases introduces several vulnerability fixes:
     ([CVE-2022-23572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23572))
 *   Fixes a heap OOB read/write in `SpecializeType`
     ([CVE-2022-23574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23574))
-*   Fixes an unitialized variable access in `AssignOp`
+*   Fixes an uninitialized variable access in `AssignOp`
     ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573))
 *   Fixes an integer overflow in `OpLevelCostEstimator::CalculateTensorSize`
     ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575))
@@ -1895,7 +2009,7 @@ This releases introduces several vulnerability fixes:
     ([CVE-2022-23572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23572))
 *   Fixes a heap OOB read/write in `SpecializeType`
     ([CVE-2022-23574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23574))
-*   Fixes an unitialized variable access in `AssignOp`
+*   Fixes an uninitialized variable access in `AssignOp`
     ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573))
 *   Fixes an integer overflow in `OpLevelCostEstimator::CalculateTensorSize`
     ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575))

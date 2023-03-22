@@ -45,7 +45,7 @@ REGISTER_OP("DTensorReduceScatter")
 REGISTER_OP("DTensorAllScatter")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float, int32, uint32, int64, bool}")
+    .Attr("T: {half, bfloat16, float, int32, uint32, int64, bool, string}")
     .Attr("input_layout: string")
     .Attr("output_layout: string")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {

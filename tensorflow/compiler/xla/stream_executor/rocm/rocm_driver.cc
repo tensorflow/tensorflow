@@ -1101,13 +1101,14 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   result = wrap::hipGetDeviceProperties(&props, dev);
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
-    VLOG(1) << "GCN arch name " << gcnArchName;
+    VLOG(3) << "GCN arch name " << gcnArchName;
     auto pos = gcnArchName.find(":");
     if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
     pos = gcnArchName.find("gfx");
     if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
-    VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
-    return ((gcnArchName == "908") || (gcnArchName == "909"));
+    VLOG(3) << "GCN arch name (stripped) " << gcnArchName;
+    return ((gcnArchName == "908") || (gcnArchName == "909") ||
+            (gcnArchName == "90a") || (gcnArchName == "940"));
   }
   return tsl::Status{
       tsl::error::INTERNAL,
@@ -1241,6 +1242,36 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return true;
 }
 
+/* static */ bool GetReservedMemory(uint64_t* reserve) {
+  hipDeviceProp_t props;
+  hipDevice_t dev;
+  hipError_t res = wrap::hipGetDevice(&dev);
+
+  if (res != hipSuccess) {
+    LOG(FATAL) << "failed to query current device: " << ToString(res);
+    return false;
+  }
+  res = wrap::hipGetDeviceProperties(&props, dev);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to query device properties: " << ToString(res);
+    return false;
+  }
+
+  std::string gcnArchName = props.gcnArchName;
+  // On gfx90a, we hide 1 GB of GPU memory (512MB for gfx908) from TF,
+  // to allow for late allocations by internal ROCm libraries
+  // (e.g. rocBLAS alone needs~200 MB to put its kernels as of ROCm 4.1)
+  const uint64_t RESERVED_GFX908 = 1048576 * 512;
+  const uint64_t RESERVED_GFX9_X = 1048576 * 1024;
+  if (gcnArchName.substr(0, 6) == "gfx908") {
+    *reserve = RESERVED_GFX908;
+  } else if (gcnArchName.substr(0, 6) == "gfx90a" ||
+             gcnArchName.substr(0, 6) == "gfx940") {
+    *reserve = RESERVED_GFX9_X;
+  }
+  return true;
+}
+
 /* static */ bool GpuDriver::GetDeviceMemoryInfo(GpuContext* context,
                                                  int64_t* free_out,
                                                  int64_t* total_out) {
@@ -1253,8 +1284,24 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
     return false;
   }
 
-  *free_out = free;
-  *total_out = total;
+  uint64_t reserve = 0;
+  if (!GetReservedMemory(&reserve)) {
+    LOG(ERROR) << "failed to reserved device memory for ROCm libraries";
+    return false;
+  }
+
+  VLOG(1) << "Device memory: " << total / 1048576 << " MB total, "
+          << free / 1048576 << " MB free, reserving " << reserve / 1048576
+          << " MB";
+
+  // overflow check
+  if (free > std::numeric_limits<int64_t>::max()) {
+    LOG(ERROR) << "free memory (" << free << ") is overflow int64_t";
+    return false;
+  }
+
+  *free_out = free >= reserve ? free - reserve : 0;
+  *total_out = total - reserve;
   return true;
 }
 
@@ -1266,8 +1313,12 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
     LOG(ERROR) << "failed to query total available memory: " << ToString(res);
     return false;
   }
-
-  *result = value;
+  uint64_t reserve = 0;
+  if (!GetReservedMemory(&reserve)) {
+    LOG(ERROR) << "failed to reserved device memory for ROCm libraries";
+    return false;
+  }
+  *result = value - reserve;
   return true;
 }
 

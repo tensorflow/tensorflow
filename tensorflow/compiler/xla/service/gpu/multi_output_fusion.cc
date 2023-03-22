@@ -27,11 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -336,7 +336,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     HloInstruction* producer = defs_before_uses.back();
 
     // Copy on purpose: to use after removing the producer.
-    std::string producer_name = producer->name();
+    absl::string_view producer_name = producer->name();
     defs_before_uses.pop_back();
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
@@ -446,11 +446,6 @@ StatusOr<bool> GpuMultiOutputFusion::Run(
   bool changed = false;
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Skip Softmax CustomCall computations.
-    if (computation->IsCustomCallComputation() &&
-        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
-      continue;
-    }
     computation_ = computation;
     TF_ASSIGN_OR_RETURN(bool fusion_changed, DoMultiOutputFusion());
     if (fusion_changed) {

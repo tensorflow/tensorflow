@@ -410,7 +410,7 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
     // be >= 0 or `ShapedType::kDynamicDim`. The value of
     // `ShapedType::kDynamicDim` means the dimension is dynamic. Otherwise, the
     // dimension is static.
-    AttrBuilder<(ins "llvm::Optional<ArrayRef<int64_t>>":$dimensions)>,
+    AttrBuilder<(ins "std::optional<ArrayRef<int64_t>>":$dimensions)>,
     // Returns a Shape attribute from a TensorFlow ShapedType type.
     AttrBuilder<(ins "ShapedType":$shaped_type)>
   ];
@@ -425,7 +425,7 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
     int64_t getRank() const;
 
     // Returns the shape array if ranked, or None if unranked.
-    llvm::Optional<ArrayRef<int64_t>> getValue() const;
+    std::optional<ArrayRef<int64_t>> getValue() const;
   }];
   let hasCustomAssemblyFormat = 1;
 }

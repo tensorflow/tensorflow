@@ -34,37 +34,21 @@ import org.json.JSONObject;
  *
  * <p>This class contains helper functions to convert the raw performance results from the native
  * layer into metric-level, delegate-level and model-level pass status values.
- *
- * <p>TODO(b/250877013): Add concrete implementation.
  */
-public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkReportInterface {
+public abstract class ModelBenchmarkReport implements ModelBenchmarkReportInterface {
   private static final String TAG = "ModelBenchmarkReport";
 
   protected final String modelName;
   /* Map from performance metric names to the maximum regression percentage thresholds allowed. */
-  protected final Map<String, Float> maxRegressionPercentageAllowed = new HashMap<>();
-  /**
-   * List of {@link RawDelegateMetricsEntry}, which stores delegate-level performance results
-   * collected from the native layer.
-   */
-  protected final List<RawDelegateMetricsEntry> rawDelegateMetrics = new ArrayList<>();
-  /**
-   * List of {@link DelegateMetricsEntry}, which stores delegate-level performance results computed
-   * by {@link #computeModelReport()}.
-   */
+  protected final Map<String, Double> maxRegressionPercentageAllowed = new HashMap<>();
+  /** List of {@link DelegateMetricsEntry}, which stores delegate-level performance results. */
   protected final List<DelegateMetricsEntry> processedDelegateMetrics = new ArrayList<>();
-  /** Model-level pass status. The field will be updated by {@link #computeModelReport()}. */
+  /** Model-level pass status. */
   protected BenchmarkResultType result = BenchmarkResultType.UNKNOWN;
 
   protected ModelBenchmarkReport(String modelName) {
     this.modelName = modelName;
   }
-
-  /**
-   * Parses accuracy or latency results into the unified {@link RawDelegateMetricsEntry} format for
-   * further processing.
-   */
-  public abstract void addResults(ResultsT results, TfLiteSettingsListEntry entry);
 
   @Override
   public String modelName() {
@@ -81,17 +65,34 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
     return result;
   }
 
+  @Override
+  public JSONObject toJsonObject() throws JSONException {
+    JSONObject jsonObject = new JSONObject();
+    jsonObject.put("model", modelName);
+    jsonObject.put("result", result.toString());
+    JSONArray processedDelegateMetricsArray = new JSONArray();
+    for (DelegateMetricsEntry entry : processedDelegateMetrics) {
+      processedDelegateMetricsArray.put(entry.toJsonObject());
+    }
+    jsonObject.put("metrics", processedDelegateMetricsArray);
+    JSONObject maxRegressionPercentageAllowedObject = new JSONObject();
+    for (Map.Entry<String, Double> entry : maxRegressionPercentageAllowed.entrySet()) {
+      maxRegressionPercentageAllowedObject.put(entry.getKey(), entry.getValue());
+    }
+    jsonObject.put("max_regression_percentage_allowed", maxRegressionPercentageAllowedObject);
+    return jsonObject;
+  }
+
   /**
    * Converts the prepopulated list of {@link RawDelegateMetricsEntry}, the raw performance results
    * collected from the native layer, into a list of {@link DelegateMetricsEntry}.
    *
-   * <p>Note: {@link #addResults(ResultsT, TfLiteSettingsListEntry)} should be called to populate
-   * the list of {@link RawDelegateMetricsEntry} before calling this method.
-   *
-   * <p>TODO(b/268595172): Remove the above precondition.
+   * <p>The computation compares the test target delegate with every reference delegate by computing
+   * the regression of the raw performance results. The list of {@link DelegateMetricsEntry} stores
+   * the calculated results for all pairs. {@link ModelBenchmarkReport} stores both the raw
+   * performance results and the processed performance results.
    */
-  @Override
-  public void computeModelReport() {
+  protected void computeModelReport(List<RawDelegateMetricsEntry> rawDelegateMetrics) {
     if (!processedDelegateMetrics.isEmpty()) {
       // Metrics are computed.
       Log.i(TAG, "Delegate metrics are already computed. Skips the computation.");
@@ -113,13 +114,18 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
     }
     processedDelegateMetrics.add(
         DelegateMetricsEntry.create(
-            testTarget.delegateIdentifier(), metrics, BenchmarkResultType.NOT_APPLICABLE));
+            testTarget.delegateIdentifier(),
+            metrics,
+            BenchmarkResultType.NOT_APPLICABLE,
+            testTarget.isTestTarget()));
 
     // Processes the reference delegate results. Compute the performance regressions by comparing
     // them with the results from the test target delegate.
     List<BenchmarkResultType> referenceResults = new ArrayList<>();
-    for (RawDelegateMetricsEntry entry :
-        rawDelegateMetrics.subList(0, rawDelegateMetrics.size() - 1)) {
+    // Traverses the list in reverse order, so that the exported order of items matches with the
+    // input delegate setting files order.
+    for (int reference = rawDelegateMetrics.size() - 2; reference >= 0; reference--) {
+      RawDelegateMetricsEntry entry = rawDelegateMetrics.get(reference);
       Map<String, MetricsEntry> referenceMetrics = new LinkedHashMap<>();
       List<BenchmarkResultType> metricResults = new ArrayList<>();
       for (String metricName : testTarget.metrics().keySet()) {
@@ -140,36 +146,16 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
       referenceResults.add(referenceDelegateResult);
       processedDelegateMetrics.add(
           DelegateMetricsEntry.create(
-              entry.delegateIdentifier(), referenceMetrics, referenceDelegateResult));
+              entry.delegateIdentifier(),
+              referenceMetrics,
+              referenceDelegateResult,
+              entry.isTestTarget()));
     }
     result = DelegatePerformanceBenchmark.aggregateResults(/* strict= */ true, referenceResults);
   }
 
-  @Override
-  public JSONObject toJsonObject() throws JSONException {
-    JSONObject jsonObject = new JSONObject();
-    jsonObject.put("model", modelName);
-    jsonObject.put("result", result.toString());
-    JSONArray processedDelegateMetricsArray = new JSONArray();
-    for (DelegateMetricsEntry entry : processedDelegateMetrics) {
-      processedDelegateMetricsArray.put(entry.toJsonObject());
-    }
-    jsonObject.put("metrics", processedDelegateMetricsArray);
-    JSONArray rawDelegateMetricsArray = new JSONArray();
-    for (RawDelegateMetricsEntry entry : rawDelegateMetrics) {
-      rawDelegateMetricsArray.put(entry.toJsonObject());
-    }
-    jsonObject.put("raw_metrics", rawDelegateMetricsArray);
-    JSONObject maxRegressionPercentageAllowedObject = new JSONObject();
-    for (Map.Entry<String, Float> entry : maxRegressionPercentageAllowed.entrySet()) {
-      maxRegressionPercentageAllowedObject.put(entry.getKey(), entry.getValue());
-    }
-    jsonObject.put("max_regression_percentage_allowed", maxRegressionPercentageAllowedObject);
-    return jsonObject;
-  }
-
   private MetricsEntry computeReferenceMetricEntry(
-      Float referenceValue, Float testTargetValue, String metricName) {
+      Double referenceValue, Double testTargetValue, String metricName) {
     boolean checkRegression = maxRegressionPercentageAllowed.containsKey(metricName);
     String regression = "N/A";
     BenchmarkResultType result =
@@ -194,7 +180,7 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
 
     // Here we assume that lower values of the metric are better, for all of our metrics.
     // TODO(b/267313326): Remove the assumption with the criteria operator support.
-    float regressionValue = 0f;
+    double regressionValue = 0.0;
     if (!testTargetValue.equals(referenceValue)) {
       regressionValue = (testTargetValue - referenceValue) / referenceValue;
     }
@@ -209,7 +195,7 @@ public abstract class ModelBenchmarkReport<ResultsT> implements ModelBenchmarkRe
     return MetricsEntry.create(referenceValue, regression, result);
   }
 
-  private String toPercentage(float n) {
+  private String toPercentage(double n) {
     return String.format(Locale.ENGLISH, "%.1f", n * 100) + "%";
   }
 }

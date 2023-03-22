@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -57,14 +58,16 @@ class FunctionalHloRunner {
   FunctionalHloRunner() = delete;
 
   using LiteralVec = std::vector<Literal>;
+  using ShapeVec = std::vector<Shape>;
   using PerDeviceLiteralVecType = absl::btree_map<int, LiteralVec>;
+  using PerDeviceShapeVecType = absl::btree_map<int, ShapeVec>;
   using PerDeviceIndexVecType = absl::btree_map<int, std::vector<int>>;
 
   enum class LogOutputMode { kLogOutput, kNotLogOutput };
 
   enum class HloPassesMode {
-    // Only call the XLA compiler's RunBackend to compile the module. This is
-    // used to run a post-optimization HLO module (dumped as
+    // Call only XLA's RunBackend during the compilation. This is used to run a
+    // post-optimization HLO module (dumped as
     // 'xxx.after_optimizations.hlo.xxx').
     kRunXLABackendOnly,
     // Calls Compile (i.e., both RunHloPasses and RunBackend) to compile the
@@ -94,8 +97,13 @@ class FunctionalHloRunner {
     // Use random values as arguments, and different local devices share the
     // same argument values.
     kUseSharedRandomInputs,
-    // Use arguments which have all of their bytes set to 0.
+    // Use arguments which have all of their bytes set to 0 (not respecting any
+    // constraints on the range).
     kUseZerosAsInput,
+    // Use uninitialized device buffers as arguments (not respecting any
+    // constraints on the range). This drastically reduces
+    // the host memory usage and the startup time.
+    kUninitialized,
   };
 
   enum class ModuleOutputMode {
@@ -236,6 +244,16 @@ class FunctionalHloRunner {
       const LiteralVec& argument_literals,
       const PerDeviceIndexVecType& per_device_index_vec);
 
+  // Loads and compiles an HLO for debugging purposes.
+  //
+  // This function allows compiling multi-device HLOs on machines with fewer
+  // devices.
+  static Status LoadAndCompile(PjRtClient& client,
+                               const PreprocessingOptions& preproc_options,
+                               const RawCompileOptions& raw_compile_options,
+                               std::string_view hlo_file,
+                               InputFormat input_format, int task_id = 0);
+
   // Compiles and runs the given HLO module with the given arguments for each
   // device. The given arguments is a map from device ID to a list of arguments.
   // If the arguments map is empty, the HLO module is run with fake arguments.
@@ -337,6 +355,13 @@ class FunctionalHloRunner {
                           const RunningOptions& running_options,
                           bool flatten_arguments = false);
 
+  // Creates uninitialized arguments to run the given executable.
+  static StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+  CreateUninitializedArgumentsOnDevice(PjRtClient& client,
+                                       const PjRtLoadedExecutable* executable,
+                                       const RunningOptions& running_options,
+                                       bool flatten_arguments = false);
+
   // Creates argument buffers based on the given arguments map. Note that the
   // arguments might be invalid when arguments are destructed.
   static StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
@@ -376,6 +401,11 @@ bool AbslParseFlag(absl::string_view text,
                    std::string* error);
 std::string AbslUnparseFlag(
     FunctionalHloRunner::ModuleArgumentMode argument_mode);
+
+bool AbslParseFlag(absl::string_view text,
+                   FunctionalHloRunner::ModuleOutputMode* output_mode,
+                   std::string* error);
+std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode);
 
 }  // namespace xla
 

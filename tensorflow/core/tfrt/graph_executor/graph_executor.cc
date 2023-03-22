@@ -26,8 +26,10 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/context.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/mlir_to_bytecode/mlir_to_bytecode.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -59,13 +62,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -122,8 +123,9 @@ tensorflow::Status RunMlrtFunction(
       std::make_unique<tfrt::SyncContext>(&exec_ctx));
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
-  execution_context.AddUserContext(
-      std::make_unique<tf_mlrt::Context>(fallback_request_state));
+  execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
+      fallback_request_state, request_context->resource_context(),
+      request_context->cancellation_context().get()));
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -171,7 +173,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const GraphExecutionRunOptions& run_options,
     const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
-    tfrt::ResourceContext* resource_context,
+    tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
+    tfd::FallbackResourceArray* resource_array,
     const tensorflow::tfrt_stub::FallbackState& fallback_state,
     CostRecorder* cost_recorder) {
   auto request_info = std::make_unique<RequestInfo>();
@@ -208,8 +211,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   // thread pool in `tensorflow::Device` will be used.
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, &fallback_state.device_manager(),
-      &fallback_state.process_function_library_runtime(),
-      request_queue->GetIntraOpThreadPool(), model_metadata,
+      &fallback_state.process_function_library_runtime(), runner_table,
+      resource_array, request_queue->GetIntraOpThreadPool(), model_metadata,
       &request_info->runner, cost_recorder));
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
@@ -235,15 +238,16 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
-    tfrt::ResourceContext* resource_context, const Runtime& runtime,
+    tfrt::ResourceContext* resource_context, OpKernelRunnerTable* runner_table,
+    tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
     CostRecorder* cost_recorder) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(run_options, options.model_metadata, runtime,
-                        run_options.work_queue, resource_context,
-                        fallback_state, cost_recorder));
+                        run_options.work_queue, resource_context, runner_table,
+                        resource_array, fallback_state, cost_recorder));
 
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
@@ -260,20 +264,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());
 
-  if (loaded_executable) {
-    auto function = loaded_executable->GetFunction(signature_name);
-    if (!function) {
-      return errors::InvalidArgument(absl::StrCat(
-          "Function not found in MLRT executable: ", signature_name));
-    }
-
-    return RunMlrtFunction(function, *loaded_executable,
-                           request_info->tfrt_request_context,
-                           *request_info->request_queue, inputs, outputs);
-  }
-
-  DCHECK(func);
-
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
     auto deadline = run_options.deadline.value();
@@ -287,6 +277,20 @@ tensorflow::Status GraphExecutionRunOnFunction(
     req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
   }
+
+  if (loaded_executable) {
+    auto function = loaded_executable->GetFunction(signature_name);
+    if (!function) {
+      return errors::InvalidArgument(absl::StrCat(
+          "Function not found in MLRT executable: ", signature_name));
+    }
+
+    return RunMlrtFunction(function, *loaded_executable,
+                           request_info->tfrt_request_context,
+                           *request_info->request_queue, inputs, outputs);
+  }
+
+  DCHECK(func);
 
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
   if (run_options.work_queue) {
@@ -372,25 +376,23 @@ tensorflow::Status GraphExecutionRunOnFunction(
   return status_group.as_summary_status();
 }
 
-std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
-    const tensorflow::tfrt_stub::Runtime& runtime,
-    tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtDeviceInfraTarget device_target) {
-  auto resource_context = std::make_unique<tfrt::ResourceContext>();
-  runtime.CreateRuntimeResources(resource_context.get());
-
-  // TODO(b/178227859): We should make TPU resource init code pluggable, as
-  // opposed to linking it in. We can do this by adding a callback with
-  // `Runtime::AddCreateRuntimeResourceFn`.
-  if (device_target == tensorflow::TfrtDeviceInfraTarget::kTpurt) {
-    AddTpuResources(resource_context.get(), tpu_model_resource);
-  }
-  return resource_context;
+GraphExecutor::GraphExecutor(
+    Options options, const FallbackState& fallback_state,
+    std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
+        graph_execution_state,
+    std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
+    : options_(std::move(options)),
+      fallback_state_(fallback_state),
+      graph_execution_state_(std::move(graph_execution_state)),
+      req_deadline_tracker_(options_.runtime->core_runtime()->GetHostContext()),
+      kernel_registry_(std::move(kernel_registry)) {
+  // Creates a ResourceContext and populate it with per model resource from
+  // Runtime.
+  options_.runtime->CreateRuntimeResources(&resource_context_);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, const FallbackState& fallback_state,
-    tfrt::tpu::TpuModelResource* tpu_model_resource,
     tensorflow::GraphDef graph_def,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
   if (options.runtime == nullptr) {
@@ -408,9 +410,9 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
                                       std::move(graph_def), fallback_state));
-  return std::make_unique<GraphExecutor>(
-      std::move(options), fallback_state, tpu_model_resource,
-      std::move(graph_execution_state), std::move(kernel_registry));
+  return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
+                                         std::move(graph_execution_state),
+                                         std::move(kernel_registry));
 }
 
 namespace {
@@ -511,8 +513,9 @@ tensorflow::Status GraphExecutor::Run(
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
       options_, run_options, loaded_client_graph.name(), func,
-      loaded_executable, flat_inputs, &flat_outputs,
-      &loaded_client_graph.resource_context(), runtime(), fallback_state_,
+      loaded_executable, flat_inputs, &flat_outputs, &resource_context_,
+      &loaded_client_graph.runner_table(),
+      &loaded_client_graph.resource_array(), runtime(), fallback_state_,
       &req_deadline_tracker_, cost_recorder.get()));
 
   if (cost_recorder != nullptr) {
@@ -583,11 +586,9 @@ GraphExecutor::ImportAndCompileClientGraph(
             << " ms. Client graph name: " << client_graph.name;
 
   return std::make_unique<LoadedClientGraph>(
-      client_graph.name,
-      CreateResourceContext(runtime(), tpu_model_resource_,
-                            options_.compile_options.device_target),
-      std::move(context), std::move(module), std::move(bef_context),
-      std::move(bytecode_buffer), std::move(bytecode_executable));
+      client_graph.name, std::move(context), std::move(module),
+      std::move(bef_context), std::move(bytecode_buffer),
+      std::move(bytecode_executable));
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
@@ -602,9 +603,7 @@ GraphExecutor::LoadClientGraph(
   // Step 3 of loading: Initialize runtime states using special BEF functions.
   auto init_start_time = absl::Now();
   if (loaded_client_graph->bef_context() != nullptr) {
-    RETURN_IF_ERROR_IN_INIT(
-        InitBef(loaded_client_graph->bef_context()->bef_file.get(),
-                &loaded_client_graph->resource_context(), work_queue));
+    RETURN_IF_ERROR_IN_INIT(InitBef(loaded_client_graph.get(), work_queue));
   } else if (loaded_client_graph->bytecode_executable() != nullptr) {
     RETURN_IF_ERROR_IN_INIT(InitBytecode(loaded_client_graph.get()));
   } else {
@@ -667,11 +666,20 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
   TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToRuntimeExecutable(
       options, module,
       [&bytecode_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
-                         const TfrtPipelineOptions&) {
+                         const TfrtPipelineOptions& options) {
+        // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
-        pm.addPass(mlrt_compiler::CreateParallelizationPass());
-        pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass());
+        pm.addPass(mlrt_compiler::CreateParallelizationPass(
+            options.cost_threshold, options.merge_inter_dependent_streams));
+        pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
+
+        // Perform optimizations in the lowered MLIR.
+        pm.addNestedPass<mlir::func::FuncOp>(
+            mlrt_compiler::CreateFuseAwaitPass());
+        pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+        pm.addPass(mlir::createInlinerPass());
+        pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
         if (mlir::failed(pm.run(module)))
           return diag_handler.Combine(tensorflow::errors::Internal(
@@ -695,12 +703,15 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
 }
 
 tensorflow::Status GraphExecutor::InitBef(
-    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
+    LoadedClientGraph* loaded_client_graph,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
+  auto* bef_file = loaded_client_graph->bef_context()->bef_file.get();
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(/*run_options=*/{}, /*model_metadata=*/{}, runtime(),
-                        work_queue, resource_context, fallback_state_));
+      CreateRequestInfo(
+          /*run_options=*/{}, /*model_metadata=*/{}, runtime(), work_queue,
+          &resource_context_, &loaded_client_graph->runner_table(),
+          &loaded_client_graph->resource_array(), fallback_state_));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
@@ -725,7 +736,8 @@ tensorflow::Status GraphExecutor::InitBytecode(
       auto request_info,
       CreateRequestInfo(/*run_options=*/{}, /*model_metadata=*/{},
                         *options_.runtime, options_.runtime->work_queue(),
-                        &loaded_graph->resource_context(), fallback_state_));
+                        &resource_context_, &loaded_graph->runner_table(),
+                        &loaded_graph->resource_array(), fallback_state_));
 
   const auto* loaded_executable = loaded_graph->bytecode_executable();
   DCHECK(loaded_executable);
@@ -814,7 +826,7 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<mlrt::Value> outputs) {
-  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
+  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
                       GetOrCreateLoadedClientGraph(
                           /*run_options=*/{}, input_names, input_dtypes,
                           output_tensor_names, target_tensor_names,
@@ -822,10 +834,11 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
 
   TF_ASSIGN_OR_RETURN(
       auto request_info,
-      CreateRequestInfo(/*run_options=*/{}, /*model_metadata=*/{},
-                        *options_.runtime, options_.runtime->work_queue(),
-                        &loaded_client_graph.resource_context(),
-                        fallback_state_));
+      CreateRequestInfo(
+          /*run_options=*/{}, /*model_metadata=*/{}, *options_.runtime,
+          options_.runtime->work_queue(), &resource_context_,
+          &loaded_client_graph.runner_table(),
+          &loaded_client_graph.resource_array(), fallback_state_));
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
 
   mlrt::ExecutionContext execution_context(
@@ -836,7 +849,8 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
 
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
       &request_info->tfrt_request_context
-           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>());
+           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>(),
+      request_info->tfrt_request_context->resource_context());
   execution_context.AddUserContext(std::move(tf_context));
 
   auto serving_function =

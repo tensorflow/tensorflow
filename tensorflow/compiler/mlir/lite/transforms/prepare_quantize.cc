@@ -15,11 +15,11 @@ limitations under the License.
 
 // This transformation pass applies quantization propagation on TFLite dialect.
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -110,7 +110,7 @@ class PrepareQuantizePass
   // Get the min and max values from the quantization specification for the
   // current function and argument index. Uses default values if the function
   // is specified in the `quantize_allowlist`.
-  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  std::pair<std::optional<double>, std::optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];
@@ -405,8 +405,9 @@ void PrepareQuantizePass::runOnOperation() {
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, is_signed, disable_per_channel_ || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      func, is_signed, bit_width,
+      disable_per_channel_ || quant_specs_.disable_per_channel, GetOpQuantSpec,
+      infer_tensor_range, quant_specs_.legacy_float_scale);
 }
 
 }  // namespace

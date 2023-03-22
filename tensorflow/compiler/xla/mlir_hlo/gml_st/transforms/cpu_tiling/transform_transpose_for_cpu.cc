@@ -39,25 +39,22 @@ namespace {
 
 using mlir::arith::ConstantIndexOp;
 
-static constexpr llvm::StringRef kTransposeTransformedLabel =
-    "__transpose_transformed_label__";
-
 struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
-  TileTransposePattern(MLIRContext *context, TilingOptions options,
+  TileTransposePattern(MLIRContext *context, scf::SCFTilingOptions options,
                        PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::TransposeOp>(context, benefit),
         options(std::move(options)) {}
 
   LogicalResult matchAndRewrite(linalg::TransposeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kTransposeTransformedLabel)) return failure();
+    if (hasLabel(op, kTransformedLabel)) return failure();
 
     if (isa<LoopLikeOpInterface>(op->getParentOp()))
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 
-    auto tilingResult = tileUsingGmlSt(
-        options, rewriter, cast<TilingInterface>(op.getOperation()));
+    auto tilingResult = tileUsingSCFForallOp(
+        rewriter, cast<TilingInterface>(op.getOperation()), options);
     if (failed(tilingResult)) return failure();
 
     // If we did not tile (e.g. when all tile sizes are 0), do not replace
@@ -65,27 +62,21 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOps.front(), kTransposeTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kTransformedLabel);
 
     // Peel parallel loops, label the main loop as "perfectly tiled" one, to
     // enable vectorization after canonicalization.
-    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kPerfectlyTiledLoopLabel);
+    auto peelingResult = peelAllLoops(tilingResult->loop, rewriter);
+    setLabel(tilingResult->loop, kPerfectlyTiledLoopLabel);
 
-      // Tile ops in the peeled loop again, to size 1, so they can be
-      // scalarized.
-      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
-                                        kTransposeTransformedLabel,
-                                        /*fuseFilterFn=*/nullptr)))
-        return failure();
-    }
-
-    return success();
+    // Tile ops in the peeled loop again, to size 1, so they can be
+    // scalarized.
+    return tilePeeledOpsToScalars(rewriter, peelingResult,
+                                  /*fuseFilterFn=*/nullptr);
   }
 
  private:
-  TilingOptions options;
+  scf::SCFTilingOptions options;
 };
 
 struct TransformTransposeForCpuPass
@@ -144,20 +135,20 @@ struct TransformTransposeForCpuPass
       return tiles;
     };
 
-    TilingOptions tilingOptions;
-    tilingOptions.tileSizeComputationFn = getTileSize;
+    scf::SCFTilingOptions tilingOptions;
+    tilingOptions.setTileSizeComputationFunction(getTileSize);
 
     auto func = getOperation();
     RewritePatternSet patterns(func.getContext());
     patterns.add<TileTransposePattern>(patterns.getContext(), tilingOptions);
+    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }
 
     // Ensure we drop the marker in the end.
-    func.walk([](linalg::TransposeOp op) {
-      removeLabel(op, kTransposeTransformedLabel);
-    });
+    func.walk(
+        [](linalg::TransposeOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

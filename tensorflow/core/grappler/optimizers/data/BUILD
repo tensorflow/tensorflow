@@ -757,7 +757,6 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ptr_util",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

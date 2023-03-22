@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -97,14 +98,14 @@ TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
   TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
   std::string test_file = tsl::io::JoinPath(directory, "test_file");
   Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
-  TF_ASSERT_OK(AtomicallyWriteTFRecord(test_file, out, tsl::Env::Default()));
+  TF_ASSERT_OK(AtomicallyWriteTFRecords(
+      test_file, {out}, tsl::io::compression::kSnappy, tsl::Env::Default()));
 
-  std::vector<Tensor> in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  snapshot_util::TFRecordReader reader(test_file, tsl::io::compression::kNone,
-                                       {DT_INT64});
+  snapshot_util::TFRecordReaderImpl reader(test_file,
+                                           tsl::io::compression::kSnappy);
   TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
-  TF_ASSERT_OK(reader.ReadTensors(&in));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> in, reader.GetTensors());
   EXPECT_EQ(out.DebugString(), in.front().DebugString());
 }
 
@@ -127,6 +128,12 @@ TEST(FileUtilsTest, GetChildrenEmptyDirectory) {
 TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
   EXPECT_THAT(GetChildren("Not exist", tsl::Env::Default()),
               StatusIs(tsl::error::NOT_FOUND));
+}
+
+TEST(FileUtilsTest, IsTemporaryFile) {
+  EXPECT_TRUE(IsTemporaryFile("file.tmp"));
+  EXPECT_FALSE(IsTemporaryFile("file"));
+  EXPECT_FALSE(IsTemporaryFile(""));
 }
 
 }  // namespace

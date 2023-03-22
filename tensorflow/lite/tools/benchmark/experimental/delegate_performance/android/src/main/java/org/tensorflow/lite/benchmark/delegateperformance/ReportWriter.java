@@ -17,9 +17,6 @@ package org.tensorflow.lite.benchmark.delegateperformance;
 /**
  * An interface to handle exporting {@link BenchmarkReport}. It will be used in {@link CsvWriter},
  * {@link JsonWriter} and {@link HtmlWriter}.
- *
- * <p>TODO(b/250877013): Add concrete implementation for {@link CsvWriter}, {@link JsonWriter} and
- * {@link HtmlWriter}.
  */
 public interface ReportWriter {
   /** Exports {@link BenchmarkReport} to the target format. */

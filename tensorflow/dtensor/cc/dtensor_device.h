@@ -128,11 +128,13 @@ TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
 bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                      void* device_info, TF_Status* status);
 
-// Returns a dictionary with cache hits and cache miss information.
-// Cache hit count is mapped under 'hit', and cache miss count is mapped under
-// 'miss'.
-std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
-    TFE_Context* context, void* device_info, TF_Status* status);
+// Returns a dictionary with cache stats.
+// 'hit': cache hit count,
+// 'miss': cache miss count,
+// 'size': number of entries in the cache.
+std::unordered_map<std::string, int> GetFunctionCacheStats(TFE_Context* context,
+                                                           void* device_info,
+                                                           TF_Status* status);
 
 // Sets the layouts for the elements emitted by an iterator resource tensor.
 void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,

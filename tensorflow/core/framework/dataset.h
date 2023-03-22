@@ -750,7 +750,8 @@ class IteratorContext {
           symbolic_checkpoint(ctx->symbolic_checkpoint()),
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()),
-          id_registry(ctx->id_registry()) {}
+          id_registry(ctx->id_registry()),
+          warm_start(ctx->warm_start()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -844,6 +845,11 @@ class IteratorContext {
 
     std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry =
         std::make_shared<MemoryCheckpoint::IdRegistry>();
+
+    // If `true` background threads of asynchronous operations are started when
+    // the iterator is created. Otherwise, they are started upon first `GetNext`
+    // request. Default value is set to false to ensure backward compatibility.
+    bool warm_start = false;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -921,6 +927,8 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  bool warm_start() { return params_.warm_start; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -1180,8 +1188,8 @@ class IteratorBase : public Checkpointable {
   std::vector<std::function<void()>> cleanup_fns_;
   std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
-  int64_t id_ = 0;
-  int64_t parent_id_ = 0;
+  uint64_t id_ = 0;
+  uint64_t parent_id_ = 0;
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -1334,14 +1342,9 @@ class DatasetBase : public core::RefCounted {
   // Returns the cardinality of this dataset based on the options.
   int64_t Cardinality(CardinalityOptions options) const;
 
-  // Internal implementation of cardinality for a dataset.
-  // TODO(shilpakrish): Remove this overload once all callers are migrated
-  // to the API which passes in the options parameter.
-  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
-  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
-
   // Internal implementation of cardinality for a dataset based on the options.
-  virtual int64_t CardinalityInternal(CardinalityOptions options) const {
+  virtual int64_t CardinalityInternal(CardinalityOptions options) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(cardinality_mu_) {
     return kUnknownCardinality;
   }
 

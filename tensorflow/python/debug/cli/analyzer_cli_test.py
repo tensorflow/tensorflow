@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop as while_loop_tf
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
@@ -2052,7 +2053,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
       loop_var = constant_op.constant(0, name="while_loop_test/loop_var")
       cond = lambda loop_var: math_ops.less(loop_var, 10)
       body = lambda loop_var: math_ops.add(loop_var, 1)
-      while_loop = control_flow_ops.while_loop(
+      while_loop = while_loop_tf.while_loop(
           cond, body, [loop_var], parallel_iterations=1)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)

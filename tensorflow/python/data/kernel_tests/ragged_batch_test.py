@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -145,8 +146,8 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
               array_ops.fill([x], x),
           'ragged':
               ragged_concat_ops.stack(
-                  [array_ops.stack([x]),
-                   array_ops.stack([x, x])]),
+                  [array_ops_stack.stack([x]),
+                   array_ops_stack.stack([x, x])]),
           'sparse':
               sparse_tensor.SparseTensor([[x]], [x], [100])
       }

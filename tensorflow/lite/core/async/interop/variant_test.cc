@@ -26,17 +26,17 @@ namespace {
 TEST(VariantTest, IntTest) {
   {
     Variant a(1);
-    EXPECT_EQ(1, a.Get<int>());
+    EXPECT_EQ(1, *a.Get<int>());
   }
   {
     Variant a(1);
     a.Set(2);
-    EXPECT_EQ(2, a.Get<int>());
+    EXPECT_EQ(2, *a.Get<int>());
   }
   {
     Variant a(42);
     Variant b(a);
-    EXPECT_EQ(42, b.Get<int>());
+    EXPECT_EQ(42, *b.Get<int>());
   }
   {
     Variant a(42);
@@ -55,20 +55,20 @@ TEST(VariantTest, SizeTTest) {
   {
     size_t v = 1;
     Variant a(v);
-    EXPECT_EQ(1, a.Get<size_t>());
+    EXPECT_EQ(1, *a.Get<size_t>());
   }
   {
     size_t v = 1;
     Variant a(v);
     size_t t = 2;
     a.Set(t);
-    EXPECT_EQ(2, a.Get<size_t>());
+    EXPECT_EQ(2, *a.Get<size_t>());
   }
   {
     size_t v = 42;
     Variant a(v);
     Variant b(a);
-    EXPECT_EQ(42, b.Get<size_t>());
+    EXPECT_EQ(42, *b.Get<size_t>());
   }
   {
     size_t v = 42;
@@ -88,20 +88,20 @@ TEST(VariantTest, StringTest) {
   {
     const char v[] = "string";
     Variant a(v);
-    EXPECT_EQ(v, a.Get<const char*>());
+    EXPECT_EQ(v, *a.Get<const char*>());
   }
   {
     const char v[] = "string";
     Variant a(v);
     const char t[] = "another string";
     a.Set(t);
-    EXPECT_EQ(t, a.Get<const char*>());
+    EXPECT_EQ(t, *a.Get<const char*>());
   }
   {
     const char v[] = "string";
     Variant a(v);
     Variant b(a);
-    EXPECT_EQ(v, b.Get<const char*>());
+    EXPECT_EQ(v, *b.Get<const char*>());
   }
   {
     const char v[] = "string";
@@ -117,6 +117,11 @@ TEST(VariantTest, StringTest) {
     b.Set("another string");
     EXPECT_NE(a, b);
   }
+}
+
+TEST(VariantTest, TypeNotMatch) {
+  Variant a(1);
+  EXPECT_EQ(nullptr, a.Get<size_t>());
 }
 
 }  // namespace

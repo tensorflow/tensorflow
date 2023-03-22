@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "pybind11/attr.h"
-#include "pybind11/cast.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl_bind.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl_bind.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"

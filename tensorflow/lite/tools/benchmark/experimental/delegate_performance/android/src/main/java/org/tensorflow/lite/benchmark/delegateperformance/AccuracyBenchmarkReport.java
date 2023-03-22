@@ -18,6 +18,7 @@ import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerforma
 
 import android.util.Log;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import tflite.BenchmarkEvent;
 import tflite.BenchmarkEventType;
@@ -25,33 +26,34 @@ import tflite.BenchmarkMetric;
 import tflite.BenchmarkResult;
 
 /** Model-level accuracy benchmark report class. */
-final class AccuracyBenchmarkReport extends ModelBenchmarkReport<BenchmarkEvent> {
-  public static final float PASS = 0f;
-  public static final float FAIL = 1f;
+final class AccuracyBenchmarkReport extends ModelBenchmarkReport {
+  public static final double PASS = 0;
+  public static final double FAIL = 1;
   private static final String TAG = "AccuracyBenchmarkReport";
 
-  private AccuracyBenchmarkReport(String modelName) {
+  private AccuracyBenchmarkReport(
+      String modelName, List<RawDelegateMetricsEntry> rawDelegateMetricsEntries) {
     super(modelName);
     Log.i(TAG, "Creating an accuracy benchmark report for " + modelName);
     // Adds a regression threshold for "ok" here to make sure that "ok" will be consumed during
     // metric computation.
     // TODO(b/267313326): replace the mitigation with a proper accuracy benchmark criteria.
-    maxRegressionPercentageAllowed.put("ok", 0f);
+    maxRegressionPercentageAllowed.put("ok", 0.0);
+    computeModelReport(rawDelegateMetricsEntries);
   }
 
   /**
    * Parses {@link BenchmarkEvent} into the unified {@link RawDelegateMetricsEntry} format for
    * further processing.
-   *
-   * <p>TODO(b/250877013): Add concrete implementation to this method.
    */
-  @Override
-  public void addResults(BenchmarkEvent event, TfLiteSettingsListEntry entry) {
+  public static RawDelegateMetricsEntry parseResults(
+      BenchmarkEvent event, TfLiteSettingsListEntry entry) {
+    Map<String, Double> metrics = new LinkedHashMap<>();
     if (event == null || event.eventType() != BenchmarkEventType.END || event.result() == null) {
-      Log.i(TAG, "The accuracy benchmarking is not completed successfully for " + entry.filePath());
-      return;
+      Log.w(TAG, "The accuracy benchmarking is not completed successfully for " + entry.filePath());
+      return RawDelegateMetricsEntry.create(
+          entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics);
     }
-    Map<String, Float> metrics = new LinkedHashMap<>();
     BenchmarkResult accuracyResults = event.result();
     for (int i = 0; i < accuracyResults.metricsLength(); i++) {
       BenchmarkMetric metric = accuracyResults.metrics(i);
@@ -61,11 +63,11 @@ final class AccuracyBenchmarkReport extends ModelBenchmarkReport<BenchmarkEvent>
         continue;
       }
       String metricName = metric.name();
-      float metricValue = metric.values(0);
+      double metricValue = metric.values(0);
       if (metric.valuesLength() > 1) {
         // TODO(b/267765648): consider updating the metric aggregation logic.
         metricName += "(average)";
-        float sum = 0f;
+        double sum = 0f;
         for (int j = 0; j < metric.valuesLength(); j++) {
           sum += metric.values(j);
         }
@@ -78,13 +80,14 @@ final class AccuracyBenchmarkReport extends ModelBenchmarkReport<BenchmarkEvent>
     // {@code 1}.
     // TODO(b/267313326): replace the mitigation with a proper accuracy benchmark criteria.
     metrics.put("ok", accuracyResults.ok() ? PASS : FAIL);
-    metrics.put("max_memory_kb", (float) accuracyResults.maxMemoryKb());
-    rawDelegateMetrics.add(
-        RawDelegateMetricsEntry.create(
-            entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics));
+    metrics.put("max_memory_kb", (double) accuracyResults.maxMemoryKb());
+
+    return RawDelegateMetricsEntry.create(
+        entry.tfliteSettings().delegate(), entry.filePath(), entry.isTestTarget(), metrics);
   }
 
-  static ModelBenchmarkReport<BenchmarkEvent> create(String modelName) {
-    return new AccuracyBenchmarkReport(modelName);
+  static AccuracyBenchmarkReport create(
+      String modelName, List<RawDelegateMetricsEntry> rawDelegateMetricsEntries) {
+    return new AccuracyBenchmarkReport(modelName, rawDelegateMetricsEntries);
   }
 }

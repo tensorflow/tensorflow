@@ -483,6 +483,13 @@ TFL_CAPI_EXPORT extern TfLiteBuiltinOperator
 TfLiteRegistrationExternalGetBuiltInCode(
     const TfLiteRegistrationExternal* registration);
 
+/// Return the OP version of the provided external 'registration'.  Return -1
+/// in case of error, or if the provided address is null.
+///
+/// \warning This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern int TfLiteRegistrationExternalGetVersion(
+    const TfLiteRegistrationExternal* registration);
+
 /// Returns the custom name of the provided 'registration'. The returned pointer
 /// will be non-null iff the op is a custom op.
 ///

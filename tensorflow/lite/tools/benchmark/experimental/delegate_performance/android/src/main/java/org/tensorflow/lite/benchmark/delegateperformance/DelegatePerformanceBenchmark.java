@@ -131,24 +131,30 @@ class DelegatePerformanceBenchmark {
   /**
    * Loads the input TFLiteSettings JSON files into TfLiteSettingsListEntry instances.
    *
-   * <p>If the number of input TFLiteSettings JSON files is 1, we add one default entry at the
-   * beginning as reference. The default entry contains a dummy TFLiteSettings structure, which lets
-   * the interpreter to apply the default acceleration.
+   * <p>Adds default entry at the beginning as a reference delegate. The default entry contains a
+   * dummy TFLiteSettings structure, which lets the interpreter to apply the default acceleration.
+   * Positions the test target delegate at the end of the entry list.
    */
   public static List<TfLiteSettingsListEntry> loadTfLiteSettingsList(String[] jsonFilePaths) {
     List<TfLiteSettingsListEntry> tfliteSettingsList = new ArrayList<>();
-    if (jsonFilePaths.length == 1) {
-      FlatBufferBuilder tfliteSettingsBuilder = new FlatBufferBuilder();
+    // Always add the default delegate to compare.
+    FlatBufferBuilder tfliteSettingsBuilder = new FlatBufferBuilder();
       TFLiteSettings.startTFLiteSettings(tfliteSettingsBuilder);
       int tfliteSettingsOffset = TFLiteSettings.endTFLiteSettings(tfliteSettingsBuilder);
       tfliteSettingsBuilder.finish(tfliteSettingsOffset);
-      tfliteSettingsList.add(
-          TfLiteSettingsListEntry.create(
-              TFLiteSettings.getRootAsTFLiteSettings(tfliteSettingsBuilder.dataBuffer()),
-              "default_delegate",
-              /* isTestTarget= */ false));
-    }
-    for (String jsonFilePath : jsonFilePaths) {
+    tfliteSettingsList.add(
+        TfLiteSettingsListEntry.create(
+            TFLiteSettings.getRootAsTFLiteSettings(tfliteSettingsBuilder.dataBuffer()),
+            "default_delegate",
+            /* isTestTarget= */ false));
+    // To avoid system-level initialization negatively impacting benchmark results, the test target
+    // delegate is positioned at the end of the list in reverse order. This ensures initialization
+    // latency is added to the reference delegate that is executed first among the delegates that
+    // share the same delegate type. Otherwise, it could introduce false positive results when
+    // comparing  delegates that share the same initialization. The order of the input settings
+    // files will be reinstated when computing the model-level reports.
+    for (int i = jsonFilePaths.length - 1; i >= 0; i--) {
+      String jsonFilePath = jsonFilePaths[i];
       byte[] tfliteSettingsByteArray = loadTfLiteSettingsJsonNative(jsonFilePath);
       if (tfliteSettingsByteArray == null || tfliteSettingsByteArray.length == 0) {
         Log.e(TAG, "Failed to load TFLiteSetting from JSON file " + jsonFilePath);
@@ -160,9 +166,7 @@ class DelegatePerformanceBenchmark {
           TfLiteSettingsListEntry.create(
               TFLiteSettings.getRootAsTFLiteSettings(byteBuffer),
               jsonFilePath,
-              // TODO(b/250877013): Correct the flag value. This flag is not in use now and will be
-              // used when the result aggregation logic is updated.
-              /* isTestTarget= */ false));
+              /* isTestTarget= */ i == 0));
     }
     return tfliteSettingsList;
   }

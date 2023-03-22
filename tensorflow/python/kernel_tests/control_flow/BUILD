@@ -16,6 +16,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -26,6 +27,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/compat",
     ] + tf_additional_xla_deps_py(),
@@ -38,7 +40,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
-        "notsan",  # TODO(b/132205147): Re-enable this.
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -46,8 +47,12 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
+        "//tensorflow/python:control_flow_assert",
+        "//tensorflow/python:control_flow_case",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
         "//tensorflow/python:distributed_framework_test_lib",
@@ -69,6 +74,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -81,10 +87,12 @@ tf_py_test(
     srcs = ["control_flow_util_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_ops_gen",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:test_ops",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -94,10 +102,11 @@ tf_py_test(
     srcs = ["control_flow_util_v2_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util_v2",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
     ],
 )
@@ -198,7 +207,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
@@ -210,6 +218,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",

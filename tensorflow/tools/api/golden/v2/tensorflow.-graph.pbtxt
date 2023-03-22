@@ -80,6 +80,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_all_collection_keys"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -122,6 +126,10 @@ tf_class {
   member_method {
     name: "name_scope"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "op_def_for_type"
+    argspec: "args=[\'self\', \'type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "prevent_feeding"

@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
 namespace mlir {
 namespace TFL {
@@ -203,6 +204,9 @@ void ExtractSubgraphToFunc(const Subgraph& subgraph, OpBuilder& builder,
     op->dropAllReferences();
     op->erase();
   }
+  // Ensure that users of the call op's results appear after the launch op in
+  // order to preserve the dominance property.
+  TF::ReorderOpResultUses(call_op);
 }
 
 }  // namespace common

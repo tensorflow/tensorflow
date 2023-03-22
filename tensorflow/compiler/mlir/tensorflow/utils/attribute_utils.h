@@ -49,6 +49,9 @@ inline constexpr llvm::StringRef kTpuDevice = "TPU";
 // `TPUBridgeExecutorIslandOutlining` pass.
 inline constexpr llvm::StringRef kSkipIslandOutlining =
     "_skip_island_outlining";
+// Function attribute to signal which argument contains bounded dynamic
+// dimension.
+inline constexpr llvm::StringRef kDynamicArgIndexAttr = "_dynamic_arg_index";
 
 // This string attribute encodes parallel execution groups and their associated
 // branches. It has the following format:

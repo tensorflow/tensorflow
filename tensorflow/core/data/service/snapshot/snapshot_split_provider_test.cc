@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -83,8 +84,8 @@ Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
     std::string split_filename = absl::StrCat("split_", i, "_", i);
     std::string split_path = tsl::io::JoinPath(source_dir, split_filename);
     Tensor split(int64_t{i});
-    TF_RETURN_IF_ERROR(
-        AtomicallyWriteTFRecord(split_path, split, Env::Default()));
+    TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+        split_path, {split}, tsl::io::compression::kNone, Env::Default()));
   }
   return OkStatus();
 }

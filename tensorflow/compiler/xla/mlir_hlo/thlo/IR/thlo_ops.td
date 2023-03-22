@@ -21,6 +21,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/TilingInterface.td"
 
 def TensorOrMemref :
@@ -33,7 +34,6 @@ class TensorOrMemrefOf<list<Type> allowedTypes> :
 def THLO_Dialect : Dialect {
   let name = "thlo";
   let cppNamespace = "::mlir::thlo";
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class THLO_Op<string mnemonic, list<Trait> traits> :
@@ -42,7 +42,8 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
-    DestinationStyleOpInterface] # traits> {
+        DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+        DestinationStyleOpInterface] # traits> {
   let hasCustomAssemblyFormat = 1;
 }
 
@@ -53,7 +54,8 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
       "getLoopIteratorTypes",
       "getResultTilePosition",
       "getTiledImplementation"
-    ]>
+    ]>,
+    DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
   ]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let description = [{

@@ -31,6 +31,30 @@ struct ATan2 : CwiseReal {
   }
 };
 
+struct Clz : CwiseInt {
+  template <typename T>
+  static T apply(T a) {
+    if (!a) {
+      // Return something well-defined for zeroes.
+      return sizeof(T{}) * CHAR_BIT;
+    }
+    return __builtin_clzl(
+               static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a))) -
+           (sizeof(uint64_t) - sizeof(T{})) * CHAR_BIT;
+  }
+};
+
+struct Ctz : CwiseInt {
+  template <typename T>
+  static T apply(T a) {
+    if (!a) {
+      // Return something well-defined for zeroes.
+      return sizeof(T{}) * CHAR_BIT;
+    }
+    return __builtin_ctzl(static_cast<uint64_t>(a));
+  }
+};
+
 struct Complex : CwiseFloat {
   template <typename T>
   static std::complex<T> apply(T a, T b) {
@@ -123,10 +147,17 @@ struct Wrap : trait {
 using Plus = detail::Wrap<std::plus, CwiseArith>;
 using Divide = detail::Wrap<std::divides, CwiseArith>;
 using Multiply = detail::Wrap<std::multiplies, CwiseArith>;
-using Minus = detail::Wrap<std::minus, CwiseArith>;
+using Minus = detail::Wrap<std::minus, CwiseAll>;
 using BitAnd = detail::Wrap<std::bit_and, CwiseIntegral>;
 using BitOr = detail::Wrap<std::bit_or, CwiseIntegral>;
 using BitXor = detail::Wrap<std::bit_xor, CwiseIntegral>;
+
+struct RSqrt : CwiseNonIntegral {
+  template <typename T>
+  static T apply(T a) {
+    return static_cast<T>(T{1} / std::sqrt(a));
+  }
+};
 
 #define DEFINE_WRAPPER(name, std_fun, trait) \
   struct name : trait {                      \
@@ -136,22 +167,29 @@ using BitXor = detail::Wrap<std::bit_xor, CwiseIntegral>;
     }                                        \
   };
 
+DEFINE_WRAPPER(ATan, std::atan, CwiseNonIntegral);
 DEFINE_WRAPPER(Abs, std::abs, CwiseSignedOrComplex);
 DEFINE_WRAPPER(Cbrt, std::cbrt, CwiseFloat);
 DEFINE_WRAPPER(Ceil, std::ceil, CwiseFloat);
 DEFINE_WRAPPER(Cos, std::cos, CwiseNonIntegral);
+DEFINE_WRAPPER(Erf, std::erf, CwiseFloat);
 DEFINE_WRAPPER(Exp, std::exp, CwiseNonIntegral);
+DEFINE_WRAPPER(Exp2, std::exp2, CwiseFloat);
 DEFINE_WRAPPER(Floor, std::floor, CwiseFloat);
 DEFINE_WRAPPER(Imag, std::imag, CwiseComplex);
 DEFINE_WRAPPER(IsFinite, std::isfinite, CwiseFloat);
 DEFINE_WRAPPER(Log, std::log, CwiseNonIntegral);
+DEFINE_WRAPPER(Log10, std::log10, CwiseNonIntegral);
+DEFINE_WRAPPER(Log2, std::log2, CwiseFloat);
 DEFINE_WRAPPER(NearbyInt, std::nearbyint, CwiseFloat);
 DEFINE_WRAPPER(Neg, std::negate<T>{}, CwiseSignedOrComplex);
 DEFINE_WRAPPER(Real, std::real, CwiseComplex);
 DEFINE_WRAPPER(Round, std::round, CwiseFloat);
 DEFINE_WRAPPER(Sin, std::sin, CwiseNonIntegral);
 DEFINE_WRAPPER(Sqrt, std::sqrt, CwiseNonIntegral);
+DEFINE_WRAPPER(Tan, std::tan, CwiseNonIntegral);
 DEFINE_WRAPPER(TanH, std::tanh, CwiseNonIntegral);
+DEFINE_WRAPPER(Trunc, std::trunc, CwiseFloat);
 
 #undef DEFINE_WRAPPER
 
@@ -184,6 +222,14 @@ struct Log1P : CwiseNonIntegral {
       auto imag = std::atan2(i, r + 1);
       return {real, imag};
     }
+  }
+};
+
+struct PopCount : CwiseInt {
+  template <typename T>
+  static T apply(T a) {
+    return __builtin_popcountl(
+        static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a)));
   }
 };
 

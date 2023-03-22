@@ -132,20 +132,13 @@ absl::StatusOr<AsyncValueRef<se::Event>> SendRecvEvents::PopEvent(
 
 static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
                              SendRecvEvents* events, StridedMemrefView arg,
-                             ChannelHandle channel, bool is_host_transfer,
-                             Dictionary frontend_attrs) {
-  VLOG(3) << "Send buffer:"
-          << " channel=" << channel.handle
-          << " is_host_transfer=" << is_host_transfer;
+                             ChannelHandle channel, Dictionary frontend_attrs) {
+  VLOG(3) << "Host Send buffer:"
+          << " channel=" << channel.handle;
 
   TraceMe trace([&] {
-    return TraceMeEncode("xla.gpu.send", {{"channel", channel.handle}});
+    return TraceMeEncode("xla.gpu.send_host", {{"channel", channel.handle}});
   });
-
-  // For now we only support transfers between the device and the host.
-  if (!is_host_transfer)
-    return InvalidArgumentError(
-        "Device to device communication operations are not supported");
 
   // Use device_to_host stream if it is available.
   se::Stream* stream = run_options->run_options().device_to_host_stream();
@@ -168,20 +161,13 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
 
 static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
                              SendRecvEvents* events, StridedMemrefView arg,
-                             ChannelHandle channel, bool is_host_transfer,
-                             Dictionary frontend_attrs) {
-  VLOG(3) << "Receive buffer:"
-          << " channel=" << channel.handle
-          << " is_host_transfer=" << is_host_transfer;
+                             ChannelHandle channel, Dictionary frontend_attrs) {
+  VLOG(3) << "Host Receive buffer:"
+          << " channel=" << channel.handle;
 
   TraceMe trace([&] {
-    return TraceMeEncode("xla.gpu.recv", {{"channel", channel.handle}});
+    return TraceMeEncode("xla.gpu.recv_host", {{"channel", channel.handle}});
   });
-
-  // For now we only support transfers between the device and the host.
-  if (!is_host_transfer)
-    return InvalidArgumentError(
-        "Device to device communication operations are not supported");
 
   // Use host_to_device stream if it is available.
   se::Stream* stream = run_options->run_options().host_to_device_stream();
@@ -203,14 +189,14 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
 }
 
 static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
-                                 SendRecvEvents* events, ChannelHandle channel,
-                                 bool is_host_transfer) {
-  VLOG(3) << "Wait for Send completion:"
-          << " channel=" << channel.handle
-          << " is_host_transfer=" << is_host_transfer;
+                                 SendRecvEvents* events,
+                                 ChannelHandle channel) {
+  VLOG(3) << "Wait for Host Send completion:"
+          << " channel=" << channel.handle;
 
   TraceMe trace([&] {
-    return TraceMeEncode("xla.gpu.send_done", {{"channel", channel.handle}});
+    return TraceMeEncode("xla.gpu.send_done_host",
+                         {{"channel", channel.handle}});
   });
 
   auto done_event = events->PopEvent(channel.handle);
@@ -220,9 +206,8 @@ static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
   BlockUntilReady(done_event->GetAsyncValue());
   if (done_event->IsError()) return done_event->GetError();
 
-  VLOG(5) << "Completed Send operation: "
-          << " channel=" << channel.handle
-          << " is_host_transfer=" << is_host_transfer;
+  VLOG(5) << "Completed Host Send operation: "
+          << " channel=" << channel.handle;
 
   // Once event is recorded we can add a stream dependency.
   run_options->stream()->ThenWaitFor(&done_event->get());
@@ -230,14 +215,14 @@ static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
 }
 
 static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
-                                 SendRecvEvents* events, ChannelHandle channel,
-                                 bool is_host_transfer) {
+                                 SendRecvEvents* events,
+                                 ChannelHandle channel) {
   VLOG(3) << "Wait for Recv completion:"
-          << " channel=" << channel.handle
-          << " is_host_transfer=" << is_host_transfer;
+          << " channel=" << channel.handle;
 
   TraceMe trace([&] {
-    return TraceMeEncode("xla.gpu.recv_done", {{"channel", channel.handle}});
+    return TraceMeEncode("xla.gpu.recv_done_host",
+                         {{"channel", channel.handle}});
   });
 
   auto done_event = events->PopEvent(channel.handle);
@@ -247,9 +232,8 @@ static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
   BlockUntilReady(done_event->GetAsyncValue());
   if (done_event->IsError()) return done_event->GetError();
 
-  VLOG(5) << "Completed Recv operation: "
-          << " channel=" << channel.handle
-          << " is_host_transfer=" << is_host_transfer;
+  VLOG(5) << "Completed Host Recv operation: "
+          << " channel=" << channel.handle;
 
   // Once event is recorded we can add a stream dependency.
   run_options->stream()->ThenWaitFor(&done_event->get());
@@ -261,49 +245,45 @@ static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
 //===----------------------------------------------------------------------===//
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    Send, FunctionWrapper<SendImpl>(), checks,
-    CustomCall::Bind("xla.gpu.send")
+    SendHost, FunctionWrapper<SendImpl>(), checks,
+    CustomCall::Bind("xla.gpu.send_host")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<SendRecvEvents*>()
         .Arg<StridedMemrefView>()
         .Attr<ChannelHandle>("channel_handle")
-        .Attr<bool>("is_host_transfer")
         .Attr<Dictionary>("frontend_attributes"));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    Recv, FunctionWrapper<RecvImpl>(), checks,
-    CustomCall::Bind("xla.gpu.recv")
+    RecvHost, FunctionWrapper<RecvImpl>(), checks,
+    CustomCall::Bind("xla.gpu.recv_host")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<SendRecvEvents*>()
         .Arg<StridedMemrefView>()
         .Attr<ChannelHandle>("channel_handle")
-        .Attr<bool>("is_host_transfer")
         .Attr<Dictionary>("frontend_attributes"));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    SendDone, FunctionWrapper<SendDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.send_done")
+    SendDoneHost, FunctionWrapper<SendDoneImpl>(), checks,
+    CustomCall::Bind("xla.gpu.send_done_host")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<SendRecvEvents*>()
-        .Attr<ChannelHandle>("channel_handle")
-        .Attr<bool>("is_host_transfer"));
+        .Attr<ChannelHandle>("channel_handle"));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    RecvDone, FunctionWrapper<RecvDoneImpl>(), checks,
-    CustomCall::Bind("xla.gpu.recv_done")
+    RecvDoneHost, FunctionWrapper<RecvDoneImpl>(), checks,
+    CustomCall::Bind("xla.gpu.recv_done_host")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<SendRecvEvents*>()
-        .Attr<ChannelHandle>("channel_handle")
-        .Attr<bool>("is_host_transfer"));
+        .Attr<ChannelHandle>("channel_handle"));
 
 //===----------------------------------------------------------------------===//
 
-// Registers XLA Gpu runtime Send/Recv custom calls.
+// Registers XLA Gpu runtime Host Send/Recv custom calls.
 void RegisterSendRecvCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.send", Send);
-  registry.Register("xla.gpu.recv", Recv);
-  registry.Register("xla.gpu.send_done", SendDone);
-  registry.Register("xla.gpu.recv_done", RecvDone);
+  registry.Register("xla.gpu.send_host", SendHost);
+  registry.Register("xla.gpu.recv_host", RecvHost);
+  registry.Register("xla.gpu.send_done_host", SendDoneHost);
+  registry.Register("xla.gpu.recv_done_host", RecvDoneHost);
 }
 
 }  // namespace gpu

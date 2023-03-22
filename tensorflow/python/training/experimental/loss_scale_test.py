@@ -25,7 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -102,7 +102,7 @@ def _get_example_iter(inputs):
 class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
 
   def _get_tensor(self, is_finite):
-    tensor = control_flow_ops.cond(is_finite, lambda: 1., lambda: float('NaN'))
+    tensor = cond.cond(is_finite, lambda: 1., lambda: float('NaN'))
 
     if not distribution_strategy_context.has_strategy():
       return tensor
@@ -111,7 +111,7 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
       rep_id = (
           distribution_strategy_context.get_replica_context()
           .replica_id_in_sync_group)
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(rep_id, 0), lambda: tensor, lambda: 1.)
 
     distribution = distribution_strategy_context.get_strategy()

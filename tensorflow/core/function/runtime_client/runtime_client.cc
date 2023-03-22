@@ -85,7 +85,7 @@ StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
 
   const FunctionDef* f = ctx.FindFunctionDef(std::string(name));
   if (f == nullptr) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Could not find an attribute for key ", name));
   }
 
@@ -118,7 +118,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
   // StringPiece doesn't seem to always be compatible with StringRef.
   if (mlir::failed(mlir::parsePassPipeline(std::string(pipeline_name), pm,
                                            error_stream))) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("locating pass pipeline ", pipeline_name, ": ",
                                error_stream.str()));
   }
@@ -138,7 +138,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
   mlir::StatusScopedDiagnosticHandler diagnostics_handler(&ctx);
   if (failed(pm.run(mlir_fn->get()))) {
     return diagnostics_handler.Combine(
-        Status(error::INVALID_ARGUMENT,
+        Status(absl::StatusCode::kInvalidArgument,
                absl::StrCat("running pass pipeline ", pipeline_name, ": ")));
   }
 

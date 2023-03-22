@@ -25,7 +25,6 @@ def LmhloGpuDialect : Dialect {
   let cppNamespace = "::mlir::lmhlo_gpu";
 
   let useDefaultAttributePrinterParser = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // LHLO_GPU_OPS_BASE

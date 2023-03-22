@@ -473,11 +473,14 @@ def benchmarks_main(true_main, argv=None):
   """
   if argv is None:
     argv = sys.argv
-  found_arg = [arg for arg in argv
-               if arg.startswith("--benchmarks=")
-               or arg.startswith("-benchmarks=")]
+  found_arg = [
+      arg
+      for arg in argv
+      if arg.startswith("--benchmark_filter=")
+      or arg.startswith("-benchmark_filter=")
+  ]
   if found_arg:
-    # Remove --benchmarks arg from sys.argv
+    # Remove --benchmark_filter arg from sys.argv
     argv.remove(found_arg[0])
 
     regex = found_arg[0].split("=")[1]

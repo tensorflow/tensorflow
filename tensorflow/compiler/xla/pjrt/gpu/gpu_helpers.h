@@ -50,7 +50,7 @@ struct GpuAllocatorConfig {
 
   // Only used if kind == kBFC. The maximum fraction of available memory to
   // allocate.
-  double memory_fraction = 0.8;
+  double memory_fraction = 0.75;
 
   // Only used if kind == kBFC. If true, the allocator will immediately allocate
   // the maximum amount allowed by `memory_fraction`. This reduces

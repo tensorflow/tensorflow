@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -55,9 +57,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -270,11 +272,17 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   }
 
   if (xla_allocator_ == nullptr) {
-    // TODO(b/78468222): This can fail, at least when the backend is GPU and
-    // there is no GPU on the host.
-    xla::Backend* backend = GetOrCreateClient().value()->mutable_backend();
-    xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
-        backend, device_ordinal_);
+    if (UsePjRtForSingleDeviceCompilation()) {
+      VLOG(1) << "XlaDevice " << this << " uses AsyncValueAllocator";
+      pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
+      xla_allocator_ = pjrt_allocator_.get();
+    } else {
+      // TODO(b/78468222): This can fail, at least when the backend is GPU and
+      // there is no GPU on the host.
+      xla::Backend* backend = GetOrCreateClient().value()->mutable_backend();
+      xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
+          backend, device_ordinal_);
+    }
   }
   return xla_allocator_;
 }
@@ -300,6 +308,28 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
 }
 
 StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
+  if (UsePjRtForSingleDeviceCompilation()) {
+    if (device_contexts_.empty()) {
+      for (const auto& iter : shape_determination_fns_) {
+        auto device_context = new PjRtDeviceContext(iter);
+        VLOG(1) << "XlaDevice " << this << " new PjRtDeviceContext "
+                << device_context;
+        device_contexts_.emplace_back(device_context);
+      }
+      if (use_accelerator_device_info_) {
+        auto accelerator_device_info =
+            std::make_unique<DeviceBase::AcceleratorDeviceInfo>();
+        accelerator_device_info->default_context = device_contexts_.at(0);
+        set_tensorflow_accelerator_device_info(accelerator_device_info.get());
+        accelerator_device_info_ = std::move(accelerator_device_info);
+        VLOG(1) << "XlaDevice " << this << " new AcceleratorDeviceInfo "
+                << accelerator_device_info_.get();
+      }
+    }
+
+    return device_contexts_;
+  }
+
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client, GetOrCreateClient());
   xla::Backend* backend = client->mutable_backend();
 

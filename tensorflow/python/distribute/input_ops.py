@@ -20,6 +20,8 @@ from tensorflow.python.data.ops.options import AutoShardPolicy
 from tensorflow.python.data.util import traverse
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.types import data as data_types
+from tensorflow.python.types import distribute as distribute_types
 
 
 # pylint: disable=protected-access
@@ -41,11 +43,13 @@ def auto_shard_dataset(dataset, num_shards, index, num_replicas_in_sync=None):
     files. The input dataset will be returned if we cannot automatically
     determine a good way to shard the input dataset.
   """
+  if isinstance(dataset, distribute_types.DistributedDatasetInterface):
+    return dataset.auto_shard(num_shards, index)
   if (dataset.options().experimental_distribute.auto_shard_policy !=
       AutoShardPolicy.OFF):
     if num_replicas_in_sync is None:
       num_replicas_in_sync = 1
-    if isinstance(dataset, dataset_ops.DatasetV1):
+    if isinstance(dataset, data_types.DatasetV1):
       return distribute._AutoShardDatasetV1(dataset, num_shards, index,
                                             num_replicas_in_sync)
     else:

@@ -14,10 +14,8 @@
 # ===================================================================
 """TPU Feature Column Library."""
 import copy
-import math
-
 import enum
-
+import math
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.framework import dtypes
@@ -29,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.feature_column import _is_running_on_cpu
 from tensorflow.python.tpu.feature_column import _record_variable_scope_and_name
 from tensorflow.python.tpu.feature_column import _SUPPORTED_CATEGORICAL_COLUMNS_V2
@@ -510,7 +509,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
       def host_computation():
         return fc_lib.EmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc_lib.EmbeddingColumn._get_dense_tensor(
@@ -546,7 +546,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
       def host_computation():
         return fc_lib.EmbeddingColumn.get_dense_tensor(
             self, transformation_cache, state_manager)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc_lib.EmbeddingColumn.get_dense_tensor(
@@ -565,7 +566,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
       def host_computation():
         return fc_lib.EmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc_lib.EmbeddingColumn._get_sequence_dense_tensor(
@@ -592,7 +594,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
       def host_computation():
         return fc_lib.EmbeddingColumn.get_sequence_dense_tensor(
             self, transformation_cache, state_manager)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc_lib.EmbeddingColumn.get_sequence_dense_tensor(
@@ -706,7 +709,8 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc_lib.SharedEmbeddingColumn._get_dense_tensor_internal(
             self, transformation_cache, state_manager)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc_lib.SharedEmbeddingColumn._get_dense_tensor_internal(
@@ -731,7 +735,8 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc_lib.SharedEmbeddingColumn.get_sequence_dense_tensor(
             self, transformation_cache, state_manager)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc_lib.SharedEmbeddingColumn.get_sequence_dense_tensor(
@@ -962,7 +967,7 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
         return pad_sparse_embedding_lookup_indices(sparse_tensor,
                                                    self._tensor_core_shape[1])
 
-      values, mask = tpu.outside_compilation(host_computation)
+      values, mask = tpu_replication.outside_compilation(host_computation)
     else:
       # For training, the inputs should already have been densified and padded.
       values = transformation_cache.get(self.categorical_column.name,
@@ -999,7 +1004,7 @@ class _TPUDeviceSpecificEmbeddingColumnV2(_TPUEmbeddingColumnV2):
         return pad_sparse_embedding_lookup_indices(sparse_tensor,
                                                    self._tensor_core_shape[1])
 
-      values, mask = tpu.outside_compilation(host_computation)
+      values, mask = tpu_replication.outside_compilation(host_computation)
     else:
       # For training, the inputs should already have been densified and padded.
       values = inputs.get(self.get_feature_key_name())
@@ -1077,7 +1082,7 @@ class _TPUSharedDeviceSpecificEmbeddingColumnV2(_TPUSharedEmbeddingColumnV2):
         return pad_sparse_embedding_lookup_indices(sparse_tensor,
                                                    self._tensor_core_shape[1])
 
-      values, mask = tpu.outside_compilation(host_computation)
+      values, mask = tpu_replication.outside_compilation(host_computation)
     else:
       # For training, the inputs should already have been densified and padded.
       values = transformation_cache.get(self.categorical_column.name,

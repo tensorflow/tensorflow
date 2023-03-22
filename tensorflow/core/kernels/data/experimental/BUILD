@@ -470,26 +470,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
-        "@lmdb",
-    ],
-)
-
-tf_cc_test(
-    name = "lmdb_dataset_op_test",
-    size = "small",
-    srcs = ["lmdb_dataset_op_test.cc"],
-    data = ["//tensorflow/core/lib/lmdb:lmdb_testdata"],
-    deps = [
-        ":lmdb_dataset_op",
-        "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/platform:env",
-        "//third_party/eigen3",
     ],
 )
 

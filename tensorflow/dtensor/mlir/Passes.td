@@ -390,6 +390,37 @@ def DTensorSetHloShardingPass : Pass<"dtensor-set-hlo-sharding", "mlir::ModuleOp
   ];
 }
 
+def DTensorLayoutToXlaShardingOpPass : Pass<"dtensor-layout-to-xla-sharding-op", "mlir::func::FuncOp"> {
+  let summary = "Replace `tf.DTensorLayout` op with `tf.XlaSharding` op.";
+
+  let description = [{
+    Provides sharding guide to XLA based on DTensor layout propagation result.
+
+    tf2xla bridge will further lower `tf.XlaSharding` to `hlo.custom_call`.
+
+    For example:
+
+    ```
+      %1 = tf.DTensorLayout(%0)
+    ```
+
+    will be converted to
+    ```
+      %1 = tf.XlaSharding(%0)
+    ```
+
+    When the DTensorLayout's operand is produced by a constant, the
+    DTensorLayout will be removed and no XlaSharding is inserted. This is
+    because tf2xla requires some op operands to be constant. Inserting
+    XlaSharding will break them.
+
+    A side note: "mhlo.sharding" attributes on ops except FuncOp won't be used
+    by XLA.
+  }];
+
+  let constructor = "CreateDTensorLayoutToXlaShardingOpPass()";
+}
+
 def DTensorReplaceAuxiliaryDTensorLayoutOpPass
     : Pass<"dtensor-replace-auxiliary-layout-op", "mlir::ModuleOp"> {
   let summary = "Replace auxiliary `tf.DTensorLayout` op with `tf.Identity`.";
@@ -442,6 +473,29 @@ def DTensorRemoveDTensorLayoutPass : Pass<"dtensor-remove-dtensorlayout", "mlir:
   let dependentDialects = [
     "::mlir::dtensor::DTensorDialect"
   ];
+}
+
+def DTensorReplaceRelayoutWithIdentityPass : Pass<"dtensor-replace-relayout-with-identity", "mlir::func::FuncOp"> {
+  let summary = "Replace `tf.Relayout` op with `tf.Identity` op.";
+
+  let description = [{
+    This pass replaces `tf.Relayout` op with `tf.Identity` op.
+    It replaces all usages with the inputs. For example, the following code
+
+    ```mlir
+      %1 = tf.Relayout(%0)
+      %2 = tf.SomeOp(%1)
+    ```
+
+    will be replaced by
+
+    ```mlir
+      %1 = tf.Identity(%0)
+      %2 = tf.SomeOp(%1)
+    ```
+  }];
+
+  let constructor = "CreateDTensorReplaceRelayoutWithIdentityPass()";
 }
 
 #endif // TF_DTENSOR_PASSES

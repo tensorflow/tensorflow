@@ -17,6 +17,8 @@
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import summary_ops_v2
 
 
@@ -31,10 +33,17 @@ class DTensorDistributedValue(values.DistributedValues):
   """
 
   def __init__(self, dtensor):
-    if not d_api.is_dtensor(dtensor):
-      raise ValueError("The DTensorDistributedValue can only be built with "
-                       f"DTensor instance, got {type(dtensor)}")
-    super().__init__(d_api.unpack(dtensor))
+    if context.executing_eagerly():
+      if not d_api.is_dtensor(dtensor):
+        raise ValueError("The DTensorDistributedValue can only be built with "
+                         f"DTensor instance, got {type(dtensor)}")
+      super().__init__(d_api.unpack(dtensor))
+    else:
+      # We can't unpack the dtensor instance for now due to graph context.
+      # We will treat the dtensor instance as one global instance and let it
+      # return as a global replica instance.
+      # TODO(feyu): Support unpack in the graph context.
+      super().__init__([dtensor,])
     self._dtensor = dtensor
 
   def get_dtensor(self):
@@ -46,6 +55,26 @@ class DTensorDistributedValue(values.DistributedValues):
     # The public API in `tf.types.experimental.distributed.PerReplica` doesn't
     # define any methods.
     return self._values
+
+
+def _dtensor_distributed_value_to_tensor(
+    var, dtype=None, name=None, as_ref=False):
+  del name
+  dtensor = var.get_dtensor()
+  if dtype is not None and not dtype.is_compatible_with(dtensor.dtype):
+    raise ValueError(
+        "Incompatible type conversion requested to type {!r} for variable "
+        "of type {!r}".format(dtype.name, dtensor.dtype.name))
+  if as_ref:
+    raise NotImplementedError(
+        "PerReplica doesn't support being used as a reference.")
+  return dtensor
+
+
+# Register a conversion function to provide a useful error message when users
+# try to use PerReplica values in the wrong contexts
+tensor_conversion_registry.register_tensor_conversion_function(
+    DTensorDistributedValue, _dtensor_distributed_value_to_tensor)
 
 
 class DTensorReplicaContext(distribute_lib.ReplicaContext):
@@ -80,7 +109,10 @@ class DTensorReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def replica_id_in_sync_group(self):
-    raise NotImplementedError(self._UNSUPPORTED_ERROR_MSG)
+    # Since there is only one global context for DTensor, we always return a
+    # constant value here. This value is needed by the RNG which try to generate
+    # different seed for different replica.
+    return 0
 
   @property
   def _replica_id(self):

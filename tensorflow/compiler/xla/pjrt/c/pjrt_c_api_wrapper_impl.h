@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -108,8 +109,18 @@ struct PJRT_DeviceTopology {
   std::unique_ptr<xla::PjRtDeviceTopology> topology;
 };
 
-namespace pjrt {
+struct PJRT_TransferMetadata {
+  // Decompose xla::Shape into C API type fields, without any Tuple information.
+  // TODO(b/238999986) support other `xla::Shape` fields when they are fully
+  // implemented.
+  xla::Shape device_shape;
+};
 
+struct PJRT_CopyToDeviceStream {
+  std::unique_ptr<xla::CopyToDeviceStream> stream;
+};
+
+namespace pjrt {
 // C API definitions
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
@@ -194,6 +205,15 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
+
+PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
+    PJRT_CopyToDeviceStream_AddChunk_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
+    PJRT_CopyToDeviceStream_TotalBytes_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_GranuleSize(
+    PJRT_CopyToDeviceStream_GranuleSize_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
+    PJRT_CopyToDeviceStream_CurrentBytes_Args* args);
 
 PJRT_Error* PJRT_DeviceTopology_Destroy(PJRT_DeviceTopology_Destroy_Args* args);
 PJRT_Error* PJRT_DeviceTopology_PlatformName(
@@ -330,6 +350,15 @@ constexpr PJRT_Api CreatePjrtApi(
       .PJRT_Buffer_IsOnCpu = pjrt::PJRT_Buffer_IsOnCpu,
       .PJRT_Buffer_ReadyEvent = pjrt::PJRT_Buffer_ReadyEvent,
       .PJRT_Buffer_UnsafePointer = pjrt::PJRT_Buffer_UnsafePointer,
+
+      .PJRT_CopyToDeviceStream_AddChunk =
+          pjrt::PJRT_CopyToDeviceStream_AddChunk,
+      .PJRT_CopyToDeviceStream_TotalBytes =
+          pjrt::PJRT_CopyToDeviceStream_TotalBytes,
+      .PJRT_CopyToDeviceStream_GranuleSize =
+          pjrt::PJRT_CopyToDeviceStream_GranuleSize,
+      .PJRT_CopyToDeviceStream_CurrentBytes =
+          pjrt::PJRT_CopyToDeviceStream_CurrentBytes,
 
       .PJRT_DeviceTopology_Create = topology_create_fn,
       .PJRT_DeviceTopology_Destroy = pjrt::PJRT_DeviceTopology_Destroy,

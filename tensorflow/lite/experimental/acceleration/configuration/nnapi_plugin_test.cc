@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/experimental/acceleration/configuration/nnapi_plugin.h"
+
 #include <algorithm>
 #include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
@@ -136,6 +139,174 @@ class NNAPIPluginTest : public ::testing::Test {
   delegates::TfLiteDelegatePtr delegate_;
   std::unique_ptr<delegates::DelegatePluginInterface> plugin_;
 };
+
+TEST(CompilationCachingFields, SourcedFromNNAPISettingsFields) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto nnapi_settings_cache_dir = fbb.CreateString("nnapi_settings_cache_dir");
+  auto nnapi_settings_model_token =
+      fbb.CreateString("nnapi_settings_model_token");
+  NNAPISettingsBuilder nnapi_settings_builder(fbb);
+  nnapi_settings_builder.add_cache_directory(nnapi_settings_cache_dir);
+  nnapi_settings_builder.add_model_token(nnapi_settings_model_token);
+  auto nnapi_settings = nnapi_settings_builder.Finish();
+
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_delegate(tflite::Delegate_NNAPI);
+  tflite_settings_builder.add_nnapi_settings(nnapi_settings);
+  auto tflite_settings = tflite_settings_builder.Finish();
+  fbb.Finish(tflite_settings);
+  auto tflite_settings_root =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  ::tflite::delegates::NnapiPlugin plugin(*tflite_settings_root);
+  auto options = plugin.Options();
+  EXPECT_STREQ(options.cache_dir, "nnapi_settings_cache_dir");
+  EXPECT_STREQ(options.model_token, "nnapi_settings_model_token");
+}
+
+TEST(CompilationCachingFields,
+     TFLiteSettingsFieldsOverrideNNAPISettingsFields) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto top_level_cache_dir = fbb.CreateString("top_level_cache_dir");
+  auto top_level_model_token = fbb.CreateString("top_level_model_token");
+
+  CompilationCachingSettingsBuilder compilation_caching_settings_builder(fbb);
+  compilation_caching_settings_builder.add_model_token(top_level_model_token);
+  compilation_caching_settings_builder.add_cache_dir(top_level_cache_dir);
+  auto compilation_caching_settings =
+      compilation_caching_settings_builder.Finish();
+
+  auto nnapi_settings_cache_dir = fbb.CreateString("nnapi_settings_cache_dir");
+  auto nnapi_settings_model_token =
+      fbb.CreateString("nnapi_settings_model_token");
+  NNAPISettingsBuilder nnapi_settings_builder(fbb);
+  nnapi_settings_builder.add_cache_directory(nnapi_settings_cache_dir);
+  nnapi_settings_builder.add_model_token(nnapi_settings_model_token);
+  auto nnapi_settings = nnapi_settings_builder.Finish();
+
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_delegate(tflite::Delegate_NNAPI);
+  tflite_settings_builder.add_nnapi_settings(nnapi_settings);
+  tflite_settings_builder.add_compilation_caching_settings(
+      compilation_caching_settings);
+  auto tflite_settings = tflite_settings_builder.Finish();
+  fbb.Finish(tflite_settings);
+  auto tflite_settings_root =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  ::tflite::delegates::NnapiPlugin plugin(*tflite_settings_root);
+  auto options = plugin.Options();
+  EXPECT_STREQ(options.cache_dir, "top_level_cache_dir");
+  EXPECT_STREQ(options.model_token, "top_level_model_token");
+}
+
+TEST(CompilationCachingFields,
+     NNAPISettingsFieldsUsedIfTFLiteSettingsFieldsArePresentButEmpty) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto empty_top_level_cache_dir = fbb.CreateString("");
+  auto empty_top_level_model_token = fbb.CreateString("");
+
+  CompilationCachingSettingsBuilder compilation_caching_settings_builder(fbb);
+  compilation_caching_settings_builder.add_model_token(
+      empty_top_level_model_token);
+  compilation_caching_settings_builder.add_cache_dir(empty_top_level_cache_dir);
+  auto compilation_caching_settings =
+      compilation_caching_settings_builder.Finish();
+
+  auto nnapi_settings_cache_dir = fbb.CreateString("nnapi_settings_cache_dir");
+  auto nnapi_settings_model_token =
+      fbb.CreateString("nnapi_settings_model_token");
+  NNAPISettingsBuilder nnapi_settings_builder(fbb);
+  nnapi_settings_builder.add_cache_directory(nnapi_settings_cache_dir);
+  nnapi_settings_builder.add_model_token(nnapi_settings_model_token);
+  auto nnapi_settings = nnapi_settings_builder.Finish();
+
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_delegate(tflite::Delegate_NNAPI);
+  tflite_settings_builder.add_nnapi_settings(nnapi_settings);
+  tflite_settings_builder.add_compilation_caching_settings(
+      compilation_caching_settings);
+  auto tflite_settings = tflite_settings_builder.Finish();
+  fbb.Finish(tflite_settings);
+  auto tflite_settings_root =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  ::tflite::delegates::NnapiPlugin plugin(*tflite_settings_root);
+  auto options = plugin.Options();
+  EXPECT_STREQ(options.cache_dir, "nnapi_settings_cache_dir");
+  EXPECT_STREQ(options.model_token, "nnapi_settings_model_token");
+}
+
+TEST(CompilationCachingFields,
+     FallbackToNNAPISettingsCacheDirFieldIfTFLiteSettingsCacheDirIsMissing) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto top_level_model_token = fbb.CreateString("top_level_model_token");
+
+  CompilationCachingSettingsBuilder compilation_caching_settings_builder(fbb);
+  compilation_caching_settings_builder.add_model_token(top_level_model_token);
+  auto compilation_caching_settings =
+      compilation_caching_settings_builder.Finish();
+
+  auto nnapi_settings_cache_dir = fbb.CreateString("nnapi_settings_cache_dir");
+  auto nnapi_settings_model_token =
+      fbb.CreateString("nnapi_settings_model_token");
+  NNAPISettingsBuilder nnapi_settings_builder(fbb);
+  nnapi_settings_builder.add_cache_directory(nnapi_settings_cache_dir);
+  nnapi_settings_builder.add_model_token(nnapi_settings_model_token);
+  auto nnapi_settings = nnapi_settings_builder.Finish();
+
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_delegate(tflite::Delegate_NNAPI);
+  tflite_settings_builder.add_nnapi_settings(nnapi_settings);
+  tflite_settings_builder.add_compilation_caching_settings(
+      compilation_caching_settings);
+  auto tflite_settings = tflite_settings_builder.Finish();
+  fbb.Finish(tflite_settings);
+  auto tflite_settings_root =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  ::tflite::delegates::NnapiPlugin plugin(*tflite_settings_root);
+
+  auto options = plugin.Options();
+  EXPECT_STREQ(options.cache_dir, "nnapi_settings_cache_dir");
+  EXPECT_STREQ(options.model_token, "top_level_model_token");
+}
+
+TEST(
+    CompilationCachingFields,
+    FallbackToNNAPISettingsModelTokenFieldIfTFLiteSettingsModelTokenIsMissing) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto top_level_cache_dir = fbb.CreateString("top_level_cache_dir");
+
+  CompilationCachingSettingsBuilder compilation_caching_settings_builder(fbb);
+  compilation_caching_settings_builder.add_cache_dir(top_level_cache_dir);
+  auto compilation_caching_settings =
+      compilation_caching_settings_builder.Finish();
+
+  auto nnapi_settings_cache_dir = fbb.CreateString("nnapi_settings_cache_dir");
+  auto nnapi_settings_model_token =
+      fbb.CreateString("nnapi_settings_model_token");
+  NNAPISettingsBuilder nnapi_settings_builder(fbb);
+  nnapi_settings_builder.add_cache_directory(nnapi_settings_cache_dir);
+  nnapi_settings_builder.add_model_token(nnapi_settings_model_token);
+  auto nnapi_settings = nnapi_settings_builder.Finish();
+
+  TFLiteSettingsBuilder tflite_settings_builder(fbb);
+  tflite_settings_builder.add_delegate(tflite::Delegate_NNAPI);
+  tflite_settings_builder.add_nnapi_settings(nnapi_settings);
+  tflite_settings_builder.add_compilation_caching_settings(
+      compilation_caching_settings);
+  auto tflite_settings = tflite_settings_builder.Finish();
+  fbb.Finish(tflite_settings);
+  auto tflite_settings_root =
+      flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
+
+  ::tflite::delegates::NnapiPlugin plugin(*tflite_settings_root);
+
+  auto options = plugin.Options();
+  EXPECT_STREQ(options.cache_dir, "top_level_cache_dir");
+  EXPECT_STREQ(options.model_token, "nnapi_settings_model_token");
+}
 
 TEST_F(NNAPIPluginTest, PassesAcceleratorNameFailure) {
   // Fails with non-existent "foo".

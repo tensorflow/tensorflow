@@ -19,7 +19,6 @@ package tflite.proto.benchmark;
 
 option java_package = "tflite.proto.benchmark";
 
-// TODO(b/250877013): Update the README file to reflect the criteria.
 // Parameters for latency thresholds of the delegate latency benchmarking
 // results. The delegate performance benchmark app generates a
 // "PASS"/"PASS_WITH_WARNING"/"FAIL" result for each pair of test target

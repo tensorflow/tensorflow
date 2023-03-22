@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1101,6 +1101,62 @@ ENTRY %entry {
                 ShardingMetadata({CreateMetadata("c")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[1],
                 ShardingMetadata({CreateMetadata("d")}));
+  } else {
+    for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
+      EXPECT_THAT(sub_sharding, ShardingMetadata({}));
+    }
+  }
+}
+
+TEST_P(ParameterizedMetadataTest,
+       PartiallyManualTupleWithRepeatedOperandsBackWardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (s32[], s32[], s32[]) parameter(0)
+  %count.cond = s32[] get-tuple-element(%vars.cond), index=0
+  %limit = s32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (s32[], s32[], s32[]) parameter(0)
+  %count = s32[] get-tuple-element(%param), index=0
+  %lhs = s32[] get-tuple-element(%param), index=1
+  %rhs = s32[] get-tuple-element(%param), index=2
+  %add = s32[] add(%lhs, %rhs)
+  ROOT %tuple = (s32[], s32[], s32[]) tuple(%count, %lhs, %add)
+}
+
+ENTRY %entry {
+  %zero = s32[] constant(0)
+  %p0 = s32[] parameter(0), sharding={manual metadata={op_name="a"}}
+  %tuple = (s32[], s32[], s32[]) tuple(%zero, %zero, %p0)
+  %while = (s32[], s32[], s32[]) while(%tuple), body=%body, condition=%cond
+  ROOT %copy = (s32[], s32[], s32[]) copy(%while)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tuple = module->entry_computation()->root_instruction()->operand(0);
+  ASSERT_NE(tuple, nullptr);
+  // Check that the sharding on param1 is not replicated on tuple element[1].
+  EXPECT_THAT(tuple, op::Sharding("{{replicated}, {manual}, {manual}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0], ShardingMetadata({}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[1],
+                ShardingMetadata({CreateMetadata("a")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[2],
+                ShardingMetadata({CreateMetadata("a")}));
   } else {
     for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
       EXPECT_THAT(sub_sharding, ShardingMetadata({}));
@@ -8243,6 +8299,61 @@ ENTRY %entry {
   }
 }
 
+TEST_F(ShardingPropagationTest, DoNotPassManualShardingToSPMDShardToFullShape) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = f32[2,3]{1,0} parameter(0), sharding={replicated}
+  custom-call.2 = f32[2,3]{1,0} custom-call(p.0), custom_call_target="Sharding", sharding={replicated}
+  custom-call.3 = f32[2,3]{1,0} custom-call(custom-call.2), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  custom-call.4 = f32[2,3]{1,0} custom-call(custom-call.3), custom_call_target="Sharding", sharding={manual}
+  ROOT custom-call.5 = f32[16,3]{1,0} custom-call(custom-call.4), custom_call_target="SPMDShardToFullShape", sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  // Sharding op is changed to a copy.
+  EXPECT_TRUE(changed);
+  auto spmd_shard_to_full = module->entry_computation()->root_instruction();
+  CHECK(spmd_shard_to_full->IsCustomCall("SPMDShardToFullShape"));
+  EXPECT_FALSE(spmd_shard_to_full->sharding().IsManual());
+}
+
+TEST_F(ShardingPropagationTest, DoNotPassManualShardingThroughConstant) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  p.0 = f32[2,3]{1,0} parameter(0), sharding={replicated}
+  p.1 = f32[2,3]{1,0} parameter(1), sharding={replicated}
+  constant = f32[2,3]{1,0} constant({{0,1,2},{3,4,5}})
+  custom-call.0 = f32[2,3]{1,0} custom-call(p.0), custom_call_target="Sharding", sharding={replicated}
+  custom-call.1 = f32[2,3]{1,0} custom-call(custom-call.0), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  add.0 = f32[2,3]{1,0} add(constant, custom-call.1)
+  custom-call.2 = f32[2,3]{1,0} custom-call(add.0), custom_call_target="SPMDShardToFullShape", sharding={replicated}
+  add.1 = f32[2,3]{1,0} add(constant, p.1)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(custom-call.2, add.1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  // Sharding op is changed to a copy.
+  EXPECT_TRUE(changed);
+  HloInstruction* constant = FindInstruction(module.get(), "constant");
+  EXPECT_FALSE(constant->sharding().IsManual());
+  HloInstruction* add1 = FindInstruction(module.get(), "add.1");
+  EXPECT_FALSE(add1->sharding().IsManual());
+}
+
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {
   const char* const hlo_string = R"(
 HloModule module
@@ -8439,9 +8550,11 @@ ENTRY %entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
-                          /*allow_spmd_sharding_propagation_to_output=*/{false},
-                          /*cse_prevention_only=*/true)
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false},
+          /*cse_prevention_only=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
@@ -8793,5 +8906,249 @@ ENTRY %entry {
               op::Sharding("{{devices=[4]0,1,2,3},{devices=[4]0,1,2,3}}"));
 }
 
+TEST_F(ShardingPropagationTest, PropagateToParametersNotEnabled1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0)
+  ROOT %add = f32[4] add(%param0, %param0), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_FALSE(
+      module->entry_computation()->parameter_instruction(0)->has_sharding());
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersNotEnabled2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  ROOT %add = f32[4] add(%param0, %param0), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersNotEnabled3) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0)
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_FALSE(
+      module->entry_computation()->parameter_instruction(0)->has_sharding());
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersNotEnabled4) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{replicated}"));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersPartial1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{replicated}"));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersPartial2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0)
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(
+      module->entry_computation()->parameter_instruction(0)->has_sharding());
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersPartial3) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1)
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{replicated}"));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersPartial4) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0)
+  %param1 = f32[4] parameter(1)
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(
+      module->entry_computation()->parameter_instruction(0)->has_sharding());
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersFull1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0)
+  %param1 = f32[4] parameter(1)
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateToParametersFull2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1)
+  ROOT %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{devices=[4]0,1,2,3}"));
+}
 }  // namespace
 }  // namespace xla

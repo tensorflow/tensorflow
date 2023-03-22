@@ -35,7 +35,7 @@ class BatchNormExpander : public HloModulePass {
       : rewrite_training_op_(rewrite_training_op),
         rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op) {}
-  ~BatchNormExpander() = default;
+  ~BatchNormExpander() override = default;
   absl::string_view name() const override { return "batchnorm_expander"; }
 
   // Run operation expander on the given computation. Returns whether the

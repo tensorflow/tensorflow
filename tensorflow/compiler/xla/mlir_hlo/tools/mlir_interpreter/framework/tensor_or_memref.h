@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 #define MLIR_HLO_TOOLS_MLIR_INTERPRETER_FRAMEWORK_TENSOR_OR_MEMREF_H_
 
+#include <math.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iterator>

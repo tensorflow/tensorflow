@@ -15,11 +15,9 @@ limitations under the License.
 
 // Utility for launching some HLO text that supports multiple hosts/devices.
 
-#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
+#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -55,8 +53,8 @@ Single-GPU HLO:
     --num_partitions=2 \
     --hlo_file=path/to/hlo_module
 
-Tip: If the input generation takes too long, consider using
---hlo_argument_mode=use_zeros_as_input.
+Tip: If the input generation takes too long or uses too much host memory,
+consider using --hlo_argument_mode=uninitialized.
 )";
 
 }  // namespace
@@ -65,6 +63,7 @@ int main(int argc, char** argv) {
   std::string input_format_str = "text";
   xla::InputFormat input_format;
   std::string hlo_file = "";
+  bool should_run = true;
   std::string dump_output_literal_to = "";
   int task_id = 0;
   std::string device_type_str = "gpu";
@@ -78,6 +77,7 @@ int main(int argc, char** argv) {
                 "snapshot_proto_binary"),
       tsl::Flag("hlo_file", &hlo_file,
                 "A text or proto buf file for HLO input"),
+      tsl::Flag("run", &should_run, "Should we run the compiled HLO?"),
       tsl::Flag("dump_output_literal_to", &dump_output_literal_to,
                 "A path to which the HLO output will be dumped. "
                 "Example: /a/b/literal.txt."),
@@ -117,9 +117,15 @@ int main(int argc, char** argv) {
       xla::FunctionalHloRunner::CreateGpuClient();
   TF_QCHECK_OK(client.status());
 
-  TF_QCHECK_OK(xla::FunctionalHloRunner::LoadAndRunAndDump(
-      *client.value(), preproc_options, raw_compile_options, running_options,
-      {hlo_file}, input_format, dump_output_literal_to, task_id));
+  if (should_run) {
+    TF_QCHECK_OK(xla::FunctionalHloRunner::LoadAndRunAndDump(
+        *client.value(), preproc_options, raw_compile_options, running_options,
+        {hlo_file}, input_format, dump_output_literal_to, task_id));
+  } else {
+    TF_QCHECK_OK(xla::FunctionalHloRunner::LoadAndCompile(
+        *client.value(), preproc_options, raw_compile_options, hlo_file,
+        input_format, task_id));
+  }
 
   return 0;
 }

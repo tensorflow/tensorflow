@@ -254,6 +254,21 @@ REGISTER_OP("CollectiveReduceV3")
     .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("CollectiveAllToAllV2")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Input("group_size: int32")
+    .Input("group_key: int32")
+    .Input("instance_key: int32")
+    .Input("ordering_token: Nordering_token * resource")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .Attr("Nordering_token: int >= 0 = 0")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("CollectiveAllToAllV3")
     .Input("input: T")
     .Input("communicator: resource")

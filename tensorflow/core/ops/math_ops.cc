@@ -578,7 +578,6 @@ REGISTER_OP("Maximum")
         "int32, uint32, int64, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
-// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklMaximum")
     .Input("x: T")
     .Input("y: T")
@@ -1325,6 +1324,16 @@ REGISTER_OP("SegmentMin")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentMinV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("SegmentMax")
     .Input("data: T")
     .Input("segment_ids: Tindices")
@@ -1333,13 +1342,23 @@ REGISTER_OP("SegmentMax")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(SegmentReductionShapeFn);
 
+REGISTER_OP("SegmentMaxV2")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
+
 REGISTER_OP("UnsortedSegmentSum")
     .Input("data: T")
     .Input("segment_ids: Tindices")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: numbertype")
-    .Attr("Tindices: {int32,int64}")
+    .Attr("Tindices: {int16,int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 

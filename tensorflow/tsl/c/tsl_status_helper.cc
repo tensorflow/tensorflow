@@ -21,59 +21,59 @@ limitations under the License.
 namespace tsl {
 
 void Set_TSL_Status_from_Status(TSL_Status* tsl_status, const Status& status) {
-  tensorflow::error::Code code = status.code();
+  absl::StatusCode code = static_cast<absl::StatusCode>(status.code());
   const char* message(status.error_message().c_str());
 
   switch (code) {
-    case tensorflow::error::OK:
+    case absl::StatusCode::kOk:
       assert(TSL_GetCode(tsl_status) == TSL_OK);
       break;
-    case tensorflow::error::CANCELLED:
+    case absl::StatusCode::kCancelled:
       TSL_SetStatus(tsl_status, TSL_CANCELLED, message);
       break;
-    case tensorflow::error::UNKNOWN:
+    case absl::StatusCode::kUnknown:
       TSL_SetStatus(tsl_status, TSL_UNKNOWN, message);
       break;
-    case tensorflow::error::INVALID_ARGUMENT:
+    case absl::StatusCode::kInvalidArgument:
       TSL_SetStatus(tsl_status, TSL_INVALID_ARGUMENT, message);
       break;
-    case tensorflow::error::DEADLINE_EXCEEDED:
+    case absl::StatusCode::kDeadlineExceeded:
       TSL_SetStatus(tsl_status, TSL_DEADLINE_EXCEEDED, message);
       break;
-    case tensorflow::error::NOT_FOUND:
+    case absl::StatusCode::kNotFound:
       TSL_SetStatus(tsl_status, TSL_NOT_FOUND, message);
       break;
-    case tensorflow::error::ALREADY_EXISTS:
+    case absl::StatusCode::kAlreadyExists:
       TSL_SetStatus(tsl_status, TSL_ALREADY_EXISTS, message);
       break;
-    case tensorflow::error::PERMISSION_DENIED:
+    case absl::StatusCode::kPermissionDenied:
       TSL_SetStatus(tsl_status, TSL_PERMISSION_DENIED, message);
       break;
-    case tensorflow::error::UNAUTHENTICATED:
+    case absl::StatusCode::kUnauthenticated:
       TSL_SetStatus(tsl_status, TSL_UNAUTHENTICATED, message);
       break;
-    case tensorflow::error::RESOURCE_EXHAUSTED:
+    case absl::StatusCode::kResourceExhausted:
       TSL_SetStatus(tsl_status, TSL_RESOURCE_EXHAUSTED, message);
       break;
-    case tensorflow::error::FAILED_PRECONDITION:
+    case absl::StatusCode::kFailedPrecondition:
       TSL_SetStatus(tsl_status, TSL_FAILED_PRECONDITION, message);
       break;
-    case tensorflow::error::ABORTED:
+    case absl::StatusCode::kAborted:
       TSL_SetStatus(tsl_status, TSL_ABORTED, message);
       break;
-    case tensorflow::error::OUT_OF_RANGE:
+    case absl::StatusCode::kOutOfRange:
       TSL_SetStatus(tsl_status, TSL_OUT_OF_RANGE, message);
       break;
-    case tensorflow::error::UNIMPLEMENTED:
+    case absl::StatusCode::kUnimplemented:
       TSL_SetStatus(tsl_status, TSL_UNIMPLEMENTED, message);
       break;
-    case tensorflow::error::INTERNAL:
+    case absl::StatusCode::kInternal:
       TSL_SetStatus(tsl_status, TSL_INTERNAL, message);
       break;
-    case tensorflow::error::UNAVAILABLE:
+    case absl::StatusCode::kUnavailable:
       TSL_SetStatus(tsl_status, TSL_UNAVAILABLE, message);
       break;
-    case tensorflow::error::DATA_LOSS:
+    case absl::StatusCode::kDataLoss:
       TSL_SetStatus(tsl_status, TSL_DATA_LOSS, message);
       break;
     default:

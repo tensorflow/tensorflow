@@ -319,8 +319,10 @@ StatusOr<py::object> PyClient::BufferFromPyval(
 
   if (put.ifrt_array) {
     auto traceback = Traceback::Get();
-    return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
-                          std::move(traceback));
+    return PyArray::MakeFromSingleDeviceArray(
+        shared_from_this(), std::move(traceback), std::move(put.ifrt_array),
+        /*weak_type=*/false,
+        /*committed=*/false);
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
@@ -374,8 +376,10 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
     }
     TF_ASSIGN_OR_RETURN(auto ifrt_array,
                         client->CreatePjRtArray(std::move(buffers[i])));
-    auto py_buf =
-        PyBuffer::Make(shared_from_this(), std::move(ifrt_array), traceback);
+    auto py_buf = PyArray::MakeFromSingleDeviceArray(
+        shared_from_this(), Traceback::Get(), std::move(ifrt_array),
+        /*weak_type=*/false,
+        /*committed=*/false);
     result.push_back(std::make_pair(std::move(py_desc), std::move(py_buf)));
   }
   return result;
@@ -499,15 +503,6 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     for (const auto& buffer : arr->pjrt_buffers()) {
       TF_RETURN_IF_ERROR(
           add_buffer_to_profile(buffer.get(), array->traceback.get()));
-    }
-  }
-
-  for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
-       sharded_buffer = sharded_buffer->next_) {
-    for (int i = 0; i < sharded_buffer->num_devices(); ++i) {
-      auto* buffer = sharded_buffer->pjrt_buffer(i);
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer, sharded_buffer->traceback().get()));
     }
   }
 

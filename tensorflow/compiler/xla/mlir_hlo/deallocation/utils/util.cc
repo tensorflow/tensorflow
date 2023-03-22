@@ -94,12 +94,26 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     llvm_unreachable("unsupported");
   }
 
+  newOp->setAttrs(op->getAttrs());
   for (auto [oldRegion, newRegion] :
        llvm::zip(op->getRegions(), newOp->getRegions())) {
     newRegion.takeBody(oldRegion);
   }
 
   return newOp;
+}
+
+Type getUnrankedMemrefType(Type ty) {
+  if (ty.isa<UnrankedMemRefType>()) {
+    return ty;
+  }
+  MemRefType memRefTy = llvm::cast<MemRefType>(ty);
+  return UnrankedMemRefType::get(memRefTy.getElementType(),
+                                 memRefTy.getMemorySpace());
+}
+
+Type getUnrankedMemrefType(Value v) {
+  return getUnrankedMemrefType(v.getType());
 }
 
 }  // namespace deallocation

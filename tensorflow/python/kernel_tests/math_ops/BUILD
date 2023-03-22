@@ -381,7 +381,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     shard_count = 10,
-    tags = ["noasan"],  # TODO(b/249297398): enable the test for asan.
     # TODO (b/173835746): the test fails with XLA.
     xla_enable_strict_auto_jit = False,
     deps = [

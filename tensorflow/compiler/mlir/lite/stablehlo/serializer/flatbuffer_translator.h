@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -31,7 +32,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -63,9 +63,9 @@ namespace odml {
 class Translator {
  public:
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
-  // the serialized output. Returns llvm::None on unsupported, invalid inputs or
-  // internal error.
-  static llvm::Optional<std::string> Translate(
+  // the serialized output. Returns std::nullopt on unsupported, invalid inputs
+  // or internal error.
+  static std::optional<std::string> Translate(
       ModuleOp module, const toco::TocoFlags& toco_flags,
       const std::unordered_set<std::string>& tags,
       tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper,
@@ -92,17 +92,17 @@ class Translator {
         ->getOrLoadDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
   }
 
-  llvm::Optional<std::string> TranslateInternal();
+  std::optional<std::string> TranslateInternal();
 
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
-  // and returns llvm::None on failure.
-  llvm::Optional<BufferOffset<::stablehlo::flatbuf::Buffer>> BuildBuffer(
+  // and returns std::nullopt on failure.
+  std::optional<BufferOffset<::stablehlo::flatbuf::Buffer>> BuildBuffer(
       Value value);
 
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
-  // corresponding buffer. Emits error and returns llvm::None on failure.
-  llvm::Optional<BufferOffset<::stablehlo::flatbuf::Tensor>> BuildTensor(
+  // corresponding buffer. Emits error and returns std::nullopt on failure.
+  std::optional<BufferOffset<::stablehlo::flatbuf::Tensor>> BuildTensor(
       Value value, const std::string& name, unsigned buffer_idx);
 
   // Returns opcode index for op identified by the op_name, if already
@@ -112,15 +112,15 @@ class Translator {
                           ::stablehlo::flatbuf::OperatorCode op_code);
 
   // Builds operator for the given operation with specified operand and result
-  // tensor indices. Emits an error and returns llvm::None on failure.
-  llvm::Optional<BufferOffset<::stablehlo::flatbuf::Operator>> BuildOperator(
+  // tensor indices. Emits an error and returns std::nullopt on failure.
+  std::optional<BufferOffset<::stablehlo::flatbuf::Operator>> BuildOperator(
       Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results);
 
   // Build a subgraph with a given name out of the region either corresponding
   // to a function's body or while op. Modifies *region by calling
   // ExtractControlEdges.
-  llvm::Optional<BufferOffset<::stablehlo::flatbuf::SubGraph>> BuildSubGraph(
+  std::optional<BufferOffset<::stablehlo::flatbuf::SubGraph>> BuildSubGraph(
       const std::string& name, Region* region, int index);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
@@ -151,6 +151,9 @@ class Translator {
   // model.
   absl::flat_hash_map<std::string, int> subgraph_index_map_;
   absl::flat_hash_set<OpType> enabled_op_types_;
+
+  // maps between reduce_window op and their corresponding subgraphs
+  std::map<mlir::stablehlo::ReduceWindowOp, int> reduce_window_subgraph_map_;
 
   // Points to stablehlo dialects & mhlo dialects, respectively. nullptr if the
   // dialect is not registered.

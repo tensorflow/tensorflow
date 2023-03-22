@@ -20,12 +20,13 @@ limitations under the License.
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
-#include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
+#include "gml_st/utils/tensor_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -37,9 +38,6 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMAPFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kMapTransformedLabel =
-    "__map_transformed_label__";
-
 struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
   TileMapPattern(MLIRContext *context, int64_t innerDimTileSize,
                  PatternBenefit benefit = 1)
@@ -48,24 +46,28 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
   LogicalResult matchAndRewrite(linalg::MapOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(op, kMapTransformedLabel)) return failure();
+    if (hasLabel(op, kTransformedLabel)) return failure();
 
-    if (isa<gml_st::ParallelOp, scf::ForOp>(op->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(op->getParentOp())) {
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
     }
 
     auto fuseFilterFn = [](Operation *op) {
+      if (auto reshapeOp = dyn_cast<tensor::CollapseShapeOp>(op))
+        return isDegenerateReshapeOp(reshapeOp);
+      if (auto reshapeOp = dyn_cast<tensor::ExpandShapeOp>(op))
+        return isDegenerateReshapeOp(reshapeOp);
       return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
     };
 
     // Find there another linalg.map where this op can be fused.
     op = findRootMap(op, fuseFilterFn);
 
-    if (hasLabel(op, kMapTransformedLabel)) return failure();
+    if (hasLabel(op, kTransformedLabel)) return failure();
 
-    mlir::gml_st::TilingOptions opts;
-    opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
+    scf::SCFTilingOptions opts;
+    opts.setTileSizeComputationFunction([&](OpBuilder &b, Operation *op) {
       auto numLoops = cast<linalg::MapOp>(op).getNumLoops();
       SmallVector<Value> tiles(
           numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
@@ -73,23 +75,18 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
         tiles.back() =
             b.create<arith::ConstantIndexOp>(op->getLoc(), innerDimTileSize);
       return tiles;
-    };
+    });
 
-    auto tiledLoop = tileUsingGmlStParallelAndFuseGreedily(
-        rewriter, op, opts, kMapTransformedLabel, fuseFilterFn);
+    auto tiledLoop =
+        tileUsingSCFForallOpAndFuseGreedily(rewriter, op, opts, fuseFilterFn);
     if (failed(tiledLoop)) return failure();
 
-    // Peel parallel loops.
-    auto peelingResult = peelAllLoops(*tiledLoop, rewriter);
-    setLabel(*tiledLoop, kPerfectlyTiledLoopLabel);
+    auto peelingResult = peelAllLoops(tiledLoop->loop, rewriter);
+    setLabel(tiledLoop->loop, kPerfectlyTiledLoopLabel);
 
     // Tile ops in the peeled loop again, to size 1, so they can be
     // scalarized.
-    if (failed(tilePeeledOpsToScalars(rewriter, peelingResult,
-                                      kMapTransformedLabel, fuseFilterFn)))
-      return failure();
-
-    return success();
+    return tilePeeledOpsToScalars(rewriter, peelingResult, fuseFilterFn);
   }
 
  private:
@@ -120,7 +117,8 @@ struct TransformMapForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    linalg::LinalgDialect, tensor::TensorDialect>();
+                    linalg::LinalgDialect, tensor::TensorDialect,
+                    scf::SCFDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
 
@@ -130,12 +128,13 @@ struct TransformMapForCpuPass
 
     RewritePatternSet patterns(context);
     patterns.add<TileMapPattern>(context, tileSize);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
 
-    f.walk([](linalg::MapOp op) { removeLabel(op, kMapTransformedLabel); });
+    f.walk([](linalg::MapOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

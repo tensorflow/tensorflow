@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -604,9 +605,11 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
   InstanceRec* irec = nullptr;
   {
     mutex_lock l(instance_mu_);
+    std::tuple<int64_t, int32_t> key = {cp->instance.step_id,
+                                        cp->instance.instance_key};
     auto group_it = instance_table_.find(cp->group.group_key);
     if (group_it != instance_table_.end()) {
-      auto instance_it = group_it->second.find(cp->instance.instance_key);
+      auto instance_it = group_it->second.find(key);
       if (instance_it != group_it->second.end()) {
         irec = instance_it->second.get();
       }
@@ -620,8 +623,7 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
         irec->known.resize(cp->group.group_size, false);
       }
       InitInstanceSharedParams(cp, irec);
-      instance_table_[cp->group.group_key][cp->instance.instance_key].reset(
-          irec);
+      instance_table_[cp->group.group_key][key].reset(irec);
     }
   }
   Status status;

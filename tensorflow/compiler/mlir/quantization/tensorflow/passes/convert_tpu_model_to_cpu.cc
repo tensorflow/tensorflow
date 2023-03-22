@@ -12,38 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-// Convert TPU models to CPU for the TF quantizer to play with the input TPU
-// graph.
-
 #include <memory>
-#include <string>
 #include <utility>
 
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace quant {
 namespace {
 
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/convert_tpu_model_to_cpu.inc"
+
 // Convert a TPU model to be compatible on CPU by rewriting/removing TPU ops.
 class ConvertTpuModelToCpuPass
     : public PassWrapper<ConvertTpuModelToCpuPass, OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTpuModelToCpuPass)
-
-  // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit ConvertTpuModelToCpuPass() = default;
 
   StringRef getArgument() const final {
@@ -84,7 +77,7 @@ class RemoveTpuOp : public RewritePattern {
   }
 };
 
-class ReplaceTPUPartitionedCallOpWithPartitionedCallOp
+class ReplaceTpuPartitionedCallOpWithPartitionedCallOp
     : public OpRewritePattern<TF::TPUPartitionedCallOp> {
  public:
   using OpRewritePattern<TF::TPUPartitionedCallOp>::OpRewritePattern;
@@ -118,30 +111,35 @@ class ReplaceTPUPartitionedCallOpWithPartitionedCallOp
 void ConvertTpuModelToCpuPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
-  auto module_op = getOperation();
+  ModuleOp module_op = getOperation();
 
-  patterns.add<ReplaceTPUPartitionedCallOpWithPartitionedCallOp>(ctx);
+  patterns.add<ReplaceTpuPartitionedCallOpWithPartitionedCallOp,
+               ReplaceBatchFunctionOpToPartitionedCallOp>(ctx);
   patterns.add<RemoveTpuOp>(ctx);
+  patterns.add<RemoveIdentity>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
-    module_op.emitError() << "quant-internal-convert-tpu-model-to-cpu failed.";
+    module_op.emitError() << "quant-convert-tpu-model-to-cpu pattern "
+                             "conversion did not converge.";
     signalPassFailure();
+    return;
   }
 
-  // Add passes to remove the PartitionedCall op and inline the IRs.
+  // Add passes to remove the PartitionedCall op and cast bf16 ops to f32.
   PassManager pm(ctx);
   pm.addPass(createInlinerPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  pm.addPass(CreateCastBf16OpsToF32Pass());
 
   if (failed(pm.run(module_op))) {
-    module_op.emitError() << "quant-internal-convert-tpu-model-to-cpu failed.";
+    module_op.emitError() << "quant-convert-tpu-model-to-cpu failed.";
     signalPassFailure();
   }
 }
 
 }  // namespace
 
-// Creates an instance of the Convert TPU model to CPU pass.
+// Creates an instance of `ConvertTpuModelToCpuPass`.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass() {
   return std::make_unique<ConvertTpuModelToCpuPass>();
 }

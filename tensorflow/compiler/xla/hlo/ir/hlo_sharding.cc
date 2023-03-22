@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <numeric>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -67,7 +69,8 @@ HloSharding HloSharding::PartialTile(
   if (replication_groups.size() == 1) {
     return Replicate(metadata);
   }
-  auto new_tile_dims = group_tile_assignment.dimensions();
+  std::vector<int64_t> new_tile_dims(group_tile_assignment.dimensions().begin(),
+                                     group_tile_assignment.dimensions().end());
   new_tile_dims.push_back(replication_groups[0].size());
   auto new_tile_assignment = Array<int64_t>(new_tile_dims);
   new_tile_assignment.Each(
@@ -89,7 +92,9 @@ HloSharding HloSharding::PartialTile(
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
-    auto new_tile_dims = tile_assignment_last_dim_replicate.dimensions();
+    std::vector<int64_t> new_tile_dims(
+        tile_assignment_last_dim_replicate.dimensions().begin(),
+        tile_assignment_last_dim_replicate.dimensions().end());
     new_tile_dims.pop_back();
     auto fully_tiled = tile_assignment_last_dim_replicate;
     fully_tiled.Reshape(new_tile_dims);
@@ -297,80 +302,101 @@ HloSharding HloSharding::Single(const Shape& shape,
   return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
 }
 
-std::string HloSharding::ToString(bool include_metadata) const {
+void HloSharding::Print(Printer* printer, bool include_metadata) const {
   if (IsTuple()) {
     CHECK(metadata_.empty());
-    std::string result = "{";
-    for (int i = 0; i < tuple_elements_.size(); ++i) {
-      const HloSharding& element = tuple_elements_[i];
-      if (i != 0) {
-        absl::StrAppend(&result, ", ");
-        if (i % 5 == 0) {
-          absl::StrAppend(&result, "/*index=", i, "*/");
-        }
-      }
-      absl::StrAppend(&result, element.ToString(include_metadata));
+    if (ABSL_PREDICT_FALSE(tuple_elements_.empty())) {
+      printer->Append("{}");
+      return;
     }
-    absl::StrAppend(&result, "}");
-    return result;
+    printer->Append("{");
+    tuple_elements_[0].Print(printer, include_metadata);
+    for (int i = 1; i < tuple_elements_.size(); ++i) {
+      if (i % 5 == 0) {
+        AppendCat(printer, ", /*index=", i, "*/");
+      } else {
+        printer->Append(", ");
+      }
+      tuple_elements_[i].Print(printer, include_metadata);
+    }
+    printer->Append("}");
+    return;
   }
 
-  std::string metadata;
-  if (include_metadata) {
-    if (metadata_.size() == 1) {
-      metadata =
-          StrCat(" metadata={", OpMetadataToString(metadata_.front()), "}");
-    } else if (metadata_.size() > 1) {
-      std::vector<std::string> metadata_strings;
-      metadata_strings.reserve(metadata_.size());
-      for (const auto& single_metadata : metadata_) {
-        metadata_strings.push_back(
-            StrCat("{", OpMetadataToString(single_metadata), "}"));
+  auto print_metadata = [&] {
+    if (include_metadata && !metadata_.empty()) {
+      printer->Append(" metadata={");
+      if (metadata_.size() == 1) {
+        printer->Append(OpMetadataToString(metadata_.front()));
+      } else {
+        AppendJoin(printer, metadata_, ", ",
+                   [](Printer* printer, auto& metadata) {
+                     AppendCat(printer, "{", OpMetadataToString(metadata), "}");
+                   });
       }
-      metadata = StrCat(" metadata={", StrJoin(metadata_strings, ", "), "}");
+      printer->Append("}");
     }
-  }
-
-  std::string last_tile_dims;
-  if (!subgroup_types_.empty()) {
-    auto op_sharding_type_to_string = [](OpSharding::Type type) {
-      switch (type) {
-        case OpSharding::MANUAL:
-          return "manual";
-        case OpSharding::MAXIMAL:
-          return "maximul";
-        case OpSharding::REPLICATED:
-          return "replicated";
-        default:
-          return "error_type.";
-      }
-    };
-    std::vector<std::string> sharding_type_strings;
-    sharding_type_strings.reserve(subgroup_types_.size());
-    for (const auto& single_sharding_type : subgroup_types_) {
-      sharding_type_strings.push_back(
-          op_sharding_type_to_string(single_sharding_type));
-    }
-    last_tile_dims =
-        StrCat(" last_tile_dims={", StrJoin(sharding_type_strings, ", "), "}");
-  }
+  };
 
   if (replicated_) {
-    return StrCat("{replicated", metadata, "}");
+    printer->Append("{replicated");
+    print_metadata();
+    printer->Append("}");
+    return;
   }
 
   if (manual_) {
-    return StrCat("{manual", metadata, "}");
+    printer->Append("{manual");
+    print_metadata();
+    printer->Append("}");
+    return;
   }
   if (maximal_) {
-    return StrCat(
-        "{maximal device=", static_cast<int64_t>(*tile_assignment_.begin()),
-        metadata, "}");
+    AppendCat(printer, "{maximal device=",
+              static_cast<int64_t>(*tile_assignment_.begin()));
+    print_metadata();
+    printer->Append("}");
+    return;
   }
-  return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","), "]",
-                StrJoin(tile_assignment_, ","),
-                replicate_on_last_tile_dim_ ? " last_tile_dim_replicate" : "",
-                last_tile_dims, metadata, "}");
+
+  auto print_last_tile_dims = [&] {
+    if (!subgroup_types_.empty()) {
+      auto op_sharding_type_to_string = [](OpSharding::Type type) {
+        switch (type) {
+          case OpSharding::MANUAL:
+            return "manual";
+          case OpSharding::MAXIMAL:
+            return "maximul";
+          case OpSharding::REPLICATED:
+            return "replicated";
+          default:
+            return "error_type.";
+        }
+      };
+      printer->Append(" last_tile_dims={");
+      AppendJoin(printer, subgroup_types_, ", ",
+                 [&](Printer* printer, OpSharding::Type sharding_type) {
+                   printer->Append(op_sharding_type_to_string(sharding_type));
+                 });
+      printer->Append("}");
+    }
+  };
+  printer->Append("{devices=[");
+  AppendJoin(printer, tile_assignment_.dimensions(), ",");
+  printer->Append("]");
+  AppendJoin(printer, tile_assignment_, ",");
+  if (replicate_on_last_tile_dim_) {
+    printer->Append(" last_tile_dim_replicate");
+  }
+  print_last_tile_dims();
+  print_metadata();
+  printer->Append("}");
+}
+
+std::string HloSharding::ToString(bool include_metadata) const {
+  StringPrinter printer;
+  Print(&printer, include_metadata);
+  return std::move(printer).ToString();
 }
 
 bool HloSharding::UsesDevice(int64_t device) const {

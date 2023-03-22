@@ -33,7 +33,9 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
-    deps = [],
+    deps = [
+        "//third_party/py/numpy",
+    ],
 )
 
 py_strict_test(
@@ -60,6 +62,7 @@ py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

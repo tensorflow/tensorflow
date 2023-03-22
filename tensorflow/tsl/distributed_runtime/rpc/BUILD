@@ -35,6 +35,8 @@ cc_library(
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:stringpiece",

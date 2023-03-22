@@ -39,6 +39,27 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
         quantization_method,
     bool enable_per_channel_quantization);
 
+LogicalResult FillAttributesForUniformQuantizedAddOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
+
+LogicalResult FillAttributesForUniformQuantizedClipByValueOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
+
+LogicalResult FillAttributesForUniformRequantizeOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
+
 }  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_TF_TO_UNIFORM_ATTRIBUTE_UTILS_H_

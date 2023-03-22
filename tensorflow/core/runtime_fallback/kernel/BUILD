@@ -354,6 +354,50 @@ cc_library(
     deps = [
         ":kernel_fallback_compat_request_state",
         ":kernel_fallback_tensor",
+        ":kernel_fallback_utils",
+        "@com_google_absl//absl/base",
+        "@llvm-project//llvm:Support",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/runtime_fallback/runtime:op_logger",
+        "//tensorflow/core/runtime_fallback/util:attr_util",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
+        "//tensorflow/core/tfrt/utils:error_util",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "//tensorflow/core/tfrt/utils:tensor_util",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+        "@tf_runtime//:tensor_alwayslink",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/framework:tensor",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
+    alwayslink = True,
+)
+
+cc_library(
+    name = "kernel_fallback_execute_compat_eager",
+    srcs = ["kernel_fallback_execute_compat_eager.cc"],
+    hdrs = ["kernel_fallback_execute_compat_eager.h"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/core/runtime_fallback:internal",
+        "//tensorflow/core/tfrt/eager:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
+        "//tensorflow/core/tfrt/saved_model:__pkg__",
+    ],
+    deps = [
+        ":kernel_fallback_compat_request_state",
+        ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         ":kernel_fallback_utils",
         "@com_google_absl//absl/base",
@@ -402,6 +446,7 @@ cc_library(
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
@@ -416,8 +461,7 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime:renamed_device",
-            "//tensorflow/core/common_runtime/eager:context",
-            "//tensorflow/core/common_runtime/eager:core",
+            "//tensorflow/core/common_runtime:rendezvous_mgr",
             "//tensorflow/core:core_cpu_base",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",

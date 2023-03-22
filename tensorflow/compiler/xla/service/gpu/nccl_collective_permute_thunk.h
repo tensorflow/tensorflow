@@ -86,6 +86,7 @@ class NcclCollectivePermuteThunk : public NcclCollectivePermuteThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op);
   static const char* GetName() { return "CollectivePermute"; }
+  static constexpr bool IsAsync() { return false; }
 
   NcclCollectivePermuteThunk(ThunkInfo thunk_info,
                              mlir::lmhlo::CollectivePermuteOp op,
@@ -109,6 +110,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op);
   static const char* GetName() { return "CollectivePermuteStart"; }
+  static constexpr bool IsAsync() { return true; }
 
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
                                   mlir::lmhlo_gpu::CollectivePermuteStartOp op,

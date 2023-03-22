@@ -16,7 +16,9 @@
 
 add_mlir_dialect_library(MLIRGmlStUtils
   linalg_utils.cc
+  tensor_utils.h
 
   LINK_LIBS PUBLIC
   MLIRLinalgDialect
+  MLIRTensorDialect
 )

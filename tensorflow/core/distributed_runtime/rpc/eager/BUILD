@@ -51,7 +51,6 @@ cc_library(
     deps = [
         ":grpc_eager_service",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",

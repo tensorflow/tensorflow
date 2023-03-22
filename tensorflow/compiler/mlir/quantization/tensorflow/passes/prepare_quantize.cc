@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -135,7 +136,7 @@ class PrepareQuantizePass
   // Get the min and max values from the quantization specification for the
   // current function and argument index. Uses default values if the function
   // is specified in the `quantize_allowlist`.
-  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  std::pair<std::optional<double>, std::optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];
@@ -404,19 +405,24 @@ void PrepareQuantizePass::runOnOperation() {
   // Currently, only activation stats are imported, so narrow_range = false.
   patterns.add<PrepareQuantStats>(bit_width, false, true,
                                   /*legacy_float_scale=*/false, ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    signalPassFailure();
+  }
 
   SanityCheckAndAdjustment(func);
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, is_signed, !enable_per_channel_quantization_, GetTFOpQuantSpec,
-      GetTfQuantScaleSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      func, is_signed, /*bit_width=*/8, !enable_per_channel_quantization_,
+      GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
+      quant_specs_.legacy_float_scale);
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns2));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns2)))) {
+    signalPassFailure();
+  }
 }
 
 }  // namespace

@@ -45,14 +45,15 @@ CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
+    OpSet target_opset);
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsDRQPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
-    int min_num_elements_for_weights);
+    OpSet op_set, int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -80,7 +81,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
     OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weights);
+    int min_num_elements_for_weight, bool enable_legacy_weight_only = false);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -201,10 +202,13 @@ CreateRemoveVariableInitializationByConstPass();
 // such as TPUPartitionedCall, TPUReplicatedOp, etc. The TF quantizer does not
 // work with models specifically designed for TPU, so this pass makes the input
 // TPU model compatible with the TF quantizer by rewriting the TPU ops. The
-// output model of this pass is expected to be ready for the TF quantizer. If
-// the model is optimized with bfloat16, then it should be fallbacked to float32
-// before applying quantization, which will be done in PrepareLiftingPass.
+// output model of this pass is expected to be ready for the TF quantizer.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass();
+
+// Creates a pass that casts BFloat16 operations to Float32 operations. This
+// pass is a part of the ConvertTpuModelToCpu pass to support BF16 optimized TPU
+// model quantization.
+std::unique_ptr<OperationPass<ModuleOp>> CreateCastBf16OpsToF32Pass();
 
 }  // namespace quant
 }  // namespace mlir

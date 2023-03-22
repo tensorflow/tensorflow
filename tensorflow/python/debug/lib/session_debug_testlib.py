@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -44,6 +45,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -460,8 +462,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
         new_i = control_flow_ops.with_dependencies([op], new_i)
         return [new_i]
 
-      loop = control_flow_ops.while_loop(
-          cond, body, [i], parallel_iterations=10)
+      loop = while_loop.while_loop(cond, body, [i], parallel_iterations=10)
 
       # Create RunOptions for debug-watching tensors
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -547,7 +548,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       loop_cond = lambda i: math_ops.less(i, 16)
 
       i = constant_op.constant(10, name="i")
-      loop = control_flow_ops.while_loop(loop_cond, loop_body, [i])
+      loop = while_loop.while_loop(loop_cond, loop_body, [i])
 
       loop_result, dump = self._debug_run_and_get_dump(sess, loop)
       self.assertEqual(16, loop_result)
@@ -603,7 +604,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     with session.Session() as sess:
       x = variables.VariableV1(10.0, name="x")
       y = variables.VariableV1(20.0, name="y")
-      cond = control_flow_ops.cond(
+      cond = tf_cond.cond(
           x > y, lambda: math_ops.add(x, 1), lambda: math_ops.add(y, 1))
 
       sess.run(variables.global_variables_initializer())

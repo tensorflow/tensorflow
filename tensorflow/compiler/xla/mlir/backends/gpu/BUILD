@@ -1,9 +1,17 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla/mlir:__subpackages__"],
     licenses = ["notice"],
+)
+
+build_test(
+    name = "xla-gpu-opt_build_test",
+    targets = [
+        ":xla-gpu-opt",
+    ],
 )
 
 xla_cc_binary(

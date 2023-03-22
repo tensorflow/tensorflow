@@ -41,14 +41,6 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
-// Filters data type conversions which should be fused into Triton GEMM.
-bool IsTritonFusibleConvert(const HloInstruction*,
-                            se::CudaComputeCapability cuda_compute_capability);
-
-// Filters GEMMs which are better to handle using Triton.
-bool IsTritonHandledGEMM(const HloInstruction&,
-                         se::CudaComputeCapability cuda_compute_capability);
-
 inline constexpr int64_t WarpSize() { return 32; }
 
 // Need at least 1024 threads/block for reasonable tree reduction
@@ -58,15 +50,9 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// Returns true if `hlo` is a matched softmax fusion.
-bool IsSoftmaxCustomCall(const HloInstruction& hlo);
-
-// Identifies Triton GEMM fusions.
-bool IsTritonCustomCall(const HloInstruction& hlo);
-
-extern const char* const kSoftmaxCallTarget;
-
-inline constexpr absl::string_view kTritonCallTarget = "__triton";
+// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
+// this string. TritonAutotuner replaces it with TritonGemmKey proto.
+inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -136,24 +122,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
-
-inline std::string MlirToString(mlir::Operation* op) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    op->print(os);
-  }
-  return s;
-}
-
-inline std::string MlirToString(const mlir::Location& loc) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    loc.print(os);
-  }
-  return s;
-}
 
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
@@ -236,9 +204,11 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation);
 
-std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr);
 
 // Log and verify an LLVM module.
 void LogAndVerify(const llvm::Module* m);

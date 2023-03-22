@@ -117,14 +117,6 @@ tf_class {
     argspec: "args=[\'self\', \'closure\', \'spec\', \'key\', \'default_value\', \'placeholder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "capture_eager_tensor"
-    argspec: "args=[\'self\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "captured"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "clear_collection"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
@@ -150,6 +142,10 @@ tf_class {
   }
   member_method {
     name: "finalize"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -199,6 +195,10 @@ tf_class {
   member_method {
     name: "name_scope"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "op_def_for_type"
+    argspec: "args=[\'self\', \'type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "prevent_feeding"

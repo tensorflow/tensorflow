@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
 namespace tensorflow {
@@ -68,11 +69,6 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
     cache_dir_ = testing::TmpDir();
     TF_ASSERT_OK_AND_ASSIGN(compilation_result_add_,
                             BuildSampleCompilationResult());
-  }
-
-  void TearDown() override {
-    TF_ASSERT_OK(DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-        DEVICE_CPU_XLA_JIT));
   }
 
   StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildSampleExecutable() {

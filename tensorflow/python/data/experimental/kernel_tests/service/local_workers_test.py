@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests tf.data service with local and remote workers."""
 
+import multiprocessing
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
@@ -24,7 +25,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 
-import multiprocessing
 
 class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
   """Tests reading from local workers if `target_workers` is `local`."""

@@ -43,11 +43,18 @@ using tensorflow::errors::InvalidArgument;
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
 
+typedef std::function<void()> AsyncOpKernelDoneCallback;
+void TF_RunAsyncOpKernelDoneCallback(TF_AsyncOpKernelDoneCallback* done) {
+  (*reinterpret_cast<AsyncOpKernelDoneCallback*>(done))();
+}
+
 struct TF_KernelBuilder {
   ::tensorflow::KernelDefBuilder* cc_builder;
 
   void* (*create_function)(TF_OpKernelConstruction*);
   void (*compute_function)(void*, TF_OpKernelContext*);
+  void (*compute_async_function)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback* done);
   void (*delete_function)(void*);
 };
 
@@ -61,6 +68,23 @@ TF_KernelBuilder* TF_NewKernelBuilder(
   result->cc_builder->Device(device_name);
   result->create_function = create_func;
   result->compute_function = compute_func;
+  result->compute_async_function = nullptr;
+  result->delete_function = delete_func;
+  return result;
+}
+
+TF_KernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
+    void (*delete_func)(void*)) {
+  TF_KernelBuilder* result = new TF_KernelBuilder;
+  result->cc_builder = new ::tensorflow::KernelDefBuilder(op_name);
+  result->cc_builder->Device(device_name);
+  result->create_function = create_func;
+  result->compute_function = nullptr;
+  result->compute_async_function = compute_async_func;
   result->delete_function = delete_func;
   return result;
 }
@@ -174,6 +198,51 @@ class COpKernel : public OpKernel {
   void* c_kernel_;
 };
 
+class CAsyncOpKernel : public AsyncOpKernel {
+ public:
+  explicit CAsyncOpKernel(
+      OpKernelConstruction* ctx, void* (*create_func)(TF_OpKernelConstruction*),
+      void (*compute_async_func)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback*),
+      void (*delete_func)(void*))
+      : AsyncOpKernel(ctx),
+        compute_async_func_(compute_async_func),
+        delete_func_(delete_func) {
+    if (create_func != nullptr) {
+      c_kernel_ =
+          (*create_func)(reinterpret_cast<TF_OpKernelConstruction*>(ctx));
+    } else {
+      c_kernel_ = nullptr;
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    Notification n;
+    ComputeAsync(ctx, [&n]() { n.Notify(); });
+    n.WaitForNotification();
+  }
+
+  void ComputeAsync(OpKernelContext* ctx, AsyncOpKernelDoneCallback done) {
+    (*compute_async_func_)(
+        c_kernel_, reinterpret_cast<TF_OpKernelContext*>(ctx),
+        reinterpret_cast<TF_AsyncOpKernelDoneCallback*>(&done));
+  }
+
+  CAsyncOpKernel* AsAsync() override { return this; }
+
+  ~CAsyncOpKernel() override {
+    if (delete_func_ != nullptr) {
+      (*delete_func_)(c_kernel_);
+    }
+  }
+
+ private:
+  void (*compute_async_func_)(void*, TF_OpKernelContext* context,
+                              TF_AsyncOpKernelDoneCallback* done);
+  void (*delete_func_)(void*);
+  void* c_kernel_;
+};
+
 // A KernelFactory that returns COpKernel instances.
 class KernelBuilderFactory
     : public ::tensorflow::kernel_factory::OpKernelFactory {
@@ -182,9 +251,14 @@ class KernelBuilderFactory
       : builder_(builder) {}
   ::tensorflow::OpKernel* Create(
       ::tensorflow::OpKernelConstruction* context) override {
-    return new ::tensorflow::COpKernel(context, builder_->create_function,
-                                       builder_->compute_function,
-                                       builder_->delete_function);
+    if (builder_->compute_function)
+      return new ::tensorflow::COpKernel(context, builder_->create_function,
+                                         builder_->compute_function,
+                                         builder_->delete_function);
+    else
+      return new ::tensorflow::CAsyncOpKernel(
+          context, builder_->create_function, builder_->compute_async_function,
+          builder_->delete_function);
   }
   ~KernelBuilderFactory() override { TF_DeleteKernelBuilder(builder_); }
 

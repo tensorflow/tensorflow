@@ -352,15 +352,19 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tfr:tfr_wrapper",
-        "//tensorflow/python/autograph/converters",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/converters:control_flow",
+        "//tensorflow/python/autograph/converters:return_statements",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
+        "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
+        "//tensorflow/python/autograph/pyct/static_analysis:type_inference",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
     ],
 )

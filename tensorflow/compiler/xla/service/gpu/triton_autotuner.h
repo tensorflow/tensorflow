@@ -16,8 +16,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 
 #include <optional>
+#include <string>
+#include <variant>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -25,17 +28,17 @@ namespace gpu {
 
 // Find best tiling configuration for each triton fusion outlined.
 // num_extra_threads: number of threads the pass can use to perform compilation.
-// TODO(b/266210099): Use existing thread pool instead?
 class TritonAutotuner : public HloModulePass {
  public:
-  TritonAutotuner(se::StreamExecutor* stream_exec,
-                  se::DeviceMemoryAllocator* allocator,
-                  int num_extra_threads = 0)
-      : stream_exec_(stream_exec),
-        allocator_(allocator),
-        num_extra_threads_(num_extra_threads) {}
+  explicit TritonAutotuner(const AutotuningConfig& config,
+                           int num_extra_threads = 0)
+      : config_(config), num_extra_threads_(num_extra_threads) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
+
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
@@ -43,8 +46,7 @@ class TritonAutotuner : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::StreamExecutor* stream_exec_;
-  se::DeviceMemoryAllocator* allocator_;
+  AutotuningConfig config_;
   int num_extra_threads_;
 };
 

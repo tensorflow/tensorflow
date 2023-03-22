@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/matmul_op_benchmark.h"
 
+#include <array>
 #include <string>
 
 namespace tensorflow {
@@ -32,86 +33,46 @@ func.func @matmul(%arg0: {0}, %arg1: {1}) -> {2} {
   }
 )";
 
-std::string GetMatmulIR(llvm::ArrayRef<int32_t> lhs_shape,
-                        llvm::ArrayRef<bool> lhs_dyn_dims,
-                        llvm::ArrayRef<int32_t> rhs_shape,
-                        llvm::ArrayRef<bool> rhs_dyn_dims,
-                        llvm::ArrayRef<int32_t> out_shape,
-                        llvm::ArrayRef<bool> out_dyn_dims,
+std::string GetMatmulIR(std::array<int64_t, 2> lhs_shape,
+                        std::array<int64_t, 2> rhs_shape,
+                        std::array<int64_t, 2> out_shape,
                         llvm::StringRef element_type) {
-  llvm::SmallVector<int64_t, 2> mlir_lhs_shape, mlir_rhs_shape, mlir_out_shape;
-  for (int i = 0; i < lhs_shape.size(); ++i) {
-    mlir_lhs_shape.push_back(lhs_dyn_dims[i] ? kDynSize : lhs_shape[i]);
-  }
-  for (int i = 0; i < rhs_shape.size(); ++i) {
-    mlir_rhs_shape.push_back(rhs_dyn_dims[i] ? kDynSize : rhs_shape[i]);
-  }
-  for (int i = 0; i < out_shape.size(); ++i) {
-    mlir_out_shape.push_back(out_dyn_dims[i] ? kDynSize : out_shape[i]);
-  }
   return llvm::formatv(
       matmul_ir_skeleton,
-      PrintTensorType(mlir_lhs_shape, element_type),  // LHS type {0}
-      PrintTensorType(mlir_rhs_shape, element_type),  // RHS type {1}
-      PrintTensorType(mlir_out_shape, element_type)   // Out type {2}
+      PrintTensorType(lhs_shape, element_type),  // LHS type {0}
+      PrintTensorType(rhs_shape, element_type),  // RHS type {1}
+      PrintTensorType(out_shape, element_type)   // Out type {2}
   );
 }
 
-constexpr bool kPack = true;
+static void Shapes(benchmark::internal::Benchmark* b) {
+  for (int64_t i = 16; i <= 2048; i *= 2) {
+    b->Args({i, i, i, i >= 256});
+  }
 
-BM_TFMlir_DYNAMIC_ALL(16, 16, 16, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(16, 16, 16, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(16, 16, 16, f32);
+  b->Args({10, 10, 10, false});
+  b->Args({100, 100, 100, false});
 
-BM_TFMlir_DYNAMIC_ALL(64, 64, 64, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(64, 64, 64, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(64, 64, 64, f32);
+  b->Args({1, 300, 18, false});
+  b->Args({1, 18, 300, false});
+  b->Args({18, 1, 300, false});
+  b->Args({18, 300, 1, false});
+  b->Args({300, 1, 18, false});
+  b->Args({300, 18, 1, false});
 
-BM_TFMlir_DYNAMIC_ALL(128, 128, 128, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(128, 128, 128, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(128, 128, 128, f32);
+  for (int64_t i : {300, 256}) {
+    b->Args({1, 1, i, false});
+    b->Args({1, i, 1, false});
+    b->Args({i, 1, 1, false});
 
-BM_TFMlir_DYNAMIC_ALL(256, 256, 256, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(256, 256, 256, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(256, 256, 256, f32);
+    b->Args({1, i, i, false});
+    b->Args({i, 1, i, false});
+    b->Args({i, i, 1, false});
+  }
+}
 
-BM_TFMlir_DYNAMIC_ALL(512, 512, 512, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(512, 512, 512, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(512, 512, 512, f32);
-
-BM_TFMlir_DYNAMIC_ALL(1024, 1024, 1024, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(1024, 1024, 1024, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(1024, 1024, 1024, f32);
-
-BM_TFMlir_DYNAMIC_ALL(2048, 2048, 2048, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(2048, 2048, 2048, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(2048, 2048, 2048, f32);
-
-BM_TFMlir_DYNAMIC_ALL(100, 100, 100, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(100, 100, 100, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(100, 100, 100, f32);
-
-BM_TFMlir_DYNAMIC_ALL(1, 18, 300, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(1, 18, 300, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(1, 18, 300, f32);
-
-BM_TFMlir_DYNAMIC_ALL(1, 300, 300, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(1, 300, 300, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(1, 300, 300, f32);
-
-BM_TFMlir_DYNAMIC_ALL(1, 300, 1, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(1, 300, 1, 8, 8, 8, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(1, 300, 1, f32);
-
-BM_TFMlir_DYNAMIC_ALL(10, 10, 10, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(10, 10, 10, 8, 8, 8, kPack, "matmul", f32);
-BM_TFMlir_DYNAMIC_ALL(10, 10, 10, 4, 4, 4, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(10, 10, 10, 4, 4, 4, kPack, "matmul", f32);
-BM_TFMlir_DYNAMIC_ALL(10, 10, 10, 2, 2, 2, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(10, 10, 10, 2, 2, 2, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(10, 10, 10, 2, 2, 8, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(10, 10, 10, 2, 8, 2, kPack, "matmul", f32);
-BM_TFMlir_STATIC_ALL(10, 10, 10, 8, 2, 2, kPack, "matmul", f32);
-BM_Eigen_WRAPPER(10, 10, 10, f32);
+BM_TFMlir(MatmulMlirStatic, false, "matmul", f32)->Apply(Shapes);
+BM_TFMlir(MatmulMlirDynamic, true, "matmul", f32)->Apply(Shapes);
+BM_Eigen(MatmulEigen, f32)->Apply(Shapes);
 
 }  // namespace tensorflow

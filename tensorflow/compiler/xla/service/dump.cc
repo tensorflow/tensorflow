@@ -244,7 +244,7 @@ static std::optional<std::string> GetDumpFilePath(
     string_view filename, const CanonicalDebugOptions& opts) {
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write " << filename
-               << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+               << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
     return std::nullopt;
   }
 
@@ -388,7 +388,7 @@ static std::vector<std::string> DumpHloModuleImpl(
 
   if (opts.dump_as_text) {
     auto print_options = opts.dump_as_long_text
-                             ? HloPrintOptions()
+                             ? HloPrintOptions::Default()
                              : HloPrintOptions::ShortParsable();
     print_options.set_print_large_constants(false);
     print_options.set_print_control_dependencies(true);
@@ -767,7 +767,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
              ".hlo_snapshot.pb");
   if (opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write HLO snapshot proto for " << filename
-               << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+               << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
     return;
   }
   std::string pb;
@@ -799,7 +799,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                                    name, execution_count);
   if (canonical_opts.dumping_to_stdout()) {
     LOG(ERROR) << "Refusing to write HLO snapshot proto for " << filename
-               << " to stdout.  Pass --xla_dump_to=<path> to write to a file.";
+               << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
     return;
   }
   std::string pb;

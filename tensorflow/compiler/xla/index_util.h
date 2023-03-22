@@ -37,6 +37,22 @@ class IndexUtil {
   // dimension 0.
   static inline int64_t MultidimensionalIndexToLinearIndex(
       const Shape& shape, absl::Span<const int64_t> multi_index) {
+    return MultidimensionalIndexToLinearIndex(
+        shape, LayoutUtil::MinorToMajor(shape), multi_index);
+  }
+
+  // Converts a multidimensional index (eg {x, y, z}) into a linear index based
+  // on the shape and its layout. The first index in the multi_index is
+  // dimension 0.
+  //
+  // This version can be used when the caller already has the minor_to_major
+  // array for shape available (and can therefore be faster).
+  //
+  // REQUIRES: minor_to_major provided is equal to
+  // shape.layout().minor_to_major()
+  static inline int64_t MultidimensionalIndexToLinearIndex(
+      const Shape& shape, absl::Span<const int64_t> minor_to_major,
+      absl::Span<const int64_t> multi_index) {
     // Let the array be sized like so for dimensions i from 0 to n-1:
     //
     //   [D{n-1} x D{n-2} x .. x D{0}]
@@ -79,15 +95,14 @@ class IndexUtil {
           << "\n\tindex: " << absl::StrJoin(multi_index, ",")
           << "\n\tshape: " << ShapeUtil::HumanString(shape);
     }
-    auto effective_shape = LayoutUtil::MinorToMajor(shape);
-    if (effective_shape.empty()) {
+    if (minor_to_major.empty()) {
       return 0;
     }
-    int64_t linear_index = multi_index[effective_shape[0]];
+    int64_t linear_index = multi_index[minor_to_major[0]];
     int64_t scale = 1;
-    for (int i = 1; i < effective_shape.size(); ++i) {
-      scale *= shape.dimensions(effective_shape[i - 1]);
-      linear_index += scale * multi_index[effective_shape[i]];
+    for (int i = 1; i < minor_to_major.size(); ++i) {
+      scale *= shape.dimensions(minor_to_major[i - 1]);
+      linear_index += scale * multi_index[minor_to_major[i]];
     }
     return linear_index;
   }

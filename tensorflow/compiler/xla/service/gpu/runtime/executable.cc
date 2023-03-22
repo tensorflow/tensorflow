@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cholesky.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv_reorder.h"
@@ -303,6 +304,7 @@ Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
+    NonAtomicallyUpgradeableRWLock& gpu_lock,
     const BufferAllocation* temp_alloc) {
   // We pass a pointer to the executable through UserData, so that we can
   // get access to other exported functions from custom call handlers.
@@ -364,6 +366,8 @@ Status GpuRuntimeExecutable::Execute(
 #if GOOGLE_CUDA
   StreamExecutorGraphInstances::Snapshot graph_instances =
       graph_instances_(executor)->snapshot();
+  CapturedFunctionExecutionCount::Snapshot execution_count =
+      captured_function_counts_(executor)->snapshot();
 #endif  // GOOGLE_CUDA
 
   // State cached globally for gpu executable.
@@ -382,10 +386,10 @@ Status GpuRuntimeExecutable::Execute(
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
-      &collectives_, &fft_plans, &send_recv_events,
+      &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances,
+      &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.

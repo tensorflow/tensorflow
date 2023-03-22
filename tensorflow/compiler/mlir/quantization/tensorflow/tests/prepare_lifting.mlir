@@ -1,4 +1,5 @@
 // RUN: tf-quant-opt %s -quant-prepare-lifting | FileCheck %s
+// RUN: tf-quant-opt %s -quant-prepare-lifting='target-opset=XLA' | FileCheck --check-prefix=XLA-CHECK %s
 
 func.func @decompose_batch_norm(%arg0: tensor<*xf32>) -> (tensor<*xf32>) {
   %cst = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
@@ -268,52 +269,19 @@ func.func @batch_norm_with_q_dq(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf
 // CHECK: %[[bias:.*]] = "tf.BiasAdd"(%[[conv]], %[[cst_0]]) {data_format = "NHWC"}
 // CHECK: %[[relu6:.*]] = "tf.Relu6"(%[[bias]])
 
-func.func @cast_bf16_conv_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf32>) {
-  %cst = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-  %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-  %1 = "tf.Conv2D"(%0, %cst) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xbf16>, tensor<2x3x3x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %2 = "tf.Identity"(%1) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %3 = "tf.Identity"(%2) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-  %5 = "tf.Identity"(%4) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-  %6 = "tf.IdentityN"(%5) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-  return %6 : tensor<1x3x2x2xf32>
+func.func @xla_dot_v2(%arg0: tensor<?x2x3xf32>, %arg1: tensor<3x4x5xf32>) -> (tensor<?x2x4x5xf32>) {
+  %0 = "tf.XlaDotV2"(%arg0, %arg1) {device = "", dimension_numbers = "\0A\01\02\12\01\00", precision_config = ""} : (tensor<?x2x3xf32>, tensor<3x4x5xf32>) -> tensor<?x2x4x5xf32>
+  func.return %0 : tensor<?x2x4x5xf32>
 }
 
-// CHECK: func @cast_bf16_conv_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-// CHECK: %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-// CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x3x4x3xbf16>) -> tensor<1x3x4x3xf32>
-// CHECK: %2 = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
-// CHECK: %3 = "tf.Conv2D"(%1, %2)
-// CHECK: %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %5 = "tf.Cast"(%4) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %6 = "tf.IdentityN"(%5) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: return %6 : tensor<1x3x2x2xf32>
+// CHECK: func @xla_dot_v2
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<[3, 20]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() {value = dense<[-1, 2, 4, 5]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK: %[[reshape:.*]] = "tf.Reshape"(%arg1, %[[cst]]) : (tensor<3x4x5xf32>, tensor<2xi64>) -> tensor<3x20xf32>
+// CHECK: %[[batch_matmul:.*]] = "tf.BatchMatMulV2"(%arg0, %[[reshape]]) {adj_x = false, adj_y = false} : (tensor<?x2x3xf32>, tensor<3x20xf32>) -> tensor<?x2x20xf32>
+// CHECK: %[[reshape_0:.*]] = "tf.Reshape"(%[[batch_matmul]], %[[cst_0]]) : (tensor<?x2x20xf32>, tensor<4xi64>) -> tensor<?x2x4x5xf32>
+// CHECK: return %[[reshape_0]] : tensor<?x2x4x5xf32>
 
-func.func @cast_bf16_avg_pool_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf32>) {
-  %cst = "tf.Const"() {device = "", value = dense<1.000000e+00> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-  %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-  %1 = "tf.Conv2D"(%0, %cst) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xbf16>, tensor<2x3x3x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %2 = "tf.AvgPool"(%1) {data_format = "NHWC", device = "", ksize = [1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %3 = "tf.Identity"(%2) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %4 = "tf.Identity"(%3) {device = ""} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xbf16>
-  %5 = "tf.Cast"(%4) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-  %6 = "tf.Identity"(%5) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-  %7 = "tf.IdentityN"(%6) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-  return %7 : tensor<1x3x2x2xf32>
-}
-
-// CHECK: func @cast_bf16_avg_pool_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
-// TODO(b/269041864): Remove redundant cast ops.
-// CHECK: %0 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xbf16>
-// CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x3x4x3xbf16>) -> tensor<1x3x4x3xf32>
-// CHECK: %2 = "tf.Conv2D"(%1, %[[cst]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %3 = "tf.Cast"(%2) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %4 = "tf.Cast"(%3) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %5 = "tf.AvgPool"(%4) {data_format = "NHWC", ksize = [1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %6 = "tf.Cast"(%5) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xbf16>
-// CHECK: %7 = "tf.Cast"(%6) {Truncate = false} : (tensor<1x3x2x2xbf16>) -> tensor<1x3x2x2xf32>
-// CHECK: %8 = "tf.IdentityN"(%7) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: return %8 : tensor<1x3x2x2xf32>
+// XLA-CHECK: func @xla_dot_v2
+// XLA-CHECK: %[[einsum:.*]] = "tf.Einsum"(%arg0, %arg1) {equation = "abc,cde->abde"} : (tensor<?x2x3xf32>, tensor<3x4x5xf32>) -> tensor<?x2x4x5xf32>
+// XLA-CHECK: return %[[einsum]] : tensor<?x2x4x5xf32>

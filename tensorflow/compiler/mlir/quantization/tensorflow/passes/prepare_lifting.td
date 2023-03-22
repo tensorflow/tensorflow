@@ -21,6 +21,20 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
+// Creates Einsum Op from XlaDotV2 Op by generating equation.
+def CreateEinsumOpFromXlaDotV2Op : NativeCodeCall<
+  "CreateEinsumOpFromXlaDotV2Op($_builder, $_loc, $0...)">;
+
+// Only handles the case where precision config is default.
+def IsPrecisionEmpty :
+  Constraint<CPred<"IsPrecisionEmpty($0)">>;
+
+// Convert XlaDotV2 Op to Einsum Op with above two functions.
+def ConvertXlaDotV2OpToEinsumOp : Pat<
+  (TF_XlaDotV2Op:$dot $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+  (CreateEinsumOpFromXlaDotV2Op $lhs, $rhs, $dot, $dot_dimension_numbers),
+  [(IsPrecisionEmpty $precision_config)]>;
+
 // Converts arith.constant ops from freezing passes back to tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
   (Arith_ConstantOp:$res DenseElementsAttr:$value),
@@ -153,47 +167,3 @@ def FuseAffineOpWithBiasAddAndMul : Pat<
    (CanBeSymmetricallyQuantized $weight),
    (CanBeSymmetricallyQuantized $bias),
    (HasEqualShape $bias, $mul_rhs_value)]>;
-
-//===----------------------------------------------------------------------===//
-// Pattern rules for bfloat16 operands to fp32
-//===----------------------------------------------------------------------===//
-
-// Cast BF16 Conv2D ops to FP32 Conv2D ops. Inputs and
-// filters will be casted to fp32 as well, and unused
-// BF16 constant values will be removed by the compiler.
-def CastBFloat16ConvToFloat32 : Pat<
-  (TF_Conv2DOp:$res
-    $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
-    $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
-  (TF_CastOp
-    (TF_Conv2DOp
-      (TF_CastOp
-        $input, /*truncate=*/ConstBoolAttrFalse,
-        (returnType (CloneTypeWithF32ElementType $input))),
-      (TF_CastOp
-        $filter, /*truncate=*/ConstBoolAttrFalse,
-        (returnType (CloneTypeWithF32ElementType $filter))),
-      $strides, $use_cudnn_on_gpu, $padding,
-      $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations,
-      (returnType (CloneTypeWithF32ElementType $res))),
-    /*truncate=*/ConstBoolAttrFalse),
-  [(IsBF16ElementType $input),
-   (IsBF16ElementType $filter)],
-  (addBenefit 1)>;
-
-def CastBFloat16AvgPoolToFloat32 : Pat<
-  (TF_AvgPoolOp:$res
-    $input, $ksize, $strides, $padding,
-    IsDataFormatNHWC:$data_format),
-  (TF_CastOp
-    (TF_AvgPoolOp
-      (TF_CastOp
-        $input, /*truncate=*/ConstBoolAttrFalse,
-        (returnType (CloneTypeWithF32ElementType $input))),
-      $ksize, $strides, $padding,
-      IsDataFormatNHWC:$data_format,
-      (returnType (CloneTypeWithF32ElementType $res))),
-    /*truncate=*/ConstBoolAttrFalse),
-  [(IsBF16ElementType $input)],
-  (addBenefit 1)>;
-

@@ -43,6 +43,7 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
@@ -1004,7 +1005,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     while graph is not None:
       ctx = graph._get_control_flow_context()  # pylint: disable=protected-access
       while ctx is not None:
-        if isinstance(ctx, tpu.TPUReplicateContext):
+        if isinstance(ctx, tpu_replication.TPUReplicateContext):
           in_tpu_ctx = True
           break
         ctx = ctx.outer_context
@@ -1272,7 +1273,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-      tpu.outside_compilation(generate_enqueue_ops)
+      tpu_replication.outside_compilation(generate_enqueue_ops)
 
     elif device is None:
       mode_override = "train" if training else "inference"
