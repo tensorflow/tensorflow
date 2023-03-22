@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite/core:special_rules.bzl", "delegate_registry_visibility_allowlist")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
