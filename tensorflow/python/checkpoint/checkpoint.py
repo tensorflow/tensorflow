@@ -1412,7 +1412,6 @@ class TrackableSaver:
     global _ASYNC_CHECKPOINT_THREAD
     if _ASYNC_CHECKPOINT_THREAD is not None:
       _ASYNC_CHECKPOINT_THREAD.join()
-
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
     if graph_building:
