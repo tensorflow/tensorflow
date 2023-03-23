@@ -212,21 +212,26 @@ mlir::LogicalResult DTensorAllToAllOp::verify() {
   tensorflow::dtensor::ShardingSpec split_spec;
   tensorflow::dtensor::ShardingSpec concat_spec;
   for (int32_t i = 0; i < input_layout.rank(); ++i) {
-    if (input_layout.sharding_spec(i) == output_layout.sharding_spec(i)) continue;
-    if (tensorflow::dtensor::Layout::IsUnshardedDimension(input_layout.sharding_spec(i)) &&
-        tensorflow::dtensor::Layout::IsShardedDimension(output_layout.sharding_spec(i))) {
+    if (input_layout.sharding_spec(i) == output_layout.sharding_spec(i))
+      continue;
+    if (tensorflow::dtensor::Layout::IsUnshardedDimension(
+            input_layout.sharding_spec(i)) &&
+        tensorflow::dtensor::Layout::IsShardedDimension(
+            output_layout.sharding_spec(i))) {
       num_split_dims++;
       split_spec = output_layout.dim(i);
-    } else if (tensorflow::dtensor::Layout::IsShardedDimension(input_layout.sharding_spec(i)) &&
-                tensorflow::dtensor::Layout::IsUnshardedDimension(output_layout.sharding_spec(i))) {
+    } else if (tensorflow::dtensor::Layout::IsShardedDimension(
+                   input_layout.sharding_spec(i)) &&
+               tensorflow::dtensor::Layout::IsUnshardedDimension(
+                   output_layout.sharding_spec(i))) {
       num_concat_dims++;
       concat_spec = input_layout.dim(i);
     }
   }
   if (num_split_dims != 1 || num_concat_dims != 1 ||
       split_spec.sharding_spec() != concat_spec.sharding_spec()) {
-     return op.emitOpError()
-            << "must have one mesh dimension which is being unsharded in one axis and sharded in another";
+    return op.emitOpError() << "must have one mesh dimension which is being "
+                               "unsharded in one axis and sharded in another";
   }
 
   RankedTensorType input_type =

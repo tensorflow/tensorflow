@@ -151,8 +151,8 @@ StatusOr<const mlir::Value> EmitAllScatter(
   return all_scatter.getOutput();
 }
 
-bool CanUseAllToAll(
-    const dtensor::Layout& src_layout, const dtensor::Layout& tgt_layout) {
+bool CanUseAllToAll(const dtensor::Layout& src_layout,
+                    const dtensor::Layout& tgt_layout) {
   // All-to-all can be used for relayout if one dimension is becoming more
   // sharded while another is becoming less sharded, for example x,unsharded ->
   // unsharded,x.
@@ -169,7 +169,7 @@ bool CanUseAllToAll(
       num_split_dims++;
       split_spec = tgt_layout.dim(i);
     } else if (Layout::IsShardedDimension(src_layout.sharding_spec(i)) &&
-                Layout::IsUnshardedDimension(tgt_layout.sharding_spec(i))) {
+               Layout::IsUnshardedDimension(tgt_layout.sharding_spec(i))) {
       num_concat_dims++;
       concat_spec = src_layout.dim(i);
     }
@@ -320,10 +320,9 @@ StatusOr<mlir::Value> EmitRelayout(
 
   if (CanUseAllToAll(src_layout, tgt_layout) && !is_sparse) {
     // TODO(tmorris): support sparse case
-    TF_ASSIGN_OR_RETURN(
-        mlir::Value all_to_all_result,
-        EmitAllToAll(builder, input, src_layout,
-                      tgt_layout, newly_created_ops));
+    TF_ASSIGN_OR_RETURN(mlir::Value all_to_all_result,
+                        EmitAllToAll(builder, input, src_layout, tgt_layout,
+                                     newly_created_ops));
     return all_to_all_result;
   }
 

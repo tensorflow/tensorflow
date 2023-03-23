@@ -197,14 +197,12 @@ REGISTER_OP("DTensorAllToAll")
           out_dims.emplace_back(dim);
         } else if (Layout::IsUnshardedDimension(
                        input_layout.sharding_spec(i)) &&
-                   Layout::IsShardedDimension(
-                       output_layout.sharding_spec(i))) {
+                   Layout::IsShardedDimension(output_layout.sharding_spec(i))) {
           shape_inference::DimensionHandle out_dim;
           TF_RETURN_IF_ERROR(c->Divide(dim, output_sharding[i],
                                        /*evenly_divisible=*/true, &out_dim));
           out_dims.push_back(out_dim);
-        } else if (Layout::IsShardedDimension(
-                       input_layout.sharding_spec(i)) &&
+        } else if (Layout::IsShardedDimension(input_layout.sharding_spec(i)) &&
                    Layout::IsUnshardedDimension(
                        output_layout.sharding_spec(i))) {
           shape_inference::DimensionHandle out_dim;
