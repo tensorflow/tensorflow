@@ -39,7 +39,6 @@ cc_library(
         ":error_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:errors",
@@ -64,8 +63,6 @@ tf_cc_test(
     deps = [
         ":utils",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
