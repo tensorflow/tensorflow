@@ -213,7 +213,7 @@ class MlirGraphOptimizationPassTest : public Test {
 };
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
-  Init(Status(error::Code::ABORTED, "aborted"),
+  Init(Status(absl::StatusCode::kAborted, "aborted"),
        {MlirOptimizationPassState::Enabled});
 
   GraphDef original_graph_def;
@@ -223,13 +223,13 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
                 "test_func", device_set_, config_proto_,
                 xla_compile_device_type_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
-            Status(error::Code::ABORTED, "aborted"));
+            Status(absl::StatusCode::kAborted, "aborted"));
   verifyGraph(original_graph_def);
   verifyCounters();
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
-  Init(Status(error::Code::ABORTED, "aborted"),
+  Init(Status(absl::StatusCode::kAborted, "aborted"),
        {MlirOptimizationPassState::Disabled,
         MlirOptimizationPassState::FallbackEnabled});
 
@@ -244,7 +244,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
-                            Status(error::Code::ABORTED, "aborted"));
+                            Status(absl::StatusCode::kAborted, "aborted"));
 
   EXPECT_EQ(function_optimization_pass_.Run(
                 "test_func", device_set_, config_proto_,
