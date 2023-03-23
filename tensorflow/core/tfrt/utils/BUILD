@@ -83,8 +83,8 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
@@ -289,8 +289,8 @@ cc_library(
         "//learning/brain/mlir/bridge:graph_analysis",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + [
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
 
