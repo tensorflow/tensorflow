@@ -85,6 +85,7 @@ Value rootAlloc(Value v, bool useDeallocateInvariants) {
 
 // Eliminates redundant owernship arguments for memrefs that are always owned
 // by the block. This helps with hoisting and reuse.
+// TODO(jreiffers): Rewrite and simplify this, if possible.
 void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
   bool isFor = llvm::isa<scf::ForOp>(op);
   if (!llvm::isa<scf::WhileOp>(op) && !isFor) {
@@ -149,8 +150,13 @@ void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
       for (auto& pred : predecessors) {
         if ((pred.predecessorOp == op && isFor) ||
             (pred.predecessorRegionIndex == 0 && !isFor)) {
-          resultIndices[ownershipArgIndices[i] - pred.successorValueIndex] =
+          size_t resultToDrop =
+              ownershipArgIndices[i] - pred.successorValueIndex;
+          resultIndices[resultToDrop] =
               memrefArgIndices[i] - pred.successorValueIndex;
+          for (auto& index : resultIndices) {
+            if (index > resultToDrop) --index;
+          }
         }
         pred.predecessorOp->eraseOperands(pred.predecessorOperandIndex +
                                           ownershipArgIndices[i] -
