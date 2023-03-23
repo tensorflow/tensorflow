@@ -547,8 +547,17 @@ TEST(ExecutableTest, AsyncMemrefArg) {
   absl::string_view module = R"(
     async.func @test(%arg0: !async.value<memref<?x?xf32>>) ->
     !async.value<memref<?x?xf32>> {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
       %0 = async.await %arg0 : !async.value<memref<?x?xf32>>
-      return %0 : memref<?x?xf32>
+      %dim0 = memref.dim %0, %c0 : memref<?x?xf32>
+      %dim1 = memref.dim %0, %c1 : memref<?x?xf32>
+      %1 = memref.alloc(%dim0, %dim1) : memref<?x?xf32>
+
+      memref.copy %0, %1 : memref<?x?xf32> to memref<?x?xf32>
+
+      return %1 : memref<?x?xf32>
     }
   )";
 
