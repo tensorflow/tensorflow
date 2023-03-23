@@ -63,10 +63,6 @@ class PrimitiveType(enum.IntEnum):
   OPAQUE_TYPE: PrimitiveType
   TOKEN: PrimitiveType
 
-def bfloat16_dtype() -> Type[Any]: ...
-def float8_e4m3fn_dtype() -> Type[Any]: ...
-def float8_e5m2_dtype() -> Type[Any]: ...
-
 # === BEGIN xla_compiler.cc
 
 class Shape:

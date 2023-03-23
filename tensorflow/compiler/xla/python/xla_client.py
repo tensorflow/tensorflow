@@ -24,6 +24,7 @@ import os
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
+import ml_dtypes
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -194,9 +195,9 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
-bfloat16 = _xla.bfloat16_dtype()
-float8_e4m3fn = _xla.float8_e4m3fn_dtype()
-float8_e5m2 = _xla.float8_e5m2_dtype()
+bfloat16 = ml_dtypes.bfloat16
+float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),

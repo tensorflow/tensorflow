@@ -187,8 +187,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
-        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
-        "//tensorflow/tsl/python/lib/core:float8_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@pybind11",
@@ -936,8 +934,6 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
-        "//tensorflow/tsl/python/lib/core:float8_lib",
         "//tensorflow/tsl/python/lib/core:numpy",
     ] + select({
         ":gpu_enabled": [
