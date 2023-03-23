@@ -22,6 +22,7 @@ from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
@@ -59,6 +60,10 @@ from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 _SAVED_MODEL_SIGNATURE_KEY = "mypredict"
+
+def _get_model_dir(model_name):
+  return test.test_src_dir_path(
+    "python/compiler/tensorrt/test/testdata/" + model_name)
 
 gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
@@ -1093,8 +1098,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testBackwardCompatibility(self):
     """Load and execute a model that was saved in TF2.0."""
 
-    model_dir = test.test_src_dir_path(
-        "python/compiler/tensorrt/test/testdata/tftrt_2.0_saved_model")
+    model_dir = _get_model_dir("tftrt_2.0_saved_model")
     saved_model_loaded = load.load(model_dir, tags=[tag_constants.SERVING])
     graph_func = saved_model_loaded.signatures[
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
@@ -1260,13 +1264,11 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     del converter
     gc.collect()  # Force GC to destroy the TRT engine cache.
 
-  def _TestVariableHelper(self, variable_op, tf_model_name, tftrt_model_name,
-                          output_name):
+  def _TestVariableHelper(self, variable_op, tf_model_name,
+                          tftrt_model_name = None, output_name = None):
     """Helper with the common code of variable converter tests."""
 
-    model_dir = test.test_src_dir_path(
-        "python/compiler/tensorrt/test/testdata/" + tf_model_name)
-    trt_model_dir = os.path.join(self.mkdtemp(), tftrt_model_name)
+    model_dir = _get_model_dir(tf_model_name)
 
     # Load and convert the TF model.
     conv_params = trt_convert.TrtConversionParams(
@@ -1282,6 +1284,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           dynamic_shape_profile_strategy="Optimal")
     converter.convert()
 
+    if tftrt_model_name is None:
+      return
+
     # Build and save the converted model.
     input_shapes = [[(4, 1, 1), (4, 1, 1)]]
 
@@ -1291,6 +1296,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         yield [np.ones(shape=shape).astype(np.float32) for shape in shapes]
 
     converter.build(_InputFn)
+    trt_model_dir = os.path.join(self.mkdtemp(), tftrt_model_name)
     converter.save(trt_model_dir)
 
     # Load the converted model.
@@ -1331,6 +1337,43 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self._TestVariableHelper("ReadVariableOp", "tf_readvariableop_saved_model",
                              "tftrt_readvariableop_saved_model", "output_0")
+
+
+  @test_util.run_v2_only
+  def testFuncGraphInternalCaptures(self):
+    """Test case for annotate variable operation,
+
+       that takes as input a graph.internal_captures containing
+       variables of a non-resource type.
+   """
+
+    class _Module(tf.Module):
+      def __init__(self):
+        self.v = None
+        self.c43 = tf.constant(43.0)
+
+      @tf.function
+      def __call__(self, x):
+        if self.v is None:
+          self.v =  variables.Variable(137.0)
+
+        x = x * x
+        x = x + self.c43 + self.v
+        x = tf.nn.relu(x)
+        return array_ops.identity(x, name="output_0")
+
+    my_module = _Module()
+    np_input = np.arange(6, dtype=np.float32).reshape(2,3)
+    my_module(np_input)
+
+    tf_model_name = "tf_annotate_var_ops"
+    saved_model_dir = _get_model_dir(tf_model_name)
+    cfunc = my_module.__call__.get_concrete_function(
+        tensor_spec.TensorSpec([None, 3], tf.float32))
+    tf.saved_model.save(my_module, saved_model_dir, signatures=cfunc)
+
+    self._TestVariableHelper(None, tf_model_name)
+
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()
