@@ -424,13 +424,13 @@ bool isRestrictBbArg(Value value) {
   return isRestrict && isRestrict.getValue();
 }
 
-void eliminateCopies(Block& block, Operation* firstOp) {
+void eliminateCopies(Block& block, Block& root) {
   auto* op = &block.front();
   while (op) {
     for (auto& region : op->getRegions()) {
       if (!region.empty()) {
         assert(region.hasOneBlock());
-        eliminateCopies(region.front(), firstOp);
+        eliminateCopies(region.front(), root);
       }
     }
 
@@ -450,7 +450,7 @@ void eliminateCopies(Block& block, Operation* firstOp) {
 
     bool targetIsFirstUseOfRestrictBbArg =
         isRestrictBbArg(copy.getTarget()) &&
-        !hasUsesBetween(firstOp, copy, copy.getTarget());
+        !hasUsesBetween(&root.front(), copy, copy.getTarget());
     if (!targetIsFirstUseOfRestrictBbArg) {
       auto targetAlloc = llvm::dyn_cast_or_null<memref::AllocOp>(
           copy.getTarget().getDefiningOp());
@@ -460,7 +460,7 @@ void eliminateCopies(Block& block, Operation* firstOp) {
       // If the source was used before the definition of the target, or the
       // target was used before the copy, this transformation is unsafe.
       if (!targetIsFirstUseOfAlloc ||
-          hasUsesBetween(firstOp, targetAlloc, sourceAlloc)) {
+          hasUsesBetween(&root.front(), targetAlloc, sourceAlloc)) {
         continue;
       }
     }
@@ -676,7 +676,7 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     elideRedundantOwnershipArgs(block);
     // Copy elimination requires small live-ranges to work well. We only extend
     // live ranges afterwards, so running it more than once doesn't help.
-    eliminateCopies(block, &block.front());
+    eliminateCopies(block, /*root=*/block);
     do {
       // Eliminate dead code.
       (void)applyPatternsAndFoldGreedily(getOperation(), {});
