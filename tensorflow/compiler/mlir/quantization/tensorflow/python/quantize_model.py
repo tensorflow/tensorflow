@@ -514,6 +514,39 @@ def _run_graph_for_calibration(
   logging.info('Calibration step complete.')
 
 
+def _copy_assets(src_path: str, dst_path: str) -> None:
+  """Copies the assets directory of the saved model.
+
+  Clones the contents of the assets/ directory from the source saved model
+  directory to the destination saved model directory. Nothing will be copied if
+  there are no assets directory in the source directory.
+
+  Args:
+    src_path: Source saved model directory.
+    dst_path: Destination saved model directory. This directory must exist.
+  """
+  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
+  if not file_io.file_exists_v2(src_assets_path):
+    # Do nothing if the source assets path does not exist.
+    return
+
+  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
+  file_io.create_dir_v2(dst_assets_path)
+
+  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+    for asset_file_name in files:
+      src_asset_file = file_io.join(curr_dir, asset_file_name)
+
+      # Construct the destination assets file path.
+      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+
+      file_io.copy_v2(src_asset_file, dst_asset_file)
+      logging.info(
+          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+      )
+
+
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -559,6 +592,8 @@ def _run_static_range_qat(
       asset_file_defs=exported_model.asset_file_defs,
   )
 
+  _copy_assets(src_saved_model_path, dst_saved_model_path)
+
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
   """Adds calibration statistics to the graph def.
@@ -591,39 +626,6 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
             node_id.decode('utf-8'),
             function_def.signature.name,
         )
-
-
-def _copy_assets(src_path: str, dst_path: str) -> None:
-  """Copies the assets directory of the saved model.
-
-  Clones the contents of the assets/ directory from the source saved model
-  directory to the destination saved model directory. Nothing will be copied if
-  there are no assets directory in the source directory.
-
-  Args:
-    src_path: Source saved model directory.
-    dst_path: Destination saved model directory. This directory must exist.
-  """
-  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
-  if not file_io.file_exists_v2(src_assets_path):
-    # Do nothing if the source assets path does not exist.
-    return
-
-  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
-  file_io.create_dir_v2(dst_assets_path)
-
-  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
-    for asset_file_name in files:
-      src_asset_file = file_io.join(curr_dir, asset_file_name)
-
-      # Construct the destination assets file path.
-      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
-      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
-
-      file_io.copy_v2(src_asset_file, dst_asset_file)
-      logging.info(
-          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
-      )
 
 
 def _get_saver_def_or_none(
