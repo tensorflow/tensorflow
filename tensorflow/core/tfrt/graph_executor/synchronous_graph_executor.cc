@@ -75,8 +75,7 @@ SynchronousGraphExecutor::Create(
 
   tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::GraphExecutor>>
       graph_executor = tensorflow::tfrt_stub::GraphExecutor::Create(
-          graph_execution_options, *(*fallback_state),
-          /*tpu_model_resource=*/nullptr, std::move(graph),
+          graph_execution_options, *(*fallback_state), std::move(graph),
           std::move(kernel_registry));
   if (!graph_executor.ok()) {
     return absl::InternalError(graph_executor.status().ToString());

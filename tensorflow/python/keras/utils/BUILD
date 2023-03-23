@@ -73,6 +73,7 @@ py_library(
     deps = [
         ":data_utils",
         ":io_utils",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:backend",
     ],
 )
@@ -161,6 +162,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",

@@ -327,7 +327,7 @@ static Status PutValueIntoTensor(const int64_t value, const DataType& type,
                                  const int index, Tensor* tensor) {
   if (type == DT_INT32) {
     if (value >= INT_MAX) {
-      return Status(error::INVALID_ARGUMENT, "int32 overflow");
+      return Status(absl::StatusCode::kInvalidArgument, "int32 overflow");
     }
     tensor->flat<int32>()(index) = static_cast<int32>(value);
   } else {
@@ -1363,7 +1363,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     const NodeDef* input_node = node_map_->GetNode(input);
     if (!IsReallyConstant(*input_node)) {
-      return Status(error::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
@@ -1371,7 +1371,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     if (raw_val.dtype() == DT_INVALID) {
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           strings::StrCat("A tensor in the input node, with TensorId of ",
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
@@ -1394,7 +1394,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
   if (output_tensors.empty()) {
-    return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "Expected at least one output.");
   }
 
   outputs->resize(output_tensors.size());

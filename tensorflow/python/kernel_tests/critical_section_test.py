@@ -25,6 +25,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -80,16 +81,16 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
           nv = v.assign_add(a * b)
           with ops.control_dependencies([nv]):
             return array_ops.identity(c)
-      return control_flow_ops.cond(
+      return cond.cond(
           array_ops.identity(inner_cond), true_fn, lambda: c)
 
     def execute():
       return cs.execute(lambda: fn(1.0, 2.0))
 
     r = [
-        control_flow_ops.cond(array_ops.identity(outer_cond),
-                              execute,
-                              v.read_value)
+        cond.cond(array_ops.identity(outer_cond),
+                  execute,
+                  v.read_value)
         for _ in range(num_concurrent)
     ]
     # pylint: enable=cell-var-from-loop

@@ -459,6 +459,7 @@ tensorflow::metrics::CheckpointSize
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
+tensorflow::saved_model::fingerprinting::Singleprint
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -552,7 +553,6 @@ tensorflow::dtensor::ExperimentalSetDefaultLayout
 tensorflow::dtensor::ExperimentalClearDefaultLayout
 tensorflow::dtensor::ExperimentalSetDefaultMesh
 tensorflow::dtensor::ExperimentalClearDefaultMesh
-tensorflow::dtensor::SetSameShapePolicy
 tensorflow::dtensor::SetTPUCoreIDs
 tensorflow::dtensor::ClearTPUCoreIDs
 tensorflow::dtensor::TPUCoreIDsToLocations
@@ -568,3 +568,4 @@ tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh
+tensorflow::dtensor::Layout

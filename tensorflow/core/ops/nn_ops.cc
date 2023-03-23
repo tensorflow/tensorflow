@@ -1479,7 +1479,7 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
     // Reverse index
     reduction_dimension += c->Rank(input_shape);
   }
-  if (reduction_dimension >= c->Rank(input_shape)) {
+  if (reduction_dimension >= c->Rank(input_shape) || reduction_dimension < 0) {
     return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
                                    ". Must be within the range of [", -rank,
                                    ", ", rank - 1, "]");

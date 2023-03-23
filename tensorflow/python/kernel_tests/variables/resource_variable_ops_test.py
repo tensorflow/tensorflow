@@ -43,6 +43,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
@@ -434,7 +435,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         return x + v
       def false():
         return 2.0 * v
-      return i + 1, control_flow_ops.cond(i > 0, true, false)
+      return i + 1, tf_cond.cond(i > 0, true, false)
 
     _, x = while_loop.while_loop(cond, body, [0, 0.0])
     # Computing gradients does not produce an exception:

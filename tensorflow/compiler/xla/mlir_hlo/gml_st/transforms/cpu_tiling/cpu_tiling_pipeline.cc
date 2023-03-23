@@ -26,14 +26,18 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName) {
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
+                                                   int64_t statsDetailLevel) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
   opts.reduction1DTileSize = 32;
   opts.reduction2DTileSizes = {4, 4};
   opts.matmulTileSizes = {};
   opts.lowerToMmt4d = false;
+  opts.enableFusionClusters = false;
+  opts.enableFusionClusterOutlining = false;
   opts.cpuName = cpuName;
+  opts.statsDetailLevel = statsDetailLevel;
   return opts;
 }
 
@@ -111,6 +115,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
                           const GmlStCPUTilingOptions& options) {
   using func::FuncOp;
 
+  pm.addNestedPass<FuncOp>(createCollectStatsPass(options.statsDetailLevel));
+
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
   }
@@ -119,6 +125,11 @@ void addCPUTilingPipeline(OpPassManager& pm,
   if (options.enableFusionClusterOutlining) {
     pm.addPass(createFusionOutliningPass());
     pm.addPass(func::createDuplicateFunctionEliminationPass());
+    pm.addPass(createCSEPass());
+  }
+
+  if (options.lowerToMmt4d) {
+    pm.addNestedPass<FuncOp>(createPackMatmulPass());
   }
 
   pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
@@ -138,15 +149,13 @@ void addCPUTilingPipeline(OpPassManager& pm,
                           : wrapHeuristic(skylakeTilingHeuristic, {16, 16, 4});
   }
   pm.addNestedPass<FuncOp>(createTransformDotForCpuPass(tilingHeuristic));
-  pm.addNestedPass<FuncOp>(
-      createTransformMatmulForCpuPass(tilingHeuristic, options.lowerToMmt4d));
-  // TODO(b/270534416): Re-enable.
-  // pm.addNestedPass<FuncOp>(createTransformGenericForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformMatmulForCpuPass(tilingHeuristic));
+  pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
+
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
-  pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::createTransformReverseForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformReverseForCpuPass());
 
   pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
@@ -162,8 +171,10 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 }
 
-void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName) {
-  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions(cpuName));
+void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName,
+                                 int64_t statsDetailLevel) {
+  addCPUTilingPipeline(pm,
+                       getDefaultCPUPipelineOptions(cpuName, statsDetailLevel));
 }
 
 }  // namespace gml_st

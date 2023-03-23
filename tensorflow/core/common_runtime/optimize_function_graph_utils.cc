@@ -365,7 +365,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       &ret_node_names, &ret_types, &control_ret_node_names));
 
   // Dump the initial graph.
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(), "initial");
+  DUMP_GRAPH(function_name, "initial", graph.get());
 
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
@@ -417,7 +417,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        dev_set, options.config_proto, &graph, &reachable_lib_def,
+        function_name, dev_set, options.config_proto,
+        options.xla_compile_device_type, &graph, &reachable_lib_def,
         &control_ret_node_names, &control_rets_updated));
   }
 
@@ -451,8 +452,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.debug_filename_prefix = "pflr_optmz_";
   env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_pre_placement_passes");
+  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get());
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -460,24 +460,21 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_placer");
+  DUMP_GRAPH(function_name, "before_placer", graph.get());
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_post_placement_passes");
+  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get());
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
 
   if (options.optimize_graph_fn) {
-    DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                         "before_graph_optimization");
+    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get());
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
         &reachable_lib_def, dev_set, cpu_device, &graph);
@@ -485,12 +482,10 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
     }
-    DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                         "after_graph_optimization");
+    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get());
   }
 
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_post_rewrite_for_exec_passes");
+  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get());
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));

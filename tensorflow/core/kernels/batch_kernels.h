@@ -105,6 +105,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
     int32 initial_in_flight_batches_limit = kInitialInflightBatches;
     int32 max_in_flight_batches_limit = kMaxInflightBatches;
     int32 batches_to_average_over = kBatchesToAverageOver;
+    int64 full_batch_scheduling_boost_micros = -1;
   };
   absl::optional<AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = absl::nullopt;

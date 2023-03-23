@@ -133,7 +133,7 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   llvm::SmallVector<llvm::Value *> args;
   args.reserve(llvm::size(func->args()));
 
-  for (auto &indexed_arg : llvm::enumerate(func->args())) {
+  for (const auto &indexed_arg : llvm::enumerate(func->args())) {
     llvm::Type *art_ty = indexed_arg.value().getType();
 
     llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(

@@ -36,7 +36,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/utils",
+        "//third_party/py/numpy",
         "@gast_archive//:gast",
     ],
 )

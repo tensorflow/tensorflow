@@ -919,6 +919,7 @@ tf_native_cc_binary(
     name = "flatbuffer_to_string",
     srcs = ["flatbuffer_to_string.cc"],
     deps = [
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "@flatbuffers",
     ],
@@ -1281,6 +1282,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",

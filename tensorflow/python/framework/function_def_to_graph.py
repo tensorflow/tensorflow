@@ -31,11 +31,14 @@ from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import resource_variable_ops
 
 
-def function_def_to_graph(fdef,
-                          structured_input_signature=None,
-                          structured_outputs=None,
-                          input_shapes=None,
-                          propagate_device_spec=False):
+def function_def_to_graph(
+    fdef,
+    structured_input_signature=None,
+    structured_outputs=None,
+    input_shapes=None,
+    propagate_device_spec=False,
+    include_library_functions=False,
+):
   """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
@@ -46,12 +49,11 @@ def function_def_to_graph(fdef,
 
   Args:
     fdef: FunctionDef.
-    structured_input_signature: Optional. The structured input signature to
-      use for initializing the FuncGraph. See the docstring for FuncGraph for
-      more information.
-    structured_outputs: Optional. The structured outputs to use for
-      initializing the FuncGraph. See the docstring for FuncGraph for more
+    structured_input_signature: Optional. The structured input signature to use
+      for initializing the FuncGraph. See the docstring for FuncGraph for more
       information.
+    structured_outputs: Optional. The structured outputs to use for initializing
+      the FuncGraph. See the docstring for FuncGraph for more information.
     input_shapes: Optional. A list of TensorShape objects of the shapes of
       function inputs. Defaults to the function's "_input_shapes" attribute. If
       specified, its length must match length of `fdef.signature.input_arg`. If
@@ -59,6 +61,10 @@ def function_def_to_graph(fdef,
       shape.
     propagate_device_spec: Optional. Whether to propagate assigned device
       information when constructing a new Graph from a FunctionDef.
+    include_library_functions: Optional. Whether to include library functions in
+      the output FuncGraph. In graph mode, the library functions will be found
+      from outer graph. In eager mode, the library functions will be found from
+      eager context.
 
   Returns:
     A FuncGraph.
@@ -83,7 +89,8 @@ def function_def_to_graph(fdef,
           input_shapes.append(input_shape)
 
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
-      fdef, input_shapes)
+      fdef, input_shapes, include_library_functions=include_library_functions
+  )
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
@@ -135,12 +142,13 @@ def function_def_to_graph(fdef,
   return func_graph
 
 
-def is_function(fname):
+def is_function(fname, graph):
   """Checks for a function definition with `fname` in the current context."""
   if context.executing_eagerly():
+    # Eager mode: use eager context as the single source of truth.
     return context.context().has_function(fname)
   else:
-    graph = ops.get_default_graph()
+    # Graph mode: use outer graphs as the single source of truth.
     while graph is not None:
       if graph._is_function(fname):  # pylint: disable=protected-access
         return True
@@ -150,7 +158,23 @@ def is_function(fname):
         return False
 
 
-def function_def_to_graph_def(fdef, input_shapes=None):
+def get_function_def(fname, graph):
+  """Gets a function definition with `fname` in the current context."""
+  if context.executing_eagerly():
+    # Eager mode: use eager context as the single source of truth.
+    if context.context().has_function(fname):
+      return context.context().get_function_def(fname)
+  else:
+    # Graph mode: use outer graphs as the single source of truth.
+    while graph is not None:
+      if graph._is_function(fname):  # pylint: disable=protected-access
+        return graph._get_function(fname).definition  # pylint: disable=protected-access
+      graph = getattr(graph, "outer_graph", None)
+
+
+def function_def_to_graph_def(
+    fdef, input_shapes=None, include_library_functions=False
+):
   """Convert a FunctionDef to a GraphDef.
 
   Steps:
@@ -167,6 +191,10 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       function inputs. If specified, its length must match length of
       `fdef.signature.input_arg`. If a shape is None, the corresponding input
       placeholder will have unknown shape.
+    include_library_functions: Optional. Whether to include library functions in
+      the output GraphDef. In graph mode, the library functions will be found
+      from outer graph. In eager mode, the library functions will be found from
+      eager context.
 
   Returns:
     A tuple of (GraphDef, dict<string, string>). The dict contains a mapping
@@ -259,16 +287,25 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
         # Custom ops may contain a func attr with an empty fname.
-        if fname and not is_function(fname):
+        if fname and not is_function(fname, default_graph):
           raise ValueError(f"Function {fname} was not found. Please make sure "
                            "the FunctionDef `fdef` is correct.")
+        if include_library_functions and fname not in copied_functions:
+          fdef = get_function_def(fname, default_graph)
+          graph_def.library.function.add().CopyFrom(fdef)
+          copied_functions.add(fname)
+
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
           # Custom ops may contain a func attr with an empty fname.
-          if fname and not is_function(fname):
+          if fname and not is_function(fname, default_graph):
             raise ValueError(f"Function {fname} was not found. Please make "
                              "sure the FunctionDef `fdef` is correct.")
+          if include_library_functions and fname not in copied_functions:
+            fdef = get_function_def(fname, default_graph)
+            graph_def.library.function.add().CopyFrom(fdef)
+            copied_functions.add(fname)
 
     # Iterate over output_args in op_def to build the map.
     # Index of the output tensor in the flattened list of *all* output

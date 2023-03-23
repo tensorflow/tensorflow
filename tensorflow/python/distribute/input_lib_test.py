@@ -30,6 +30,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
@@ -337,6 +338,58 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
       combinations.combine(
           mode=["eager"],
           input_type=["input_fn", "dataset"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_one_gpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+      )
+  )
+  def testAutoShardExplicit(self, input_type, distribution):
+    worker_device_pairs = [(
+        "/device:CPU:0",
+        distribution.extended.worker_devices,
+    )]
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10).batch(1)
+    dataset_or_input_fn = self._create_dataset_or_input_fn(
+        input_type, dataset_fn
+    )
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
+    distribution.extended.experimental_enable_get_next_as_optional = True
+    dataset = self._wrap_dataset(
+        input_type,
+        dataset_or_input_fn,
+        input_workers,
+        num_replicas_in_sync=None,
+        strategy=distribution)
+
+    dataset1 = input_ops.auto_shard_dataset(dataset, 2, 0)
+    iterator = iter(dataset1)
+
+    if len(distribution.extended.worker_devices) == 2:
+      expected_values = [[0, 2], [4, 6], [8]]
+    else:
+      expected_values = [[0], [2], [4], [6], [8]]
+    for element, expected in zip(iterator, expected_values):
+      local = distribution.experimental_local_results(element)
+      local_list = array_ops.concat(local, axis=0).numpy().tolist()
+      self.assertAllEqual(local_list, expected)
+
+    if len(distribution.extended.worker_devices) == 2:
+      expected_values = [[1, 3], [5, 7], [9]]
+    else:
+      expected_values = [[1], [3], [5], [7], [9]]
+    dataset2 = input_ops.auto_shard_dataset(dataset, 2, 1)
+    iterator = iter(dataset2)
+    for element, expected in zip(iterator, expected_values):
+      local = distribution.experimental_local_results(element)
+      local_list = array_ops.concat(local, axis=0).numpy().tolist()
+      self.assertAllEqual(local_list, expected)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          input_type=["input_fn", "dataset"],
           api_type=["wrap_into_dataset"],
           iteration_type=["get_next", "for_loop"],
           distribution=[strategy_combinations.multi_worker_mirrored_2x1_cpu],
@@ -507,8 +560,8 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
       combinations.combine(
           mode=["eager"],
           distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
           ],
           use_iterator=[False, True]))
   def testIteratorAndDatasetEnumerateError(self, distribution, use_iterator):
@@ -533,8 +586,8 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
       combinations.combine(
           mode=["eager"],
           distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
           ]))
   def testIterableIteratorError(self, distribution):
     dataset = dataset_ops.Dataset.range(10).batch(2)
@@ -1546,11 +1599,6 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
                                        parameterized.TestCase):
   """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""
 
-  def setUp(self):
-    context._reset_context()
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
-    super(DistributedIteratorPerDeviceTest, self).setUp()
-
   @combinations.generate(
       combinations.combine(
           input_options=[
@@ -1570,7 +1618,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testDevicePlacementForPerWorkerValuesWithPrefetch(self, distribution,
@@ -1596,7 +1644,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           input_options=[
@@ -1648,7 +1696,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testDevicePlacementForInvalidCombinations(self, distribution,
@@ -1679,7 +1727,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testPrefetchBufferSizeInputOptions(self, distribution, input_options):
@@ -1716,7 +1764,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testOutputValuesForPerWorkerInputOptions(self, distribution,
@@ -1759,7 +1807,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_two_gpus,
               strategy_combinations
               .mirrored_strategy_with_two_gpus_no_merge_call,
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_two_cpus,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
   def testOutputValuesForPerReplicaInputOptions(self, distribution,
@@ -1868,9 +1916,14 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
           num_replicas_in_sync=num_workers))
 
     dataset = dataset_ops.Dataset.range(1, 50)
-    dataset_id = data_service_ops.register_dataset(
+    dataset_id = "dataset_id"
+    # The body of this test is run on both the chief and the workers, so
+    # `register_dataset` will be called multiple times. We use a pre-defined
+    # `dataset_id` so that the tf.data service will understand that the
+    # registered datasets are the same.
+    data_service_ops.register_dataset(
         service=combinations.env().tf_data_service_dispatcher,
-        dataset=dataset)
+        dataset=dataset, dataset_id=dataset_id)
 
     def dataset_fn(input_context):
       del input_context

@@ -19,17 +19,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
-#include <variant>
 #include <vector>
 
-#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
@@ -85,6 +83,14 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
+  }
+
+  static bool IsEnabled(const HloModule* module) {
+    return module->config().debug_options().xla_gpu_autotune_level() != 0;
+  }
+
+  static bool IsCandidate(const HloInstruction* instr) {
+    return IsCustomCallToDnnConvolution(*instr);
   }
 
   using HloPassInterface::Run;
@@ -147,7 +153,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-      MaybeFusedConvRunner* const runner,
+      MaybeFusedConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
       std::optional<AutotuneInstructionInfo> instruction_info,

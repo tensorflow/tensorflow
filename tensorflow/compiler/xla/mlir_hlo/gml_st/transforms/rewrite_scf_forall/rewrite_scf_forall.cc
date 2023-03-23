@@ -19,6 +19,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
@@ -26,65 +28,61 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 // Rewrites `scf.forall` to an `scf.for` loop nest.
-LogicalResult rewriteScfForallToScfFor(scf::ForallOp op,
+LogicalResult rewriteScfForallToScfFor(scf::ForallOp forallOp,
                                        PatternRewriter &rewriter) {
-  if (op.getRank() == 0) return failure();
+  if (forallOp.getRank() == 0) return failure();
   // Do not convert to scf.for if scf.forall is mapped to threads.
-  if (op.getMapping().has_value()) return failure();
-  Location loc = op.getLoc();
+  if (forallOp.getMapping().has_value()) return failure();
 
-  rewriter.setInsertionPoint(op);
-  SmallVector<scf::ForOp> forOps;
-  SmallVector<Value> ivs;
-  ValueRange iterArgs = op.getOutputs();
-  for (auto [lower, upper, step] :
-       llvm::zip(op.getLowerBound(rewriter), op.getUpperBound(rewriter),
-                 op.getStep(rewriter))) {
-    auto forOp = forOps.emplace_back(
-        rewriter.create<scf::ForOp>(loc, lower, upper, step, iterArgs));
-    iterArgs = forOp.getRegionIterArgs();
-    forOp->setAttrs(op->getAttrs());
-    ivs.push_back(forOp.getInductionVar());
+  Location loc = forallOp.getLoc();
+  scf::LoopNest loopNest = scf::buildLoopNest(
+      rewriter, loc, forallOp.getLowerBound(rewriter),
+      forallOp.getUpperBound(rewriter), forallOp.getStep(rewriter),
+      forallOp.getOutputs(),
+      [&](OpBuilder &nestedBuilder, Location nestedLoc, ValueRange ivs,
+          ValueRange iterArgs) -> scf::ValueVector {
+        IRMapping map;
+        map.map(forallOp.getInductionVars(), ivs);
+        map.map(forallOp.getOutputBlockArguments(), iterArgs);
 
-    if (forOps.size() > 1) {
-      rewriter.create<scf::YieldOp>(loc, forOp.getResults());
-    }
-    rewriter.setInsertionPointToStart(forOp.getBody());
+        for (auto &op : forallOp.getBody()->without_terminator())
+          nestedBuilder.clone(op, map);
+
+        auto inParallelOp = forallOp.getTerminator();
+        scf::ValueVector results;
+        for (auto &op : inParallelOp.getYieldingOps()) {
+          auto mappedOperands =
+              llvm::to_vector(llvm::map_range(op.getOperands(), [&](Value val) {
+                return map.lookupOrDefault(val);
+              }));
+          results.push_back(rewriter.create<tensor::InsertSliceOp>(
+              nestedLoc, mappedOperands, op.getAttrs()));
+        }
+        rewriter.eraseOp(forallOp.getTerminator());
+        return results;
+      });
+
+  // Copy attributes from `scf.forall` to the output
+  SmallVector<StringAttr> elidedAttrs{forallOp.getOperandSegmentSizesAttrName(),
+                                      forallOp.getStaticLowerBoundAttrName(),
+                                      forallOp.getStaticUpperBoundAttrName(),
+                                      forallOp.getStaticStepAttrName()};
+  SmallVector<NamedAttribute> attrs = llvm::to_vector(llvm::make_filter_range(
+      forallOp->getAttrs(), [&](const NamedAttribute &attr) {
+        return !llvm::is_contained(elidedAttrs, attr.getName());
+      }));
+
+  for (scf::ForOp loop : loopNest.loops) {
+    rewriter.updateRootInPlace(loop, [&]() {
+      for (const auto &attr : attrs)
+        loop->setAttr(attr.getName(), attr.getValue());
+    });
   }
-
-  rewriter.replaceAllUsesWith(op.getInductionVars().drop_back(),
-                              ValueRange{ivs}.drop_back(1));
-  op.getBody()->eraseArguments(0, forOps.size() - 1);
-
-  forOps.back().getRegion().takeBody(op.getRegion());
-  rewriter.replaceOp(op, forOps.front().getResults());
-
-  return success();
-}
-
-// Rewrites `in_parallel { parallel_insert_slice* }` to
-// `insert_slice*; scf.yield`.
-LogicalResult rewriteScfInParallel(scf::InParallelOp inParallelOp,
-                                   PatternRewriter &rewriter) {
-  rewriter.setInsertionPoint(inParallelOp);
-  SmallVector<Value> results;
-  for (auto &op :
-       llvm::make_early_inc_range(inParallelOp.getRegion().getOps())) {
-    auto parallelInsertSlice =
-        llvm::dyn_cast<tensor::ParallelInsertSliceOp>(op);
-    if (!parallelInsertSlice) return failure();
-
-    results.push_back(rewriter.create<tensor::InsertSliceOp>(
-        op.getLoc(), op.getOperands(), op.getAttrs()));
-  }
-  rewriter.create<scf::YieldOp>(inParallelOp.getLoc(), results);
-  rewriter.eraseOp(inParallelOp);
-
+  rewriter.replaceOp(forallOp, loopNest.results);
   return success();
 }
 
@@ -98,12 +96,10 @@ class RewriteForallOpPass
     auto *context = &getContext();
 
     RewritePatternSet patterns(context);
-    scf::ForOp::getCanonicalizationPatterns(patterns, context);
     patterns.add(rewriteScfForallToScfFor);
-    patterns.add(rewriteScfInParallel);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    scf::ForOp::getCanonicalizationPatterns(patterns, context);
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 
@@ -113,5 +109,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createRewriteForallOpPass() {
   return std::make_unique<RewriteForallOpPass>();
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st

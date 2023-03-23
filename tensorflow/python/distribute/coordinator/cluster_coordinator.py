@@ -27,7 +27,6 @@ import weakref
 
 from six.moves import queue
 
-from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import remote_value
@@ -589,7 +588,7 @@ class WorkerPreemptionHandler(object):
     try:
       yield
     except (errors.OpError, ClosureInputError,
-            ClosureAbortedError) as e:
+            ClosureAbortedError, TypeError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -1138,8 +1137,7 @@ class ClusterCoordinator(object):
       ValueError: if the strategy being used is not supported.
     """
     if not getattr(self, "_has_initialized", False):
-      if not isinstance(strategy,
-                        parameter_server_strategy_v2.ParameterServerStrategyV2):
+      if not hasattr(strategy, "_is_parameter_server_strategy_v2"):
         raise ValueError(
             "Only `tf.distribute.experimental.ParameterServerStrategy` "
             "is supported to work with "
@@ -1499,6 +1497,14 @@ def _is_worker_failure(error):
   # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
   # to the failing workers.
   if isinstance(error, errors.CancelledError):
+    return True
+
+  # This can occur when preparing closures for execution when doing exact
+  # evaluation, because the iterator creation, which occurs within the
+  # tf.function, needs to access the worker device, so it fails if the worker is
+  # down.
+  if isinstance(error, TypeError) and "Binding inputs to tf.function" in str(
+      error):
     return True
 
   return False

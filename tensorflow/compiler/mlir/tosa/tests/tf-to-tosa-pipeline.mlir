@@ -473,6 +473,22 @@ func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_sign
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<8x33xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1xf32>}
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<1x1xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1xf32>}
+// CHECK: %[[VAL_4:.*]] = "tosa.greater"(%[[VAL_0]], %[[VAL_1]])
+// CHECK: %[[VAL_5:.*]] = "tosa.greater"(%[[VAL_1]], %[[VAL_0]])
+// CHECK: %[[VAL_6:.*]] = "tosa.select"(%[[VAL_5]], %[[VAL_2]], %[[VAL_1]])
+// CHECK: %[[VAL_7:.*]] = "tosa.select"(%[[VAL_4]], %[[VAL_3]], %[[VAL_6]])
+func.func @test_sign(%arg0: tensor<8x33xf32>) -> tensor<8x33xf32> {
+  %0 = "tf.Sign"(%arg0) : (tensor<8x33xf32>) -> tensor<8x33xf32>
+    func.return %0 : tensor<8x33xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_sigmoid
 // CHECK: %[[VAR0:.*]] = "tosa.sigmoid"(%arg0)
 func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {

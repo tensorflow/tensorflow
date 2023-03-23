@@ -14,13 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
@@ -33,7 +32,8 @@ namespace acceleration {
 constexpr int kMaxAttempts = 2;
 
 ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
-    : storage_(options.storage_path, options.error_reporter),
+    : storage_path_(options.storage_path),
+      storage_(options.storage_path, options.error_reporter),
       error_reporter_(options.error_reporter) {
   validator_runner_impl_ = std::make_unique<ValidatorRunnerImpl>(
       CreateModelLoaderPath(options), options.storage_path,
@@ -102,7 +102,8 @@ int ValidatorRunner::TriggerMissingValidation(
     to_be_run->emplace_back(std::move(copy));
   }
   int to_be_run_count = to_be_run->size();
-  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run));
+  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run),
+                                                 storage_path_);
   return to_be_run_count;
 }
 

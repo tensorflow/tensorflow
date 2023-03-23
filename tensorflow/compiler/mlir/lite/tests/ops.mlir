@@ -1820,16 +1820,6 @@ func.func @transpose_dynamic_shape(%arg0 : tensor<2x?xi32>) -> tensor<?x2xi32> {
 
 // -----
 
-func.func @transpose_perm_axis_invalid(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
-  // expected-error @+1 {{perm[1] must be in [0, rank)}}
-  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
-  func.return %0 : tensor<2x2xi32>
-}
-
-
-// -----
-
 func.func @transpose_perm_axis_duplicated(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
   %cst = arith.constant dense<[1, 1]> : tensor<2xi32>
   // expected-error @+1 {{perm[1] cannot have duplicated axis}}

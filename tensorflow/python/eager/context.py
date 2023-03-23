@@ -1314,17 +1314,17 @@ class Context:
     self.ensure_initialized()
     return self._num_gpus
 
-  def add_function(self, fn):
-    """Add a function definition to the context.
+  def add_c_function(self, c_func):
+    """Add a C API TF_Function to the context.
 
     Once added, the function (identified by its name) can be executed like any
     other operation.
 
     Args:
-      fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
+      c_func: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
     self.ensure_initialized()
-    pywrap_tfe.TFE_ContextAddFunction(self._handle, fn)
+    pywrap_tfe.TFE_ContextAddFunction(self._handle, c_func)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -2732,9 +2732,9 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(tf_function):
-  """Add a TF_Function to the context."""
-  context().add_function(tf_function)
+def add_c_function(c_func):
+  """Add a C API TF_Function to the context."""
+  context().add_c_function(c_func)
 
 
 def remove_function(name):

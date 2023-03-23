@@ -283,6 +283,19 @@ cc_library(
 )
 
 cc_library(
+    name = "status_to_from_proto",
+    srcs = [
+        "status_to_from_proto.cc",
+    ],
+    hdrs = ["status_to_from_proto.h"],
+    deps = [
+        ":status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
+    ] + tf_platform_deps("status"),
+)
+
+cc_library(
     name = "status_matchers",
     testonly = 1,
     srcs = ["status_matchers.cc"],
@@ -1333,8 +1346,12 @@ tsl_cc_test(
         ":errors",
         ":stack_frame",
         ":status",
+        ":status_matchers",
+        ":status_to_from_proto",
         ":test",
         ":test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",

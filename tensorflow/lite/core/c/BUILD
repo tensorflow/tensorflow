@@ -384,6 +384,7 @@ cc_test(
         ":c_api",
         ":c_api_experimental",
         ":common",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",

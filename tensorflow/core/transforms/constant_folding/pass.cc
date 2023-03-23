@@ -320,7 +320,7 @@ static FailureOr<TFOp> ReplaceOpWithBroadcastTo(OpBuilder &builder, TFOp op,
   // Create a vector of control operands. We should not fail beyond this point
   // since GetControlDependency may create a control anchor (a new op).
   SmallVector<Value> control_operands;
-  for (auto &it : llvm::enumerate(op.getNonControlOperands())) {
+  for (const auto &it : llvm::enumerate(op.getNonControlOperands())) {
     int idx = it.index();
     Value v = it.value();
     if (idx == idx_to_replace) continue;
@@ -748,7 +748,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
         OperandControlRetRange(op->getOperands()));
 
     SmallVector<TFOp> const_ops(result.size());
-    for (auto &it : llvm::enumerate(result)) {
+    for (const auto &it : llvm::enumerate(result)) {
       TypedAttr attr = it.value();
       // Null values represent dead outputs. They can result from evaluating a
       // switch op.
@@ -776,7 +776,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       const_op.setName(TFOp(op).nameAttr());
       rewriter.replaceOp(op, const_op->getResults());
     } else {
-      for (auto &it : llvm::enumerate(const_ops)) {
+      for (const auto &it : llvm::enumerate(const_ops)) {
         if (!it.value()) continue;
         for (OpOperand &use :
              llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
@@ -3153,7 +3153,7 @@ class PartialConcatConstFolding
 
     if (!inputs_to_delete.empty()) {
       OperationState state(op->getLoc(), op->getName());
-      for (auto &it : llvm::enumerate(non_control_operands)) {
+      for (const auto &it : llvm::enumerate(non_control_operands)) {
         if (inputs_to_delete.contains(it.index())) continue;
         state.addOperands(it.value());
       }

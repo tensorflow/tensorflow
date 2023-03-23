@@ -21,6 +21,7 @@ file includes operations for those broadcasting rules.
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +49,7 @@ def _has_valid_nonscalar_shape(
       (weights_rank, weights_shape, values_rank, values_shape)) as scope:
     is_same_rank = math_ops.equal(
         values_rank, weights_rank, name="is_same_rank")
-    return control_flow_ops.cond(
+    return cond.cond(
         is_same_rank,
         lambda: _has_valid_dims(weights_shape, values_shape),
         lambda: is_same_rank,
@@ -123,7 +124,7 @@ def assert_broadcastable(weights, values):
         "values.shape=", values.name, values_shape,
         "is_scalar=", is_scalar,
     )
-    is_valid_shape = control_flow_ops.cond(
+    is_valid_shape = cond.cond(
         is_scalar,
         lambda: is_scalar,
         lambda: _has_valid_nonscalar_shape(  # pylint: disable=g-long-lambda

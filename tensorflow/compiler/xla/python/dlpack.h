@@ -30,7 +30,7 @@ StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(pybind11::handle buffer,
 
 StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
-    std::shared_ptr<PyClient> gpu_client, bool make_jax_array);
+    std::shared_ptr<PyClient> gpu_client);
 
 }  // namespace xla
 

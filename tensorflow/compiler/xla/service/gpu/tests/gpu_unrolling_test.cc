@@ -178,11 +178,10 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  // There are 2 loads, because the 2 parameters are read separately - the
-  // kernel is not aware that they are the same.
+  // There is only 1 load, because we pass the `p0` parameter to the kernel only
+  // once.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK: load float
 ; CHECK: load float
 ; CHECK-NOT: load float
 ; CHECK: }

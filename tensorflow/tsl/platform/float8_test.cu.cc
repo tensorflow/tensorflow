@@ -331,10 +331,10 @@ TEST(Float8Test, Half_To_Float8E5m2) {
 
   Eigen::half nan =
       Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(0x7C01));
-  EXPECT_EQ(static_cast<float8_e5m2>(nan).rep(), 0x7D);
+  EXPECT_EQ(static_cast<float8_e5m2>(nan).rep(), 0x7E);
   Eigen::half nnan =
       Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(0xFC01));
-  EXPECT_EQ(static_cast<float8_e5m2>(nnan).rep(), 0xFD);
+  EXPECT_EQ(static_cast<float8_e5m2>(nnan).rep(), 0xFE);
 
   // Rounding vs truncation.
   Eigen::half less_than_two =
@@ -355,6 +355,33 @@ TEST(Float8Test, Half_To_Float8E5m2) {
                                       /*kTruncate=*/true>(-less_than_two)
                  .rep()),
             0xBF);
+
+  // Saturation.
+  for (uint16_t i = static_cast<uint16_t>(Eigen::numext::bit_cast<uint8_t>(
+                        std::numeric_limits<float8_e5m2>::max()))
+                    << 8;
+       i < Eigen::numext::bit_cast<uint16_t>(
+               std::numeric_limits<Eigen::half>::infinity());
+       ++i) {
+    Eigen::half big_half = Eigen::numext::bit_cast<Eigen::half>(i);
+    float big_float = static_cast<float>(big_half);
+    EXPECT_EQ(
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             big_half)
+             .rep()),
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             big_float)
+             .rep()))
+        << i;
+    EXPECT_EQ(
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             -big_half)
+             .rep()),
+        (float8_e5m2::ConvertFrom</*kSaturate=*/true, /*kTruncate=*/false>(
+             -big_float)
+             .rep()))
+        << i;
+  }
 }
 
 using ::testing::Eq;

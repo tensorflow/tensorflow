@@ -2089,6 +2089,7 @@ struct GoogleEdgeTpuSettingsT : public flatbuffers::NativeTable {
   bool enable_tracing = false;
   tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED;
   std::vector<uint8_t> extension_data{};
+  std::string model_identifier{};
 };
 
 struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2098,7 +2099,8 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
     VT_LOG_VERBOSITY = 4,
     VT_ENABLE_TRACING = 6,
     VT_PRIORITY = 8,
-    VT_EXTENSION_DATA = 10
+    VT_EXTENSION_DATA = 10,
+    VT_MODEL_IDENTIFIER = 12
   };
   int32_t log_verbosity() const {
     return GetField<int32_t>(VT_LOG_VERBOSITY, -1);
@@ -2112,6 +2114,9 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   const flatbuffers::Vector<uint8_t> *extension_data() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_EXTENSION_DATA);
   }
+  const flatbuffers::String *model_identifier() const {
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_IDENTIFIER);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_LOG_VERBOSITY, 4) &&
@@ -2119,6 +2124,8 @@ struct GoogleEdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
            VerifyField<int32_t>(verifier, VT_PRIORITY, 4) &&
            VerifyOffset(verifier, VT_EXTENSION_DATA) &&
            verifier.VerifyVector(extension_data()) &&
+           VerifyOffset(verifier, VT_MODEL_IDENTIFIER) &&
+           verifier.VerifyString(model_identifier()) &&
            verifier.EndTable();
   }
   GoogleEdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2142,6 +2149,9 @@ struct GoogleEdgeTpuSettingsBuilder {
   void add_extension_data(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data) {
     fbb_.AddOffset(GoogleEdgeTpuSettings::VT_EXTENSION_DATA, extension_data);
   }
+  void add_model_identifier(flatbuffers::Offset<flatbuffers::String> model_identifier) {
+    fbb_.AddOffset(GoogleEdgeTpuSettings::VT_MODEL_IDENTIFIER, model_identifier);
+  }
   explicit GoogleEdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2158,8 +2168,10 @@ inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(
     int32_t log_verbosity = -1,
     bool enable_tracing = false,
     tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> extension_data = 0,
+    flatbuffers::Offset<flatbuffers::String> model_identifier = 0) {
   GoogleEdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_model_identifier(model_identifier);
   builder_.add_extension_data(extension_data);
   builder_.add_priority(priority);
   builder_.add_log_verbosity(log_verbosity);
@@ -2172,14 +2184,17 @@ inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettingsDir
     int32_t log_verbosity = -1,
     bool enable_tracing = false,
     tflite::GoogleEdgeTpuSettings_::Priority priority = tflite::GoogleEdgeTpuSettings_::Priority_PRIORITY_UNDEFINED,
-    const std::vector<uint8_t> *extension_data = nullptr) {
+    const std::vector<uint8_t> *extension_data = nullptr,
+    const char *model_identifier = nullptr) {
   auto extension_data__ = extension_data ? _fbb.CreateVector<uint8_t>(*extension_data) : 0;
+  auto model_identifier__ = model_identifier ? _fbb.CreateString(model_identifier) : 0;
   return tflite::CreateGoogleEdgeTpuSettings(
       _fbb,
       log_verbosity,
       enable_tracing,
       priority,
-      extension_data__);
+      extension_data__,
+      model_identifier__);
 }
 
 flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4609,7 +4624,8 @@ inline bool operator==(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSet
       (lhs.log_verbosity == rhs.log_verbosity) &&
       (lhs.enable_tracing == rhs.enable_tracing) &&
       (lhs.priority == rhs.priority) &&
-      (lhs.extension_data == rhs.extension_data);
+      (lhs.extension_data == rhs.extension_data) &&
+      (lhs.model_identifier == rhs.model_identifier);
 }
 
 inline bool operator!=(const GoogleEdgeTpuSettingsT &lhs, const GoogleEdgeTpuSettingsT &rhs) {
@@ -4630,6 +4646,7 @@ inline void GoogleEdgeTpuSettings::UnPackTo(GoogleEdgeTpuSettingsT *_o, const fl
   { auto _e = enable_tracing(); _o->enable_tracing = _e; }
   { auto _e = priority(); _o->priority = _e; }
   { auto _e = extension_data(); if (_e) { _o->extension_data.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->extension_data.begin()); } }
+  { auto _e = model_identifier(); if (_e) _o->model_identifier = _e->str(); }
 }
 
 inline flatbuffers::Offset<GoogleEdgeTpuSettings> GoogleEdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GoogleEdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4644,12 +4661,14 @@ inline flatbuffers::Offset<GoogleEdgeTpuSettings> CreateGoogleEdgeTpuSettings(fl
   auto _enable_tracing = _o->enable_tracing;
   auto _priority = _o->priority;
   auto _extension_data = _o->extension_data.size() ? _fbb.CreateVector(_o->extension_data) : 0;
+  auto _model_identifier = _o->model_identifier.empty() ? 0 : _fbb.CreateString(_o->model_identifier);
   return tflite::CreateGoogleEdgeTpuSettings(
       _fbb,
       _log_verbosity,
       _enable_tracing,
       _priority,
-      _extension_data);
+      _extension_data,
+      _model_identifier);
 }
 
 

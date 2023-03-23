@@ -103,6 +103,12 @@ class HloModule {
   // Removes unused computations.
   Status RemoveUnusedComputations();
 
+  // Marks duplicate fusions with the same name to be able to group them for
+  // analysis purposes (e.g. through Xprof).
+  void MarkFusionDuplications(
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
+
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.

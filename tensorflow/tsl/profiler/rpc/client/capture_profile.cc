@@ -254,11 +254,11 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
   TF_RETURN_IF_ERROR(
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
   if (also_export_trace_json) {
-    tsl::profiler::TraceContainer container =
-        tsl::profiler::ConvertXSpaceToTraceEvents(xspace);
+    tensorflow::profiler::Trace trace;
+    tsl::profiler::ConvertXSpaceToTraceEvents(xspace, &trace);
     return tsl::profiler::SaveGzippedToolData(
         repository_root, run, host, "trace.json.gz",
-        tsl::profiler::TraceEventsToJson(container));
+        tsl::profiler::TraceEventsToJson(trace));
   }
   return OkStatus();
 }

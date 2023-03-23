@@ -19,8 +19,8 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"

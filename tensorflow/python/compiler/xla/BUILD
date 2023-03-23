@@ -88,6 +88,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/summary",
         "//tensorflow/python/tpu:tpu_lib",

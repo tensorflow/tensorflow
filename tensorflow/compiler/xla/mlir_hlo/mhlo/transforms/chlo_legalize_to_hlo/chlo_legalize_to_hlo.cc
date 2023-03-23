@@ -505,7 +505,7 @@ Value materializeErfcApproximationF32ForMagnitudeGeOne(
 
 // Precondition is |x| <= 1. Use erfc approximation, otherwise.
 // This implementation is based on Cephes.
-Value materializeErfApproximationF32ForMagnitudeLeOneCephes(
+Value materializeErfApproximationF32ForMagnitudeLeOne(
     ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
@@ -525,8 +525,8 @@ Value materializeErfApproximationF32ForMagnitudeLeOneCephes(
 }
 
 // This is the same approximation as used in Eigen.
-Value materializeErfApproximationF32ForMagnitudeLeOne(
-    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
+Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
+                                     Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
          "expect f32 element type");
@@ -571,7 +571,7 @@ Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
   //   erfc(x) = 1 - erf_approx(x)
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
   Value erfApprox =
-      materializeErfApproximationF32ForMagnitudeLeOneCephes(rewriter, loc, x);
+      materializeErfApproximationF32ForMagnitudeLeOne(rewriter, loc, x);
   Value erfBasedApprox = rewriter.create<mhlo::SubtractOp>(loc, one, erfApprox);
 
   // Materialize approximation selection based on argument.
@@ -580,33 +580,6 @@ Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
       loc, absX, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfBasedApprox,
                                          erfcApprox);
-}
-
-Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
-                                     Location loc, ValueRange args) {
-  Value x = args.front();
-  assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
-         "expect f32 element type");
-
-  // Rely on erf approximation for |x| < 1
-  //   erf(x) = erf_approx(x)
-  Value erfApprox =
-      materializeErfApproximationF32ForMagnitudeLeOne(rewriter, loc, x);
-
-  // Rely on erfc approximation for |x| >= 1 and materialize erf as
-  //   erf(x) = 1 - erfc_approx(x)
-  Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value erfcApprox =
-      materializeErfcApproximationF32ForMagnitudeGeOne(rewriter, loc, x);
-  Value erfcBasedApprox =
-      rewriter.create<mhlo::SubtractOp>(loc, one, erfcApprox);
-
-  // Materialize approximation selection based on argument.
-  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value absXLtOne = rewriter.create<mhlo::CompareOp>(
-      loc, absX, one, mhlo::ComparisonDirection::LT);
-  return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfApprox,
-                                         erfcBasedApprox);
 }
 
 struct ConvertErfOp : public OpConversionPattern<ErfOp> {
@@ -709,7 +682,7 @@ Value erfInv32(ConversionPatternRewriter &b, Location loc, ValueRange args) {
       b.create<mhlo::CompareOp>(loc, b.create<mhlo::AbsOp>(loc, x),
                                 getConstantLike(b, loc, 1, x),
                                 mhlo::ComparisonDirection::EQ),
-      b.create<mhlo::MulOp>(loc, x, getConstantLikeMaxFiniteValue(b, loc, x)),
+      b.create<mhlo::MulOp>(loc, x, getConstantLikeInfValue(b, loc, x, false)),
       result);
 }
 
@@ -817,7 +790,7 @@ Value erfInv64(ConversionPatternRewriter &b, Location loc, ValueRange args) {
       b.create<mhlo::CompareOp>(loc, b.create<mhlo::AbsOp>(loc, x),
                                 getConstantLike(b, loc, 1, x),
                                 mhlo::ComparisonDirection::EQ),
-      b.create<mhlo::MulOp>(loc, x, getConstantLikeMaxFiniteValue(b, loc, x)),
+      b.create<mhlo::MulOp>(loc, x, getConstantLikeInfValue(b, loc, x, false)),
       result);
 }
 

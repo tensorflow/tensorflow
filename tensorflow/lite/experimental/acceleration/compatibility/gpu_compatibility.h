@@ -67,6 +67,11 @@ class GPUCompatibilityList {
                 const ::tflite::gpu::GpuInfo& gpu_info) const;
 
   // Returns the compatibility status as an enum (unknown/supported/unsupported)
+  gpu::CompatibilityStatus GetStatus(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
+
+  // Returns the compatibility status as an enum (unknown/supported/unsupported)
   // of the provided device specified as a map of variables (properties).
   // Map keys should all be from here:
   // tensorflow/lite/experimental/acceleration/compatibility/variables.h
@@ -99,6 +104,10 @@ class GPUCompatibilityList {
  private:
   explicit GPUCompatibilityList(
       const unsigned char* compatibility_list_flatbuffer);
+
+  std::map<std::string, std::string> InfosToMap(
+      const AndroidInfo& android_info,
+      const ::tflite::gpu::GpuInfo& gpu_info) const;
 };
 
 }  // namespace acceleration

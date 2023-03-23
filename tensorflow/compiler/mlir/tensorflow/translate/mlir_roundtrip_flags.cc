@@ -62,6 +62,7 @@ std::string GraphImportConfig::str() const {
   ss << "\nenable_shape_inference: " << enable_shape_inference;
   ss << "\nunconditionally_use_set_output_shapes: "
      << unconditionally_use_set_output_shapes;
+  ss << "\nxla_compile_device_type: " << xla_compile_device_type;
 
   return ss.str();
 }
@@ -245,7 +246,7 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
   bool inside_subtype = false;
   int cur_pos = 0;
   std::vector<std::string> dtypes;
-  for (auto& it : llvm::enumerate(data_types_str)) {
+  for (const auto& it : llvm::enumerate(data_types_str)) {
     char c = it.value();
     int i = it.index();
     // Skip parsing the subtypes of a type

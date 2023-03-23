@@ -36,6 +36,10 @@ tf_class {
     argspec: "args=[\'self\', \'device_idx\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "device_location"
+    argspec: "args=[\'self\', \'arg0\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "device_type"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

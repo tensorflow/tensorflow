@@ -137,10 +137,88 @@ struct CollapseForallOpDimensions : public OpRewritePattern<ForallOp> {
   }
 };
 
+/// Fold tensor.casts into the output arguments of scf.forall.
+struct FoldTensorCastIntoForallOp : public OpRewritePattern<scf::ForallOp> {
+  using OpRewritePattern<scf::ForallOp>::OpRewritePattern;
+
+  struct TypeCast {
+    Type srcType;
+    Type dstType;
+  };
+
+  LogicalResult matchAndRewrite(scf::ForallOp forallOp,
+                                PatternRewriter &rewriter) const final {
+    llvm::SmallMapVector<unsigned, TypeCast, 2> tensorCastProducers;
+    llvm::SmallVector<Value> newOutputTensors = forallOp.getOutputs();
+    for (auto en : llvm::enumerate(newOutputTensors)) {
+      auto castOp = en.value().getDefiningOp<tensor::CastOp>();
+      if (!castOp) continue;
+
+      // Only casts that that preserve static information, i.e. will make the
+      // loop result type "more" static then before, will be folded.
+      if (!tensor::preservesStaticInformation(castOp.getDest().getType(),
+                                              castOp.getSource().getType())) {
+        continue;
+      }
+
+      tensorCastProducers[en.index()] =
+          TypeCast{castOp.getSource().getType(), castOp.getType()};
+      newOutputTensors[en.index()] = castOp.getSource();
+    }
+
+    if (tensorCastProducers.empty()) return failure();
+
+    // Create new loop.
+    Location loc = forallOp.getLoc();
+    auto newForallOp = rewriter.create<ForallOp>(
+        loc, forallOp.getMixedLowerBound(), forallOp.getMixedUpperBound(),
+        forallOp.getMixedStep(), newOutputTensors, forallOp.getMapping(),
+        [&](OpBuilder nestedBuilder, Location nestedLoc, ValueRange bbArgs) {
+          auto castBlockArgs =
+              llvm::to_vector(bbArgs.take_back(forallOp->getNumResults()));
+          for (auto [index, cast] : tensorCastProducers) {
+            Value &oldTypeBBArg = castBlockArgs[index];
+            oldTypeBBArg = nestedBuilder.create<tensor::CastOp>(
+                nestedLoc, cast.dstType, oldTypeBBArg);
+          }
+
+          // Move old body into new parallel loop.
+          SmallVector<Value> ivsBlockArgs =
+              llvm::to_vector(bbArgs.take_front(forallOp.getRank()));
+          ivsBlockArgs.append(castBlockArgs);
+          rewriter.mergeBlocks(forallOp.getBody(),
+                               bbArgs.front().getParentBlock(), ivsBlockArgs);
+        });
+
+    // Update destinations in the terminator.
+    auto terminator = newForallOp.getTerminator();
+    for (auto [yieldingOp, outputBlockArg] :
+         llvm::zip(terminator.getYieldingOps(),
+                   newForallOp.getOutputBlockArguments())) {
+      auto insertSliceOp = cast<tensor::ParallelInsertSliceOp>(yieldingOp);
+      insertSliceOp.getDestMutable().assign(outputBlockArg);
+    }
+
+    // Cast results back to the original types.
+    rewriter.setInsertionPointAfter(newForallOp);
+    SmallVector<Value> castResults = newForallOp.getResults();
+    for (auto &item : tensorCastProducers) {
+      Value &oldTypeResult = castResults[item.first];
+      oldTypeResult = rewriter.create<tensor::CastOp>(loc, item.second.dstType,
+                                                      oldTypeResult);
+    }
+    rewriter.replaceOp(forallOp, castResults);
+
+    return success();
+  }
+};
+
 }  // namespace
 
 void populateCollapseForallOpDimensionsPattern(RewritePatternSet &patterns) {
-  patterns.add<CollapseForallOpDimensions>(patterns.getContext());
+  patterns.add<CollapseForallOpDimensions, FoldTensorCastIntoForallOp>(
+      patterns.getContext());
+  tensor::CastOp::getCanonicalizationPatterns(patterns, patterns.getContext());
 }
 
 }  // namespace mlir::gml_st

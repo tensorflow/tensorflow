@@ -54,10 +54,13 @@ struct i4 {
   explicit operator complex64() const { return complex64(v); }
   explicit operator complex128() const { return complex128(v); }
 
-  i4 operator+(const i4& other) const { return i4((v + other.v) & 0x0F); }
-  i4 operator-(const i4& other) const { return i4((v - other.v) & 0x0F); }
-  i4 operator*(const i4& other) const { return i4((v * other.v) & 0x0F); }
-  i4 operator/(const i4& other) const { return i4((v / other.v) & 0x0F); }
+  i4 operator+(const i4& other) const { return i4((v + other.v)); }
+  i4 operator-(const i4& other) const { return i4((v - other.v)); }
+  i4 operator*(const i4& other) const { return i4((v * other.v)); }
+  i4 operator/(const i4& other) const { return i4((v / other.v)); }
+
+  i4 operator>>(const int amount) const { return i4((v >> amount)); }
+  i4 operator<<(const int amount) const { return i4((v << amount)); }
 
   bool operator==(const i4& other) const { return v == other.v; }
   bool operator!=(const i4& other) const { return v != other.v; }

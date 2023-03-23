@@ -26,7 +26,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -474,16 +474,16 @@ def _MatrixSetDiagGradV2(op, grad):
     diag_index = array_ops.reshape(op.inputs[2], [-1])  # Converts to vector.
     d_lower = diag_index[0]
     d_upper = diag_index[-1]  # Works both when len(diag_index) is 1 and 2.
-    y_offset = control_flow_ops.cond(
+    y_offset = cond.cond(
         math_ops.less(d_upper, 0), lambda: d_upper, lambda: 0)
-    x_offset = control_flow_ops.cond(
+    x_offset = cond.cond(
         math_ops.greater(d_lower, 0), lambda: -d_lower, lambda: 0)
 
     max_diag_len = math_ops.minimum(matrix_shape[0] + y_offset,
                                     matrix_shape[1] + x_offset)
     # pylint: disable=g-long-lambda
     # pyformat: disable
-    postfix = control_flow_ops.cond(
+    postfix = cond.cond(
         math_ops.equal(d_lower, d_upper),
         lambda: ops.convert_to_tensor([max_diag_len]),
         lambda: ops.convert_to_tensor([d_upper - d_lower + 1,
@@ -511,16 +511,16 @@ def _MatrixSetDiagGradV3(op, grad):
     diag_index = array_ops.reshape(op.inputs[2], [-1])  # Converts to vector.
     d_lower = diag_index[0]
     d_upper = diag_index[-1]  # Works both when len(diag_index) is 1 and 2.
-    y_offset = control_flow_ops.cond(
+    y_offset = cond.cond(
         math_ops.less(d_upper, 0), lambda: d_upper, lambda: 0)
-    x_offset = control_flow_ops.cond(
+    x_offset = cond.cond(
         math_ops.greater(d_lower, 0), lambda: -d_lower, lambda: 0)
 
     max_diag_len = math_ops.minimum(matrix_shape[0] + y_offset,
                                     matrix_shape[1] + x_offset)
     # pylint: disable=g-long-lambda
     # pyformat: disable
-    postfix = control_flow_ops.cond(
+    postfix = cond.cond(
         math_ops.equal(d_lower, d_upper),
         lambda: ops.convert_to_tensor([max_diag_len]),
         lambda: ops.convert_to_tensor([d_upper - d_lower + 1,

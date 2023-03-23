@@ -84,8 +84,8 @@ Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
     std::string split_filename = absl::StrCat("split_", i, "_", i);
     std::string split_path = tsl::io::JoinPath(source_dir, split_filename);
     Tensor split(int64_t{i});
-    TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
-        split_path, split, tsl::io::compression::kNone, Env::Default()));
+    TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+        split_path, {split}, tsl::io::compression::kNone, Env::Default()));
   }
   return OkStatus();
 }

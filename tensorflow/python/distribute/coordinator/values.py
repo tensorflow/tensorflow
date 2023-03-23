@@ -242,10 +242,9 @@ class PerWorkerDatasetFromDatasetFunction(object):
     per_worker_dataset = self._coordinator._create_per_worker_resources(
         _create_per_worker_dataset)
     # hack type_spec of RemoteValues
+    dataset_fn_output_type_spec = self._dataset_fn.structured_outputs._type_spec
     for dataset_remote_value in per_worker_dataset._values:
-      dataset_remote_value._type_spec = dataset_ops.DatasetSpec(
-          self._dataset_fn.structured_outputs.element_spec)
-
+      dataset_remote_value._type_spec = dataset_fn_output_type_spec
     return per_worker_dataset
 
   def __iter__(self):

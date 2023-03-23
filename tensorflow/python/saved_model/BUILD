@@ -439,6 +439,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:restore_captures",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
@@ -798,6 +799,7 @@ py_strict_library(
     name = "fingerprinting_utils",
     srcs = ["fingerprinting_utils.py"],
     deps = [
+        ":fingerprinting",
         ":pywrap_saved_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/config:flags_py",

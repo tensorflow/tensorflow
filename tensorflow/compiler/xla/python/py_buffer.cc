@@ -443,41 +443,44 @@ StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
   return client_->pjrt_client()->UnsafeBufferPointer(pjrt_buffer());
 }
 
-StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
+StatusOr<pybind11::dict> IfrtHelpers::CudaArrayInterface(
+    ifrt::Array* ifrt_array, std::optional<Shape>& scratch) {
+  auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
   // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
-  if (pjrt_buffer()->client()->platform_id() != GpuId()) {
+  if (pjrt_buffer->client()->platform_id() != GpuId()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }
-  if (!pjrt_buffer()->on_device_shape().IsArray()) {
+  if (!pjrt_buffer->on_device_shape().IsArray()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for array buffers.");
   }
-  if (pjrt_buffer()->on_device_shape().element_type() == BF16) {
+  if (pjrt_buffer->on_device_shape().element_type() == BF16) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for bfloat16 buffers.");
   }
-  if (pjrt_buffer()->on_device_shape().element_type() == F8E4M3FN) {
+  if (pjrt_buffer->on_device_shape().element_type() == F8E4M3FN) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E4M3FN buffers.");
   }
-  if (pjrt_buffer()->on_device_shape().element_type() == F8E5M2) {
+  if (pjrt_buffer->on_device_shape().element_type() == F8E5M2) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E5M2 buffers.");
   }
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      pjrt_buffer()->on_device_shape().layout()));
+      pjrt_buffer->on_device_shape().layout()));
 
   py::dict result;
-  TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+  TF_ASSIGN_OR_RETURN(const auto* dynamic_shape,
+                      IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
   result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
-                          pjrt_buffer()->on_device_shape().element_type()));
+                          pjrt_buffer->on_device_shape().element_type()));
   result["typestr"] = std::move(typestr);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-      pjrt_buffer()->AcquireExternalReference());
+      pjrt_buffer->AcquireExternalReference());
   const void* root_ptr =
       external_reference_hold->OpaqueDeviceMemoryDataPointer();
   py::tuple data(2);
@@ -486,6 +489,10 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   result["data"] = std::move(data);
   result["version"] = py::int_(2);
   return result;
+}
+
+StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
+  return IfrtHelpers::CudaArrayInterface(ifrt_array(), dynamic_shape_);
 }
 
 // PEP 3118 buffer protocol implementation.

@@ -23,30 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 
-namespace mlir {
-namespace gml_st {
-
-// Create fused operation based on the specificed subset. The result is
-// equivalent to the given `tensor.extract_slice` op.
-FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
-                               tensor::ExtractSliceOp materializeOp);
-
-// Fuses an op into `tensor.extract_slice` and performs the necessary updates to
-// the surrounding loop if any.
-FailureOr<Operation *> fuse(PatternRewriter &rewriter,
-                            tensor::ExtractSliceOp materializeOp);
-
-// Finds `tensor.extract_slice` ops in the block and fuses ops into them.
-// Verifies that fusion candidate doesn't have any uses except the one
-// `tensor.extract_slice` in the block to avoid exponential code growth.
-void fuseGreedily(PatternRewriter &rewriter, Block &block,
-                  llvm::function_ref<bool(Operation *)> filterFn = nullptr);
-
-/// Populate fusion patterns.
-void populateFusionPatterns(
-    MLIRContext *ctx,
-    function_ref<LogicalResult(tensor::ExtractSliceOp)> filterFn,
-    RewritePatternSet *patterns);
+namespace mlir::gml_st {
 
 struct FusionCluster {
   SetVector<Operation *> operations;
@@ -60,33 +37,6 @@ struct FusionCluster {
 // First element of the cluster is always the root for tiling.
 FusionCluster findMapFusionCluster(Operation *op);
 
-// Fuses linalg.fill that is used in output argument of the scf::ForallOp.
-LogicalResult fuseFillOpsIntoForallOp(PatternRewriter &rewriter,
-                                      scf::ForallOp parallelOp);
-
-// Creates gml_st::TilingOptions from the list of tile sizes.
-gml_st::TilingOptions getGmlStTilingOptions(ArrayRef<int64_t> tileSizes);
-
-// Tiles the op to gml_st.parallel and fuses greedily according to the filter.
-FailureOr<scf::ForallOp> tileUsingGmlStParallelAndFuseGreedily(
-    PatternRewriter &rewriter, Operation *op,
-    const mlir::gml_st::TilingOptions &opts, StringRef label,
-    llvm::function_ref<bool(Operation *)> fuseFilterFn);
-
-// Creates SCFTilingOptions from the list of tile sizes.
-scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes);
-
-// Tiles the op to scf.for and fuses greedily according to the filter.
-FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
-    PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
-    StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
-
-// Tiles the op to 1 for all dimensions and fuses greedily according to the
-// filter function.
-LogicalResult tilePeeledOpsToScalars(
-    PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
-    StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
-
 // Creates gml_st.fusion op with a region with ops from the fusion cluster.
 // Operands of the ops in the region are replaced with region arguments to
 // isolate the fusion cluster form above. Usages of the ops are replaces with
@@ -97,7 +47,33 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
 // Replaces gml_st.fusion op with ops from the region.
 LogicalResult inlineFusionCluster(FusionOp fusionOp, PatternRewriter &rewriter);
 
-}  // namespace gml_st
-}  // namespace mlir
+// Fuses an op into `tensor.extract_slice` and performs the necessary updates to
+// the surrounding loop if any.
+FailureOr<Operation *> fuse(PatternRewriter &rewriter,
+                            tensor::ExtractSliceOp materializeOp);
+
+// Finds `tensor.extract_slice` ops in the block and fuses ops into them.
+// Verifies that fusion candidate doesn't have any uses except the one
+// `tensor.extract_slice` in the block to avoid exponential code growth.
+void fuseGreedily(PatternRewriter &rewriter, Block &block,
+                  llvm::function_ref<bool(Operation *)> filterFn = nullptr);
+
+// Tiles the op to gml_st.parallel and fuses greedily according to the filter.
+FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
+    PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
+    llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Tiles the op to scf.for and fuses greedily according to the filter.
+FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
+    PatternRewriter &rewriter, Operation *op, const scf::SCFTilingOptions &opts,
+    llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+// Tiles the op to 1 for all dimensions and fuses greedily according to the
+// filter function.
+LogicalResult tilePeeledOpsToScalars(
+    PatternRewriter &rewriter, const GmlStPeelingResult &peelingResult,
+    llvm::function_ref<bool(Operation *)> fuseFilterFn);
+
+}  // namespace mlir::gml_st
 
 #endif  // MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H

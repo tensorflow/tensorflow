@@ -59,7 +59,8 @@ void VerifyTFXLALegalization::runOnOperation() {
   ConversionTarget default_conversion_target =
       GetDefaultLegalConversionTargets(getContext(), legalize_chlo_);
 
-  auto walk_result = func_op->walk([&](Operation* op) {
+  bool has_invalid_ops = false;
+  func_op->walk([&](Operation* op) {
     if (default_conversion_target.isLegal(op)) {
       return WalkResult::advance();
     }
@@ -68,10 +69,12 @@ void VerifyTFXLALegalization::runOnOperation() {
     mlir_failed_legalization_op_count
         ->GetCell(op->getName().getStringRef().str())
         ->IncrementBy(1);
-    return WalkResult::interrupt();
+
+    has_invalid_ops = true;
+    return WalkResult::advance();
   });
 
-  if (walk_result.wasInterrupted()) signalPassFailure();
+  if (has_invalid_ops) signalPassFailure();
 }
 
 }  // namespace

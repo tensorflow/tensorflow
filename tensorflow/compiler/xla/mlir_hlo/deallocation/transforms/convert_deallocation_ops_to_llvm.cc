@@ -152,6 +152,8 @@ struct ConvertDeallocationOpsToLLVMPass
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
     LowerToLLVMOptions options(&getContext(),
                                dataLayoutAnalysis.getAtOrAbove(func));
+    // TODO(b/267828330): Migrate to opaque pointers.
+    options.useOpaquePointers = false;
 
     LLVMTypeConverter typeConverter(&getContext(), options,
                                     &dataLayoutAnalysis);

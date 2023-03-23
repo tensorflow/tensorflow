@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <any>
-#include <atomic>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -190,6 +189,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -265,6 +265,27 @@ bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
 
+// CollectivesScheduleLinearizer enforces a total ordering between collectives
+// to work around (1) divergence in initial HLOs across executables that are
+// communicating with each other using HLO collectives, and (2) divergence in
+// executables introduced due to auto tuning, specifically the use of extra
+// scratch space for convolutions.
+// We always apply this pass when not using SPMD (where initial HLO divergence
+// may be possible). This function decided whether to apply this pass when using
+// SPMD partitioning. When using SPMD, if convolutions are present in the code
+// and we are using "online" autotuning (i.e., not AOT) we need to use the pass,
+// else we do not need to enable the pass.
+bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
+  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
+        return true;
+      }
+    }
+  }
+  // No convolution auto-tuning candidates found in the module.
+  return false;
+}
 }  // end anonymous namespace
 
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
@@ -607,7 +628,8 @@ Status GpuCompiler::OptimizeHloModule(
     // annotations added by this pass may not be correct after the
     // modifications.
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
-    pipeline.AddPass<HloComputationDeduplicator>();
+    pipeline.AddPass<HloComputationDeduplicator>(
+        /*mark_fusion_duplications=*/false);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -646,7 +668,11 @@ Status GpuCompiler::OptimizeHloModule(
   if (stream_exec != nullptr) {
     gpu_version = GetGpuVersion(stream_exec);
     se::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    TF_RET_CHECK(dnn != nullptr);
+    if (dnn == nullptr) {
+      return tsl::errors::FailedPrecondition(
+          "DNN library initialization failed."
+          " Look at the errors above for more details.");
+    }
     TF_ASSIGN_OR_RETURN(dnn_version, dnn->GetVersion());
   }
 
@@ -754,11 +780,19 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
     }
 
-    pipeline.AddPass<CollectivesScheduleLinearizer>();
+    if (!hlo_module->config().use_spmd_partitioning()) {
+      pipeline.AddPass<CollectivesScheduleLinearizer>();
+    }
 
     AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
+
+    // This invocation is used to populate deduplicated_name for fusions that
+    // are considered duplicates according to the comparator in this pass.
+    // Currently, the pass doesn't actually deduplicate the fusions.
+    pipeline.AddPass<HloComputationDeduplicator>(
+        /*mark_fusion_duplications=*/true);
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -892,6 +926,27 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<SimplifyFPConversions>();
   }
 
+  // Linearize collective schedule under SPMD partitioning.
+  const bool enable_collecive_schedule_linearizer_for_spmd = [&]() {
+    if (!hlo_module->config().use_spmd_partitioning()) {
+      return false;
+    }
+    if (stream_exec == nullptr) {
+      // not doing online autotuning.
+      return false;
+    }
+    if (!GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
+      // conv auto-tuning is disabled.
+      return false;
+    }
+    return true;
+  }();
+
+  if (enable_collecive_schedule_linearizer_for_spmd) {
+    pipeline.AddPass<CollectivesScheduleLinearizer>(
+        RequiresCollectiveScheduleLinearizer);
+  }
+
   AutotuningConfig config =
       stream_exec
           ? AutotuningConfig{DeviceConfig{stream_exec, device_allocator}}
@@ -908,7 +963,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(TritonAutotuner::LoadAutotuneResults(*autotune_results));
 #endif  // GOOGLE_CUDA
   }
-  pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
+    pipeline.AddPass<GpuConvAlgorithmPicker>(config);
+  }
 #if GOOGLE_CUDA
   pipeline.AddPass<GemmAlgorithmPicker>(config);
   pipeline.AddPass<TritonAutotuner>(

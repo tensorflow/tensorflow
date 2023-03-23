@@ -75,7 +75,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'initial_value\'], varargs=args, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'initial_value\', \'dtype\'], varargs=args, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "assign"

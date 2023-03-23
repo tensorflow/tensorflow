@@ -81,7 +81,7 @@ Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
     (void)shapeSource.reifyReturnTypeShapes(b, operands, reifiedShapes);
     assert(reifiedShapes.size() == 1 && "Expected one reified result");
     // Construct sizes for the required dimensions.
-    for (auto& en : llvm::enumerate(resultType.getShape())) {
+    for (const auto& en : llvm::enumerate(resultType.getShape())) {
       if (en.value() != ShapedType::kDynamic) continue;
       sizes.push_back(b.create<tensor::ExtractOp>(
           loc, reifiedShapes[0],

@@ -262,6 +262,30 @@ LogicalResult BatchFunctionOp::verifySymbolUses(
   return success();
 }
 
+void BatchFunctionOp::eraseArguments(const BitVector& erase_indices) {
+  const StringRef operand_segment_size_attr = getOperandSegmentSizeAttr();
+  auto operand_segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
+      operand_segment_size_attr);
+
+  // `operand_segment_sizes` attribute indicates the sizes of the two
+  // variadic operands of `BatchFunctionOp`: `in_tensors` and
+  // `captured_tensors`. The numbers have to be updated as arguments are
+  // erased.
+  const int32_t num_in_original = operand_segment_sizes[0];
+  int32_t num_in_tensors = num_in_original;
+  int32_t num_captured_tensors = operand_segment_sizes[1];
+
+  for (const unsigned operand_index : erase_indices.set_bits()) {
+    operand_index < num_in_original ? num_in_tensors-- : num_captured_tensors--;
+  }
+
+  getOperation()->eraseOperands(erase_indices);
+  getOperation()->setAttr(
+      operand_segment_size_attr,
+      DenseI32ArrayAttr::get(
+          getContext(), /*content=*/{num_in_tensors, num_captured_tensors}));
+}
+
 //===----------------------------------------------------------------------===//
 // BatchMatMulV2Op & BatchMatMulOp
 //===----------------------------------------------------------------------===//

@@ -66,13 +66,13 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   XSpace xspace;
   CreateXSpace(&xspace);
 
-  TraceContainer container = ConvertXSpaceToTraceEvents(xspace);
+  Trace trace;
+  ConvertXSpaceToTraceEvents(xspace, &trace);
 
-  ASSERT_EQ(container.trace().devices_size(), 2);
-  EXPECT_EQ(
-      container.trace().devices().at(kHostThreadsDeviceId).resources_size(), 2);
-  EXPECT_EQ(container.trace().devices().at(kFirstDeviceId).resources_size(), 1);
-  EXPECT_EQ(container.UnsortedEvents().size(), 3);
+  ASSERT_EQ(trace.devices_size(), 2);
+  EXPECT_EQ(trace.devices().at(kHostThreadsDeviceId).resources_size(), 2);
+  EXPECT_EQ(trace.devices().at(kFirstDeviceId).resources_size(), 1);
+  EXPECT_EQ(trace.trace_events_size(), 3);
 }
 
 TEST(ConvertXPlaneToTraceEvents, SkipAsyncOps) {
@@ -88,24 +88,25 @@ TEST(ConvertXPlaneToTraceEvents, SkipAsyncOps) {
   event1.SetTimestampNs(100);
   event1.SetDurationNs(1);
 
-  TraceContainer container = ConvertXSpaceToTraceEvents(xspace);
+  Trace trace;
+  ConvertXSpaceToTraceEvents(xspace, &trace);
 
-  ASSERT_THAT(container.UnsortedEvents(), ::testing::IsEmpty());
+  ASSERT_THAT(trace.trace_events(), ::testing::IsEmpty());
 }
 
 TEST(ConvertXPlaneToTraceEvents, Drop) {
-  TraceContainer container;
+  Trace trace;
   for (int i = 0; i < 100; i++) {
-    container.CreateEvent()->set_timestamp_ps((100 - i) % 50);
+    trace.add_trace_events()->set_timestamp_ps((100 - i) % 50);
   }
 
-  MaybeDropEventsForTraceViewer(container.YieldUnsortedEvents(), 150);
-  EXPECT_EQ(container.UnsortedEvents().size(), 100);  // No dropping.
+  MaybeDropEventsForTraceViewer(&trace, 150);
+  EXPECT_EQ(trace.trace_events_size(), 100);  // No dropping.
 
-  MaybeDropEventsForTraceViewer(container.YieldUnsortedEvents(), 50);
-  EXPECT_EQ(container.UnsortedEvents().size(), 50);
-  for (const TraceEvent* const event : container.UnsortedEvents()) {
-    EXPECT_LT(event->timestamp_ps(), 25);
+  MaybeDropEventsForTraceViewer(&trace, 50);
+  EXPECT_EQ(trace.trace_events_size(), 50);
+  for (const auto& event : trace.trace_events()) {
+    EXPECT_LT(event.timestamp_ps(), 25);
   }
 }
 

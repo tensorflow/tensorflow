@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:devel
+FROM tensorflow/build:latest-python3.11
 
 ENV ANDROID_DEV_HOME /android
 RUN mkdir -p ${ANDROID_DEV_HOME}

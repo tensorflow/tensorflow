@@ -23,18 +23,6 @@ from tensorflow.python.platform import googletest
 
 class PythonOpGetTest(googletest.TestCase):
 
-  def test_type_annotation_not_empty_for_internal_op(self):
-    for internal_op in [
-        data_flow_ops.dynamic_stitch,
-        gen_nn_ops._fused_batch_norm,
-        gen_math_ops.add,
-    ]:
-      sig = inspect.signature(internal_op)
-      for key in sig.parameters:
-        if key == "name":
-          continue
-        assert sig.parameters[key].annotation != inspect.Signature.empty
-
   def test_type_annotation_empty_for_imported_op(self):
     for imported_op in [
         data_flow_ops.DynamicStitch,

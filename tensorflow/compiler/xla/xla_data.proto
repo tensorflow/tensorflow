@@ -375,6 +375,14 @@ message OpMetadata {
   ProfileInfo profile_info = 10;
 
   reserved 11;
+
+  // Deduplicated HLO name for this op. In some cases, we can have multiple
+  // instructions (e.g. fusions) that are considered duplicates. We want to
+  // group them together under the same name so that we can group them together
+  // during analysis (e.g. HLO Op Profile tool in Xprof).
+  // E.g. If we have fusion.1, fusion.2, and fusion.3 marked as duplicates,
+  // fusion.2 and fusion.3 will have deduplicated_name = fusion.1
+  string deduplicated_name = 12;
 }
 
 // Profile data from the execution of a computation.

@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -208,7 +209,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // Negative values are also allowed up to -(rank(input)+1)
   // where the axis "wraps around".
   if (axis < 0) axis += input_tensor_rank;
-  if ((axis < 0) || (axis > (input_tensor_rank + 1))) {
+  if ((axis < 0) || (axis > input_tensor_rank)) {
     (void)rewriter.notifyMatchFailure(op, "axis out of valid range");
     return std::nullopt;
   }
@@ -2222,7 +2223,7 @@ std::optional<SmallVector<Value>> convertSplitVOp(
 // the only legal negative stride.
 static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
                                    Value input, ArrayRef<int32_t> strides) {
-  for (auto it : llvm::enumerate(strides)) {
+  for (const auto& it : llvm::enumerate(strides)) {
     auto axis = it.index();
     auto stride = it.value();
     if (stride != -1) continue;
@@ -2321,7 +2322,7 @@ std::optional<Value> convertStridedSliceOp(
   }
 
   // Set begin mask values if possible.
-  for (auto& val : llvm::enumerate(begin))
+  for (const auto& val : llvm::enumerate(begin))
     begin_mask |= (val.value() == 0) << val.index();
 
   // If all begin/end masks are set and striding is one we can just return
@@ -3097,7 +3098,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
       n = 1;
-      d = 1;
+      d = output;
       offset = 0;
       border = output - 1;
       return;
@@ -4460,6 +4461,46 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
                                  output_scale, rewriter.getI32IntegerAttr(0))
+      .getResult();
+}
+
+// Lowers Sign operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                    Value input, RankedTensorType output_type) {
+  auto output_elem_type = output_type.getElementType();
+  if (output_elem_type.isa<mlir::quant::QuantizedType>()) {
+    (void)rewriter.notifyMatchFailure(op, "tfl quantization not yet supported");
+    return llvm::None;
+  }
+
+  // TOSA greater and select can both broadcast, so simply create a tensor with
+  // one element.
+  Value pos_one, neg_one, zero;
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  if (output_elem_type.isa<FloatType>()) {
+    pos_one = getTosaConstTensorSingleF32(rewriter, op, 1.0f);
+    neg_one = getTosaConstTensorSingleF32(rewriter, op, -1.0f);
+    zero = getTosaConstTensorSingleF32(rewriter, op, 0.0f);
+  } else {
+    pos_one = getTosaConstTensorScalarInt(builder, output_elem_type, 1);
+    neg_one = getTosaConstTensorScalarInt(builder, output_elem_type, -1);
+    zero = getTosaConstTensorScalarInt(builder, output_elem_type, 0);
+  }
+
+  ShapedType const_type = output_type.clone(rewriter.getIntegerType(1));
+
+  auto gt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, input, zero);
+
+  auto lt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, zero, input);
+
+  auto select_neg_op = CreateOpAndInfer<tosa::SelectOp>(
+      builder, output_type, lt_zero_op, neg_one, zero);
+
+  // Select positive one based on the condition tensor.
+  return CreateOpAndInfer<tosa::SelectOp>(builder, output_type, gt_zero_op,
+                                          pos_one, select_neg_op)
       .getResult();
 }
 

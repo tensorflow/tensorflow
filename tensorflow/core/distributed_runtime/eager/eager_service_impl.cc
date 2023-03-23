@@ -272,6 +272,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       request->server_def().default_session_config().isolate_session_state()));
   int64_t context_id = request->context_id();
   std::function<void()> session_destroyer = [this, context_id, session_name]() {
+    env_->rendezvous_mgr->Cleanup(context_id);
     auto s = env_->session_mgr->DeleteSession(session_name);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to destroy worker session '" << session_name
@@ -289,6 +290,13 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
   // Set the rendezvous as context-global instance for eager op-by-op execution.
   r->SetRemoteEagerContextDefault();
+
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
+      [worker_session, this](const int64_t step_id) {
+        auto* r = env_->rendezvous_mgr->Find(step_id);
+        r->Initialize(worker_session.get()).IgnoreError();
+        return r;
+      };
 
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
             << " eager service context with rendezvous_id on host "
@@ -318,10 +326,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   auto remote_mgr =
       std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
-      env_, worker_session, std::move(remote_eager_workers),
-      worker_session->remote_device_mgr(), remote_workers,
-      request->context_id(), request->context_view_id(), cluster_flr,
-      std::move(remote_mgr), std::move(session_destroyer));
+      std::move(remote_eager_workers), worker_session->remote_device_mgr(),
+      remote_workers, request->context_id(), request->context_view_id(),
+      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr),
+      std::move(session_destroyer));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();

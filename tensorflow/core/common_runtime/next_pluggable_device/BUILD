@@ -167,14 +167,14 @@ cc_library(
 )
 
 bool_flag(
-    name = "tf_c_api_passthrough",
-    build_setting_default = True,
+    name = "tf_npd_use_c_api",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "tf_c_api_passthrough_enabled",
-    flag_values = {":tf_c_api_passthrough": "True"},
+    name = "tf_npd_use_c_api_enabled",
+    flag_values = {":tf_npd_use_c_api": "True"},
 )
 
 cc_library(
@@ -191,6 +191,7 @@ cc_library(
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:tf_buffer",
         "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
@@ -211,7 +212,7 @@ cc_library(
     name = "plugin_op_kernel_helper",
     hdrs = ["plugin_op_kernel_helper.h"],
     defines = select({
-        "tf_c_api_passthrough_enabled": ["TF_OPKERNEL_C_API_PASSTHROUGH"],
+        "tf_npd_use_c_api_enabled": ["TF_NEXT_PLUGGABLE_DEVICE_USE_C_API"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -221,9 +222,9 @@ cc_library(
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
     ] + select({
-        "tf_c_api_passthrough_enabled": [":direct_plugin_op_kernel"],
+        "tf_npd_use_c_api_enabled": [":c_plugin_op_kernel"],
         "//conditions:default": [
-            ":c_plugin_op_kernel",
+            ":direct_plugin_op_kernel",
         ],
     }),
 )
@@ -281,7 +282,7 @@ cc_library(
     name = "plugin_coordination_service_agent_helper",
     hdrs = ["plugin_coordination_service_agent_helper.h"],
     defines = select({
-        "tf_c_api_passthrough_enabled": ["TF_OPKERNEL_C_API_PASSTHROUGH"],
+        "tf_npd_use_c_api_enabled": ["TF_NEXT_PLUGGABLE_DEVICE_USE_C_API"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -290,11 +291,11 @@ cc_library(
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
     ] + select({
-        "tf_c_api_passthrough_enabled": [
-            ":direct_plugin_coordination_service_agent",
+        "tf_npd_use_c_api_enabled": [
+            ":c_plugin_coordination_service_agent",
         ],
         "//conditions:default": [
-            ":c_plugin_coordination_service_agent",
+            ":direct_plugin_coordination_service_agent",
         ],
     }),
 )

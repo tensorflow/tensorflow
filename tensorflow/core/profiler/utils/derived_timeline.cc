@@ -62,7 +62,7 @@ inline std::string HloOpEventPrefix(const GpuEventStats& stats) {
 }
 
 std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
-    XPlaneBuilder& plane_builder, const GpuEventStats& stats) {
+    XPlaneBuilder& xplane, const GpuEventStats& stats, const Symbol symbol) {
   DCHECK(stats.IsXlaOp());
   DCHECK(!stats.hlo_module_name.empty());
   std::vector<XEventMetadata*> hlo_op_events_metadata;
@@ -71,14 +71,18 @@ std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
   // different modules have different metadata.
   std::string hlo_op_event_prefix = HloOpEventPrefix(stats);
   for (absl::string_view hlo_op_name : stats.hlo_op_names) {
-    XEventMetadata* hlo_op_event_metadata =
-        plane_builder.GetOrCreateEventMetadata(
-            absl::StrCat(hlo_op_event_prefix, hlo_op_name));
+    XEventMetadata* hlo_op_event_metadata = xplane.GetOrCreateEventMetadata(
+        absl::StrCat(hlo_op_event_prefix, hlo_op_name));
     // Display the HLO name without the module name in tools.
     if (hlo_op_event_metadata->display_name().empty()) {
       hlo_op_event_metadata->set_display_name(std::string(hlo_op_name));
     }
     hlo_op_events_metadata.push_back(hlo_op_event_metadata);
+    if (!symbol.hlo_text.empty()) {
+      XStatsBuilder<XEventMetadata> event_stats(hlo_op_event_metadata, &xplane);
+      event_stats.SetOrAddStatValue(*xplane.GetOrCreateStatMetadata("hlo_text"),
+                                    symbol.hlo_text);
+    }
   }
   return hlo_op_events_metadata;
 }
@@ -283,11 +287,11 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     }
 
     if (stats.IsXlaOp()) {
-      hlo_ops.ExpandOrAddEvents(
-          GetOrCreateHloOpEventsMetadata(plane_builder, stats), event_span,
-          stats.group_id);
       auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
                                     stats.hlo_op_names.back());
+      hlo_ops.ExpandOrAddEvents(
+          GetOrCreateHloOpEventsMetadata(plane_builder, stats, symbol),
+          event_span, stats.group_id);
       if (!symbol.tf_op_name.empty()) {
         ProcessTfOpEvent(symbol.tf_op_name,
                          event_span, stats.group_id, plane_builder,

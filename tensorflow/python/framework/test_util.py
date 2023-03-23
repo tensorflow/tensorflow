@@ -2552,9 +2552,10 @@ class TensorFlowTestCase(googletest.TestCase):
       a: a proto.
       b: another proto.
       msg: Optional message to report on failure.
-      relative_tolerance: float, relative tolerance. If this is not provided,
-        then all floats are compared using string comparison otherwise, floating
-        point comparisons are done using the relative tolerance provided.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if not compare.ProtoEq(a, b):
       compare.assertProtoEqual(
@@ -2582,9 +2583,10 @@ class TensorFlowTestCase(googletest.TestCase):
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
       msg: Optional message to report on failure.
-      relative_tolerance: float, relative tolerance. If this is not provided,
-        then all floats are compared using string comparison otherwise, floating
-        point comparisons are done using the relative tolerance provided.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii

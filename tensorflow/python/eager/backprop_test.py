@@ -36,7 +36,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
@@ -835,7 +836,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     with backprop.GradientTape() as g:
       g.watch(x)
-      y = control_flow_ops.cond(x < x, true_fn, false_fn)
+      y = tf_cond.cond(x < x, true_fn, false_fn)
 
     if not context.executing_eagerly():
       with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
@@ -1230,7 +1231,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     def fn():
       a = math_ops.add(x.value(), 1.0)
       # Make sure convert_to_tensor works correctly with list of TensorNodes.
-      b = array_ops.stack([a, a], axis=0)
+      b = array_ops_stack.stack([a, a], axis=0)
       return math_ops.reduce_mean(b)
 
     grad = backprop.implicit_grad(fn)()[0][0]
@@ -1932,7 +1933,7 @@ class JacobianTest(test.TestCase):
 
     @def_function.function
     def f(x):
-      y = control_flow_ops.cond(x > 0., lambda: x**3., lambda: x**2.)
+      y = tf_cond.cond(x > 0., lambda: x**3., lambda: x**2.)
       return y
 
     with backprop.GradientTape(persistent=True) as tape:
@@ -1982,7 +1983,7 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       z = x * x * y
     batch_jacobian = g.batch_jacobian(
         z, x, experimental_use_pfor=experimental_use_pfor)
-    answer = array_ops.stack(
+    answer = array_ops_stack.stack(
         [array_ops.diag(2 * x[0] * y[0]),
          array_ops.diag(2 * x[1] * y[1])])
     return batch_jacobian, answer

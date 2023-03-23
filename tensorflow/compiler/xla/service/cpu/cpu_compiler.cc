@@ -336,6 +336,13 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
     options.cpu_name = llvm::sys::getHostCPUName();
+
+    if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+      options.enable_fusion_outlining = true;
+      options.sparse_bufferization = false;
+      options.experimental_deallocation = true;
+    }
+
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
@@ -1066,6 +1073,11 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   // TODO(b/271126383): The flag should depend on the lowering target.
   options.enable_avx2 = true;
   options.cpu_name = target.getTargetCPU();
+  if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+    options.enable_fusion_outlining = true;
+    options.sparse_bufferization = false;
+    options.experimental_deallocation = true;
+  }
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
@@ -1119,7 +1131,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   auto result_mapping = builder.getI32IntegerAttr(output_index);
   mlir_module->walk([&](mlir::func::FuncOp f) {
     if (f.getSymName() == "main") {
-      for (auto& p : llvm::enumerate(operand_mapping)) {
+      for (const auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value().first);
         if (export_mapping != nullptr) {
           auto index_attr = p.value().first.dyn_cast<mlir::IntegerAttr>();

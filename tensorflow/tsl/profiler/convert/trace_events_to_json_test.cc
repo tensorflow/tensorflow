@@ -20,12 +20,19 @@ limitations under the License.
 #include "json/json.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/profiler/convert/trace_container.h"
 #include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
 
 namespace tsl {
 namespace profiler {
 namespace {
+
+using tensorflow::profiler::Trace;
+
+std::string ConvertTextFormattedTraceToJson(const std::string& trace_str) {
+  Trace trace;
+  EXPECT_TRUE(protobuf::TextFormat::ParseFromString(trace_str, &trace));
+  return TraceEventsToJson(trace);
+}
 
 Json::Value ToJsonValue(const std::string& json_str) {
   Json::Value json;
@@ -35,7 +42,7 @@ Json::Value ToJsonValue(const std::string& json_str) {
 }
 
 TEST(TraceEventsToJson, JsonConversion) {
-  const std::string metadata_string = R"pb(
+  std::string json_output = ConvertTextFormattedTraceToJson(R"proto(
     devices {
       key: 2
       value {
@@ -58,27 +65,23 @@ TEST(TraceEventsToJson, JsonConversion) {
         }
       }
     }
-  )pb";
-
-  TraceContainer container;
-  EXPECT_TRUE(container.ParseMetadataFromString(metadata_string));
-
-  TraceEvent* event = container.CreateEvent();
-  event->set_device_id(1);
-  event->set_resource_id(2);
-  event->set_name("E1.2.1");
-  event->set_timestamp_ps(100000);
-  event->set_duration_ps(10000);
-  event->mutable_args()->insert({"long_name", "E1.2.1 long"});
-  event->mutable_args()->insert({"arg2", "arg2 val"});
-
-  event = container.CreateEvent();
-  event->set_device_id(2);
-  event->set_resource_id(2);
-  event->set_name("E2.2.1 # \"comment\"");
-  event->set_timestamp_ps(105000);
-
-  Json::Value json = ToJsonValue(TraceEventsToJson(container));
+    trace_events {
+      device_id: 1
+      resource_id: 2
+      name: 'E1.2.1'
+      timestamp_ps: 100000
+      duration_ps: 10000
+      args { key: 'long_name' value: 'E1.2.1 long' }
+      args { key: 'arg2' value: 'arg2 val' }
+    }
+    trace_events {
+      device_id: 2
+      resource_id: 2
+      name: 'E2.2.1 # "comment"'
+      timestamp_ps: 105000
+    }
+  )proto");
+  Json::Value json = ToJsonValue(json_output);
 
   Json::Value expected_json = ToJsonValue(R"(
   {
