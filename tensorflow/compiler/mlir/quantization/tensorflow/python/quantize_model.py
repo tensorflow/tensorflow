@@ -569,11 +569,18 @@ def _run_static_range_qat(
     signature_def_map: Signature def key -> SignatureDef mapping.
   """
   logging.info('Running static-range quantization for QAT model.')
+
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
   exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
       list(signature_def_keys),
       set(tags),
       quant_opts.SerializeToString(),
+      dict(function_aliases),
   )
 
   exported_model = exported_model_pb2.ExportedModel.FromString(

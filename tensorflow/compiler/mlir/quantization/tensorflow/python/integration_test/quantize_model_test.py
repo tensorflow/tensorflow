@@ -2251,6 +2251,68 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                 func.node_def, op_name='XlaConvV2', attr_name='', attr_val=None
             )
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_alias_preserved_in_qat(self):
+    _, y_shape, _, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('ab,bc->ac')
+    )
+    model = self._create_einsum_model_with_fake_quant(
+        'ab,bc->ac', y_shape, x_signature, y_signature
+    )
+
+    signatures = {
+        'serving_default': model.einsum_with_kernel.get_concrete_function(),
+    }
+    save_opts = save_options.SaveOptions(
+        function_aliases={'einsum_with_kernel': model.einsum_with_kernel}
+    )
+
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures, save_opts
+    )
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.OpSet.XLA,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    # Test whether the aliased function exists.
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+
+    # Confirm that the function alias is preserved.
+    meta_graph_def = output_loader.get_meta_graph_def_from_tags(tags)
+    function_aliases = meta_graph_def.meta_info_def.function_aliases
+    self.assertNotEmpty(function_aliases)
+    self.assertCountEqual(function_aliases.values(), {'einsum_with_kernel'})
+
+    # Test that the aliased function contains a quantized op.
+    for func_name, alias in function_aliases.items():
+      if alias == 'einsum_with_kernel':
+        for func in meta_graph_def.graph_def.library.function:
+          if func.signature.name == func_name:
+            self._contains_op_with_name_and_attribute(
+                func.node_def, op_name='XlaDotV2', attr_name='', attr_val=None
+            )
+
   @test_util.deprecated_graph_mode_only
   def test_matmul_ptq_model_with_unfreeze_constants(self):
     # Uses large weight to exceed the constant size threshold of 64KiB
