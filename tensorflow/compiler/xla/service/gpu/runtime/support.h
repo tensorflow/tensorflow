@@ -116,6 +116,15 @@ inline void PopulateDotDimsAttrEncoding(
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
 
+class CapturingCudaGraph {
+ public:
+  explicit CapturingCudaGraph(bool capturing) : capturing_(capturing) {}
+  bool capturing() { return capturing_; }
+
+ private:
+  bool capturing_ = false;
+};
+
 }  // namespace gpu
 }  // namespace xla
 
