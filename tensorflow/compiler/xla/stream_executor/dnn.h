@@ -2234,6 +2234,28 @@ class DnnSupport {
 
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
+                            const DeviceMemory<Eigen::bfloat16>& input_data,
+                            const DeviceMemory<int>& seq_lengths_data,
+                            const dnn::RnnStateTensorDescriptor& input_h_desc,
+                            const DeviceMemory<Eigen::bfloat16>& input_h_data,
+                            const dnn::RnnStateTensorDescriptor& input_c_desc,
+                            const DeviceMemory<Eigen::bfloat16>& input_c_data,
+                            const DeviceMemory<Eigen::bfloat16>& params,
+                            const dnn::RnnSequenceTensorDescriptor& output_desc,
+                            DeviceMemory<Eigen::bfloat16>* output_data,
+                            const dnn::RnnStateTensorDescriptor& output_h_desc,
+                            DeviceMemory<Eigen::bfloat16>* output_h_data,
+                            const dnn::RnnStateTensorDescriptor& output_c_desc,
+                            DeviceMemory<Eigen::bfloat16>* output_c_data,
+                            bool is_training,
+                            ScratchAllocator* reserve_space_allocator,
+                            ScratchAllocator* workspace_allocator,
+                            dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                            const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<float>& input_data,
                             const DeviceMemory<int>& seq_lengths_data,
                             const dnn::RnnStateTensorDescriptor& input_h_desc,
@@ -2339,6 +2361,35 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* input_h_backprop_data,
       DeviceMemory<Eigen::half>* input_c_backprop_data,
       DeviceMemory<Eigen::half>* params_backprop_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
+    virtual bool DoRnnBackward(
+      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<Eigen::bfloat16>& input_data,
+      const DeviceMemory<int>& seq_lengths_data,
+      const dnn::RnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<Eigen::bfloat16>& input_h_data,
+      const dnn::RnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<Eigen::bfloat16>& input_c_data,
+      const DeviceMemory<Eigen::bfloat16>& params,
+      const dnn::RnnSequenceTensorDescriptor& output_desc,
+      const DeviceMemory<Eigen::bfloat16>& output_data,
+      const dnn::RnnStateTensorDescriptor& output_h_desc,
+      const DeviceMemory<Eigen::bfloat16>& output_h_data,
+      const dnn::RnnStateTensorDescriptor& output_c_desc,
+      const DeviceMemory<Eigen::bfloat16>& output_c_data,
+      const DeviceMemory<Eigen::bfloat16>& output_backprop_data,
+      const DeviceMemory<Eigen::bfloat16>& output_h_backprop_data,
+      const DeviceMemory<Eigen::bfloat16>& output_c_backprop_data,
+      DeviceMemory<Eigen::bfloat16>* input_backprop_data,
+      DeviceMemory<Eigen::bfloat16>* input_h_backprop_data,
+      DeviceMemory<Eigen::bfloat16>* input_c_backprop_data,
+      DeviceMemory<Eigen::bfloat16>* params_backprop_data,
       DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {

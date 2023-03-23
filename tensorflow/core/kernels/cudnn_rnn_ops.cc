@@ -343,6 +343,9 @@ template <>
 struct ToTFDataType<Eigen::half> : std::integral_constant<DataType, DT_HALF> {};
 
 template <>
+struct ToTFDataType<Eigen::bfloat16> : std::integral_constant<DataType, DT_BFLOAT16> {};
+
+template <>
 struct ToTFDataType<float> : std::integral_constant<DataType, DT_FLOAT> {};
 
 template <>
@@ -1189,9 +1192,7 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
                               .TypeConstraint<int32>("S"), \
                           CudnnRNNParamsSizeOp<GPUDevice, T, int32>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // Convert weight and bias params from a platform-specific layout to the
@@ -1378,9 +1379,7 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
                               .HostMemory("input_size")     \
                               .TypeConstraint<T>("T"),      \
                           CudnnRNNParamsToCanonical<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #define REGISTER_GPU(T)                                       \
@@ -1391,9 +1390,7 @@ TF_CALL_double(REGISTER_GPU);
                               .HostMemory("input_size")       \
                               .TypeConstraint<T>("T"),        \
                           CudnnRNNParamsToCanonical<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // Convert weight and bias params from the canonical form to a
@@ -1447,9 +1444,7 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
                               .HostMemory("input_size")     \
                               .TypeConstraint<T>("T"),      \
                           CudnnRNNCanonicalToParams<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #define REGISTER_GPU(T)                                       \
@@ -1460,9 +1455,7 @@ TF_CALL_double(REGISTER_GPU);
                               .HostMemory("input_size")       \
                               .TypeConstraint<T>("T"),        \
                           CudnnRNNCanonicalToParams<GPUDevice, T>);
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // Run the forward operation of the RNN model.
@@ -1615,9 +1608,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       Name("CudnnRNN").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       CudnnRNNForwardOp<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 template <typename T>
@@ -1816,9 +1807,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
                               .TypeConstraint<T>("T"),     \
                           CudnnRNNForwardOpV2<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 template <typename T>
@@ -1875,9 +1864,7 @@ class CudnnRNNForwardOpV3<GPUDevice, T>
                               .TypeConstraint<T>("T"),        \
                           CudnnRNNForwardOpV3<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // Run the backward operation of the RNN model.
@@ -2068,9 +2055,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       Name("CudnnRNNBackprop").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       CudnnRNNBackwardOp<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 template <typename T>
@@ -2102,9 +2087,7 @@ class CudnnRNNBackwardOpV2<GPUDevice, T>
                               .TypeConstraint<T>("T"),     \
                           CudnnRNNBackwardOpV2<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 template <typename T>
@@ -2144,9 +2127,7 @@ class CudnnRNNBackwardOpV3<GPUDevice, T>
                               .TypeConstraint<T>("T"),        \
                           CudnnRNNBackwardOpV3<GPUDevice, T>);
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // TODO(zhengxq): Add the conversion of Cudnn RNN Params from and to

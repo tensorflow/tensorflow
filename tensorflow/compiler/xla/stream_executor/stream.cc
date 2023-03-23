@@ -2121,6 +2121,42 @@ Stream &Stream::ThenRnnForward(
 Stream &Stream::ThenRnnForward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
+    const DeviceMemory<Eigen::bfloat16> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
+    const dnn::RnnStateTensorDescriptor &input_h_desc,
+    const DeviceMemory<Eigen::bfloat16> &input_h_data,
+    const dnn::RnnStateTensorDescriptor &input_c_desc,
+    const DeviceMemory<Eigen::bfloat16> &input_c_data,
+    const DeviceMemory<Eigen::bfloat16> &params,
+    const dnn::RnnSequenceTensorDescriptor &output_desc,
+    DeviceMemory<Eigen::bfloat16> *output_data,
+    const dnn::RnnStateTensorDescriptor &output_h_desc,
+    DeviceMemory<Eigen::bfloat16> *output_h_data,
+    const dnn::RnnStateTensorDescriptor &output_c_desc,
+    DeviceMemory<Eigen::bfloat16> *output_c_data, bool is_training,
+    ScratchAllocator *reserve_space_allocator,
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
+  // TODO(zhengxq): add VLOG PARAM calls.
+  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+    auto status = dnn->DoRnnForward(
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
+        is_training, reserve_space_allocator, workspace_allocator,
+        output_profile_result);
+    if (!status && !output_profile_result) {
+      SetError();
+    }
+  } else {
+    SetErrorAndLogNoDnnSupport();
+  }
+  return *this;
+}
+
+Stream &Stream::ThenRnnForward(
+    const dnn::RnnDescriptor &rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<float> &input_data,
     const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
@@ -2212,6 +2248,52 @@ Stream &Stream::ThenRnnBackward(
     DeviceMemory<Eigen::half> *input_h_backprop_data,
     DeviceMemory<Eigen::half> *input_c_backprop_data,
     DeviceMemory<Eigen::half> *params_backprop_data,
+    DeviceMemory<uint8_t> *reserve_space_data,
+    ScratchAllocator *workspace_allocator,
+    dnn::ProfileResult *output_profile_result) {
+  // TODO(zhengxq): add VLOG PARAM calls.
+  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+    auto status = dnn->DoRnnBackward(
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
+        output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+        input_backprop_data, input_h_backprop_data, input_c_backprop_data,
+        params_backprop_data, reserve_space_data, workspace_allocator,
+        output_profile_result);
+    if (!status && !output_profile_result) {
+      SetError();
+    }
+  } else {
+    SetError();
+    LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
+  }
+  return *this;
+}
+
+Stream &Stream::ThenRnnBackward(
+    const dnn::RnnDescriptor &rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor &input_desc,
+    const DeviceMemory<Eigen::bfloat16> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
+    const dnn::RnnStateTensorDescriptor &input_h_desc,
+    const DeviceMemory<Eigen::bfloat16> &input_h_data,
+    const dnn::RnnStateTensorDescriptor &input_c_desc,
+    const DeviceMemory<Eigen::bfloat16> &input_c_data,
+    const DeviceMemory<Eigen::bfloat16> &params,
+    const dnn::RnnSequenceTensorDescriptor &output_desc,
+    const DeviceMemory<Eigen::bfloat16> &output_data,
+    const dnn::RnnStateTensorDescriptor &output_h_desc,
+    const DeviceMemory<Eigen::bfloat16> &output_h_data,
+    const dnn::RnnStateTensorDescriptor &output_c_desc,
+    const DeviceMemory<Eigen::bfloat16> &output_c_data,
+    const DeviceMemory<Eigen::bfloat16> &output_backprop_data,
+    const DeviceMemory<Eigen::bfloat16> &output_h_backprop_data,
+    const DeviceMemory<Eigen::bfloat16> &output_c_backprop_data,
+    DeviceMemory<Eigen::bfloat16> *input_backprop_data,
+    DeviceMemory<Eigen::bfloat16> *input_h_backprop_data,
+    DeviceMemory<Eigen::bfloat16> *input_c_backprop_data,
+    DeviceMemory<Eigen::bfloat16> *params_backprop_data,
     DeviceMemory<uint8_t> *reserve_space_data,
     ScratchAllocator *workspace_allocator,
     dnn::ProfileResult *output_profile_result) {
