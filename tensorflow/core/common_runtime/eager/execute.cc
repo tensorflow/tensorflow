@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -350,11 +352,20 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
     const bool is_tpu = device != nullptr && device->device_type() == "TPU";
     // int32 return values can be placed on TPUs.
     // int32 retrun values can be placed on device for eager operations.
+    FullTypeDef ft = tensor_handle->FullType();
     const bool use_host_memory =
         is_tpu || (!op.is_function() && device != cpu_device &&
                    !is_host_memory_arg)
             ? MTypeFromDTypeIntsOnDevice(tensor_handle->dtype)
             : MTypeFromDType(tensor_handle->dtype);
+    if (use_host_memory) {
+      Int32FulltypePass int32_ft("GetDeviceForInput");
+      TF_RETURN_IF_ERROR(int32_ft.Int32FullTypeForTensor(
+          tensor_handle->dtype, &ft, /*set_only_int32=*/false));
+      VLOG(2)
+          << "Full type information with TFT_SHAPE_TENSOR for int32 for eager '"
+          << tensor_handle->DebugString();
+    }
     if (use_host_memory) {
       *result = cpu_device;
     } else {

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
@@ -669,6 +670,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       bool ints_on_device =
           (device_type == "TPU" || device_type == "XLA_CPU" ||
            device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
+      Int32FulltypePass int32_fulltype(
+          "ProcessFunctionLibraryRuntime::InstantiateMultiDevice");
+      status->Update(int32_fulltype.ProcessGraph(subgraph, ints_on_device));
+      if (!status->ok()) {
+        counter.DecrementCount();
+        return;
+      }
       status->Update(UpdateArgAndRetvalMetadata(
           subgraph, &comp_data->arg_indices, &comp_data->ret_indices,
           &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
