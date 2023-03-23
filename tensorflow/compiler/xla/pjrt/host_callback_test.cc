@@ -91,7 +91,8 @@ TEST(HostCallbackTest, Basic) {
 
   auto context = CreateHostCallbackStateAndAppendSendRecvCallbacks(
       std::move(host_callback), &test_host_memory_for_device_manager,
-      send_callbacks, recv_callbacks);
+      send_callbacks, recv_callbacks,
+      /*use_major_to_minor_data_layout_for_callback=*/false);
 
   PjRtTransferMetadata metadata;
   metadata.device_shape = shape;

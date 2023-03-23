@@ -76,6 +76,7 @@ PyLoadedExecutable::PyLoadedExecutable(
     VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
             << ": " << *fingerprint_;
   }
+  options_.use_major_to_minor_data_layout_for_callbacks = true;
 }
 
 PyLoadedExecutable::~PyLoadedExecutable() {
@@ -186,14 +187,11 @@ StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
     auto opts = options;
     std::shared_ptr<HostCallbackStates> host_callback_states;
     if (!host_callbacks.empty()) {
-      auto* host_memory_for_device_manager =
-          client->pjrt_client()->GetPjRtHostMemoryForDeviceManager();
-      if (host_memory_for_device_manager == nullptr) {
+      if (!client->pjrt_client()->SupportsSendRecvCallbacks()) {
         return InternalError("Host callback not supported for runtime type: %s",
                              client->runtime_type());
       }
       returned_futures.emplace();
-
       host_callback_states = std::make_shared<HostCallbackStates>();
 
       for (int i = 0; i < num_computations; ++i) {
@@ -206,7 +204,9 @@ StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
         for (const py::capsule& host_callback : host_callbacks) {
           contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
               *host_callback.get_pointer<HostCallback>(),
-              host_memory_for_device_manager, send_callbacks, recv_callbacks));
+              /*host_memory_for_device_manager=*/nullptr, send_callbacks,
+              recv_callbacks,
+              /*use_major_to_minor_data_layout_for_callbacks=*/true));
         }
       }
       opts.send_callbacks = host_callback_states->send_callbacks;
