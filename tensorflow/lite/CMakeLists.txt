@@ -355,6 +355,14 @@ if(TFLITE_ENABLE_GPU)
     enable_language(OBJCXX)
     list(APPEND TFLITE_DELEGATES_METAL_SRCS
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal_delegate.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer_convert.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/common.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/compute_task.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_arguments.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_device.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_spatial_tensor.cc
     )
     add_library(metal_delegate STATIC
       ${TFLITE_DELEGATES_METAL_SRCS}
@@ -362,8 +370,28 @@ if(TFLITE_ENABLE_GPU)
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
+      PRIVATE ${TENSORFLOW_SOURCE_DIR}
     )
-
+    #
+    # generate flatbuffers header for inference_context
+    #
+    if(FLATBUFFERS_FLATC_EXECUTABLE)
+      set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
+    else()
+      set(FLATC flatc)
+    endif()
+    add_custom_command(
+        OUTPUT ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+        COMMAND ${FLATC} --scoped-enums
+        -I ${TENSORFLOW_SOURCE_DIR}
+        -o ${TFLITE_SOURCE_DIR}/delegates/gpu/metal
+        -c ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
+    )
+    add_custom_target(
+        inference_context_cc_fbs
+        DEPENDS ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+    )
+    add_dependencies(metal_delegate inference_context_cc_fbs)
     #
     # supplementary libraries for libmetal_delegate
     #
@@ -371,11 +399,9 @@ if(TFLITE_ENABLE_GPU)
         buffer
         compute_task
         inference_context
-        linear_storage
         metal_arguments
         metal_device
         metal_spatial_tensor
-        texture2d
     )
    SET(METAL_DELEGATE_PATH ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/)
 
