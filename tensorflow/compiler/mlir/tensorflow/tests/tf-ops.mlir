@@ -2639,7 +2639,7 @@ func.func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 func.func @testTranspose(tensor<2x2xf32>) -> tensor<2x2xf32> {
 ^bb0(%arg0: tensor<2x2xf32>):
   %cst = arith.constant dense<[1, -3]> : tensor<2xi32>
-  // expected-error @+1 {{perm[-1] must be in [-rank, rank)}}
+  // expected-error @+1 {{'tf.Transpose' op perm[1]=-3 must be in range [-2, 2)}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
 }
