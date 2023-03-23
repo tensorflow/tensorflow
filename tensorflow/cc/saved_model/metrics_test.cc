@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/metrics.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -89,6 +91,17 @@ TEST(MetricsTest, TestWritePath) {
   EXPECT_EQ(SavedModelWritePath().value(), "bar");
 }
 
+TEST(MetricsTest, TestWritePathAndSingleprint) {
+  EXPECT_EQ(SavedModelWritePathAndSingleprint().value(), "");
+  SavedModelWritePathAndSingleprint().Set("foo");
+  EXPECT_EQ(SavedModelWritePathAndSingleprint().value(), "foo");
+  SavedModelWritePathAndSingleprint().Set("bar");
+  EXPECT_EQ(SavedModelWritePathAndSingleprint().value(), "bar");
+
+  EXPECT_EQ(MakeSavedModelPathAndSingleprint("path", "singleprint"),
+            "path:singleprint");
+}
+
 TEST(MetricsTest, TestReadFingerprint) {
   EXPECT_EQ(SavedModelReadFingerprint().value(), "");
   SavedModelReadFingerprint().Set("foo");
@@ -103,6 +116,19 @@ TEST(MetricsTest, TestReadPath) {
   EXPECT_EQ(SavedModelReadPath().value(), "foo");
   SavedModelReadPath().Set("bar");
   EXPECT_EQ(SavedModelReadPath().value(), "bar");
+}
+
+TEST(MetricsTest, TestReadPathAndSingleprint) {
+  EXPECT_EQ(SavedModelReadPathAndSingleprint().value(), "");
+  SavedModelReadPathAndSingleprint().Set("foo");
+  EXPECT_EQ(SavedModelReadPathAndSingleprint().value(), "foo");
+  SavedModelReadPathAndSingleprint().Set("bar");
+  EXPECT_EQ(SavedModelReadPathAndSingleprint().value(), "bar");
+
+  auto [path, singleprint] =
+      ParseSavedModelPathAndSingleprint("path/model:name:singleprint");
+  EXPECT_EQ(path, "path/model:name");
+  EXPECT_EQ(singleprint, "singleprint");
 }
 
 }  // namespace metrics
