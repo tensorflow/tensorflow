@@ -358,7 +358,6 @@ TEST(CApiSimple, DelegateFails) {
 
 struct DelegateState {
   bool delegate_prepared;
-  TfLiteRegistrationExternal* delegate_kernel_registration_external;
 };
 
 struct OpState {
@@ -408,10 +407,8 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
-  TfLiteRegistrationExternal* delegate_kernel_registration_external =
-      CreateDelegateKernelExternalRegistration();
   // Create and install a delegate instance.
-  DelegateState delegate_state{false, delegate_kernel_registration_external};
+  DelegateState delegate_state{false};
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
   opaque_delegate_builder.data = &delegate_state;
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
@@ -432,7 +429,7 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
     EXPECT_NE(registration_external, nullptr);
 
     TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
-        opaque_context, delegate_state->delegate_kernel_registration_external,
+        opaque_context, CreateDelegateKernelExternalRegistration(),
         execution_plan, opaque_delegate);
 
     return kTfLiteOk;
@@ -471,10 +468,8 @@ TEST(CApiSimple,
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
-  TfLiteRegistrationExternal* delegate_kernel_registration_external =
-      CreateDelegateKernelExternalRegistration();
   // Create and install a delegate instance.
-  DelegateState delegate_state{false, delegate_kernel_registration_external};
+  DelegateState delegate_state{false};
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
   opaque_delegate_builder.data = &delegate_state;
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
@@ -493,7 +488,7 @@ TEST(CApiSimple,
     // Create a fake execution plan to avoid replacing nodes.
     TfLiteIntArray* fake_execution_plan = TfLiteIntArrayCreate(0);
     TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
-        opaque_context, delegate_state->delegate_kernel_registration_external,
+        opaque_context, CreateDelegateKernelExternalRegistration(),
         fake_execution_plan, opaque_delegate);
     TfLiteIntArrayFree(fake_execution_plan);
 
@@ -528,10 +523,8 @@ TEST_F(TestFP16Delegation,
        ReplaceNodeSubsetsWithDelegateKernels_MultipleDelegateKernels) {
   g_nodes_to_replace = new std::vector<int>();
 
-  TfLiteRegistrationExternal* delegate_kernel_registration_external =
-      CreateDelegateKernelExternalRegistration();
   // Create and install a delegate instance.
-  DelegateState delegate_state{false, delegate_kernel_registration_external};
+  DelegateState delegate_state{false};
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
   opaque_delegate_builder.data = &delegate_state;
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
@@ -564,7 +557,7 @@ TEST_F(TestFP16Delegation,
     }
 
     TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
-        opaque_context, delegate_state->delegate_kernel_registration_external,
+        opaque_context, CreateDelegateKernelExternalRegistration(),
         subset_to_replace, opaque_delegate);
 
     TfLiteIntArrayFree(subset_to_replace);
@@ -679,15 +672,12 @@ TEST(CApiSimple, ModelCreateFromFileWithErrorReporter) {
   TfLiteModelDelete(model);
 }
 
-TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {
-  struct DelegateKernelState {
-    TfLiteOpaqueTensor* input_tensor = nullptr;
-    TfLiteOpaqueTensor* output_tensor = nullptr;
-  };
+struct DelegateKernelState {
+  TfLiteOpaqueTensor* input_tensor = nullptr;
+  TfLiteOpaqueTensor* output_tensor = nullptr;
+};
 
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
-
+TfLiteRegistrationExternal* CreateReg() {
   auto reg_ex = TfLiteRegistrationExternalCreate(
       kTfLiteBuiltinDelegate, "Test driver delegate", /*version=*/1);
   TfLiteRegistrationExternalSetInit(
@@ -746,12 +736,17 @@ TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {
     DelegateKernelState* state = reinterpret_cast<DelegateKernelState*>(data);
     delete state;
   });
+  return reg_ex;
+}
+
+TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
 
   struct DelegateState {
     bool delegate_prepared = false;
-    TfLiteRegistrationExternal* registration_external = nullptr;
   };
-  DelegateState delegate_state{false, reg_ex};
+  DelegateState delegate_state{false};
 
   // Create and install a delegate instance.
   TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
@@ -788,8 +783,7 @@ TEST(CApiSimple, OpaqueDelegate_TfLiteOpaqueTensorGet) {
     }
 
     TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
-        context, delegate_state->registration_external, nodes_to_replace,
-        opaque_delegate);
+        context, CreateReg(), nodes_to_replace, opaque_delegate);
 
     TfLiteIntArrayFree(nodes_to_replace);
     return kTfLiteOk;
