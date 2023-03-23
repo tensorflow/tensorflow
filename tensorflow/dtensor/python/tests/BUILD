@@ -88,10 +88,6 @@ dtensor_test(
         PATHWAYS,
         PATHWAYS_V3_DONUT_BACKEND,
     ],
-    disable = [
-        PATHWAYS,
-        PATHWAYS_V3_DONUT_BACKEND,
-    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
@@ -102,7 +98,6 @@ dtensor_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -134,7 +129,6 @@ dtensor_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

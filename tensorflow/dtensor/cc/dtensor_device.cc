@@ -1229,7 +1229,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
     StatusOr<
         std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
         tensor_with_layouts = parallel_executor_->Disassemble(t);
-    if (tensor_with_layouts.ok()) {
+    if (!tensor_with_layouts.ok()) {
       TF_SetStatus(status, TF_INTERNAL,
                    absl::StrCat("Failed in Disassemble of parallel executor ",
                                 tensor_with_layouts.status().ToString())
