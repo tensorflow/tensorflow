@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/strings/escaping.h"
@@ -388,7 +389,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
              "attribute";
       return {};
     }
-    return ShapeAttr::get(parser.getContext(), llvm::None);
+    return ShapeAttr::get(parser.getContext(), std::nullopt);
   }
 
   SmallVector<int64_t> shape;
@@ -416,7 +417,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
 
 // Get or create a shape attribute.
 ShapeAttr ShapeAttr::get(MLIRContext* context,
-                         llvm::Optional<ArrayRef<int64_t>> shape) {
+                         std::optional<ArrayRef<int64_t>> shape) {
   if (shape) return Base::get(context, *shape, /*unranked=*/false);
 
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
@@ -430,9 +431,9 @@ ShapeAttr ShapeAttr::get(MLIRContext* context, ShapedType shaped_type) {
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
-llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
+std::optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
   if (hasRank()) return getShape();
-  return llvm::None;
+  return std::nullopt;
 }
 
 bool ShapeAttr::hasRank() const { return !getImpl()->unranked; }
@@ -453,12 +454,12 @@ bool ShapeAttr::hasStaticShape() const {
 }
 
 namespace {
-// Returns the shape of the given value if it's ranked; returns llvm::None
+// Returns the shape of the given value if it's ranked; returns std::nullopt
 // otherwise.
-Optional<ArrayRef<int64_t>> GetShape(Value value) {
+std::optional<ArrayRef<int64_t>> GetShape(Value value) {
   auto shaped_type = value.getType().cast<ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Merges cast compatible shapes and returns a more refined shape. The two
@@ -501,12 +502,12 @@ bool GetCastCompatibleShape(ArrayRef<int64_t> a_shape,
 
 OperandShapeIterator::OperandShapeIterator(Operation::operand_iterator it)
     : llvm::mapped_iterator<Operation::operand_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 ResultShapeIterator::ResultShapeIterator(Operation::result_iterator it)
     : llvm::mapped_iterator<Operation::result_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 //===----------------------------------------------------------------------===//

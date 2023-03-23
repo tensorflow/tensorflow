@@ -46,27 +46,10 @@ using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
-Status RegisterDataset(const std::string& dataset_id, uint64 fingerprint,
-                       DispatcherState& state) {
-  Update update;
-  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
-  register_dataset->set_dataset_id(dataset_id);
-  register_dataset->set_fingerprint(fingerprint);
-  register_dataset->set_dedupe_by_dataset_id(false);
-  return state.Apply(update);
-}
-
 Status RegisterDataset(const std::string& dataset_id, DispatcherState& state) {
-  return RegisterDataset(dataset_id, /*fingerprint=*/1, state);
-}
-
-Status RegisterDataset(const std::string& dataset_id, uint64_t fingerprint,
-                       bool dedupe_by_dataset_id, DispatcherState& state) {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
-  register_dataset->set_fingerprint(fingerprint);
-  register_dataset->set_dedupe_by_dataset_id(dedupe_by_dataset_id);
   return state.Apply(update);
 }
 
@@ -154,74 +137,35 @@ Status Snapshot(const std::string& path, DispatcherState& state) {
 }  // namespace
 
 TEST(DispatcherState, RegisterDataset) {
-  uint64 fingerprint = 20;
   DispatcherState state;
   std::string dataset_id = state.NextAvailableDatasetId();
   int64_t dataset_id_int;
   ASSERT_TRUE(absl::SimpleAtoi(dataset_id, &dataset_id_int));
-  TF_EXPECT_OK(RegisterDataset(dataset_id, fingerprint, state));
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
   EXPECT_EQ(state.NextAvailableDatasetId(), absl::StrCat(dataset_id_int + 1));
-
-  {
-    std::shared_ptr<const Dataset> dataset;
-    TF_EXPECT_OK(state.DatasetFromFingerprint(fingerprint, dataset));
-    EXPECT_EQ(dataset->dataset_id, dataset_id);
-    EXPECT_TRUE(dataset->metadata.element_spec().empty());
-    EXPECT_EQ(dataset->metadata.compression(),
-              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
-  }
-  {
-    std::shared_ptr<const Dataset> dataset;
-    TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
-    EXPECT_EQ(dataset->fingerprint, fingerprint);
-    EXPECT_TRUE(dataset->metadata.element_spec().empty());
-    EXPECT_EQ(dataset->metadata.compression(),
-              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
-  }
+  std::shared_ptr<const Dataset> dataset;
+  TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
+  EXPECT_TRUE(dataset->metadata.element_spec().empty());
+  EXPECT_EQ(dataset->metadata.compression(),
+            DataServiceMetadata::COMPRESSION_UNSPECIFIED);
 }
 
 TEST(DispatcherState, RegisterDatasetWithExplicitID) {
-  const uint64_t fingerprint = 20;
   DispatcherState state;
-  TF_EXPECT_OK(RegisterDataset("dataset_id", fingerprint,
-                               /*dedupe_by_dataset_id=*/true, state));
+  TF_EXPECT_OK(RegisterDataset("dataset_id", state));
   std::shared_ptr<const Dataset> dataset;
   TF_EXPECT_OK(state.DatasetFromId("dataset_id", dataset));
   EXPECT_EQ(dataset->dataset_id, "dataset_id");
-  // The fingerprint is not registered if the user requests an explicit ID.
-  EXPECT_THAT(state.DatasetFromFingerprint(fingerprint, dataset),
-              StatusIs(error::NOT_FOUND));
 }
 
 TEST(DispatcherState, RegisterDatasetsWithDifferentIDs) {
-  const uint64_t fingerprint = 20;
   DispatcherState state;
-  TF_EXPECT_OK(RegisterDataset("dataset_id1", fingerprint,
-                               /*dedupe_by_dataset_id=*/true, state));
-  TF_EXPECT_OK(RegisterDataset("dataset_id2", fingerprint,
-                               /*dedupe_by_dataset_id=*/true, state));
+  TF_EXPECT_OK(RegisterDataset("dataset_id1", state));
+  TF_EXPECT_OK(RegisterDataset("dataset_id2", state));
   std::shared_ptr<const Dataset> dataset;
   TF_EXPECT_OK(state.DatasetFromId("dataset_id1", dataset));
   EXPECT_EQ(dataset->dataset_id, "dataset_id1");
   TF_EXPECT_OK(state.DatasetFromId("dataset_id2", dataset));
-  EXPECT_EQ(dataset->dataset_id, "dataset_id2");
-}
-
-TEST(DispatcherState, RegisterDatasetsWithExplicitAndAnonymousIDs) {
-  const uint64_t fingerprint = 20;
-  DispatcherState state;
-  TF_EXPECT_OK(RegisterDataset("dataset_id1", fingerprint,
-                               /*dedupe_by_dataset_id=*/true, state));
-  TF_EXPECT_OK(RegisterDataset("dataset_id2", fingerprint,
-                               /*dedupe_by_dataset_id=*/false, state));
-  std::shared_ptr<const Dataset> dataset;
-  TF_EXPECT_OK(state.DatasetFromId("dataset_id1", dataset));
-  EXPECT_EQ(dataset->dataset_id, "dataset_id1");
-  TF_EXPECT_OK(state.DatasetFromId("dataset_id2", dataset));
-  EXPECT_EQ(dataset->dataset_id, "dataset_id2");
-  // The fingerprint is not registered if the user requests an explicit ID. So
-  // the following query returns "dataset_id2".
-  TF_EXPECT_OK(state.DatasetFromFingerprint(fingerprint, dataset));
   EXPECT_EQ(dataset->dataset_id, "dataset_id2");
 }
 
@@ -248,7 +192,6 @@ TEST(DispatcherState, RegisterDatasetElementSpec) {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
-  register_dataset->set_fingerprint(20);
   register_dataset->mutable_metadata()->set_element_spec(
       "encoded_element_spec");
   TF_ASSERT_OK(state.Apply(update));
@@ -266,21 +209,13 @@ TEST(DispatcherState, MissingDatasetId) {
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
-TEST(DispatcherState, MissingDatasetFingerprint) {
-  DispatcherState state;
-  std::shared_ptr<const Dataset> dataset;
-  Status s = state.DatasetFromFingerprint(0, dataset);
-  EXPECT_EQ(s.code(), error::NOT_FOUND);
-}
-
 TEST(DispatcherState, NextAvailableDatasetId) {
   DispatcherState state;
   std::string dataset_id = state.NextAvailableDatasetId();
   int64_t dataset_id_int;
   ASSERT_TRUE(absl::SimpleAtoi(dataset_id, &dataset_id_int));
 
-  uint64 fingerprint = 20;
-  TF_EXPECT_OK(RegisterDataset(dataset_id, fingerprint, state));
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
   EXPECT_NE(state.NextAvailableDatasetId(), dataset_id);
   EXPECT_EQ(state.NextAvailableDatasetId(), absl::StrCat(dataset_id_int + 1));
   EXPECT_EQ(state.NextAvailableDatasetId(), state.NextAvailableDatasetId());

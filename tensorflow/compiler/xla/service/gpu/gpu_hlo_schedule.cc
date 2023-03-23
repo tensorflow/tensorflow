@@ -15,18 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
-#include <cstddef>
 #include <deque>
-#include <iostream>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
@@ -176,6 +173,7 @@ StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
 SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
+  config.collective_permute_overlap_limit = 1;
   config.use_real_cost_model = false;
   config.aggressive_scheduling_policies = true;
 
@@ -184,16 +182,23 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
   return config;
 }
 
-// Latency estimator that assigns uniform latency and cost for all instructions.
-// The expectation is that this should keep the schedule "mostly" unchanged.
-class GpuLatencyEstimatorNop : public LatencyEstimator {
+class GpuLatencyEstimator : public ApproximateLatencyEstimator {
  public:
-  TimeCost GetLatencyBetween(const HloGraphNode& from,
-                             const HloGraphNode& target) const override {
-    return 1.0;
+  TimeCost NodeCost(const HloInstruction* instr) const override {
+    // Consider cublas/cuddn/softmax custom calls as medium cost. Since the
+    // latency between async-start and async-done is 5000 and cost of each
+    // custom call is 1000, the LHS will try to schedule approximately 5 of
+    // these in between each start/end pair.
+    if (instr->opcode() == HloOpcode::kCustomCall) {
+      if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
+        return ApproximateLatencyEstimator::kMediumCost;
+      }
+      // consider other custom calls as medium cost for now. Keeping the case
+      // explicitly separate for further tuning.
+      return ApproximateLatencyEstimator::kMediumCost;
+    }
+    return ApproximateLatencyEstimator::NodeCost(instr);
   }
-  TimeCost NodeCost(const HloInstruction* instr) const override { return 1.0; }
-  int CyclesPerMicrosecond() const override { return 1; }
 };
 
 }  // end namespace
@@ -224,7 +229,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     return OkStatus();
   }
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
-  auto latency_estimator = std::make_unique<GpuLatencyEstimatorNop>();
+  auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
   auto async_tracker = std::make_unique<AsyncTracker>(config);
 
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {

@@ -9,6 +9,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 **`Documentation`** |
@@ -97,8 +98,8 @@ uphold this code.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, please see
-[TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss)
-for general questions and discussion, and please direct specific questions to
+[TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
+discussion, and please direct specific questions to
 [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
 The TensorFlow project strives to abide by generally accepted best practices in

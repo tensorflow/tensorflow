@@ -126,6 +126,7 @@ struct TernaryClipOp<GPUDevice, T> {
   template struct BinaryLeftClipOp<GPUDevice, T>;  \
   template struct TernaryClipOp<GPUDevice, T>;
 INSTANTIATE_GPU(Eigen::half);
+INSTANTIATE_GPU(bfloat16);
 INSTANTIATE_GPU(float);
 INSTANTIATE_GPU(double);
 INSTANTIATE_GPU(int8);

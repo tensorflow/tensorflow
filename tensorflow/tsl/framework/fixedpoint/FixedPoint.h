@@ -39,7 +39,10 @@ limitations under the License.
 #include "tensorflow/tsl/framework/fixedpoint/PacketMathAVX.h"
 
 #elif defined EIGEN_VECTORIZE_NEON
+#define EIGEN_USE_OPTIMIZED_INT8_INT8_MAT_MAT_PRODUCT
 #define EIGEN_USE_OPTIMIZED_INT8_UINT8_MAT_MAT_PRODUCT
+#define EIGEN_USE_OPTIMIZED_UINT8_INT8_MAT_MAT_PRODUCT
+#define EIGEN_USE_OPTIMIZED_INT16_INT16_MAT_MAT_PRODUCT
 #include "tensorflow/tsl/framework/fixedpoint/MatMatProductNEON.h"
 #endif
 

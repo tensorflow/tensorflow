@@ -109,6 +109,11 @@ extern const absl::string_view kCudnnConvBackwardInputCallTarget;
 extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
 extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
 
+// cuDNN specific convolution helper (emitted together with a int8x32
+// convolution, if reordering is required).
+extern const absl::string_view kCudnnConvReorderFilterCallTarget;
+extern const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget;
+
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
 //
@@ -116,6 +121,10 @@ extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
 // one of the kCudnnConvFoo constants above, but returns *false* for HLOs with a
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to cuDNN convolution
+// reordering helper (required for int8x32 convolutions).
+bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
 }  // namespace gpu
 }  // namespace xla

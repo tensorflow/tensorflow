@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.sparse_ops import sparse_xent_op_test_base
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -44,9 +45,9 @@ def _sparse_vs_dense_xent_benchmark_dense(labels, logits):
     num_entries = array_ops.shape(logits)[1]
     length = batch_size * num_entries
     labels += num_entries * math_ops.range(batch_size)
-    target = sparse_ops.sparse_to_dense(labels,
-                                        array_ops.stack([length]), 1.0, 0.0)
-  target = array_ops.reshape(target, array_ops.stack([-1, num_entries]))
+    target = sparse_ops.sparse_to_dense(
+        labels, array_ops_stack.stack([length]), 1.0, 0.0)
+  target = array_ops.reshape(target, array_ops_stack.stack([-1, num_entries]))
   crossent = nn_ops.softmax_cross_entropy_with_logits(
       labels=target, logits=logits, name="SequenceLoss/CrossEntropy")
   crossent_sum = math_ops.reduce_sum(crossent)

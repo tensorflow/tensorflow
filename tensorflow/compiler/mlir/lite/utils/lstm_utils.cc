@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 
 #include <algorithm>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -728,21 +728,25 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
       indy ? CreateFlattenOP(recurrent_weights_array->getResult(0),
                              func_op.getLoc(), builder)
                  .getResult()
+                 .cast<Value>()
            : recurrent_weights_array->getResult(0);
   Value recurrent_to_forget_weights =
       indy ? CreateFlattenOP(recurrent_weights_array->getResult(1),
                              func_op.getLoc(), builder)
                  .getResult()
+                 .cast<Value>()
            : recurrent_weights_array->getResult(1);
   Value recurrent_to_cell_weights =
       indy ? CreateFlattenOP(recurrent_weights_array->getResult(2),
                              func_op.getLoc(), builder)
                  .getResult()
+                 .cast<Value>()
            : recurrent_weights_array->getResult(2);
   Value recurrent_to_output_weights =
       indy ? CreateFlattenOP(recurrent_weights_array->getResult(3),
                              func_op.getLoc(), builder)
                  .getResult()
+                 .cast<Value>()
            : recurrent_weights_array->getResult(3);
 
   // Splits the bias into 4:

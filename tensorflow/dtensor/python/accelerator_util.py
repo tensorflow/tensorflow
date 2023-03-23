@@ -118,7 +118,9 @@ def initialize_multi_client_cluster(job_name: str,
     v1=[])
 def initialize_accelerator_system(
     device_type: Optional[str] = None,
-    enable_coordination_service: Optional[bool] = True) -> str:
+    enable_coordination_service: Optional[bool] = True,
+    experimental_reset_context: Optional[bool] = False,
+) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
 
   DTensor configures TensorFlow to run in the local mode or multi-client mode.
@@ -158,6 +160,11 @@ def initialize_accelerator_system(
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, when
       there is more than 1 client.
+    experimental_reset_context: Reset the tensorflow context. Behaviors of
+      existing TensorFlow objects (e.g. Tensors) are undefined. Set this to True
+      as an escape hatch, if there is no clear way to refactor your code to call
+      initialize_accelerator_system() before calling TensorFlow APIs that
+      initialize the context.
 
   Returns:
     device_type: the type of accelerator that was initialized.
@@ -169,6 +176,14 @@ def initialize_accelerator_system(
     raise ValueError(
         "Accelerator system has already been initialized. "
         "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
+
+  if experimental_reset_context:
+    logging.warn(
+        "experimental_reset_context is True. "
+        "Resetting TensorFlow context. Existing TensorFlow objects "
+        "(e.g. Tensors and resources) are invalidated."
+    )
+    context.context().ensure_uninitialized()  # pylint: disable=protected-access
 
   if context.context()._initialized:  # pylint: disable=protected-access
     raise ValueError(
@@ -189,12 +204,14 @@ def initialize_accelerator_system(
   if config.gpu_use_nccl_communication():
     logical_gpu_count = config.num_local_devices("GPU")
     physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
-    if logical_gpu_count != physical_gpu_count:
+    if logical_gpu_count > physical_gpu_count:
       raise ValueError(
-          f"DTENSOR_GPU_USE_NCCL_COMMUNICATION is set for using NCCL. "
-          f"NCCL Collectives require same number of logical and physical GPUs. "
+          "DTENSOR_GPU_USE_NCCL_COMMUNICATION is set for using NCCL. "
+          "NCCL Collectives require one to one mapping between logical and "
+          "physical GPUs. "
           f"The number of logical GPU ({logical_gpu_count}) "
-          f"differs from the number of physical GPU ({physical_gpu_count}).")
+          f"is more than the number of physical GPU ({physical_gpu_count})."
+      )
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):

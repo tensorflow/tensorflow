@@ -61,6 +61,9 @@ extern const char kXlaShardingStrategyAttr[];
 extern const char kXlaShardingStrategyMod[];
 extern const char kXlaShardingStrategyDiv[];
 
+// XLA frontend attribute for pad value.
+extern const char kXlaPadValueAttr[];
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SIDE_EFFECT_UTIL_H_

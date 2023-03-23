@@ -20,12 +20,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "pybind11/chrono.h"
-#include "pybind11/complex.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/chrono.h"  // from @pybind11
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_cancellation_manager_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
@@ -801,6 +801,17 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                                     status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
+  m.def(
+      "TFE_ContextGetFunction",
+      [](py::handle& ctx, const char* function_name) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        TF_Function* tf_function = TFE_ContextGetFunction(
+            tensorflow::InputTFE_Context(ctx), function_name, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return tf_function;
+      },
+      py::return_value_policy::reference);
   m.def("TFE_ContextGetFunctionDef",
         [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
           tensorflow::Safe_TF_StatusPtr status =
@@ -926,12 +937,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       py::return_value_policy::reference);
   m.def(
       "TFE_GetConfigKeyValue",
-      [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
+      [](py::handle& ctx, const char* config_key, int64_t timeout_in_ms,
+         TF_Buffer& config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         Py_BEGIN_ALLOW_THREADS;
         TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
-                              &config_value, status.get());
+                              timeout_in_ms, &config_value, status.get());
         Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },
@@ -1323,8 +1335,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
     // TODO(mdan): This cast might need rewriting to ImmediateExecutionContext.
-    tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
-        tensorflow::InputTFE_Context(ctx)));
+    if (ctx.is_none()) {
+      tensorflow::SetCEagerContext(nullptr);
+    } else {
+      tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
+          tensorflow::InputTFE_Context(ctx)));
+    }
   });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));

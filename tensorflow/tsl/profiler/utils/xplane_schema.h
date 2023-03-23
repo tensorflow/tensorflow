@@ -55,6 +55,10 @@ TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 TF_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
 // Name of XPlane that contains events from python tracer.
 TF_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
+// Name of XPlane that contains kTrace thread-switch events
+TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
+// Name of XPlane that contains kTrace system calls.
+TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
@@ -279,7 +283,12 @@ enum StatType {
   kSymbolId,
   kTfOpName,
   kDmaStallDurationPs,
-  kLastStatType = kDmaStallDurationPs
+  kKey,
+  kPayloadSizeBytes,
+  kDuration,
+  kBufferSize,
+  kTransfers,
+  kLastStatType = kTransfers,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {
@@ -310,6 +319,8 @@ bool IsStatType(StatType stat_type, absl::string_view stat_name);
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
+
+bool IsTensorCorePlaneName(absl::string_view plane_name);
 
 absl::optional<int64_t> FindStatType(absl::string_view stat_name);
 

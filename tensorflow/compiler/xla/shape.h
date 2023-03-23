@@ -123,7 +123,8 @@ class Shape {
 
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
-  int64_t dimensions(int index) const;
+  int64_t dimensions(int index) const { return dimensions_.at(index); }
+
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
     return dimensions_.at(layout_->minor_to_major(index));

@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_C_C_API_INTERNAL_H_
 #define TENSORFLOW_C_C_API_INTERNAL_H_
 
-#include "tensorflow/c/c_api.h"
-
 #include <list>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "tensorflow/c/c_api.h"
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
@@ -34,11 +34,12 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -115,6 +116,9 @@ struct TF_OperationDescription {
 
 struct TF_Operation {
   tensorflow::Node node;
+
+ private:
+  ~TF_Operation() = default;
 };
 
 struct TF_Session {
@@ -156,8 +160,7 @@ struct TF_DeviceList {
 };
 
 struct TF_Function {
-  tensorflow::FunctionDef fdef;
-  tensorflow::StackTracesMap stack_traces;
+  tensorflow::FunctionRecord* record;
 };
 
 struct TF_ApiDefMap {

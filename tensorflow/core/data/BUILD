@@ -462,7 +462,11 @@ cc_library(
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 

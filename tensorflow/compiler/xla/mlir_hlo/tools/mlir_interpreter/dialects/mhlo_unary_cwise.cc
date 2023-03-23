@@ -15,57 +15,13 @@ limitations under the License.
 
 #include <complex>
 
+#include "tools/mlir_interpreter/dialects/cwise_math.h"
 #include "tools/mlir_interpreter/framework/interpreter_value_util.h"
 #include "tools/mlir_interpreter/framework/registration.h"
 
 namespace mlir {
 namespace interpreter {
 namespace {
-
-struct Clz : CwiseInt {
-  template <typename T>
-  static T apply(T a) {
-    if (!a) {
-      // Return something well-defined for zeroes.
-      return sizeof(T{}) * CHAR_BIT;
-    }
-    return __builtin_clzl(
-               static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a))) -
-           (sizeof(uint64_t) - sizeof(T{})) * CHAR_BIT;
-  }
-};
-
-struct ExpM1 : CwiseNonIntegral {
-  template <typename T>
-  static T apply(T a) {
-    if constexpr (std::is_floating_point_v<T>) {
-      return std::expm1(a);
-    } else {
-      auto r = std::real(a);
-      auto i = std::imag(a);
-      auto s = std::sin(i / 2);
-      auto real = std::expm1(r) * std::cos(i) - 2 * s * s;
-      auto imag = std::exp(r) * std::sin(i);
-      return {real, imag};
-    }
-  }
-};
-
-struct Log1P : CwiseNonIntegral {
-  template <typename T>
-  static T apply(T a) {
-    if constexpr (std::is_floating_point_v<T>) {
-      return std::log1p(a);
-    } else {
-      auto r = std::real(a);
-      auto i = std::imag(a);
-      auto l = std::hypot(r + 1, i);
-      auto real = std::log(l);
-      auto imag = std::atan2(i, r + 1);
-      return {real, imag};
-    }
-  }
-};
 
 struct Logistic : CwiseNonIntegral {
   template <typename T>
@@ -89,52 +45,12 @@ struct Not : CwiseIntegral {
   }
 };
 
-struct PopCount : CwiseInt {
-  template <typename T>
-  static T apply(T a) {
-    return __builtin_popcountl(
-        static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a)));
-  }
-};
-
-struct RSqrt : CwiseNonIntegral {
-  template <typename T>
-  static T apply(T a) {
-    return static_cast<T>(T{1} / std::sqrt(a));
-  }
-};
-
 struct Sign : CwiseSigned {
   template <typename T>
   static T apply(T a) {
     return std::copysign(T{1}, a);
   }
 };
-
-#define DEFINE_WRAPPER(name, std_fun, trait) \
-  struct name : trait {                      \
-    template <typename T>                    \
-    static auto apply(T a) {                 \
-      return std_fun(a);                     \
-    }                                        \
-  };
-
-DEFINE_WRAPPER(Abs, std::abs, CwiseSignedOrComplex);
-DEFINE_WRAPPER(Cbrt, std::cbrt, CwiseFloat);
-DEFINE_WRAPPER(Ceil, std::ceil, CwiseFloat);
-DEFINE_WRAPPER(Cos, std::cos, CwiseNonIntegral);
-DEFINE_WRAPPER(Exp, std::exp, CwiseNonIntegral);
-DEFINE_WRAPPER(Floor, std::floor, CwiseFloat);
-DEFINE_WRAPPER(Imag, std::imag, CwiseComplex);
-DEFINE_WRAPPER(IsFinite, std::isfinite, CwiseFloat);
-DEFINE_WRAPPER(Log, std::log, CwiseNonIntegral);
-DEFINE_WRAPPER(NearbyInt, std::nearbyint, CwiseFloat);
-DEFINE_WRAPPER(Neg, std::negate<T>{}, CwiseSignedOrComplex);
-DEFINE_WRAPPER(Real, std::real, CwiseComplex);
-DEFINE_WRAPPER(Round, std::round, CwiseFloat);
-DEFINE_WRAPPER(Sin, std::sin, CwiseNonIntegral);
-DEFINE_WRAPPER(Sqrt, std::sqrt, CwiseNonIntegral);
-DEFINE_WRAPPER(TanH, std::tanh, CwiseNonIntegral);
 
 REGISTER_MLIR_INTERPRETER_OP("mhlo.abs", applyCwiseMap<Abs>);
 REGISTER_MLIR_INTERPRETER_OP("mhlo.cbrt", applyCwiseMap<Cbrt>);

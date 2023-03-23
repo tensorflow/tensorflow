@@ -95,6 +95,11 @@ TEST(PathUtilsTest, SnapshotDoneFilePath) {
               MatchesRegex("/path/to/snapshot.DONE"));
 }
 
+TEST(PathUtilsTest, SnapshotErrorFilePath) {
+  EXPECT_THAT(SnapshotErrorFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.ERROR"));
+}
+
 TEST(PathUtilsTest, SnapshotMetadataFilePath) {
   EXPECT_THAT(SnapshotMetadataFilePath("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.snapshot.metadata"));
@@ -103,6 +108,11 @@ TEST(PathUtilsTest, SnapshotMetadataFilePath) {
 TEST(PathUtilsTest, DatasetDefFilePath) {
   EXPECT_THAT(DatasetDefFilePath("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.dataset_def.proto"));
+}
+
+TEST(PathUtilsTest, DatasetSpefFilePath) {
+  EXPECT_THAT(DatasetSpecFilePath("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.dataset_spec.pb"));
 }
 
 TEST(PathUtilsTest, CheckpointsDirectory) {

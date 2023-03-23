@@ -43,11 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -263,9 +263,9 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
           src_strategies->leaf_vector[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
           operand->shape(), input_sharding);
-      std::vector<int64> all_reduce_dims;
-      for (int64 op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
-        int64 mesh_dim = tensor_dim_to_mesh[op_dim];
+      std::vector<int64_t> all_reduce_dims;
+      for (int64_t op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
+        int64_t mesh_dim = tensor_dim_to_mesh[op_dim];
         // Replicates on this mesh dim.
         if (mesh_dim == -1) {
           continue;
@@ -1208,8 +1208,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                               device_mesh.dim(j)))) {
               continue;
             }
-            std::string name = absl::StrCat("S", std::to_string(index_dim),
-                                            " @ ", std::to_string(j));
+            std::string name = absl::StrCat("S", index_dim, " @ ", j);
 
             HloSharding output_spec =
                 Tile(shape, {index_dim}, {j}, device_mesh);
@@ -2006,8 +2005,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     if (s_follow[i] < 0) {
       var_vector_cnt += 1;
       // Creates variables for instructions that do not follow others.
-      solver->MakeBoolVarArray(
-          s_len[i], absl::StrCat("s[", std::to_string(i), "]"), &s[i]);
+      solver->MakeBoolVarArray(s_len[i], absl::StrCat("s[", i, "]"), &s[i]);
     }
   }
 
@@ -2021,10 +2019,9 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   for (size_t i = 0; i < num_edges; ++i) {
     std::pair<int, int> edge = E[i];
-    solver->MakeBoolVarArray(s_len[edge.first] * s_len[edge.second],
-                             absl::StrCat("e[", std::to_string(edge.first), ",",
-                                          std::to_string(edge.second), "]"),
-                             &e[i]);
+    solver->MakeBoolVarArray(
+        s_len[edge.first] * s_len[edge.second],
+        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
   }
 
   // Objective
@@ -2660,7 +2657,8 @@ std::string PrintLivenessSet(const LivenessSet& liveness_set) {
     std::vector<std::string> names;
     names.reserve(liveness_set[i].size());
     for (const HloValue* value : liveness_set[i]) {
-      names.push_back(value->instruction()->name() + value->index().ToString());
+      names.push_back(absl::StrCat(value->instruction()->name(),
+                                   value->index().ToString()));
     }
     std::sort(names.begin(), names.end());
     absl::StrAppend(&str, "Time ", i, ": ", absl::StrJoin(names, ", "), "\n");
@@ -3194,7 +3192,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
         continue;
       }
 
-      VLOG(10) << "SET:  " << output_spec.ToString();
+      VLOG(10) << "SET: " << output_spec.ToString();
 
       if (absl::StartsWith(strategy.name, "RR = RS x SR")) {
         // If set the sharding for this dot instruction, the SPMD
@@ -3773,7 +3771,8 @@ StatusOr<bool> AutoSharding::Run(
   // sharding propagation pass after that before spmd partitioner.
   auto status_or_changed = ProcessShardingInstruction(
       module, execution_threads, /*replace_sharding_with_copy=*/true,
-      &unspecified_dims);
+      &unspecified_dims, /*saved_root_shardings=*/nullptr,
+      /*saved_parameter_shardings=*/nullptr);
   if (!status_or_changed.ok()) {
     return status_or_changed;
   }

@@ -14,7 +14,6 @@ cc_library(
     hdrs = ["hexagon_delegate_op_model.h"],
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -60,7 +59,6 @@ hexagon_op_tests(
     ],
     deps = [
         ":hexagon_delegate_op_model",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:reshape_test_common",
@@ -82,6 +80,8 @@ cc_test(
         "notap",
     ],
     deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
@@ -92,8 +92,6 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/benchmark:benchmark_utils",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
         "@com_google_googletest//:gtest",
     ],
 )

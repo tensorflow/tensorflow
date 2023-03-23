@@ -22,6 +22,7 @@ cc_library(
         ":snapfn",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
         "@org_sqlite",
     ],
 )

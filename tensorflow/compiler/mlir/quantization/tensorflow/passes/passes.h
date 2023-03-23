@@ -45,11 +45,15 @@ CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
+    OpSet target_opset);
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights);
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
+    OpSet op_set, int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -77,7 +81,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
     OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weights);
+    int min_num_elements_for_weight, bool enable_legacy_weight_only = false);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -131,8 +135,27 @@ CreateReplaceCastHacksWithTFXLAOpsPass();
 // will be passed on as a dependency to a new `tf.NoOp`, whose control output
 // will be merged into the main function's FetchOp. The initializer functions
 // will be removed.
+//
+// Running this pass essentially has the effect of inlining the initializer
+// functions into the main graph. This is beneficial when we wish to find and
+// fetch the node that restores resources, after the ModuleOp has been exported
+// as GraphDef.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMergeInitializerFunctionOpsToMainPass();
+
+// Creates a pass that moves & merges the "@tf_quant__save" function to "@main"
+// function. A new `IdentityOp` will be created. It will have control dependency
+// to the save function and returns the file_prefix argument (typed
+// `tensor<!tf_type.string>`). The file_prefix argument, which can be identified
+// if the "tf_saved_model.index_path" attribute has "__tf_file_prefix", will be
+// reused if it already exist in @main. Otherwise a new file prefix argument
+// will be created. @tf_quant__save function will be erased.
+//
+// Running this pass essentially has the effect of inlining the @tf_quant__save
+// into the main graph. This is beneficial when we wish to find and fetch
+// the node that saves the variables, after the ModuleOp has been exported as
+// GraphDef.
+std::unique_ptr<OperationPass<ModuleOp>> CreateMergeSaveFunctionOpsToMainPass();
 
 // Creates a pass that "unfreezes" ConstOps into variables. Each ConstOp's use
 // will be replaced by a VarHandleOp -> ReadVariableOp pattern. The newly
@@ -151,11 +174,41 @@ CreateDuplicateShapeDeterminingConstantsPass();
 // function and replaces tf.Consts with the results of RestoreV2.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();
 
+// Creates a pass that creates a new function that wraps the newly created
+// SaveV2 op. The new function's name is "tf_quant__save". The function accepts
+// a single string tensor as argument, which specifies the path to the
+// checkpoint to which the variable's tensor values are saved. It finds
+// `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` pattern in the initializer
+// function of type "restore_op" to identify the VarHandleOps that should be
+// saved using the SaveV2 op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertSaveOpPass();
+
 // Creates a pass that marks functions with the attribute `tf._noinline = true`
 // to avoid being inlined by the `InlinerPass`. `noinline_functions` is the name
 // of the functions to mark.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
     ArrayRef<std::string> noinline_functions);
+
+// Removes `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` patterns from the
+// initializer function (type = "restore_op").
+// Note: initializing values (`tf.Const`s) will be removed and this may result
+// in an information loss and uninitialized variables eventually. Make sure that
+// this effect is desired (e.g. there is a `tf.RestoreV2Op` that restores the
+// variables instead).
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateRemoveVariableInitializationByConstPass();
+
+// Creates a pass that converts TPU models for CPU by removing TPU related ops
+// such as TPUPartitionedCall, TPUReplicatedOp, etc. The TF quantizer does not
+// work with models specifically designed for TPU, so this pass makes the input
+// TPU model compatible with the TF quantizer by rewriting the TPU ops. The
+// output model of this pass is expected to be ready for the TF quantizer.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass();
+
+// Creates a pass that casts BFloat16 operations to Float32 operations. This
+// pass is a part of the ConvertTpuModelToCpu pass to support BF16 optimized TPU
+// model quantization.
+std::unique_ptr<OperationPass<ModuleOp>> CreateCastBf16OpsToF32Pass();
 
 }  // namespace quant
 }  // namespace mlir

@@ -193,6 +193,7 @@ GenericStepTimeBreakdown ComputeGenericStepTimeBreakdownInMs(
 InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     const protobuf::RepeatedPtrField<PerCoreStepInfo>& grouped_by_step) {
   InputPipelineAnalysisResult result;
+  result.set_tag(false);
 
   // Computes the summary of step time in ms.
   *result.mutable_step_time_summary() =

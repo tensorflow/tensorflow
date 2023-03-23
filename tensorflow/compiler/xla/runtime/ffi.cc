@@ -380,7 +380,7 @@ absl::StatusOr<FfiStateVector> FfiModulesState::state_vector() const {
 
     return absl::InternalError("Unsupported FFI module state");
   }
-  return state_vector;
+  return {std::move(state_vector)};
 }
 
 //===----------------------------------------------------------------------===//

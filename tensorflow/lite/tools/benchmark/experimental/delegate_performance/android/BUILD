@@ -18,6 +18,7 @@ android_library(
     visibility = ["//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs_android",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_java_proto_lite",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_java_proto_lite",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native:benchmark_native",
         "@flatbuffers//:runtime_android",

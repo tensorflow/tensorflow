@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/test_util.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -52,6 +58,41 @@ Status ShapeAnnotationsMatch(
                                    absl::StrJoin(missing, ","));
   }
   return OkStatus();
+}
+
+void DeviceSetup::AddDevicesAndSetUp(
+    const std::vector<std::string>& device_names) {
+  SessionOptions options;
+  auto* device_count = options.config.mutable_device_count();
+  for (const auto& device_name : device_names) {
+    device_count->insert({device_name, 1});
+  }
+
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::AddDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
+
+  OptimizerOptions opts;
+  lib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                         FunctionDefLibrary());
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
+      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
+      /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+  flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
+}
+
+Device* DeviceSetup::GetDevice(const string& device_name) {
+  if (device_mgr_ == nullptr) {
+    return nullptr;
+  }
+
+  string full_device_name = absl::StrCat(
+      "/job:localhost/replica:0/task:0/device:", device_name, ":0");
+  Device* device;
+  TF_CHECK_OK(device_mgr_->LookupDevice(full_device_name, &device));
+  return device;
 }
 
 }  // namespace tensorflow

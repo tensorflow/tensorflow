@@ -15,14 +15,18 @@
 """Tests for tensorflow.learning.training_ops."""
 
 import itertools
+import threading
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -450,6 +454,56 @@ class TrainingOpsTest(TensorFlowTestCase):
 
     param_t = param - alpha_t * m_t / (np.sqrt(v_t) + epsilon)
     return param_t, m_t, v_t
+
+  @test_util.run_v2_only
+  def testResourceSparseApplyAdagradV2AndDisableCopyOnReadRace(self):
+    dtype = np.float32
+    index_type = np.int32
+    x_val = [np.arange(10), np.arange(10, 20), np.arange(20, 30)]
+    y_val = [np.arange(1, 11), np.arange(11, 21), np.arange(21, 31)]
+    x = np.array(x_val).astype(dtype)
+    y = np.array(y_val).astype(dtype)
+    lr = np.array(0.001, dtype=dtype)
+    epsilon = np.array(1e-8, dtype=dtype)
+    grad_val = [np.arange(10), np.arange(10)]
+    grad = np.array(grad_val).astype(dtype)
+    indices = np.array([0, 2]).astype(index_type)
+    var = variables.Variable(x)
+    accum = variables.Variable(y)
+    num_iter = 1000
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def fn_disable_copy_on_read():
+      ret = constant_op.constant(0, dtypes.int32)
+      for i in math_ops.range(num_iter):
+        op1 = resource_variable_ops.disable_copy_on_read(var.handle)
+        op2 = resource_variable_ops.disable_copy_on_read(accum.handle)
+        with ops.control_dependencies([op1, op2]):
+          ret += i
+      return ret
+
+    @def_function.function
+    def fn_resource_sparse_apply_adagrad_v2():
+      ret = constant_op.constant(0, dtypes.int32)
+      for i in math_ops.range(num_iter):
+        adagrad_op = training_ops.resource_sparse_apply_adagrad_v2(
+            var.handle, accum.handle, lr, epsilon, grad,
+            constant_op.constant(indices, dtypes.int32))
+        with ops.control_dependencies([adagrad_op]):
+          ret += i
+      return ret
+
+    # Run two tf.functions simultaneously to make sure there is no race
+    # condition between the two ops that caused deadlock before (b/270712679).
+    thread1 = threading.Thread(
+        target=lambda: self.evaluate(fn_disable_copy_on_read()))
+    thread2 = threading.Thread(
+        target=lambda: self.evaluate(fn_resource_sparse_apply_adagrad_v2()))
+    thread1.start()
+    thread2.start()
+    thread1.join()
+    thread2.join()
 
 
 if __name__ == '__main__':

@@ -77,11 +77,22 @@ TEST_F(ConstantsTest, OneCellU32) {
   ComputeAndCompareR1<uint32_t>(&builder, constant, {});
 }
 
-TEST_F(ConstantsTest, OneCellF8e4m3fn) {
-  std::vector<tsl::float8_e4m3fn> constant = {tsl::float8_e4m3fn{2.0}};
+TEST_F(ConstantsTest, OneCellF16) {
+  std::vector<half> constant = {half{2.0}};
 
   XlaBuilder builder(TestName());
-  auto c = ConstantR1<tsl::float8_e4m3fn>(&builder, constant);
+  auto c = ConstantR1<half>(&builder, constant);
+  // F16 outputs are not yet supported so convert to F32
+  ConvertElementType(c, F32);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f}, {}, error_spec_);
+}
+
+TEST_F(ConstantsTest, OneCellF8e4m3fn) {
+  std::vector<tsl::float8_e5m2> constant = {tsl::float8_e5m2{2.0}};
+
+  XlaBuilder builder(TestName());
+  auto c = ConstantR1<tsl::float8_e5m2>(&builder, constant);
   // F8 outputs are not yet supported so convert to F32
   ConvertElementType(c, F32);
 

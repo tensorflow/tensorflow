@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 
 namespace tflite {
 namespace reference_integer_ops {
@@ -119,20 +118,6 @@ void FullyConnected(const FullyConnectedParams& params,
           static_cast<OutputType>(acc_scaled);
     }
   }
-}
-
-inline void FullyConnectedWithPackedInt4Weights(
-    const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const int8_t* input_data, const RuntimeShape& filter_shape,
-    const int8_t* filter_data, int8_t* unpacked_filter_data,
-    const RuntimeShape& bias_shape, const int32_t* bias_data,
-    const RuntimeShape& output_shape, int8_t* output_data) {
-  TFLITE_DCHECK_NE(unpacked_filter_data, nullptr);
-  tflite::tensor_utils::UnpackDenseInt4IntoInt8(
-      filter_data, filter_shape.FlatSize(), unpacked_filter_data);
-  FullyConnected(params, input_shape, input_data, filter_shape,
-                 unpacked_filter_data, bias_shape, bias_data, output_shape,
-                 output_data);
 }
 
 }  // namespace reference_integer_ops

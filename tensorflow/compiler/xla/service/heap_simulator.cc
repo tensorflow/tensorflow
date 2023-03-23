@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -28,8 +29,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -442,8 +443,9 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
   HeapSimulatorTrace::Event* event = debug_trace_.add_events();
   event->set_kind(kind);
   event->set_buffer_id(buffer->id());
-  event->set_computation_name(instruction->parent()->name());
-  event->set_instruction_name(instruction->name());
+  *event->mutable_computation_name() =
+      std::string(instruction->parent()->name());
+  *event->mutable_instruction_name() = std::string(instruction->name());
   if (kind == HeapSimulatorTrace::Event::SHARE_WITH) {
     CHECK(share_with_canonical != nullptr);
     event->set_share_with_canonical_id(share_with_canonical->id());

@@ -10,7 +10,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler:__subpackages__",
-        "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -157,6 +156,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:shape_util",
@@ -325,7 +325,6 @@ cc_library(
     hdrs = ["tpu_embedding_software_deduplication_rewrite_pass.h"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
@@ -543,6 +544,17 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
 
   mod_op->setAttr(kMeshCoordinatesAttr, builder.getStringAttr(serialized_mesh));
   return mod_op.getZ();
+}
+
+StatusOr<Mesh> GetMeshOnParentCluster(mlir::Operation* op) {
+  mlir::tf_device::ClusterOp cluster =
+      op->getParentOfType<mlir::tf_device::ClusterOp>();
+
+  auto mesh_attr = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
+  if (mesh_attr) {
+    return Mesh::FromString(mesh_attr.getValue().str());
+  }
+  return errors::InvalidArgument("missing mesh attribute on cluster.");
 }
 
 mlir::LogicalResult ValidateMetadataAttributes(mlir::Operation* op) {

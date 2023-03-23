@@ -39,6 +39,10 @@ static constexpr char kDefaultLayoutAttr[] = "_default_layout";
 // `tf` prefix attached in MLIR importer for dialect requirements.
 static constexpr char kCustomDeviceAttr[] = "tf._layout";
 
+// Indicates a default mesh provided by the user as fallback during mesh
+// propagation. `tf` prefix attached in MLIR importer for dialect requirements.
+static constexpr char kCustomDefaultMeshAttr[] = "tf._default_mesh";
+
 // Attribute attached on _Arg node for the mesh config.
 static constexpr char kMeshAttr[] = "_mesh";
 
@@ -137,6 +141,9 @@ static constexpr char kIteratorElementLayouts[] = "tf._element_layouts";
 
 // Attribute used in tf.data ops which stores the shapes of the output elements.
 static constexpr char kIteratorOutputShapes[] = "output_shapes";
+
+// The number of list of regular tensors used to represent sparse tensors.
+static constexpr int kSparseTensorNum = 3;
 
 }  // namespace dtensor
 }  // namespace tensorflow

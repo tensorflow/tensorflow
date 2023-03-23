@@ -82,11 +82,11 @@ def GetTestConfigsDicts(v1_fn,
     if data_format == "NCHW_VECT_C":
       continue
 
-    configs1 += [(data_format, use_gpu, dtypes.float16),
-                 (data_format, use_gpu, dtypes.float64)]
-
-    if use_gpu:
-      configs1 += [(data_format, use_gpu, dtypes.bfloat16)]
+    configs1 += [
+        (data_format, use_gpu, dtypes.float16),
+        (data_format, use_gpu, dtypes.float64),
+        (data_format, use_gpu, dtypes.bfloat16),
+    ]
 
   # Convert from tuple to dict and add v1/v2 versions.
   ret = []
@@ -187,14 +187,26 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def _isMaxPool(self, func):
     return func in (nn_ops.max_pool, nn_ops.max_pool_v2)
 
-  def _VerifyOneType(self, pool_func, input_sizes, ksize, strides, padding,
-                     data_format, data_type, expected, use_gpu, v2,
-                     use_negative_input=False):
+  def _VerifyOneType(
+      self,
+      pool_func,
+      input_sizes,
+      ksize,
+      strides,
+      padding,
+      data_format,
+      data_type,
+      expected,
+      use_gpu,
+      v2,
+      use_negative_input=False,
+      bfloat16_rtol=1e-2,
+  ):
     """Verifies the output values of the pooling function.
 
     Args:
-      pool_func: Function to be called, co.MaxPool, co.AvgPool,
-        or the Lua version.
+      pool_func: Function to be called, co.MaxPool, co.AvgPool, or the Lua
+        version.
       input_sizes: Input tensor dimensions.
       ksize: The kernel size dimensions
       strides: The stride dimensions
@@ -205,6 +217,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       use_gpu: Whether we are running on GPU.
       v2: Whether to use v2 version.
       use_negative_input: If the input values should be negative.
+      bfloat16_rtol: relative tolerance for bfloat16.
     """
     # Check that this test is compatible with the hardware we have.  (Really
     # this should be done in GetTestConfigsDicts(), but when that runs, we
@@ -279,7 +292,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       else:
         actual = self.evaluate(t)
         self.assertShapeEqual(actual, t)
-      self.assertAllCloseAccordingToType(expected, actual.flatten())
+      self.assertAllCloseAccordingToType(
+          expected, actual.flatten(), bfloat16_rtol=bfloat16_rtol
+      )
 
   def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, expected, use_gpu, v2,
@@ -527,7 +542,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         strides=[1, 2, 2, 1],
         padding="SAME",
         expected=expected_output,
-        **kwargs)
+        bfloat16_rtol=3e-2,
+        **kwargs,
+    )
 
   @parameterized.parameters(GetTestConfigsDicts(nn_ops.avg_pool))
   @test_util.run_deprecated_v1
@@ -2315,6 +2332,33 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         padding="SAME",
         data_format=data_format,
         use_gpu=use_gpu)
+
+  def testAvgPoolGradOutputMemoryOutOfBounds(self):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        (
+            # CPU error message
+            "(Output only has 3 elements but computation requested would use"
+            " element with index=6"
+            ")|("
+            # GPU error message
+            r"Expected grad shape to be \[1,1,3,1\], but got \[3,1,3,1\])"
+        ),
+    ):
+      self.evaluate(
+          gen_nn_ops.AvgPoolGrad(
+              orig_input_shape=[1, 1, 3, 1],
+              grad=[
+                  [[[1.0], [2.0], [3.0]]],
+                  [[[4.0], [5.0], [6.0]]],
+                  [[[7.0], [8.0], [9.0]]],
+              ],
+              ksize=[1, 1, 1, 1],
+              strides=[1, 1, 1, 2],
+              padding="VALID",
+              data_format="NHWC",
+          )
+      )
 
   @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):

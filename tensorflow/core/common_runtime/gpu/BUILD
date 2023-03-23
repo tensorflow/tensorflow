@@ -195,6 +195,7 @@ tf_cuda_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_lib",
@@ -204,7 +205,6 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
-        "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
 )
 
@@ -247,7 +247,6 @@ tf_cuda_library(
         ":gpu_id",
         "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -441,7 +440,6 @@ tf_cc_test(
         ":gpu_virtual_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

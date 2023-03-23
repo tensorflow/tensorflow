@@ -37,10 +37,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -183,7 +183,7 @@ quant::QuantizedType DownCastScale(quant::QuantizedType type,
 quant::QuantizedType DownCastScale(quant::QuantizedType type, double min,
                                    double max, Location loc);
 
-bool IsOpNotQuantizable(Operation* op);
+bool IsOpQuantizable(Operation* op);
 
 // Specialized version of location to string for flatbuffer exported locations.
 inline std::string GetTensorNameFromLoc(Location loc) {
@@ -210,6 +210,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
     SmallVector<double, 4> mins, maxs;
 
     if (op.getAxisStats().has_value()) {
+      // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
       auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
@@ -223,6 +224,13 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         // So here we adjust the range to include 0.0.
         rmin = std::min(rmin, 0.0);
         rmax = std::max(rmax, 0.0);
+        if (num_bits == 16) {
+          // TODO(b/266536261): Since the kernel implementation assumes that
+          // 16x8 integer quantization is symmetric, this MLIR quantizer
+          // supports only symmetric quantization.
+          rmax = std::max(std::abs(rmin), std::abs(rmax));
+          rmin = -rmax;
+        }
         TensorRangeSanityCheck(op, rmin, rmax);
         mins.push_back(rmin);
         maxs.push_back(rmax);
@@ -235,6 +243,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       }
     } else if (auto stats =
                    op.getLayerStats().dyn_cast<DenseFPElementsAttr>()) {
+      // Per tensor quantization
       auto statValues = stats.getValues<APFloat>();
       double rmin = FloatAttr::getValueAsDouble(statValues[0]);
       double rmax = FloatAttr::getValueAsDouble(statValues[1]);
@@ -243,6 +252,13 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       // So here we adjust the range to include 0.0.
       rmin = std::min(rmin, 0.0);
       rmax = std::max(rmax, 0.0);
+      if (num_bits == 16) {
+        // TODO(b/266536261): Since the kernel implementation assumes that
+        // 16x8 integer quantization is symmetric, this MLIR quantizer supports
+        // only symmetric quantization.
+        rmax = std::max(std::abs(rmin), std::abs(rmax));
+        rmin = -rmax;
+      }
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
@@ -423,7 +439,7 @@ class QuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (IsOpNotQuantizable(quantizing_op) &&
+      if (!IsOpQuantizable(quantizing_op) &&
           !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
               quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
@@ -630,7 +646,7 @@ class QuantizationPattern : public RewritePattern {
       // compared against in parallel.
       // N.B. the return op will use this floating-point result.
       Value result;
-      if (IsOpNotQuantizable(float_op)) {
+      if (!IsOpQuantizable(float_op)) {
         // For not quantizable ops, search for dequantize attached to the
         // quantized op of the output.
         if (Operation* quantize_op = dyn_cast_or_null<QuantizeOpT>(
@@ -880,14 +896,14 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // the activation ops and weight constants. This is only used for post-training
 // quantization.
 void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
-                                        bool disable_per_channel,
+                                        int bit_width, bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale = false);
 
 void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
-    OpQuantSpecGetter op_quant_spec_getter,
+    mlir::func::FuncOp func, bool is_signed, int bit_width,
+    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale = false);
 
@@ -909,8 +925,12 @@ bool RemoveRedundantStatsOps(mlir::func::FuncOp func,
 quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
                                                 Type tensor_type, double scale,
                                                 int64_t zero_point,
-                                                int64_t storage_min = -128,
-                                                int64_t storage_max = 127);
+                                                int64_t storage_min,
+                                                int64_t storage_max);
+
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point);
 
 // Extrace min and max values from the DenseFPElementsAttr, and stores them into
 // `mins` and `maxs`. When mins and maxs are extracted per-channel, `dim_size`

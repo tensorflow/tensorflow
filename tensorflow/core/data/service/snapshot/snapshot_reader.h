@@ -15,19 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_READER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_READER_H_
 
-#include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/refcount.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -42,8 +41,10 @@ struct SnapshotReaderParams {
   experimental::DistributedSnapshotMetadata metadata;
 
   // Data types of the snapshot data elements.
-  // TODO(b/258691097): Parse the metadata to get the output types.
-  DataTypeVector output_types;
+  DataTypeVector dtypes;
+
+  // Data shape of the snapshot data elements.
+  std::vector<PartialTensorShape> shapes;
 
   // The Tensorflow environment.
   Env* env = nullptr;
@@ -59,41 +60,11 @@ struct SnapshotReaderParams {
   }
 };
 
-// Reads a distributed tf.data snapshot written by `SnapshotManager` and
-// `SnapshotStreamWriter`. See the comment on SnapshotManager for
-// how the directory is structured.
-// TODO(b/258691097): Support parallel read and make it thread-safe.
-// TODO(b/258691097): Support `reader_func`.
-class SnapshotReader {
- public:
-  explicit SnapshotReader(const SnapshotReaderParams& params);
-  virtual ~SnapshotReader() = default;
-  SnapshotReader(const SnapshotReader&) = delete;
-  SnapshotReader& operator=(const SnapshotReader&) = delete;
-
-  // Gets the next element from the snapshot.
-  StatusOr<GetNextResult> GetNext();
-
- private:
-  // Initializes the reader if it's not already initialized. This is called when
-  // `GetNext` is first called.
-  Status EnsureInitialized();
-  // Returns a list of the committed chunks.
-  StatusOr<std::vector<std::string>> GetChunkFiles();
-  // If a chunk file is exhausted, starts reading the next chunk file. If there
-  // are no more files to read, `end_of_sequence_` will be set to true.
-  Status InitializeNextRecordReader();
-
-  const SnapshotReaderParams params_;
-
-  // A list of the committed chunks to read.
-  std::vector<std::string> chunk_files_;
-  // The index of the next chunk to read.
-  uint64_t next_chunk_index_ = 0;
-  bool end_of_sequence_ = false;
-
-  std::unique_ptr<snapshot_util::TFRecordReader> tfrecord_reader_;
-};
+// Creates a dataset that reads tf.data distributed snapshots.
+StatusOr<core::RefCountPtr<DatasetBase>> MakeSnapshotReaderDataset(
+    const SnapshotReaderParams& params,
+    InstantiatedCapturedFunction& instantiated_captured_func,
+    IteratorContext* ctx);
 
 }  // namespace data
 }  // namespace tensorflow

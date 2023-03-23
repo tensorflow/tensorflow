@@ -202,7 +202,7 @@ cc_library(
         ":split",
         ":test_runner",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
     ],
 )
 
@@ -228,6 +228,7 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
+        "//third_party/eigen3",
     ],
 )
 
@@ -266,18 +267,18 @@ cc_library(
         ":split",
         ":test_runner",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
-        "//tensorflow/lite/kernels/gradient:gradient_ops",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
-        "//tensorflow/lite/kernels/parse_example:parse_example",
+        "//tensorflow/lite/kernels/gradient:gradient_ops",
+        "//tensorflow/lite/kernels/parse_example",
         "//tensorflow/lite/kernels/perception:perception_ops",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({

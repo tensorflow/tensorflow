@@ -86,6 +86,12 @@ opt<std::string> debug_info_file(
     llvm::cl::desc("Path to the debug info file of the input graph def"),
     llvm::cl::init(""));
 
+// NOLINTNEXTLINE
+opt<std::string> xla_compile_device_type(
+    "tf-xla-compile-device-type",
+    llvm::cl::desc("Sets the compilation device type of the input graph def"),
+    llvm::cl::init(""));
+
 // TODO(b/134792656): If pruning is moved into TF dialect as a pass
 // we should remove this.
 // NOLINTNEXTLINE

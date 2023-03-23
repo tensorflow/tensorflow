@@ -644,6 +644,93 @@ will be converted by this pass into:
       return %0 : tensor<32xf32>
     }
 ```
+### `-tf-extract-head-tail-outside-compilation`: Extracts head or tail outside compilation to separate host launches before/after device cluster.
+This pass extracts a CPU computation cluster with `_xla_outside_compilation`
+annotation from the head or tail of a Device cluster.
+
+For example:
+
+```mlir
+  %cluster = "tf_device.cluster"() ( {
+    %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+    %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
+    %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
+    tf_device.return %c : tensor<i32>
+  }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+  return %cluster : tensor<i32>
+```
+
+becomes:
+
+```mlir
+%0 = "tf_device.launch"() ( {
+  %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+%1 = "tf_device.cluster"() ( {
+  %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
+%2 = "tf_device.launch"() ( {
+  %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
+  tf_device.return %3 : tensor<i32>
+}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+return %2 : tensor<i32>
+
+```
+### `-tf-extract-outside-compilation`: Extracts device outside compilation computation to a separate tf_device.parallel_execute region.
+This pass extracts a CPU computation cluster with `_xla_outside_compilation`
+annotation, which denotes ops that should be run on CPU/host, from a device cluster.
+Each outside compilation cluster is moved to
+a tf_device.parallel_execute region. The device cluster is also moved to a
+tf_device.parallel_execute region. Communication ops between device and host are
+added to pass inputs/outputs to/from the outside compiled region.
+
+For example, the following tf_device.cluster with an op marked for `xla_outside_compilation`:
+
+```mlir
+func @outside_compilation() -> tensor<f32> {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.Const"() {_xla_outside_compilation = "0", value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
+    %2 = "tf.Identity"(%1) {_xla_outside_compilation = "0"} : (tensor<f32>) -> (tensor<f32>)
+    %3 = "tf.AddV2"(%1, %2) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    tf_device.return %3 : tensor<f32>
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
+  return %0 : tensor<f32>
+}
+```
+
+will become a tf_device.parallel_execute op with a CPU/host region and
+a tf_device.cluster with communication ops to send data to/from device/host:
+
+```mlir
+func @outside_compilation() -> tensor<f32> {
+  %0 = "tf_device.parallel_execute"() ( {
+    "tf_device.launch"() ( {
+      %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+      %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
+      %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
+      "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
+      tf_device.return
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    tf_device.return
+  },  {
+    %1 = "tf_device.cluster"() ( {
+      %2 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+      %3 = "tf._XlaHostComputeMlir"(%2) {recv_key = "host_compute_channel_0_0_retvals", send_key = "host_compute_channel_0_0_args", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
+      %4 = "tf.AddV2"(%2, %3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      tf_device.return %4 : tensor<f32>
+    }) {device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<f32>
+    tf_device.return %1 : tensor<f32>
+  }) : () -> tensor<f32>
+  return %0 : tensor<f32>
+}
+```
+### `-tf-extract-tpu-copy-with-dynamic-shape-op`: Extract the TPUCopyWithDynamicShapeOp out of the host launch and place it on device launch
+This pass looks for TPUCopyWithDynamicShapeOp which wraps in a
+`tf_device.launch` with host device attribute. It extracts the ops and wrap
+them in `tf_device.launch` with tpu device attribute so that ops can be
+run on TPU instead of CPU while still being compiled on host.
 ### `-tf-functional-control-flow-to-cfg`: Transform functional control flow Ops to MLIR Control Form Graph (CFG) form
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
 This pass transforms functional control flow operations in the TensorFlow
@@ -1327,6 +1414,10 @@ func @main(%arg0: tensor<8x4xf32>) {
   return
 }
 ```
+### `-tf-tpu-annotate-dynamic-shape-inputs`: Annotate the inputs returned by TPUCopyWithDynamicShapeOp with dynamic shape
+This pass looks for the usage of the result of TPUCopyWithDynamicShapeOp
+and sets the shape of these inputs to be dynamic shaped. This will ensure
+that the generated HLO program is correctly reflecting the dynamic shape.
 ### `-tf-tpu-cleanup-cluster-attributes`: Eliminate _replication_info and other attributes from ops in a cluster
 This pass eliminate `_replication_info` and `device` attribute on operations
 that are contained in a tf_device.cluster op.
@@ -1458,88 +1549,6 @@ This way, %compile will determine the layout, which will be respected by
 %copy_to_device. There will not be send/recv ops added by later passes,
 because tf.TPUCopyWithLayout accepts a host input and produces a device
 output.
-### `-tf-tpu-extract-head-tail-outside-compilation`: Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.
-This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-annotation from the head or tail of a TPU cluster.
-
-For example:
-
-```mlir
-  %cluster = "tf_device.cluster"() ( {
-    %a = "tf.A"(%arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
-    %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
-    %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
-    tf_device.return %c : tensor<i32>
-  }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
-  return %cluster : tensor<i32>
-```
-
-becomes:
-
-```mlir
-%0 = "tf_device.launch"() ( {
-  %3 = "tf.A"(%arg0) : (tensor<i32>) -> tensor<i32>
-  tf_device.return %3 : tensor<i32>
-}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
-%1 = "tf_device.cluster"() ( {
-  %3 = "tf.B"(%0) : (tensor<i32>) -> tensor<i32>
-  tf_device.return %3 : tensor<i32>
-}) {device_assignment = [], num_cores_per_replica = 1 : i64, padding_map = [], step_marker_location = "", topology = ""} : () -> tensor<i32>
-%2 = "tf_device.launch"() ( {
-  %3 = "tf.C"(%1) : (tensor<i32>) -> tensor<i32>
-  tf_device.return %3 : tensor<i32>
-}) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
-return %2 : tensor<i32>
-
-```
-### `-tf-tpu-extract-outside-compilation`: Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.
-This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-annotation, which denotes ops that should be run on CPU/host, from a TPU cluster.
-Each outside compilation cluster is moved to
-a tf_device.parallel_execute region. The TPU cluster is also moved to a
-tf_device.parallel_execute region. Communication ops between device and host are
-added to pass inputs/outputs to/from the outside compiled region.
-
-For example, the following tf_device.cluster with an op marked for `xla_outside_compilation`:
-
-```mlir
-func @outside_compilation() -> tensor<f32> {
-  %0 = "tf_device.cluster"() ( {
-    %1 = "tf.Const"() {_xla_outside_compilation = "0", value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
-    %2 = "tf.Identity"(%1) {_xla_outside_compilation = "0"} : (tensor<f32>) -> (tensor<f32>)
-    %3 = "tf.AddV2"(%1, %2) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
-    tf_device.return %3 : tensor<f32>
-  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
-}
-```
-
-will become a tf_device.parallel_execute op with a CPU/host region and
-a tf_device.cluster with communication ops to send data to/from device/host:
-
-```mlir
-func @outside_compilation() -> tensor<f32> {
-  %0 = "tf_device.parallel_execute"() ( {
-    "tf_device.launch"() ( {
-      %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
-      %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
-      %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
-      "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
-      tf_device.return
-    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
-    tf_device.return
-  },  {
-    %1 = "tf_device.cluster"() ( {
-      %2 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-      %3 = "tf._XlaHostComputeMlir"(%2) {recv_key = "host_compute_channel_0_0_retvals", send_key = "host_compute_channel_0_0_args", tpu_core = 0 : i64} : (tensor<f32>) -> tensor<f32>
-      %4 = "tf.AddV2"(%2, %3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-      tf_device.return %4 : tensor<f32>
-    }) {device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<f32>
-    tf_device.return %1 : tensor<f32>
-  }) : () -> tensor<f32>
-  return %0 : tensor<f32>
-}
-```
 ### `-tf-tpu-host-computation-expansion`: Expands host computation before and after TPU computation.
 This pass expands outside compilation attributes to Identity/Cast ops
 at the head of TPU computation if it's only used by outside compiled ops.
@@ -1885,6 +1894,10 @@ to 12 feature dimension, which has better performance on TPU.
 ### `-tf-tpu-update-embedding-enqueue-op-inputs`: Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.
 Updates inputs to TPU embedding enqueue ops depending on whether graph
 is in training mode or in evaluation mode.
+### `-tf-tpu-validate-inputs`: Validates inputs to the TPU TF/XLA bridge
+This pass checks that the IR has valid input to TPU TF/XLA bridge.
+It checks the relations of multiple ops. Properties of single ops are
+checked by the 'verify' method of ops.
 ### `-tf-tpu-variable-runtime-reformatting`: Adds device variable formatting op to allow compilation-guided variable formatting.
 A pass that takes advantage of a loop to add ops that allow the execution to
 avoid repeatedly formatting variables back and forth. The desired formatting

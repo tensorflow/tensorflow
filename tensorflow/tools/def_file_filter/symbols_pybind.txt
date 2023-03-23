@@ -104,6 +104,7 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
 tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
+tensorflow::data::DataServiceDispatcherClient::GetSnapshotSplit
 tensorflow::data::DataServiceDispatcherClient::Initialize
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
@@ -156,7 +157,7 @@ tensorflow::BundleReader::~BundleReader
 [//tensorflow/python:ndarray_tensor] # py_checkpoint_reader
 tensorflow::TensorToNdarray
 
-[//tensorflow/python:safe_ptr] # py_checkpoint_reader
+[//tensorflow/python:safe_pyobject_ptr] # py_checkpoint_reader
 tensorflow::detail::PyDecrefDeleter
 tensorflow::make_safe
 
@@ -230,6 +231,13 @@ tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 [//tensorflow/c:tf_status_helper] # tfe
 tsl::Set_TF_Status_from_Status
 
+[//tensorflow/c:safe_ptr] # tfe
+tensorflow::detail::TFBufferDeleter
+tensorflow::detail::TFETensorHandleDeleter
+tensorflow::detail::TFStatusDeleter
+tensorflow::detail::TFTensorDeleter
+tensorflow::make_safe
+
 [//tensorflow/core/common_runtime/eager:context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 tensorflow::SetCEagerContext
@@ -291,6 +299,8 @@ tensorflow::ExtendSession
 tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
+tensorflow::RecordMutation
+tensorflow::Graph::IsControlEdge
 
 [//tensorflow/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy
@@ -445,6 +455,8 @@ tensorflow::metrics::SavedModelWriteApi
 tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::SavedModelWriteFingerprint
 tensorflow::metrics::SavedModelReadFingerprint
+tensorflow::metrics::SavedModelWritePath
+tensorflow::metrics::SavedModelReadPath
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration
@@ -454,7 +466,7 @@ tensorflow::metrics::CheckpointSize
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef
 tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
-tensorflow::saved_model::fingerprinting::MakeFingerprintMap
+tensorflow::saved_model::fingerprinting::Singleprint
 
 
 [//tensorflow/compiler/jit:flags] # tfe
@@ -548,7 +560,6 @@ tensorflow::dtensor::ExperimentalSetDefaultLayout
 tensorflow::dtensor::ExperimentalClearDefaultLayout
 tensorflow::dtensor::ExperimentalSetDefaultMesh
 tensorflow::dtensor::ExperimentalClearDefaultMesh
-tensorflow::dtensor::SetSameShapePolicy
 tensorflow::dtensor::SetTPUCoreIDs
 tensorflow::dtensor::ClearTPUCoreIDs
 tensorflow::dtensor::TPUCoreIDsToLocations
@@ -559,8 +570,9 @@ tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
-tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+tensorflow::dtensor::GetFunctionCacheStats
 tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh
+tensorflow::dtensor::Layout

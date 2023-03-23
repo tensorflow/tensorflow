@@ -23,7 +23,8 @@ namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_UNARY3(rsqrt, Eigen::half, float, double);
 #endif
-DEFINE_SIMPLE_BINARY3(rsqrt_grad, Eigen::half, float, double);
+DEFINE_UNARY1(rsqrt, bfloat16);
+DEFINE_SIMPLE_BINARY4(rsqrt_grad, Eigen::half, bfloat16, float, double);
 }  // namespace functor
 }  // namespace tensorflow
 

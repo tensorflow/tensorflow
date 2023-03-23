@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/TilingInterface.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 namespace mlir {
 namespace {
@@ -111,7 +112,7 @@ ParseResult parseKeywordOperandListWithTypes(
     if (parser.parseCommaSeparatedList(
             AsmParser::Delimiter::Paren, [&]() -> ParseResult {
               if (parser.parseOperand(operands.emplace_back(),
-                                      /*allowResultNumber=*/false) ||
+                                      /*allowResultNumber=*/true) ||
                   parser.parseColon() ||
                   parser.parseType(operandTypes->emplace_back())) {
                 return failure();
@@ -181,8 +182,54 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
   }));
 }
 
+static void getDstStyleOpEffectsImpl(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects,
+    ValueRange results, const OpOperandVector &inputOperands,
+    const OpOperandVector &outputOperands) {
+  for (auto *operand : inputOperands) {
+    if (!operand->get().getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+  }
+  for (auto *operand : outputOperands) {
+    if (!operand->get().getType().isa<MemRefType>()) continue;
+    effects.emplace_back(MemoryEffects::Read::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+    effects.emplace_back(MemoryEffects::Write::get(), operand->get(),
+                         SideEffects::DefaultResource::get());
+  }
+}
+
 }  // namespace
 }  // namespace mlir
+
+//===----------------------------------------------------------------------===//
+// THLO Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace {
+
+struct THLOInlinerInterface : public mlir::DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  // Operations in THLO dialect are always legal to inline.
+  bool isLegalToInline(Operation *, Region *, bool, IRMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {}
+};
+
+}  // namespace
+}  // namespace mlir
+
+//===----------------------------------------------------------------------===//
+// THLODialect
+//===----------------------------------------------------------------------===//
 
 // Generated dialect definitions.
 #include "thlo/IR/thlo_dialect.cc.inc"
@@ -195,6 +242,8 @@ void THLODialect::initialize() {
 #define GET_OP_LIST
 #include "thlo/IR/thlo_ops.cc.inc"
       >();
+
+  addInterfaces<THLOInlinerInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -210,7 +259,7 @@ LogicalResult checkYieldOutputs(YieldOp yieldOp,
            << yieldOp.getValues().size();
   }
 
-  for (auto &item : llvm::enumerate(
+  for (const auto &item : llvm::enumerate(
            llvm::zip(expectedElementTypes, yieldOp.getOperandTypes()))) {
     Type outputElementType, resultType;
     unsigned index = item.index();
@@ -387,12 +436,12 @@ Value getTiledImplementationForConcat(ConcatenateOp op, OpBuilder &b,
 
 }  // namespace
 
-SmallVector<Operation *> ConcatenateOp::getTiledImplementation(
+FailureOr<TilingResult> ConcatenateOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   auto tiled =
       getTiledImplementationForConcat(*this, b, getLoc(), offsets, sizes);
-  return {tiled.getDefiningOp()};
+  return TilingResult{{tiled.getDefiningOp()}, {tiled}};
 }
 
 LogicalResult ConcatenateOp::getResultTilePosition(
@@ -405,14 +454,33 @@ LogicalResult ConcatenateOp::getResultTilePosition(
   return success();
 }
 
-FailureOr<Value> ConcatenateOp::generateResultTileValue(
+FailureOr<TilingResult> ConcatenateOp::generateResultTileValue(
     OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "expect unique result idx");
-  return getTiledImplementation(b, offsets, sizes)
-      .front()
-      ->getResults()
-      .front();
+  FailureOr<TilingResult> tilingResult =
+      getTiledImplementation(b, offsets, sizes);
+  if (failed(tilingResult)) return failure();
+  return tilingResult.value();
+}
+
+LogicalResult ConcatenateOp::reifyResultShapes(
+    OpBuilder &b, ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
+  Location loc = getLoc();
+  Value init = getInit();
+
+  // Assume unique result.
+  if (getNumResults() != 1) return failure();
+  SmallVector<OpFoldResult> &shape = reifiedReturnShapes.emplace_back();
+
+  // Derive shape from init operand.
+  int64_t rank = init.getType().cast<RankedTensorType>().getRank();
+  shape.reserve(rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    shape.push_back(b.create<tensor::DimOp>(loc, init, i).getResult());
+  }
+
+  return success();
 }
 
 ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -484,6 +552,13 @@ LogicalResult ConcatenateOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
+void ConcatenateOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
@@ -521,7 +596,7 @@ SmallVector<Range> DynamicBroadcastInDimOp::getIterationDomain(OpBuilder &b) {
   return getIterationDomainForTensor(b, getLoc(), getInit());
 }
 
-SmallVector<Operation *> DynamicBroadcastInDimOp::getTiledImplementation(
+FailureOr<TilingResult> DynamicBroadcastInDimOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   // Create tile subset.
@@ -606,10 +681,11 @@ SmallVector<Operation *> DynamicBroadcastInDimOp::getTiledImplementation(
   auto tiledResultTy =
       RankedTensorType::get(tiledInit.getType().cast<ShapedType>().getShape(),
                             resultTy.getElementType());
-  return {b.create<DynamicBroadcastInDimOp>(
+  auto tiledOp = b.create<DynamicBroadcastInDimOp>(
       loc, TypeRange{tiledResultTy}, tiledOperand, tiledInit,
       getBroadcastDimensionsAttr(), getKnownExpandingDimensionsAttr(),
-      getKnownNonexpandingDimensionsAttr())};
+      getKnownNonexpandingDimensionsAttr());
+  return TilingResult{{tiledOp}, {tiledOp.getResult()}};
 }
 
 LogicalResult DynamicBroadcastInDimOp::getResultTilePosition(
@@ -622,14 +698,21 @@ LogicalResult DynamicBroadcastInDimOp::getResultTilePosition(
   return success();
 }
 
-FailureOr<Value> DynamicBroadcastInDimOp::generateResultTileValue(
+FailureOr<TilingResult> DynamicBroadcastInDimOp::generateResultTileValue(
     OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "expect unique result idx");
-  return getTiledImplementation(b, offsets, sizes)
-      .front()
-      ->getResults()
-      .front();
+  FailureOr<TilingResult> tilingResult =
+      getTiledImplementation(b, offsets, sizes);
+  if (failed(tilingResult)) return failure();
+  return tilingResult.value();
+}
+
+void DynamicBroadcastInDimOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -723,7 +806,7 @@ SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
   return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
 }
 
-SmallVector<Operation *> ScatterOp::getTiledImplementation(
+FailureOr<TilingResult> ScatterOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   Location loc = getLoc();
@@ -763,8 +846,10 @@ SmallVector<Operation *> ScatterOp::getTiledImplementation(
                                 SmallVector<OpFoldResult>(initRank, zeroAttr),
                                 tensor::getMixedSizes(b, loc, this->getInit()));
 
-  return {mlir::clone(b, this->getOperation(), TypeRange{init.getType()},
-                      ValueRange{indicesSlice, updateSlice, init})};
+  Operation *tiledOp =
+      mlir::clone(b, this->getOperation(), TypeRange{init.getType()},
+                  ValueRange{indicesSlice, updateSlice, init});
+  return TilingResult{{tiledOp}, {tiledOp->getResult(0)}};
 }
 
 LogicalResult ScatterOp::getResultTilePosition(
@@ -779,11 +864,21 @@ LogicalResult ScatterOp::getResultTilePosition(
   return success();
 }
 
-FailureOr<Value> ScatterOp::generateResultTileValue(
+FailureOr<TilingResult> ScatterOp::generateResultTileValue(
     OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "variadic scatter is not implemented");
-  return getTiledImplementation(b, offsets, sizes).front()->getResult(0);
+  FailureOr<TilingResult> tilingResult =
+      getTiledImplementation(b, offsets, sizes);
+  if (failed(tilingResult)) return failure();
+  return tilingResult;
+}
+
+void ScatterOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -832,7 +927,7 @@ SmallVector<Range> GatherOp::getIterationDomain(OpBuilder &b) {
   return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
 }
 
-SmallVector<Operation *> GatherOp::getTiledImplementation(
+FailureOr<TilingResult> GatherOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   SmallVector<OpFoldResult> startIndexOffsets{offsets.front(),
@@ -851,9 +946,10 @@ SmallVector<Operation *> GatherOp::getTiledImplementation(
   Value initSlice =
       materializeSlice(b, getLoc(), getInit(), initOffsets, initSizes);
 
-  return {
+  auto gatherOp =
       b.create<GatherOp>(getLoc(), TypeRange{initSlice.getType()},
-                         ValueRange{getOperand(), subStartIndices, initSlice})};
+                         ValueRange{getOperand(), subStartIndices, initSlice});
+  return TilingResult{{gatherOp}, {gatherOp.getResult()}};
 }
 
 LogicalResult GatherOp::getResultTilePosition(
@@ -870,11 +966,21 @@ LogicalResult GatherOp::getResultTilePosition(
   return success();
 }
 
-FailureOr<Value> GatherOp::generateResultTileValue(
+FailureOr<TilingResult> GatherOp::generateResultTileValue(
     OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   assert(resultNumber == 0 && "resultNumber > 0 not implemented");
-  return getTiledImplementation(b, offsets, sizes).front()->getResult(0);
+  FailureOr<TilingResult> tilingResult =
+      getTiledImplementation(b, offsets, sizes);
+  if (failed(tilingResult)) return failure();
+  return tilingResult.value();
+}
+
+void GatherOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -992,7 +1098,7 @@ LogicalResult SortOp::verify() {
   ArrayRef<int64_t> referenceShape =
       getInputs().front().getType().cast<ShapedType>().getShape();
 
-  for (auto &item : llvm::enumerate(TypeRange{getInputs()})) {
+  for (const auto &item : llvm::enumerate(TypeRange{getInputs()})) {
     ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
     if (shape != referenceShape) {
       return emitOpError() << "expected all inputs to have the same shape ("
@@ -1002,7 +1108,7 @@ LogicalResult SortOp::verify() {
   }
 
   // Checks that the outputs have the same shape as the inputs.
-  for (auto &item : llvm::enumerate(getInits())) {
+  for (const auto &item : llvm::enumerate(getInits())) {
     ArrayRef<int64_t> shape =
         item.value().getType().cast<ShapedType>().getShape();
     if (shape != referenceShape) {
@@ -1051,7 +1157,7 @@ SmallVector<Range> SortOp::getIterationDomain(OpBuilder &b) {
   return iterationDomain;
 }
 
-SmallVector<Operation *> SortOp::getTiledImplementation(
+FailureOr<TilingResult> SortOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   auto loc = getLoc();
@@ -1090,8 +1196,9 @@ SmallVector<Operation *> SortOp::getTiledImplementation(
         materializeSlice(b, loc, init, tileOffsets, tileSizes));
   }
 
-  return {mlir::clone(b, this->getOperation(), tiledResultTypes,
-                      tiledInputsAndInits)};
+  Operation *tiledOp = mlir::clone(b, this->getOperation(), tiledResultTypes,
+                                   tiledInputsAndInits);
+  return TilingResult{{tiledOp}, SmallVector<Value>(tiledOp->getResults())};
 }
 
 LogicalResult SortOp::getResultTilePosition(
@@ -1110,13 +1217,20 @@ LogicalResult SortOp::getResultTilePosition(
   return success();
 }
 
-FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
-                                                 unsigned resultNumber,
-                                                 ArrayRef<OpFoldResult> offsets,
-                                                 ArrayRef<OpFoldResult> sizes) {
-  return getTiledImplementation(b, offsets, sizes)
-      .front()
-      ->getResult(resultNumber);
+FailureOr<TilingResult> SortOp::generateResultTileValue(
+    OpBuilder &b, unsigned /*resultNumber*/, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
+  FailureOr<TilingResult> tilingResult =
+      getTiledImplementation(b, offsets, sizes);
+  if (failed(tilingResult)) return failure();
+  return tilingResult.value();
+}
+
+void SortOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1149,7 +1263,8 @@ void ReverseOp::getAsmResultNames(
 }
 
 SmallVector<utils::IteratorType> ReverseOp::getLoopIteratorTypes() {
-  return getParallelIteratorTypes(getType().cast<ShapedType>().getRank() - 1);
+  int64_t rank = getType().cast<ShapedType>().getRank();
+  return getParallelIteratorTypes(rank);
 }
 
 SmallVector<Range> ReverseOp::getIterationDomain(OpBuilder &b) {
@@ -1181,7 +1296,7 @@ SmallVector<OpFoldResult> getInputTileOffsetsForReverse(
 }
 }  // namespace
 
-SmallVector<Operation *> ReverseOp::getTiledImplementation(
+FailureOr<TilingResult> ReverseOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
   auto loc = getLoc();
@@ -1201,8 +1316,9 @@ SmallVector<Operation *> ReverseOp::getTiledImplementation(
   auto tiledResultType = RankedTensorType::get(
       tileShape, input.getType().cast<ShapedType>().getElementType());
 
-  return {mlir::clone(b, this->getOperation(), tiledResultType,
-                      tiledInputsAndInits)};
+  Operation *tiledOp = mlir::clone(b, this->getOperation(), tiledResultType,
+                                   tiledInputsAndInits);
+  return TilingResult{{tiledOp}, SmallVector<Value>(tiledOp->getResults())};
 }
 
 LogicalResult ReverseOp::getResultTilePosition(
@@ -1215,12 +1331,13 @@ LogicalResult ReverseOp::getResultTilePosition(
   return success();
 }
 
-FailureOr<Value> ReverseOp::generateResultTileValue(
+FailureOr<TilingResult> ReverseOp::generateResultTileValue(
     OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
-  return getTiledImplementation(b, offsets, sizes)
-      .front()
-      ->getResult(resultNumber);
+  FailureOr<TilingResult> tilingResult =
+      getTiledImplementation(b, offsets, sizes);
+  if (failed(tilingResult)) return failure();
+  return tilingResult.value();
 }
 
 OpFoldResult ReverseOp::fold(
@@ -1230,6 +1347,13 @@ OpFoldResult ReverseOp::fold(
     if (inputType.getDimSize(getReverseDimensions()[i]) != 1) return nullptr;
   }
   return getInput();
+}
+
+void ReverseOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  getDstStyleOpEffectsImpl(effects, getOperation()->getResults(),
+                           getDpsInputOperands(), getDpsInitOperands());
 }
 
 }  // namespace thlo

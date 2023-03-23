@@ -70,6 +70,7 @@ tf_cuda_library(
         ":op_logger",
         ":kernel_utils",
         ":runtime_fallback_tensor",
+        ":fallback_batch_kernel",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -170,7 +171,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/eager:__subpackages__",
-        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings",
@@ -196,6 +196,25 @@ cc_library(
             "//tensorflow/core/platform:status",
         ],
     }),
+)
+
+cc_library(
+    name = "fallback_batch_kernel",
+    srcs = ["fallback_batch_kernel.cc"],
+    hdrs = ["fallback_batch_kernel.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
+        "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:bounded_executor",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@tf_runtime//:hostcontext",
+    ],
 )
 
 tf_cuda_library(

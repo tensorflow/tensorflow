@@ -699,7 +699,7 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
     call_target_name = "mhlo.custom_call",
-    backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}"
+    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
@@ -1502,6 +1502,18 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 // CHECK-LABEL: "op_subtract"
+
+func.func @op_tan_mhlo_v1(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.tan",
+    mhlo.attributes = {},
+    mhlo.version = 1 : i64
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-LABEL: "op_tan_mhlo_v1"
 
 func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.tanh"(%arg0) : (tensor<f32>) -> tensor<f32>

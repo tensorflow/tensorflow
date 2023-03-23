@@ -64,6 +64,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -162,23 +164,19 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
   heartbeat_cv_.notify_one();
 }
 
-Status DataServiceWorkerImpl::Start(const std::string& worker_address,
-                                    const std::string& transfer_address) {
+Status DataServiceWorkerImpl::Start(
+    const std::string& worker_address,
+    const std::vector<DataTransferServerInfo>& transfer_servers) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
   TF_RETURN_IF_ERROR(ValidateWorkerConfig());
   worker_address_ = worker_address;
-  transfer_address_ = transfer_address;
+  transfer_servers_ = transfer_servers;
 
-  dispatcher_ = std::make_unique<DataServiceDispatcherClient>(
-      config_.dispatcher_address(), config_.protocol());
+  TF_ASSIGN_OR_RETURN(dispatcher_, CreateDispatcherClient());
   auto should_retry = [this]() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     return !cancelled_;
   };
-  TF_RETURN_IF_ERROR(
-      grpc_util::Retry([this]() { return dispatcher_->Initialize(); },
-                       should_retry, "Initialize dispatcher client.",
-                       /*deadline_micros=*/kint64max));
   TF_RETURN_IF_ERROR(grpc_util::Retry([this]() { return Heartbeat(); },
                                       should_retry, "Worker heartbeat.",
                                       /*deadline_micros=*/kint64max));
@@ -196,13 +194,20 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 
 void DataServiceWorkerImpl::Stop() {
   absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
+  absl::flat_hash_map<SnapshotTask, std::unique_ptr<SnapshotStreamWriter>,
+                      absl::Hash<SnapshotTask>>
+      snapshot_writers;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
     tasks.swap(tasks_);
+    snapshot_writers.swap(snapshot_writers_);
   }
   for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
+  }
+  for (const auto& [unused, snapshot_writer] : snapshot_writers) {
+    snapshot_writer->Cancel();
   }
   // At this point there are no outstanding requests in this RPC handler.
   // However, requests successfully returned from this RPC handler may still be
@@ -226,6 +231,21 @@ Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
         "}");
   }
   return OkStatus();
+}
+
+StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
+DataServiceWorkerImpl::CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_) {
+  auto dispatcher = std::make_unique<DataServiceDispatcherClient>(
+      config_.dispatcher_address(), config_.protocol());
+  auto should_retry = [this]() TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    return !cancelled_;
+  };
+  TF_RETURN_IF_ERROR(
+      grpc_util::Retry([&dispatcher]() { return dispatcher->Initialize(); },
+                       should_retry, "Initialize dispatcher client.",
+                       /*deadline_micros=*/kint64max));
+  return dispatcher;
 }
 
 Status DataServiceWorkerImpl::GetElementResult(
@@ -544,7 +564,8 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
 
   WorkerHeartbeatRequest request;
   request.set_worker_address(worker_address_);
-  request.set_transfer_address(transfer_address_);
+  *request.mutable_transfer_servers() = {transfer_servers_.begin(),
+                                         transfer_servers_.end()};
   *request.mutable_worker_tags() = config_.worker_tags();
   request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),
@@ -559,6 +580,7 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
 
 std::vector<SnapshotTaskProgress>
 DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
+  mutex_lock l(mu_);
   std::vector<SnapshotTaskProgress> snapshot_task_progress;
   for (const auto& [snapshot_task, stream_writer] : snapshot_writers_) {
     SnapshotTaskProgress progress;
@@ -569,8 +591,7 @@ DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
     if (completed.ok()) {
       progress.set_completed(*completed);
     } else {
-      progress.set_error_code(completed.status().code());
-      progress.set_error_message(completed.status().error_message());
+      *progress.mutable_status() = tsl::StatusToProto(completed.status());
     }
     snapshot_task_progress.push_back(std::move(progress));
   }
@@ -612,6 +633,7 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
 
 Status DataServiceWorkerImpl::UpdateSnapshotWriters(
     const WorkerHeartbeatResponse& response) {
+  mutex_lock l(mu_);
   absl::flat_hash_set<SnapshotTask> assigned_snapshot_task_keys;
   for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {
     SnapshotTask snapshot_task_key{snapshot_task.base_path(),
@@ -659,11 +681,12 @@ DataServiceWorkerImpl::MakeSnapshotTaskIterator(
   std::vector<std::unique_ptr<SplitProvider>> split_providers;
   split_providers.reserve(snapshot_task.num_sources());
   for (int i = 0; i < snapshot_task.num_sources(); ++i) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceDispatcherClient> dispatcher,
+                        CreateDispatcherClient());
     split_providers.push_back(std::make_unique<SnapshotSplitProvider>(
-        config_.dispatcher_address(), config_.protocol(), worker_address_,
-        snapshot_task,
+        worker_address_, snapshot_task,
         /*source_index=*/i, absl::Milliseconds(config_.dispatcher_timeout_ms()),
-        Env::Default()));
+        std::move(dispatcher), Env::Default()));
   }
   std::unique_ptr<standalone::Iterator> iterator;
   TF_RETURN_IF_ERROR(

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdexcept>
 
-#include "pybind11/numpy.h"
+#include "pybind11/numpy.h"  // from @pybind11
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {

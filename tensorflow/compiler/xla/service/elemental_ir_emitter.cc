@@ -1193,6 +1193,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       if (operand_type == BF16) {
         lhs_value = EmitBF16ToF32(lhs_value, b_);
         rhs_value = EmitBF16ToF32(rhs_value, b_);
+      } else if (operand_type == F8E5M2) {
+        lhs_value = EmitF8e5m2ToF16(lhs_value, b_);
+        rhs_value = EmitF8e5m2ToF16(rhs_value, b_);
+      } else if (operand_type == F8E4M3FN) {
+        lhs_value = EmitF8e4m3fnToF16(lhs_value, b_);
+        rhs_value = EmitF8e4m3fnToF16(rhs_value, b_);
       }
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
@@ -1927,7 +1933,7 @@ llvm::Value* ElementalIrEmitter::GetIntSMin(llvm::Type* type) {
 llvm::Value* ElementalIrEmitter::GetMinusOne(llvm::Type* type) {
   auto* integer_type = llvm::cast<llvm::IntegerType>(type);
   return llvm::ConstantInt::get(
-      integer_type, llvm::APInt::getAllOnesValue(integer_type->getBitWidth()));
+      integer_type, llvm::APInt::getAllOnes(integer_type->getBitWidth()));
 }
 
 llvm::Value* ElementalIrEmitter::IsZero(llvm::Value* v) {
@@ -2273,8 +2279,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     // because they require non-degenerate basic blocks.
     b_->SetInsertPoint(llvm::BranchInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
-    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
-                                          source_index.GetType());
+    llvm_ir::IrArray::Index operand_index(source_index.GetType());
+    // If we are concatenating the fastest varying dimension, we can reuse the
+    // linear index.
+    if (source_index.linear() != nullptr && operand->shape().rank() > 1 &&
+        concat_dim == operand->shape().layout().minor_to_major(0)) {
+      llvm::Value* linear_without_concat_dim = b_->CreateUDiv(
+          source_index.linear(), source_index.GetConstantWithIndexType(
+                                     hlo->shape().dimensions(concat_dim)));
+      llvm::Value* adjusted_linear_base =
+          b_->CreateMul(linear_without_concat_dim,
+                        source_index.GetConstantWithIndexType(
+                            operand->shape().dimensions(concat_dim)));
+      llvm::Value* adjusted_linear =
+          b_->CreateAdd(adjusted_linear_base, operand_multi_index[concat_dim]);
+      operand_index = llvm_ir::IrArray::Index(
+          adjusted_linear, operand_multi_index, operand->shape(), b_);
+    } else {
+      operand_index = llvm_ir::IrArray::Index(
+          operand_multi_index, operand->shape(), source_index.GetType());
+    }
 
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));

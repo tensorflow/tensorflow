@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
@@ -47,21 +48,22 @@ class LegalizeCollectiveOpsPass
   void runOnOperation() override;
 };
 
-Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
+std::optional<xla_cpu::ReductionKind> MatchReductionComputation(
+    Region& region) {
   if (!region.hasOneBlock()) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto ret = dyn_cast<mhlo::ReturnOp>(region.front().getTerminator());
   if (!ret || ret->getNumOperands() != 1) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   auto computation = ret.getOperand(0).getDefiningOp();
   if (computation->getNumOperands() != 2 ||
       computation->getOperand(0) != region.front().getArgument(0) ||
       computation->getOperand(1) != region.front().getArgument(1)) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   if (isa<mhlo::AddOp>(computation)) {
@@ -79,7 +81,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
 
   auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
   if (!type || !type.getElementType().isInteger(1)) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   if (isa<mhlo::AndOp>(computation)) {
@@ -89,7 +91,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns a `tensor.empty` with the same shape as `tensor`.
@@ -181,9 +183,9 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
         dsts.push_back(CreateEmptyLike(rewriter, op.getLoc(), operand));
       }
     } else {
-      auto sizes =
-          getAsValues(b, b.getLoc(),
-                      tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
+      auto sizes = getValueOrCreateConstantIndexOp(
+          b, b.getLoc(),
+          tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
       uint64_t split_dimension = *op.getSplitDimension();
       Value split_count = b.create<arith::ConstantIndexOp>(*op.getSplitCount());
       sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(
@@ -237,7 +239,7 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
           TypeAttr::get(operand.getType().cast<ShapedType>().getElementType()));
     }
     rewriter.create<xla_cpu::OutfeedOp>(
-        op.getLoc(), llvm::None, op.getInputs(), op.getOutfeedConfigAttr(),
+        op.getLoc(), std::nullopt, op.getInputs(), op.getOutfeedConfigAttr(),
         ArrayAttr::get(op->getContext(), result_types));
 
     // Replacing the op with the token.

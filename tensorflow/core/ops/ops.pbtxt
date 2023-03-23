@@ -8137,6 +8137,72 @@ op {
   is_stateful: true
 }
 op {
+  name: "CollectiveAllToAllV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "instance_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "ordering_token"
+    type: DT_RESOURCE
+    number_attr: "Nordering_token"
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "Nordering_token"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}
+op {
   name: "CollectiveAllToAllV3"
   input_arg {
     name: "input"
@@ -13006,6 +13072,13 @@ op {
   output_arg {
     name: "cardinality"
     type: DT_INT64
+  }
+  attr {
+    name: "cardinality_options"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {
@@ -21285,26 +21358,6 @@ op {
   output_arg {
     name: "components"
     type_list_attr: "output_types"
-    experimental_full_type {
-      type_id: TFT_DATASET
-      args {
-        type_id: TFT_FOR_EACH
-        args {
-          type_id: TFT_PRODUCT
-        }
-        args {
-          type_id: TFT_TENSOR
-          args {
-            type_id: TFT_VAR
-            s: "output_types"
-          }
-        }
-        args {
-          type_id: TFT_VAR
-          s: "output_types"
-        }
-      }
-    }
   }
   attr {
     name: "output_types"
@@ -28082,6 +28135,13 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
       }
+    }
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -38399,6 +38459,68 @@ op {
   }
 }
 op {
+  name: "RaggedFillEmptyRows"
+  input_arg {
+    name: "value_rowids"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "nrows"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "default_value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_value_rowids"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "empty_row_indicator"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "reverse_index_map"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "RaggedFillEmptyRowsGrad"
+  input_arg {
+    name: "reverse_index_map"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "grad_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_default_value"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "RaggedGather"
   input_arg {
     name: "params_nested_splits"
@@ -40607,6 +40729,25 @@ op {
   attr {
     name: "layout"
     type: "string"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "RelayoutGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "forward_input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
   }
   attr {
     name: "T"
@@ -48916,6 +49057,68 @@ op {
   }
 }
 op {
+  name: "SegmentMaxV2"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "num_segments"
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "SegmentMean"
   input_arg {
     name: "data"
@@ -49004,6 +49207,68 @@ op {
   attr {
     name: "Tindices"
     type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SegmentMinV2"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "num_segments"
+    type_attr: "Tnumsegments"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
     allowed_values {
       list {
         type: DT_INT32
@@ -55198,6 +55463,13 @@ op {
     name: "tuple_mask"
     type: "string"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "SplitV"
@@ -60632,6 +60904,13 @@ op {
     name: "element_dtype"
     type: "type"
   }
+  attr {
+    name: "resize_if_index_out_of_bounds"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TensorListSplit"
@@ -63677,6 +63956,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }

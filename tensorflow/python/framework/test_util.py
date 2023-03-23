@@ -2108,7 +2108,7 @@ def disable_cudnn_autotune(func):
 
       return result
 
-    return decorated
+    return tf_decorator.make_decorator(func, decorated)
 
   if func is not None:
     return decorator(func)
@@ -2541,7 +2541,7 @@ class TensorFlowTestCase(googletest.TestCase):
       os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
-  def _AssertProtoEquals(self, a, b, msg=None):
+  def _AssertProtoEquals(self, a, b, msg=None, relative_tolerance=None):
     """Asserts that a and b are the same proto.
 
     Uses ProtoEq() first, as it returns correct results
@@ -2552,11 +2552,28 @@ class TensorFlowTestCase(googletest.TestCase):
       a: a proto.
       b: another proto.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if not compare.ProtoEq(a, b):
-      compare.assertProtoEqual(self, a, b, normalize_numbers=True, msg=msg)
+      compare.assertProtoEqual(
+          self,
+          a,
+          b,
+          normalize_numbers=True,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
 
-  def assertProtoEquals(self, expected_message_maybe_ascii, message, msg=None):
+  def assertProtoEquals(
+      self,
+      expected_message_maybe_ascii,
+      message,
+      msg=None,
+      relative_tolerance=None,
+  ):
     """Asserts that message is same as parsed expected_message_ascii.
 
     Creates another prototype of message, reads the ascii message into it and
@@ -2566,17 +2583,31 @@ class TensorFlowTestCase(googletest.TestCase):
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     else:
       assert False, ("Can't compare protos of type %s and %s." %
                      (type(expected_message_maybe_ascii), type(message)))

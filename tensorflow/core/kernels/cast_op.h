@@ -298,6 +298,14 @@ struct scalar_cast_op<std::complex<From>, To> {
   }
 };
 
+template <typename From>
+struct scalar_cast_op<std::complex<From>, bool> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(
+      const std::complex<From>& a) const {
+    return static_cast<bool>(a.real());
+  }
+};
+
 template <typename From, typename To>
 struct scalar_cast_op<From, std::complex<To>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<To> operator()(
@@ -320,6 +328,10 @@ template <typename From, typename To>
 struct functor_traits_complex_impl {
   enum { Cost = NumTraits<To>::AddCost, PacketAccess = false };
 };
+
+template <typename From>
+struct functor_traits<scalar_cast_op<std::complex<From>, bool>>
+    : functor_traits_complex_impl<std::complex<From>, bool> {};
 
 template <typename From, typename To>
 struct functor_traits<scalar_cast_op<std::complex<From>, To>>

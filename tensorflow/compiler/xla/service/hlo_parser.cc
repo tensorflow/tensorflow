@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -218,6 +219,7 @@ bool CanInferShape(HloOpcode code) {
 class HloParserImpl : public HloParser {
  public:
   using LocTy = HloLexer::LocTy;
+  using BoolList = absl::InlinedVector<bool, 1>;
 
   explicit HloParserImpl(absl::string_view str) : lexer_(str) {}
 
@@ -233,6 +235,7 @@ class HloParserImpl : public HloParser {
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
+  StatusOr<BoolList> ParseBooleanListOrSingleBooleanOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
   StatusOr<PaddingConfig> ParsePaddingConfigOnly();
@@ -259,6 +262,7 @@ class HloParserImpl : public HloParser {
     kConvolutionDimensionNumbers,
     kSharding,
     kFrontendAttributes,
+    kBracedBoolListOrBool,
     kParameterReplication,
     kInstructionList,
     kSliceRanges,
@@ -462,6 +466,7 @@ class HloParserImpl : public HloParser {
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
+  bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
 
   // Parses the metadata behind a kDOmain instruction.
@@ -937,7 +942,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
-  std::optional<bool> allow_spmd_sharding_propagation_to_output;
+  BoolList allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
@@ -948,7 +953,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
   attrs["allow_spmd_sharding_propagation_to_output"] = {
-      /*required=*/false, AttrTy::kBool,
+      /*required=*/false, AttrTy::kBracedBoolListOrBool,
       &allow_spmd_sharding_propagation_to_output};
 
   if (!parse_module_without_header) {
@@ -972,7 +977,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
 
   if (parse_module_without_header) {
-    name = "module_" + module->entry_computation()->name();
+    name = absl::StrCat("module_", module->entry_computation()->name());
     entry_computation_layout =
         ComputationLayout(module->entry_computation()->ComputeProgramShape(),
                           /*ignore_layouts*/ false);
@@ -993,8 +998,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     *config.mutable_entry_computation_layout() = *entry_computation_layout;
     default_config = false;
   }
-  if (allow_spmd_sharding_propagation_to_output.value_or(false)) {
-    config.set_allow_spmd_sharding_propagation_to_output(true);
+  if (!allow_spmd_sharding_propagation_to_output.empty()) {
+    config.set_allow_spmd_sharding_propagation_to_output(
+        allow_spmd_sharding_propagation_to_output);
     default_config = false;
   }
   if (!default_config) {
@@ -1605,9 +1611,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!slice_sizes.has_value()) {
         if (operands.size() != 1) {
           TokenError(
-              "CollectivePermute and CollectivePermuteStart must "
-              "have exactly  one operand (input buffer) unless "
-              "it performs dynamic-slice and in-place update.");
+              "CollectivePermute and CollectivePermuteStart must have exactly "
+              "one operand (input buffer) unless it performs dynamic-slice and "
+              "in-place update.");
           return nullptr;
         }
         if (opcode == HloOpcode::kCollectivePermute) {
@@ -1622,7 +1628,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
-                   << HloOpcodeString(opcode);
+                   << opcode;
       }
       if (operands.size() != 4) {
         TokenError(
@@ -1644,7 +1650,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                     "CollectivePermuteStart, but got "
-                 << HloOpcodeString(opcode);
+                 << opcode;
     }
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1677,8 +1683,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               !is_async_shape_correct(operands[0]->shape())) {
             TokenError(
                 "AsyncUpdate and AsyncDone expect a single operand in the form "
-                "of "
-                "((async-operands), async-outputs, state).");
+                "of ((async-operands), async-outputs, state).");
             return nullptr;
           }
           async_wrapped_operand_shapes =
@@ -1714,7 +1719,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         }
         computations_.emplace_back(async_wrapped_builder.Build(root));
         async_computation = computations_.back().get();
-
       } else {
         attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
                           &async_computation};
@@ -3254,6 +3258,47 @@ bool HloParserImpl::ParseParameterReplication(
                     "expected '}' to end parameter_replication attribute");
 }
 
+// boolean_list ::=
+//   ('true' | 'false') | ('{' ('true' | 'false')* (',' ('true' | 'false'))*
+//   '}')
+bool HloParserImpl::ParseBooleanListOrSingleBoolean(BoolList* boolean_list) {
+  if (lexer_.GetKind() != TokKind::kLbrace &&
+      lexer_.GetKind() != TokKind::kw_true &&
+      lexer_.GetKind() != TokKind::kw_false) {
+    TokenError("Expected list of booleans or true/false value");
+    return false;
+  }
+  auto parse_boolean = [this, boolean_list]() {
+    if (lexer_.GetKind() == TokKind::kw_true) {
+      boolean_list->push_back(true);
+      lexer_.Lex();
+      return true;
+    } else if (lexer_.GetKind() == TokKind::kw_false) {
+      boolean_list->push_back(false);
+      lexer_.Lex();
+      return true;
+    }
+    return false;
+  };
+  if (parse_boolean()) {
+    return true;
+  }
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start boolean list attribute")) {
+    return false;
+  }
+  if (lexer_.GetKind() != TokKind::kRbrace) {
+    do {
+      if (!parse_boolean()) {
+        return false;
+      }
+    } while (EatIfPresent(TokKind::kComma));
+  }
+
+  return ParseToken(TokKind::kRbrace,
+                    "expected '}' to end boolean list attribute");
+}
+
 // replica_groups ::='{' int64_tlist_elements '}'
 // int64_tlist_elements
 //   ::= /*empty*/
@@ -3543,8 +3588,8 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   const ParsedElemComponentT parsed_real_value = GetReal(value);
   auto literal_real_value =
       static_cast<LiteralNativeComponentT>(parsed_real_value);
-  if (std::is_floating_point<ParsedElemT>::value ||
-      std::is_same<ParsedElemT, std::complex<double>>::value) {
+  if (std::is_floating_point_v<ParsedElemT> ||
+      std::is_same_v<ParsedElemT, std::complex<double>>) {
     if (!handle_nan(parsed_real_value, &literal_real_value)) {
       return false;
     }
@@ -3552,7 +3597,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   const ParsedElemComponentT parsed_imag_value = GetImag(value);
   auto literal_imag_value =
       static_cast<LiteralNativeComponentT>(parsed_imag_value);
-  if (std::is_same<ParsedElemT, std::complex<double>>::value) {
+  if constexpr (std::is_same_v<ParsedElemT, std::complex<double>>) {
     if (!handle_nan(parsed_real_value, &literal_imag_value)) {
       return false;
     }
@@ -3728,7 +3773,7 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
       case TokKind::kLparen: {
         if (!primitive_util::IsComplexType(shape.element_type())) {
           return TokenError(
-              absl::StrFormat("unexpected '(' in literal.  Parens are only "
+              absl::StrFormat("unexpected '(' in literal. Parens are only "
                               "valid for complex literals"));
         }
 
@@ -3871,7 +3916,7 @@ std::enable_if_t<std::is_integral<T>::value, bool> IsNaN(T val) {
 
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
-  if (std::is_floating_point<ParsedElemT>::value) {
+  if constexpr (std::is_floating_point_v<ParsedElemT>) {
     auto value_as_native_t = static_cast<LiteralNativeT>(value);
     auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
     if (!IsFinite(value) || IsFinite(value_double_converted)) {
@@ -3885,10 +3930,10 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
        (std::numeric_limits<ParsedElemT>::infinity() == value ||
         -std::numeric_limits<ParsedElemT>::infinity() == value))) {
     // Skip range checking for non-finite value.
-  } else if (std::is_unsigned<LiteralNativeT>::value) {
-    CHECK((std::is_same<ParsedElemT, int64_t>::value ||
-           std::is_same<ParsedElemT, bool>::value))
-        << "Unimplemented checking for ParsedElemT";
+  } else if constexpr (std::is_unsigned<LiteralNativeT>::value) {
+    static_assert(std::is_same_v<ParsedElemT, int64_t> ||
+                      std::is_same_v<ParsedElemT, bool>,
+                  "Unimplemented checking for ParsedElemT");
 
     const uint64_t unsigned_value = value;
     const uint64_t upper_bound =
@@ -4160,8 +4205,8 @@ bool HloParserImpl::ParseAttributeHelper(
                            StrAppend(out, kv.first);
                          }));
     }
-    return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
-                                allowed_attrs));
+    return Error(
+        loc, StrFormat("unexpected attribute \"%s\". %s", name, allowed_attrs));
   }
   AttrTy attr_type = attr_it->second.attr_type;
   void* attr_out_ptr = attr_it->second.result;
@@ -4174,6 +4219,13 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<bool>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kBracedBoolListOrBool: {
+        if (!ParseBooleanListOrSingleBoolean(
+                static_cast<BoolList*>(attr_out_ptr))) {
+          return false;
+        }
         return true;
       }
       case AttrTy::kInt64: {
@@ -4519,7 +4571,7 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
         }
       }
       return TokenError(
-          StrFormat("unexpected attribute \"%s\".  %s", name, allowed_attrs));
+          StrFormat("unexpected attribute \"%s\". %s", name, allowed_attrs));
     }
 
     CHECK(!fd->is_repeated());  // Repeated fields not implemented.
@@ -6010,6 +6062,19 @@ StatusOr<std::vector<bool>> HloParserImpl::ParseParameterReplicationOnly() {
       parameter_replication.replicated_at_leaf_buffers().end());
 }
 
+StatusOr<HloParserImpl::BoolList>
+HloParserImpl::ParseBooleanListOrSingleBooleanOnly() {
+  lexer_.Lex();
+  BoolList booleans;
+  if (!ParseBooleanListOrSingleBoolean(&booleans)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after boolean list");
+  }
+  return booleans;
+}
+
 StatusOr<std::vector<ReplicaGroup>> HloParserImpl::ParseReplicaGroupsOnly() {
   lexer_.Lex();
   std::vector<ReplicaGroup> replica_groups;
@@ -6104,8 +6169,8 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   if (lexer_.GetKind() != TokKind::kEof) {
     Error(
         lexer_.GetLoc(),
-        "Syntax error:\nExpected eof after parsing single instruction.  Did "
-        "you mean to write an HLO module and forget the \"HloModule\" header?");
+        "Syntax error:\nExpected eof after parsing single instruction. Did you"
+        " mean to write an HLO module and forget the \"HloModule\" header?");
     return false;
   }
 
@@ -6145,6 +6210,12 @@ StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str) {
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseParameterReplicationOnly();
+}
+
+StatusOr<HloParserImpl::BoolList> ParseBooleanListOrSingleBoolean(
+    absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseBooleanListOrSingleBooleanOnly();
 }
 
 StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(

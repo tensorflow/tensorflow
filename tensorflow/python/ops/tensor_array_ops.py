@@ -22,6 +22,7 @@ import weakref
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,12 +34,14 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
@@ -320,7 +323,12 @@ class _GraphTensorArray:
         name=name,
         element_shape_except0=self.element_shape[1:])
     if self.element_shape:
-      value.set_shape([None] + self.element_shape.dims[1:])
+      dim0 = None
+      if self._infer_shape:
+        size = tensor_util.constant_value(self.size())
+        if size is not None and self.element_shape[0] is not None:
+          dim0 = size * self.element_shape[0]
+      value.set_shape([dim0] + self.element_shape.dims[1:])
     return value
 
   @tf_should_use.should_use_result
@@ -868,7 +876,7 @@ class _EagerTensorArray:
     del name  # not meaningful when executing eagerly.
     if isinstance(indices, ops.EagerTensor):
       indices = indices.numpy()
-    return array_ops.stack([self._maybe_zero(i) for i in indices])
+    return array_ops_stack.stack([self._maybe_zero(i) for i in indices])
 
   def concat(self, name=None):
     """See TensorArray."""
@@ -891,7 +899,7 @@ class _EagerTensorArray:
 
   def unstack(self, value, name=None):
     """See TensorArray."""
-    tensors = array_ops.unstack(value, name=name)
+    tensors = array_ops_stack.unstack(value, name=name)
     if len(tensors) > len(self._tensor_array) and not self._dynamic_size:
       raise ValueError(
           "Cannot unstack %d tensors into a TensorArray of static size %d " %
@@ -904,7 +912,7 @@ class _EagerTensorArray:
     del name  # not meaningful when executing eagerly.
     if isinstance(indices, ops.EagerTensor):
       indices = indices.numpy()
-    for index, val in zip(indices, array_ops.unstack(value)):
+    for index, val in zip(indices, array_ops_stack.unstack(value)):
       self._write(index, val)  # pylint: disable=protected-access
     return self.parent()
 
@@ -1472,6 +1480,13 @@ class TensorArraySpec(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return TensorArray
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        TensorArraySpec, struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC
+    )
+)
 
 
 # Register the TypeSpec for TensorArray.  If TensorArray is updated to be a

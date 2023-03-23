@@ -185,6 +185,28 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
+    name = "fused_matmul_op_benchmark",
+    testonly = 1,
+    srcs = [
+        "fused_matmul_op_benchmark.cc",
+        "fused_matmul_op_benchmark.h",
+    ],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "//tensorflow/core/kernels:fused_eigen_output_kernels",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
     name = "transpose_op_benchmark",
     testonly = 1,
     srcs = ["transpose_op_benchmark.cc"],
@@ -242,6 +264,22 @@ tf_cc_binary(
     name = "fused_map_bcast_benchmark",
     testonly = 1,
     srcs = ["fused_map_bcast_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
+)
+
+tf_cc_binary(
+    name = "scatter_op_benchmark",
+    testonly = 1,
+    srcs = ["scatter_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([

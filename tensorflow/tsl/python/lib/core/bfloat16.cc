@@ -27,67 +27,12 @@ limitations under the License.
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
 
-#include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/python/lib/core/custom_float.h"
-#include "tensorflow/tsl/python/lib/core/float8_e4m3b11.h"
 
 namespace tsl {
 namespace custom_float_internal {
-
-namespace ufuncs {
-
-template <>
-struct CopySign<bfloat16> {
-  bfloat16 operator()(bfloat16 a, bfloat16 b) {
-    // LLVM is smart enough to turn this into (a & 0x7fff) | (b & 0x8000).
-    bfloat16 abs_a = Eigen::numext::abs(a);
-    return std::signbit(static_cast<float>(b)) ? -abs_a : abs_a;
-  }
-};
-
-template <>
-struct NextAfter<bfloat16> {
-  bfloat16 operator()(bfloat16 from, bfloat16 to) {
-    uint16_t from_as_int, to_as_int;
-    const uint16_t sign_mask = 1 << 15;
-    float from_as_float(from), to_as_float(to);
-    memcpy(&from_as_int, &from, sizeof(bfloat16));
-    memcpy(&to_as_int, &to, sizeof(bfloat16));
-    if (Eigen::numext::isnan(from_as_float) ||
-        Eigen::numext::isnan(to_as_float)) {
-      return bfloat16(std::numeric_limits<float>::quiet_NaN());
-    }
-    if (from_as_int == to_as_int) {
-      return to;
-    }
-    if (from_as_float == 0) {
-      if (to_as_float == 0) {
-        return to;
-      } else {
-        // Smallest subnormal signed like `to`.
-        uint16_t out_int = (to_as_int & sign_mask) | 1;
-        bfloat16 out;
-        memcpy(&out, &out_int, sizeof(bfloat16));
-        return out;
-      }
-    }
-    uint16_t from_sign = from_as_int & sign_mask;
-    uint16_t to_sign = to_as_int & sign_mask;
-    uint16_t from_abs = from_as_int & ~sign_mask;
-    uint16_t to_abs = to_as_int & ~sign_mask;
-    uint16_t magnitude_adjustment =
-        (from_abs > to_abs || from_sign != to_sign) ? 0xFFFF : 0x0001;
-    uint16_t out_int = from_as_int + magnitude_adjustment;
-    bfloat16 out;
-    memcpy(&out, &out_int, sizeof(bfloat16));
-    return out;
-  }
-};
-
-}  // namespace ufuncs
 
 using bfloat16 = Eigen::bfloat16;
 
@@ -126,46 +71,6 @@ struct TypeDescriptor<float8_e4m3b11>
   static constexpr char kNpyDescrType = 'L';
   static constexpr char kNpyDescrByteorder = '=';
 };
-
-namespace ufuncs {
-
-template <>
-struct CopySign<float8_e4m3b11> {
-  float8_e4m3b11 operator()(float8_e4m3b11 a, float8_e4m3b11 b) {
-    return float8_e4m3b11::FromRep((a.rep() & 0x7f) | (b.rep() & 0x80));
-  }
-};
-
-template <>
-struct NextAfter<float8_e4m3b11> {
-  float8_e4m3b11 operator()(float8_e4m3b11 from, float8_e4m3b11 to) {
-    uint8_t from_rep = from.rep();
-    uint8_t to_rep = to.rep();
-    if (from_rep == 0x80 || to_rep == 0x80) {
-      return float8_e4m3b11::FromRep(0x80);
-    }
-    if (from_rep == to_rep) {
-      return to;
-    }
-    if (from_rep == 0) {
-      return float8_e4m3b11::FromRep(0x01 | (to_rep & 0x80));
-    }
-    const uint16_t sign_mask = 0x80;
-    uint8_t from_sign = from_rep & sign_mask;
-    uint8_t to_sign = to_rep & sign_mask;
-    uint8_t from_abs = from_rep & ~sign_mask;
-    uint8_t to_abs = to_rep & ~sign_mask;
-    uint8_t magnitude_adjustment =
-        (from_abs > to_abs || from_sign != to_sign) ? 0xFF : 0x0001;
-    uint8_t out_int = from_rep + magnitude_adjustment;
-    if (out_int == 0x80) {
-      out_int = 0x0;
-    }
-    return float8_e4m3b11::FromRep(out_int);
-  }
-};
-
-}  // namespace ufuncs
 
 }  // namespace custom_float_internal
 

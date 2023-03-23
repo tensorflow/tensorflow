@@ -50,3 +50,14 @@ func.func @mul() -> index {
 // CHECK-LABEL: @mul
 // CHECK: Results
 // CHECK-NEXT: 4200
+
+func.func @symbol() -> index {
+  %c1 = arith.constant 1 : index
+  %c20 = arith.constant 20 : index
+  %ret = affine.apply affine_map<(d0)[s0] -> (d0 + s0)>(%c1)[%c20]
+  return %ret : index
+}
+
+// CHECK-LABEL: @symbol
+// CHECK: Results
+// CHECK-NEXT: 21

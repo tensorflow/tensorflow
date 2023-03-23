@@ -167,8 +167,8 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       root, dims_expander,
       Const(root.WithOpName("size"), {input_height, input_width}));
   // Subtract the mean and divide by the scale.
-  Div(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
-      {input_std});
+  Div output_op(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
+                {input_std});
 
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensor.
@@ -209,7 +209,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK top_k(root.WithOpName(output_name), outputs[0], how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;

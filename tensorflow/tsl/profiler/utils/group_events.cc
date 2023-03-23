@@ -29,10 +29,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/bind_front.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/profiler/lib/context_types.h"
 #include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
@@ -41,7 +43,6 @@ limitations under the License.
 
 namespace tsl {
 namespace profiler {
-namespace {
 
 // Creates stat metadata for the stats which may be added by grouping.
 void CreateStatMetadata(XPlane* plane) {
@@ -68,8 +69,6 @@ int64_t GetEventType(bool is_host_plane, const XEventVisitor& event) {
                  GetKernelEventType(is_host_plane, event)) {
     // KernelLaunch and KernelExecute event types are not supported by
     // XPlaneVisitor and should be checked separately.
-    // TODO(b/148346217): Make XPlaneVisitor support KernelLaunch and
-    // KernelExecute event types.
     return *kernel_event_type;
   } else {
     return HostEventType::kUnknownHostEventType;
@@ -176,7 +175,6 @@ void ProcessRootEvent(int64_t group_id, EventNode* root_event,
                       GroupMetadataMap* group_metadata_map) {
   root_event->PropagateGroupId(group_id, group_metadata_map);
   std::string group_name = root_event->GetGroupName();
-  // TODO(b/160255693): Change the event name instead.
   if (!IsImplicitRootEvent(root_event->GetEventVisitor())) {
     // Add the `step_name` stat for the user-defined root events only. When an
     // XEvent is converted to a trace event, the trace event name is set to the
@@ -219,8 +217,6 @@ bool IsIteratorEventType(std::optional<int64_t> event_type) {
          event_type == HostEventType::kDeviceInputPipelineSecondIterator;
 }
 
-}  // namespace
-
 // Returns true if TF's loop ops exist in the given XSpace's metadata.
 bool CheckLoopOp(const XSpace& space) {
   for (const XPlane& plane : space.planes()) {
@@ -259,7 +255,7 @@ std::optional<XStatVisitor> EventNode::GetContextStat(int64_t stat_type) const {
       seen.insert(parent);
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 std::string EventNode::GetGroupName() const {
@@ -359,7 +355,6 @@ const EventNode* EventNode::FindParent(int64_t event_type) const {
 
 void EventForest::ConnectIntraThread(XPlane* plane, XPlaneVisitor* visitor,
                                      ContextGroupMap* context_groups) {
-  // TODO(b/149095099): avoid string comparison.
   bool is_host_plane = (visitor->Name() == kHostThreadsPlaneName);
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
@@ -725,7 +720,6 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
 
 void GroupTfEvents(XSpace* space, EventForest* event_forest) {
   if (CheckLoopOp(*space)) {
-    // TODO(b/154510598): Support TF's loop ops.
     return;
   }
   std::vector<InterThreadConnectInfo> connect_info_list =
@@ -738,6 +732,210 @@ void GroupTfEvents(XSpace* space, EventForest* event_forest) {
 void GroupTfEvents(XSpace* space) {
   EventForest event_forest;
   GroupTfEvents(space, &event_forest);
+}
+
+void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
+                                  XLineBuilder& line) {
+  if (group_metadata_map.empty()) return;
+  XPlaneBuilder* plane = line.Plane();
+  const XStatMetadata* group_id_stat_metadata =
+      plane->GetStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  if (group_id_stat_metadata == nullptr) return;
+  const XStatMetadata* step_name_stat_metadata =
+      plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
+  line.ForEachEvent([&](XEventBuilder event) {
+    const XStat* group_id_stat = event.GetStat(*group_id_stat_metadata);
+    if (group_id_stat != nullptr) {
+      int64_t group_id = group_id_stat->int64_value();
+      if (const GroupMetadata* group_metadata =
+              gtl::FindOrNull(group_metadata_map, group_id)) {
+        event.AddStatValue(*step_name_stat_metadata, group_metadata->name);
+      }
+    }
+  });
+}
+
+std::optional<int64_t> GetGroupId(const XEventVisitor& event,
+                                  const XStatMetadata& group_id_stat_metadata) {
+  if (auto group_id_stat =
+          event.GetStat(StatType::kGroupId, group_id_stat_metadata)) {
+    return group_id_stat->IntValue();
+  }
+  return std::nullopt;
+}
+
+// A queue of events, used to obtain the group id for overlapping events.
+class GroupQueue {
+ public:
+  // REQUIRED: Events in line must be non-overlapping and sorted by timestamp.
+  GroupQueue(const XPlaneVisitor* plane, const XLine* line,
+             const XStatMetadata* group_id_stat_metadata)
+      : group_queue_(plane, line),
+        group_id_stat_metadata_(group_id_stat_metadata) {}
+
+  // Returns the group_id of an event that overlaps timespan.
+  std::optional<int64_t> OverlappingGroupId(Timespan timespan) {
+    if (!group_event_visitor_ ||
+        !group_event_visitor_->GetTimespan().Overlaps(timespan)) {
+      group_event_visitor_ = group_queue_.GetOverlappingEvent(timespan);
+      if (group_event_visitor_) {
+        group_id_ = GetGroupId(*group_event_visitor_, *group_id_stat_metadata_);
+      } else {
+        group_id_.reset();
+      }
+    }
+    return group_id_;
+  }
+
+ private:
+  XEventContextTracker group_queue_;
+  std::optional<XEventVisitor> group_event_visitor_;
+  std::optional<int64_t> group_id_;
+  const XStatMetadata* group_id_stat_metadata_;
+};
+
+// For a host loop, merges consecutive step events with the same group_id, and
+// discards step events without a group_id. If no step events have group_id, no
+// events are merged nor discarded.
+void MergeHostSteps(const XStatMetadata& group_id_stat_metadata,
+                    const XPlaneVisitor& plane_visitor,
+                    XPlaneBuilder* plane_builder, XLine* step_line) {
+  std::optional<int64_t> merged_group_id;
+  std::optional<XEventBuilder> merged_step_builder;
+  absl::flat_hash_set<const XEvent*> events_to_remove;
+  for (XEvent& step_event : *step_line->mutable_events()) {
+    XEventVisitor step_visitor(&plane_visitor, step_line, &step_event);
+    auto group_id = GetGroupId(step_visitor, group_id_stat_metadata);
+    if (!group_id) {
+      // Discard ungrouped event.
+      // This usually happens at the beginning of a trace collected using
+      // sampling mode, since the host is ahead of the device.
+      merged_group_id.reset();
+      merged_step_builder.reset();
+      events_to_remove.insert(&step_event);
+    } else if (merged_group_id != group_id) {
+      // Start a new step with the current event.
+      merged_group_id = group_id;
+      merged_step_builder.emplace(step_line, plane_builder, &step_event);
+    } else {
+      // Multi-module step: extend the previous step until the end of the
+      // current event and discard the current event.
+      merged_step_builder->SetEndTimestampPs(step_visitor.EndTimestampPs());
+      events_to_remove.insert(&step_event);
+    }
+  }
+  // Remove events, unless no events were grouped.
+  if (events_to_remove.size() < step_line->events_size()) {
+    RemoveEvents(step_line, events_to_remove);
+  }
+}
+
+// Assigns group_id to the each event in line using the overlapping event in
+// group_line.
+void GroupLine(const XStatMetadata& group_id_stat_metadata,
+               const XPlaneVisitor& plane_visitor, const XLine& group_line,
+               XPlaneBuilder* plane_builder, XLine* line) {
+  GroupQueue group_queue(&plane_visitor, &group_line, &group_id_stat_metadata);
+  for (XEvent& event : *line->mutable_events()) {
+    XEventBuilder event_builder(line, plane_builder, &event);
+    if (auto group_id =
+            group_queue.OverlappingGroupId(event_builder.GetTimespan())) {
+      event_builder.AddStatValue(group_id_stat_metadata, *group_id);
+    }
+  }
+}
+
+void GroupHostAndPlanes(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest) {
+  std::vector<InterThreadConnectInfo> connect_info_list =
+      CreateInterThreadConnectInfoList();
+  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  // Group host and device planes together, and assigns group_id to module
+  // events using TraceMe 2.0.
+  event_forest->AddPlanes(CreateTfXPlaneVisitor, device_traces);
+  event_forest->ConnectEvents(connect_info_list);
+  event_forest->GroupEvents();
+}
+
+void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
+                       const GroupMetadataMap& group_metadata_map) {
+  // For each device_trace, the following happens:
+  // (1) Find the module line and the step line.
+  // (2) Assigns group_id to step events. group_id is read from the module
+  //     events nested by the step events.
+  // (3) Assigns group_id to other events nested by the grouped module events.
+  XLine* module_line = nullptr;
+  XLine* step_line = nullptr;
+  std::vector<XLine*> other_lines;
+  for (XLine& line : *plane->mutable_lines()) {
+    if (line.name() == "XLA Modules") {
+      module_line = &line;
+    } else if (line.name() == "Steps") {
+      step_line = &line;
+    } else {
+      other_lines.push_back(&line);
+    }
+  }
+
+  if (!module_line) return;
+
+  XPlaneBuilder plane_builder(plane);
+  const XStatMetadata* group_id_stat_metadata =
+      plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
+  // NOTE: Create plane_visitor after adding new stat metadata to
+  // plane_builder, so plane_visitor picks up the changes.
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  const XLine* group_line = module_line;
+  if (step_line) {
+    bool device_loop = (step_line->events_size() > module_line->events_size());
+    if (device_loop) {
+      group_line = nullptr;
+    } else {  // host loop
+      if (group_line) {
+        // Host loop steps take the group_id from their module.
+        GroupLine(*group_id_stat_metadata, plane_visitor, *group_line,
+                  &plane_builder, step_line);
+        // Merge consecutive steps with the same group_id.
+        MergeHostSteps(*group_id_stat_metadata, plane_visitor, &plane_builder,
+                       step_line);
+        XLineBuilder step_line_builder(step_line, &plane_builder);
+        AddGroupMetadataToStepEvents(group_metadata_map, step_line_builder);
+      }
+    }
+  }
+  if (group_line) {
+    for (XLine* line : other_lines) {
+      GroupLine(*group_id_stat_metadata, plane_visitor, *group_line,
+                &plane_builder, line);
+    }
+  }
+}
+
+void GroupTpuEventsOSS(
+    tensorflow::profiler::XSpace* space,
+    const std::vector<tensorflow::profiler::XPlane*>& device_traces,
+    EventForest* event_forest) {
+  if (CheckLoopOp(*space)) {
+    return;
+  }
+
+  GroupHostAndPlanes(space, device_traces, event_forest);
+
+  if (device_traces.empty()) return;
+  const GroupMetadataMap& group_metadata_map =
+      event_forest->GetGroupMetadataMap();
+
+  std::vector<std::unique_ptr<Thread>> threads;
+  ThreadOptions thread_options;
+  threads.reserve(device_traces.size());
+  for (XPlane* plane : device_traces) {
+    threads.emplace_back(Env::Default()->StartThread(
+        thread_options, "group_xplane_events",
+        absl::bind_front(GroupXplaneEvents, plane,
+                         std::ref(group_metadata_map))));
+  }
 }
 
 }  // namespace profiler

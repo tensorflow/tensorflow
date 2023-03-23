@@ -8,6 +8,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow:cluster_util",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

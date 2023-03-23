@@ -39,7 +39,6 @@ cc_library(
         ":error_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:errors",
@@ -64,8 +63,6 @@ tf_cc_test(
     deps = [
         ":utils",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -94,7 +91,6 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -301,6 +297,10 @@ cc_library(
 cc_library(
     name = "thread_pool",
     hdrs = ["thread_pool.h"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//smartass/brain/server:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:threadpool_interface",

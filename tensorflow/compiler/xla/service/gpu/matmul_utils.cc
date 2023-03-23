@@ -402,18 +402,21 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType dtype) {
-  switch (dtype) {
+    PrimitiveType lhs_dtype, PrimitiveType output_dtype,
+    int64_t compute_precision) {
+  switch (output_dtype) {
     case F8E5M2:    // fall-through
     case F8E4M3FN:  // fall-through
-    case F16:  // fall-through
+    case F16:       // fall-through
     case BF16:
       // Accumulate in f32 precision.
       return se::blas::ComputationType::kF32;
     case F32:  // fall-through
     case C64:
 #if GOOGLE_CUDA
-      if (tsl::tensor_float_32_execution_enabled()) {
+      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1 &&
+          lhs_dtype != F8E4M3FN && lhs_dtype != F8E5M2) {
+        // CublasLt requires compute type to be F32 for F8 matmul.
         return se::blas::ComputationType::kTF32AsF32;
       }
 #endif
@@ -510,9 +513,11 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            se::blas::ComputePrecision compute_precision,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
+  PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_type));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      GetBlasComputationType(lhs_type, output_type, compute_precision));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -693,12 +698,16 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
       return se::blas::DataType::kF8E5M2;
     case F8E4M3FN:
       return se::blas::DataType::kF8E4M3FN;
+    case S8:
+      return se::blas::DataType::kInt8;
     case F16:
       return se::blas::DataType::kHalf;
     case BF16:
       return se::blas::DataType::kBF16;
     case F32:
       return se::blas::DataType::kFloat;
+    case S32:
+      return se::blas::DataType::kInt32;
     case F64:
       return se::blas::DataType::kDouble;
     case C64:
@@ -806,26 +815,39 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   lhs_layout.batch_size = batch_size;
   rhs_layout.batch_size = batch_size;
 
-  // cuBLASLt FP8 GEMM kernels require A (i.e. lhs) to be transposed.
-  se::blas::Transpose trans_a;
-  if (lhs_layout.dtype == F8E4M3FN || lhs_layout.dtype == F8E5M2) {
-    trans_a = se::blas::Transpose::kTranspose;
-  } else {
-    trans_a = se::blas::Transpose::kNoTranspose;
-  }
-
   bool must_swap_operands =
       MakeOutputColumnMajor(lhs_layout, rhs_layout, c_layout, output_layout);
 
+  // Do not transopse either input. Note the cuBLASLt documentation somewhat
+  // incorrectly claims "A must be transposed and B non-transposed" when A and B
+  // are FP8 (https://docs.nvidia.com/cuda/cublas/#cublasltmatmul). In reality,
+  // this is only true if A and B are column-major. If A is row-major, A must
+  // *not* be transposed, and if B is row-major, B must be transposed. We never
+  // transpose A or B, and expect the caller to ensure A is row-major and B is
+  // column when A and B are FP8.
+  const se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
+  const se::blas::Transpose trans_b = se::blas::Transpose::kNoTranspose;
+  if (primitive_util::IsF8Type(lhs_layout.dtype) &&
+      lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
+    return InternalError("The F8 LHS must be column-major");
+  }
+  if (primitive_util::IsF8Type(rhs_layout.dtype) &&
+      rhs_layout.order == MatrixLayout::Order::kRowMajor) {
+    return InternalError("The F8 RHS must be row-major");
+  }
+
   TF_ASSIGN_OR_RETURN(se::blas::DataType output_dtype,
                       AsBlasDataType(output_layout.dtype));
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_layout.dtype));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      GetBlasComputationType(lhs_layout.dtype, output_layout.dtype,
+                             config.compute_precision));
+
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,
       se::cuda::BlasLt::MatmulDesc::Create(
           computation_type, GetScaleType(output_dtype, computation_type),
-          trans_a, /*trans_b=*/se::blas::Transpose::kNoTranspose, epilogue));
+          trans_a, trans_b, epilogue));
 
   TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout a_desc,
                       AsBlasLtMatrixLayout(lhs_layout));

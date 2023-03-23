@@ -17,6 +17,7 @@ import collections
 import copy
 import itertools
 import json
+import os
 import typing
 
 from absl import flags
@@ -33,6 +34,7 @@ from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
+from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
 from tensorflow.dtensor.python.tests.test_backend_util import DTensorTestBackendConfigurator
@@ -50,6 +52,20 @@ v2_compat.enable_v2_behavior()
 DEFAULT_TOL = 1e-5
 
 _DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
+
+
+def get_use_xla_spmd(device_type):
+  """Returns True when device_type is TPU and environment variable is set.
+
+  Args:
+    device_type: A str representing the type of device on the mesh.
+
+  Returns:
+    bool: True when device_type is TPU and environment variable is set.
+  """
+  return device_type == 'TPU' and '0' != os.environ.get(
+      'DTENSOR_TEST_USE_XLA_SPMD', '0'
+  )
 
 
 def create_device_ids_array(shape):
@@ -94,8 +110,8 @@ def reset_logical_devices(device_type, count):
                      '%s' % device_type)
 
   if count < len(devices):
-    raise ValueError(f'Cannot set {count} logical devices, which is '
-                     f'less than ({len(devices)}) physical devices.')
+    devices = devices[:count]
+    tf_config.set_visible_devices(devices, device_type=device_type.upper())
 
   for i, device in enumerate(devices):
     n = (i + 1) * count // len(devices) - i * count // len(devices)
@@ -163,8 +179,8 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name
-      device_type_mesh_map: typing.Dict[typing.Text,
-                                        layout_lib.Mesh]) -> layout_lib.Mesh:
+      device_type_mesh_map: typing.Dict[typing.Text, layout_lib.Mesh]
+  ) -> layout_lib.Mesh:
     """Configs corresponding mesh given test context.
 
     If runs on a CPU mesh, set virtual device on CPU.
@@ -199,6 +215,8 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       mesh = get_mesh('CPU')
       reset_logical_devices('CPU', np.prod(mesh.shape()))
       accelerator_util.initialize_accelerator_system('CPU')
+
+    test_backend_util.config_test_mesh(mesh)
 
     return mesh
 
@@ -241,6 +259,10 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
     if hasattr(self, '_backend_configurator'):
       self._backend_configurator.tearDown()
     super().skipTest(reason)
+
+  def skipForPathways(self, reason: str):  # pylint: disable=invalid-name
+    if config.backend_is_pw():
+      self.skipTest(reason)
 
   def assertDTensorEqual(
       self,  # pylint: disable=invalid-name
@@ -327,7 +349,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
     # pylint: disable=protected-access
     replicated_dims = [
-        x for x in layout.mesh._dim_names if x not in layout.sharding_specs
+        x for x in layout.mesh.dim_names if x not in layout.sharding_specs
     ]
     # pylint: enable=protected-access
 

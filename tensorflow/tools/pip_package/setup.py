@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.12.0'
+_VERSION = '2.13.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -97,19 +97,14 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.22, <1.24',
     'opt_einsum >= 2.3.2',
     'packaging',
-    # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
-    # Protobuf 4.0 is binary incompatible with what C++ TF uses.
-    # We need ~1 quarter to update properly.
-    # See also: https://github.com/tensorflow/tensorflow/issues/53234
-    # See also: https://github.com/protocolbuffers/protobuf/issues/9954
-    # See also: https://github.com/tensorflow/tensorflow/issues/56077
-    # This is a temporary patch for now, to patch previous TF releases.
     'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0',
+    # TODO(b/266362323): wrapt==1.15.0rc0 incompatible with TF 2.12.0 RC0 (and
+    # nightly, but works with TF 2.11)
+    'wrapt >= 1.11.0, <1.15',
     'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
     'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of
@@ -123,12 +118,12 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.11, < 2.12',
-                        'tb-nightly ~= 2.12.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
-                        'tf-estimator-nightly ~= 2.12.0.dev'),
-    standard_or_nightly('keras >= 2.11.0rc1, < 2.12',
-                        'keras-nightly ~= 2.12.0.dev'),
+    standard_or_nightly('tensorboard >= 2.12, < 2.13',
+                        'tb-nightly ~= 2.13.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.12.0rc0, < 2.13',
+                        'tf-estimator-nightly ~= 2.13.0.dev'),
+    standard_or_nightly('keras >= 2.12.0rc0, < 2.13',
+                        'keras-nightly ~= 2.13.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -161,6 +156,10 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
+      # Install the TensorFlow package built by Apple if the user is running
+      # macOS on an Apple Silicon machine.
+      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 DOCLINES = __doc__.split('\n')
@@ -305,6 +304,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
     list(find_files('*.proto', 'tensorflow/python/framework')) +
+    list(find_files('*.proto', 'tensorflow/tsl')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -359,7 +359,7 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.2',
+        'Environment :: GPU :: NVIDIA CUDA :: 11.8',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

@@ -14,14 +14,14 @@
 # ==============================================================================
 """High level TF Function transformation API."""
 
-from typing import Any, Optional, Callable, Union, Iterator
+from typing import Any, Callable, Iterator, Optional, Union
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function.capture import restore_captures
 from tensorflow.core.function.runtime_client import runtime_client
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
-from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
@@ -235,7 +235,7 @@ def transform_function(
   # Set arg_keywords and positional_args
   updated_cf._arg_keywords = cf._arg_keywords
   updated_cf._num_positional_args = cf._num_positional_args
-  saved_model_utils.restore_captures(updated_cf, cf.captured_inputs)
+  restore_captures.restore_captures(updated_cf, cf.captured_inputs)
   # pylint: enable=protected-access
 
   # Register the ConcreteFunction with the python Graph.
@@ -261,10 +261,10 @@ def transform_eager_defined_function(
       mlir_pipeline if isinstance(mlir_pipeline, list) else [mlir_pipeline])
   # First apply the MLIR based transformation.
   for mlir_pipeline in mlir_pipelines:
-    rt.TransformFunction(f.signature.name, mlir_pipeline)
+    rt.TransformFunction(f.cached_definition.signature.name, mlir_pipeline)
 
   # Get the `FunctionDef` after MLIR transformation.
-  fndef = rt.GetFunctionProto(f.signature.name)
+  fndef = rt.GetFunctionProto(f.cached_definition.signature.name)
 
   # Apply the Python function based transformation.
   for transform_fn in transform_fns:
@@ -283,9 +283,13 @@ def transform_eager_defined_function(
   # pylint: disable=protected-access
   # Ref: third_party/tensorflow/python/ops/control_flow_util_v2.py
   # Generate a new `_EagerDefinedFunction`.
-  edf = function_lib._EagerDefinedFunction(fndef.signature.name, func_graph,
-                                           func_graph.inputs,
-                                           func_graph.outputs, fndef.attr)
+  edf = function_lib._EagerDefinedFunction(
+      fndef.signature.name,
+      func_graph,
+      func_graph.inputs,
+      func_graph.outputs,
+      fndef.attr,
+  )
   # pylint: enable=protected-access
 
   return edf
@@ -341,7 +345,7 @@ def _replicate_gradient_functions(
 
       remapped_captures.append(
           replicated_graph.get_tensor_by_name(outer_capture.name))
-    saved_model_utils.restore_captures(grad_fn, remapped_captures)
+    restore_captures.restore_captures(grad_fn, remapped_captures)
     new_gradient_op_type = custom_gradient_lib.generate_name()
     op._set_attr(  # pylint: disable=protected-access
         "_gradient_op_type",

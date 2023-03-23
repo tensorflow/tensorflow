@@ -62,6 +62,11 @@ void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t) {
   }
 }
 
+void map_dtype_to_child_of_tensor(const DataType& dtype, FullTypeDef& t) {
+  t.set_type_id(TFT_TENSOR);
+  map_dtype_to_tensor(dtype, *t.add_args());
+}
+
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";

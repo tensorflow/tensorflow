@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -361,6 +364,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
+  DUMP_OP_CREATION_STACKTRACES(function_name, "op_stacktraces", graph.get());
+
+  // Dump the initial graph.
+  DUMP_GRAPH(function_name, "initial", graph.get());
+
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
   FunctionLibraryDefinition reachable_lib_def =
@@ -411,7 +419,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        dev_set, options.config_proto, &graph, &reachable_lib_def,
+        function_name, dev_set, options.config_proto,
+        options.xla_compile_device_type, &graph, &reachable_lib_def,
         &control_ret_node_names, &control_rets_updated));
   }
 
@@ -445,7 +454,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.debug_filename_prefix = "pflr_optmz_";
   env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
-  DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
+  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get());
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -453,21 +462,21 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  DumpGraph("Before calling Placer", graph.get());
+  DUMP_GRAPH(function_name, "before_placer", graph.get());
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
-  DumpGraph("Before running POST_PLACEMENT passes", graph.get());
+  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get());
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
 
   if (options.optimize_graph_fn) {
-    DumpGraph("Before running graph optimization fn", graph.get());
+    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get());
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
         &reachable_lib_def, dev_set, cpu_device, &graph);
@@ -475,10 +484,10 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
     }
-    DumpGraph("After optimization", graph.get());
+    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get());
   }
 
-  DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
+  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get());
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
@@ -492,6 +501,78 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
                                     node_name_to_control_ret,
                                     std::move(ret_types),
                                     ret_nodes.size()};
+}
+
+StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+PreprocessAndPartitionGraph(
+    OptimizedFunctionGraphInfo& input_optimized_graph,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
+    const std::vector<CompositeDevice*>& composite_devices, Env* env) {
+  std::unique_ptr<Graph>& graph = input_optimized_graph.function_graph;
+
+  // Expand the nodes assigned to a CompositeDevice before graph partition to
+  // avoid generating a subgraph on a virtual device for execution.
+  // This transformation should happen as late as possible, in order to run as
+  // many graph optimization passes (e.g. PRE_PLACEMENT, PLACER,
+  // POST_PLACEMENT, POST_REWRITE_FOR_EXEC) on the smallest graph possible.
+  TF_RETURN_IF_ERROR(ReplicatePerReplicaNodesInFunctionGraph(
+      options.composite_devices, graph.get()));
+
+  const FunctionLibraryDefinition* lib_def =
+      options.lib_def == nullptr ? input_lib_def : options.lib_def;
+  if (options.graph_collector != nullptr) {
+    GraphDef def;
+    graph->ToGraphDef(&def);
+    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+    options.graph_collector->CollectOptimizedGraph(def);
+  }
+
+  VLOG(4) << "Main function graph to be partitioned:";
+  VLOG(4) << DebugString(graph->ToGraphDefDebug());
+
+  auto device_name_to_subgraphs =
+      std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
+  TF_RETURN_IF_ERROR(PartitionFunctionGraph(dev_set, std::move(graph),
+                                            device_name_to_subgraphs.get()));
+
+  for (const auto& pair : *device_name_to_subgraphs) {
+    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
+                              pair.first, ")"),
+              pair.second.get());
+  }
+
+  GraphOptimizationPassOptions optimization_options;
+  optimization_options.flib_def = &(input_optimized_graph.lib_def);
+  optimization_options.is_function_graph = true;
+  optimization_options.graph = nullptr;
+  optimization_options.device_set = nullptr;
+  optimization_options.partition_graphs = device_name_to_subgraphs.get();
+  optimization_options.debug_filename_prefix = "pflr_imd_";
+  env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
+
+  // Normally POST_PARTITIONING passes are run by distributed workers.
+  // Distributed workers are currently not supported in this code path, so we
+  // run the passes here.
+  const bool should_run_optimization_passes = !options.is_component_function;
+  if (should_run_optimization_passes) {
+    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+        OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
+  }
+  for (const auto& pair : *device_name_to_subgraphs) {
+    const auto* optimized_subgraph = pair.second.get();
+    DumpGraph(
+        strings::StrCat("After all optimization passes (", pair.first, ")"),
+        optimized_subgraph);
+    if (VLOG_IS_ON(3)) {
+      DumpGraphDefToFile(
+          strings::StrCat("pflr_after_all_optimization_passes_",
+                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
+                          pair.first),
+          optimized_subgraph->ToGraphDefDebug());
+    }
+  }
+  return std::move(device_name_to_subgraphs);
 }
 
 }  // namespace tensorflow

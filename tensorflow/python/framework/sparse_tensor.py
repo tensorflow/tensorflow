@@ -18,6 +18,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
@@ -29,7 +30,9 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -422,7 +425,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
         not tf2.enabled()):
       return SparseTensorValue(*tensor_list)
     else:
-      return SparseTensor(*tensor_list)
+      result = SparseTensor(*tensor_list)
+      # Augment the static dense shape with the shape carried by the spec.
+      result._dense_shape_default = result._dense_shape_default.merge_with(  # pylint: disable=protected-access
+          self._shape)
+      return result
 
   # The SparseTensorSpec tensor_list encoding uses (de)serialize_sparse ops
   # to (un)box the component tensors in a way that allows for batching &
@@ -464,13 +471,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
           self._shape, dtype=dtypes.int64, name="shape")
     elif (self._shape.rank is not None and
           any(dim.value is not None for dim in self._shape.dims)):
-      # array_ops imports sparse_tensor.py. Local import to avoid import cycle.
-      from tensorflow.python.ops import array_ops  # pylint: disable=g-import-not-at-top
-      pieces = array_ops.unstack(dense_shape, num=self._shape.rank)
+      pieces = array_ops_stack.unstack(dense_shape, num=self._shape.rank)
       for i, dim in enumerate(self._shape.dims):
         if dim.value is not None:
           pieces[i] = constant_op.constant(dim.value, dense_shape.dtype)
-      dense_shape = array_ops.stack(pieces)
+      dense_shape = array_ops_stack.stack(pieces)
     else:
       dense_shape.set_shape([rank])
 
@@ -507,6 +512,13 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     else:
       raise TypeError("Expected SparseTensor or SparseTensorValue. Received: "
                       f"{value} of type {type(value).__name__}.")
+
+
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        SparseTensorSpec, struct_pb2.TypeSpecProto.SPARSE_TENSOR_SPEC
+    )
+)
 
 
 # TODO(b/133606651) Delete the SparseTensor registration when CompositeTensor
