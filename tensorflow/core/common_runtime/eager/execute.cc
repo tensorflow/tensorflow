@@ -1937,8 +1937,8 @@ void CollectGraphs(EagerContext* ctx) {
 }
 }  // namespace
 
-Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
-                    int* num_retvals) {
+Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
+                      int* num_retvals) {
   profiler::TraceMe activity([&] {
     return ::tensorflow::profiler::TraceMeEncode(
         "EagerExecute",
@@ -2023,6 +2023,30 @@ Status EagerKernelExecute(
   }
   return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
                           kernel.get(), eager_func_params);
+}
+
+Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
+                    int* num_retvals) {
+  if (VLOG_IS_ON(1) && op->is_function()) {
+    std::string op_name = op->Name();
+    std::string exec_mode = op->IsLocal() ? "local" : "remote";
+    std::string device_name = op->DeviceName();
+
+    std::string msg =
+        "eager executing " + exec_mode + " operation '" + op_name + "'";
+
+    if (!device_name.empty()) msg += " on device '" + device_name + "'";
+
+    VLOG(1) << "Entering " << msg;
+
+    Status status = DoEagerExecute(op, retvals, num_retvals);
+
+    VLOG(1) << "Exiting " << msg << ", status code is " << status;
+
+    return status;
+  } else {
+    return DoEagerExecute(op, retvals, num_retvals);
+  }
 }
 
 namespace {
