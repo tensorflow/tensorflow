@@ -254,7 +254,9 @@ CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
 #endif
 
-REGISTER_CAST_GPU(float, bfloat16);
+REGISTER_CAST_GPU(bfloat16, int32);
+REGISTER_CAST_GPU(int32, bfloat16);
+
 REGISTER_CAST_GPU(float, float8_e5m2);
 REGISTER_CAST_GPU(float, float8_e4m3fn);
 

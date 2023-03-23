@@ -53,6 +53,7 @@ CAST_FUNCTORS(GPUDevice);
   DEFINE(in_type, std::complex<double>)
 
 DEFINE(float, bfloat16);
+DEFINE(int32, bfloat16);
 
 // Required functors not previously specialized for truncation.
 DEFINE(double, float8_e5m2);

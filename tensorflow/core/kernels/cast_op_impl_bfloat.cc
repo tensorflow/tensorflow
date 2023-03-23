@@ -32,6 +32,7 @@ CastFunctorType GetCpuCastFromBfloat(DataType dst_dtype) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype) {
+  CAST_CASE(GPUDevice, bfloat16, int32);
   CAST_CASE(GPUDevice, bfloat16, float);
   CAST_CASE(GPUDevice, bfloat16, float8_e5m2);
   CAST_CASE(GPUDevice, bfloat16, float8_e4m3fn);
