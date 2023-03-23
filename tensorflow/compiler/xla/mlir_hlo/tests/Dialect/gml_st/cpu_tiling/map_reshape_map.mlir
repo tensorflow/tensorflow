@@ -1,4 +1,6 @@
-// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline | FileCheck %s
+// RUN: mlir-hlo-opt %s \
+// RUN: --gml-st-cpu-tiling-pipeline="fuse-degenerate-reshapes=true" \
+// RUN: | FileCheck %s
 
 func.func @fuse_reshape_map(%arg0: tensor<10x16xf32>,
     %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {

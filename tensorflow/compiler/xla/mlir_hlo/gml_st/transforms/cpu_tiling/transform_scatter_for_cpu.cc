@@ -80,6 +80,8 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
     // Fuse into `then` block.
     fuseGreedily(rewriter, ifOpOr->getThenRegion().front(), fuseFilterFn);
 
+    // Remove tiling label to continue generating code inside the region.
+    ifOpOr->walk([](Operation *op) { removeLabel(op, kTransformedLabel); });
     return success();
   }
 };

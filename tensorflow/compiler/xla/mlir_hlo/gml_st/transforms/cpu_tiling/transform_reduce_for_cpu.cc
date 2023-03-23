@@ -394,7 +394,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
           remainingProducers.push_back(operand.getDefiningOp());
       }
     }
-    return {resultOps, rootOp};
+    return {resultOps, rootOp, {}};
   }
 
   LogicalResult tileAndPeelReductionDim(

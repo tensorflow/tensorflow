@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
-#include <iostream>
 
 #include "gml_st/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -38,6 +37,7 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.enableFusionClusterOutlining = false;
   opts.cpuName = cpuName;
   opts.statsDetailLevel = statsDetailLevel;
+  opts.fuseDegenerateReshapes = false;
   return opts;
 }
 
@@ -153,10 +153,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformMatmulForCpuPass(tilingHeuristic));
   pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
-
-  pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
-  pm.addNestedPass<FuncOp>(createTransformReverseForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformElementwiseForCpuPass(
+      options.vectorSize, options.fuseDegenerateReshapes));
 
   pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 

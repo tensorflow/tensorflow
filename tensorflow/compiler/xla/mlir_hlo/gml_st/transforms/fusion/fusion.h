@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 #define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
-#include "gml_st/IR/gml_st_ops.h"
+#include <utility>
+
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
@@ -28,6 +29,8 @@ namespace mlir::gml_st {
 struct FusionCluster {
   SetVector<Operation *> operations;
   Operation *root;
+  // Map from Value of the fusion cluster argument to the root dimensions.
+  llvm::SmallVector<std::pair<Value, SmallVector<int64_t>>> argDimsMapping;
 };
 
 // Find a cluster of operations that can be tiled and fused together around

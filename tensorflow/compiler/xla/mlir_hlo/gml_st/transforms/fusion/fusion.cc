@@ -311,7 +311,9 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
         }
         continue;
       }
-      if (succeeded(fuse(rewriter, extractSliceOp))) {
+      auto fusedOp = fuse(rewriter, extractSliceOp);
+      if (succeeded(fusedOp)) {
+        setLabel(*fusedOp, kTransformedLabel);
         return success();
       }
       continue;
@@ -507,7 +509,7 @@ FusionCluster findMapFusionCluster(Operation* op) {
       resultOps.insert(curOp);
     }
   }
-  return {resultOps, rootOp};
+  return {resultOps, rootOp, {}};
 }
 
 FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(

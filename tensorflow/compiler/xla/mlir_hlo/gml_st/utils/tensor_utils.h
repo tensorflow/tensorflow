@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_GML_ST_UTILS_TENSOR_UTILS_H
 
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 
 namespace mlir {
 namespace gml_st {
@@ -31,7 +32,7 @@ bool isDegenerateReshapeOp(TensorReshapeOp reshapeOp) {
   llvm::ArrayRef<int64_t> expandedShape =
       (isExpanding ? reshapeOp.getResultType().getShape()
                    : reshapeOp.getSrcType().getShape());
-  for (auto &indices : reshapeOp.getReassociationIndices()) {
+  for (auto& indices : reshapeOp.getReassociationIndices()) {
     // For each reassociation indices, a degenerate reshape op only has at most
     // 1 non-unit-dimension, i.e. number of unit-dimensions is greater or equal
     // to the indices size - 1.
@@ -43,6 +44,12 @@ bool isDegenerateReshapeOp(TensorReshapeOp reshapeOp) {
   }
   return true;
 }
+
+// Returns ids of size-1 dims that were expanded or collapsed by
+// tensor.expand_shape/tensor.collapse_shape.
+SmallVector<int64_t> getPreservedDimensions(
+    ArrayRef<int64_t> shape,
+    ArrayRef<ReassociationIndices> reassociationIndices);
 
 }  // namespace gml_st
 }  // namespace mlir
