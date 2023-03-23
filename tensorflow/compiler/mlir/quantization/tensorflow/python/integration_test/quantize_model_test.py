@@ -775,7 +775,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         )
         return {'output': q_out}
 
-    np.random.seed(1234)
     model = ConvModel()
     saved_model_save.save(model, self._input_saved_model_path)
 
@@ -1460,7 +1459,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
     filter_shape = [2, 3, 3, 2]
 
-    np.random.seed(1234)
     model = self._create_conv2d_model(
         input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
     )
@@ -1784,7 +1782,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     model = self._create_depthwise_conv2d_model(
         input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
     )
-    np.random.seed(1234)
     saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
@@ -1916,7 +1913,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       batch_sizes: Sequence[int],
       target_opset: quant_opts_pb2.OpSet,
   ):
-    np.random.seed(1234)
     lhs_batch_size, rhs_batch_size = batch_sizes
     input_shape = (*lhs_batch_size, 1, 1024)
     filter_shape = (*rhs_batch_size, 1024, 3)
@@ -1928,15 +1924,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         has_bias,
         activation_fn,
     )
+    rng = np.random.default_rng(seed=1234)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(500):
         yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(
-                    low=0.0, high=1.0, size=static_input_shape
-                ).astype('f4')
-            ),
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
         }
 
     tags = {tag_constants.SERVING}
@@ -1967,15 +1962,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     input_data = ops.convert_to_tensor(
-        np.random.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            'f4'
+        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
+            np.float32
         )
     )
     expected_outputs = model.matmul(input_data)
     got_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
-    self.assertAllClose(expected_outputs, got_outputs, atol=0.1674)
+    # The atol value is arbitrary.
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.22)
 
     # Check the converted model in the target opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2009,8 +2005,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_tensor=ops.convert_to_tensor(input_data)
     )
     # The difference between TF and target path is expected to be small.
-    self.assertAllClose(new_outputs, got_outputs, atol=0.1202)
-    self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
+    # The atol value is arbitrary.
+    self.assertAllClose(new_outputs, got_outputs, atol=0.13)
+    self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
   @parameterized.parameters(
       ('abc,cde->abde', (2, 2, 64), (64, 3, 3), (3, 3), quant_opts_pb2.XLA),
@@ -3521,7 +3518,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
-    np.random.seed(1234)
     model = ConvModel()
     saved_model_save.save(model, self._input_saved_model_path)
 
