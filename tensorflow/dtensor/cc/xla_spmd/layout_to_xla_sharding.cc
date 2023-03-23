@@ -77,6 +77,7 @@ std::vector<int64_t> MajorToMinor::ToDeviceList() {
   }
 
   std::vector<int64_t> devices;
+  devices.reserve(cum_size * sizes[0]);
   PopulateDevices(permutation, sizes, cum_sizes, &devices);
   return devices;
 }
