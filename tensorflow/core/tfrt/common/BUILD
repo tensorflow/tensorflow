@@ -4,6 +4,7 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/tsl:tsl.bzl", "if_not_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -125,7 +126,10 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
-    ],
+    ] + if_not_windows(
+        # pjrt_c_api_client depends on //third_party/tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper, which does not support windows.
+        ["//tensorflow/compiler/xla/pjrt:pjrt_c_api_client"],
+    ),
 )
 
 tf_cc_test(
