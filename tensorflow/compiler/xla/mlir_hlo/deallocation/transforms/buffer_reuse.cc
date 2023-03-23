@@ -408,13 +408,23 @@ bool doubleBuffer(Block& block) {
   return result;
 }
 
-void eliminateCopies(Block& block) {
+bool isRestrictBbArg(Value value) {
+  auto bbarg = llvm::dyn_cast<BlockArgument>(value);
+  auto func =
+      llvm::dyn_cast<func::FuncOp>(value.getParentBlock()->getParentOp());
+  if (!bbarg || !func) return false;
+  auto isRestrict = func.getArgAttrOfType<BoolAttr>(bbarg.getArgNumber(),
+                                                    "deallocation.restrict");
+  return isRestrict && isRestrict.getValue();
+}
+
+void eliminateCopies(Block& block, Operation* firstOp) {
   auto* op = &block.front();
   while (op) {
     for (auto& region : op->getRegions()) {
       if (!region.empty()) {
         assert(region.hasOneBlock());
-        eliminateCopies(region.front());
+        eliminateCopies(region.front(), firstOp);
       }
     }
 
@@ -428,34 +438,38 @@ void eliminateCopies(Block& block) {
       continue;
     }
 
-    bool targetIsFirstUseOfRestrictBbArg = false;
-    if (auto bbarg = llvm::dyn_cast<BlockArgument>(copy.getTarget())) {
-      if (auto func = llvm::dyn_cast<func::FuncOp>(
-              bbarg.getParentBlock()->getParentOp())) {
-        auto isRestrict = func.getArgAttrOfType<BoolAttr>(
-            bbarg.getArgNumber(), "deallocation.restrict");
-        targetIsFirstUseOfRestrictBbArg =
-            isRestrict && isRestrict.getValue() &&
-            !hasUsesBetween(&func.getBody().front().front(), copy, bbarg);
+    auto sourceAlloc = llvm::dyn_cast_or_null<memref::AllocOp>(
+        copy.getSource().getDefiningOp());
+    if (!sourceAlloc) continue;
+
+    bool targetIsFirstUseOfRestrictBbArg =
+        isRestrictBbArg(copy.getTarget()) &&
+        !hasUsesBetween(firstOp, copy, copy.getTarget());
+    if (!targetIsFirstUseOfRestrictBbArg) {
+      auto targetAlloc = llvm::dyn_cast_or_null<memref::AllocOp>(
+          copy.getTarget().getDefiningOp());
+      bool targetIsFirstUseOfAlloc =
+          targetAlloc && !hasUsesBetween(targetAlloc, copy, targetAlloc);
+
+      // If the source was used before the definition of the target, or the
+      // target was used before the copy, this transformation is unsafe.
+      if (!targetIsFirstUseOfAlloc ||
+          hasUsesBetween(firstOp, targetAlloc, sourceAlloc)) {
+        continue;
       }
     }
 
-    auto alloc = llvm::dyn_cast_or_null<memref::AllocOp>(
-        copy.getTarget().getDefiningOp());
-    bool targetIsFirstUseOfAlloc = alloc && !hasUsesBetween(alloc, copy, alloc);
-
-    if (!targetIsFirstUseOfRestrictBbArg && !targetIsFirstUseOfAlloc) {
-      continue;
-    }
-
+    // (no use of %b)
     // %a = alloc or %a is a bbarg with `restrict`.
-    // (some IR not using %a)
+    // %b = alloc
+    // (no use of %a)
     // copy %b, %a
     // dealloc %b
     copy.getSource().replaceAllUsesWith(copy.getTarget());
     op = dealloc->getNextNode();
     copy->erase();
     dealloc->erase();
+    sourceAlloc->erase();
   }
 }
 
@@ -656,7 +670,7 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     elideRedundantOwnershipArgs(block);
     // Copy elimination requires small live-ranges to work well. We only extend
     // live ranges afterwards, so running it more than once doesn't help.
-    eliminateCopies(block);
+    eliminateCopies(block, &block.front());
     do {
       // Eliminate dead code.
       (void)applyPatternsAndFoldGreedily(getOperation(), {});
