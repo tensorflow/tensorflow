@@ -24,7 +24,6 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
@@ -344,7 +344,8 @@ template <>
 struct ToTFDataType<Eigen::half> : std::integral_constant<DataType, DT_HALF> {};
 
 template <>
-struct ToTFDataType<Eigen::bfloat16> : std::integral_constant<DataType, DT_BFLOAT16> {};
+struct ToTFDataType<Eigen::bfloat16>
+    : std::integral_constant<DataType, DT_BFLOAT16> {};
 
 template <>
 struct ToTFDataType<float> : std::integral_constant<DataType, DT_FLOAT> {};
@@ -786,18 +787,18 @@ Status CreateForwardAndBackwardIODescriptors(
 
 template <typename T>
 Status DoForwardImpl(OpKernelContext* context, const RnnDescriptor& rnn_desc,
-                 const CudnnModelTypes& model_types,
-                 const CudnnRnnModelShapes& model_shapes,
-                 /* forward inputs */
-                 const Tensor* input, const Tensor* input_h,
-                 const Tensor* input_c, const Tensor* params,
-                 const bool is_training,
-                 /* forward outputs, outputs of the function */
-                 Tensor* output, Tensor* output_h, Tensor* output_c,
-                 const Tensor* sequence_lengths, bool time_major,
-                 ScratchAllocator* reserve_space_allocator,
-                 ScratchAllocator* workspace_allocator,
-                 ProfileResult* output_profile_result) {
+                     const CudnnModelTypes& model_types,
+                     const CudnnRnnModelShapes& model_shapes,
+                     /* forward inputs */
+                     const Tensor* input, const Tensor* input_h,
+                     const Tensor* input_c, const Tensor* params,
+                     const bool is_training,
+                     /* forward outputs, outputs of the function */
+                     Tensor* output, Tensor* output_h, Tensor* output_c,
+                     const Tensor* sequence_lengths, bool time_major,
+                     ScratchAllocator* reserve_space_allocator,
+                     ScratchAllocator* workspace_allocator,
+                     ProfileResult* output_profile_result) {
   std::unique_ptr<RnnSequenceTensorDescriptor> input_desc;
   std::unique_ptr<RnnStateTensorDescriptor> h_state_desc;
   std::unique_ptr<RnnStateTensorDescriptor> c_state_desc;
@@ -878,23 +879,26 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
                  ScratchAllocator* reserve_space_allocator,
                  ScratchAllocator* workspace_allocator,
                  ProfileResult* output_profile_result) {
-  return DoForwardImpl<T>(context, rnn_desc, model_types, model_shapes, input, input_h, input_c, params, is_training, output, output_h, output_c, sequence_lengths, time_major, reserve_space_allocator, workspace_allocator, output_profile_result);
+  return DoForwardImpl<T>(context, rnn_desc, model_types, model_shapes, input,
+                          input_h, input_c, params, is_training, output,
+                          output_h, output_c, sequence_lengths, time_major,
+                          reserve_space_allocator, workspace_allocator,
+                          output_profile_result);
 }
 
 template <>
-Status DoForward<Eigen::bfloat16>(OpKernelContext* context, const RnnDescriptor& rnn_desc,
-                 const CudnnModelTypes& model_types,
-                 const CudnnRnnModelShapes& model_shapes,
-                 /* forward inputs */
-                 const Tensor* input, const Tensor* input_h,
-                 const Tensor* input_c, const Tensor* params,
-                 const bool is_training,
-                 /* forward outputs, outputs of the function */
-                 Tensor* output, Tensor* output_h, Tensor* output_c,
-                 const Tensor* sequence_lengths, bool time_major,
-                 ScratchAllocator* reserve_space_allocator,
-                 ScratchAllocator* workspace_allocator,
-                 ProfileResult* output_profile_result) {
+Status DoForward<Eigen::bfloat16>(
+    OpKernelContext* context, const RnnDescriptor& rnn_desc,
+    const CudnnModelTypes& model_types, const CudnnRnnModelShapes& model_shapes,
+    /* forward inputs */
+    const Tensor* input, const Tensor* input_h, const Tensor* input_c,
+    const Tensor* params, const bool is_training,
+    /* forward outputs, outputs of the function */
+    Tensor* output, Tensor* output_h, Tensor* output_c,
+    const Tensor* sequence_lengths, bool time_major,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
+    ProfileResult* output_profile_result) {
   // CudnnRnn doesn't support bfloat16 yet, so cast to float. This avoids errors
   // with mixed_bfloat16 policy.
   Tensor casted_input;
@@ -906,32 +910,49 @@ Status DoForward<Eigen::bfloat16>(OpKernelContext* context, const RnnDescriptor&
   Tensor casted_output_c;
   const GPUDevice& device = context->eigen_device<GPUDevice>();
   functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-  auto allocate_and_cast_to_float = [&](const Tensor* tensor, Tensor* casted_tensor) {
-    TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, tensor->shape(), casted_tensor));
-    cast(device, casted_tensor->template flat<float>(), tensor->template flat<Eigen::bfloat16>());
+  auto allocate_and_cast_to_float = [&](const Tensor* tensor,
+                                        Tensor* casted_tensor) {
+    TF_RETURN_IF_ERROR(context, context->allocate_temp(
+                                    DT_FLOAT, tensor->shape(), casted_tensor));
+    cast(device, casted_tensor->template flat<float>(),
+         tensor->template flat<Eigen::bfloat16>());
     return OkStatus();
   };
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input, &casted_input));
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input_h, &casted_input_h));
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(params, &casted_params));
-  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, output->shape(), &casted_output));
-  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, output_h->shape(), &casted_output_h));
+  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, output->shape(),
+                                                     &casted_output));
+  TF_RETURN_IF_ERROR(
+      context,
+      context->allocate_temp(DT_FLOAT, output_h->shape(), &casted_output_h));
   if (model_types.HasInputC()) {
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input_c, &casted_input_c));
-    TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, output_c->shape(), &casted_output_c));
+    TF_RETURN_IF_ERROR(
+        context,
+        context->allocate_temp(DT_FLOAT, output_c->shape(), &casted_output_c));
   }
 
-  TF_RETURN_IF_ERROR(DoForwardImpl<float>(context, rnn_desc, model_types, model_shapes, &casted_input, &casted_input_h, &casted_input_c, &casted_params, is_training, &casted_output, &casted_output_h, &casted_output_c, sequence_lengths, time_major, reserve_space_allocator, workspace_allocator, output_profile_result));
+  TF_RETURN_IF_ERROR(DoForwardImpl<float>(
+      context, rnn_desc, model_types, model_shapes, &casted_input,
+      &casted_input_h, &casted_input_c, &casted_params, is_training,
+      &casted_output, &casted_output_h, &casted_output_c, sequence_lengths,
+      time_major, reserve_space_allocator, workspace_allocator,
+      output_profile_result));
 
   functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
-  cast_back(device, output->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_output)->template flat<float>());
-  cast_back(device, output_h->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_output_h)->template flat<float>());
+  cast_back(device, output->template flat<Eigen::bfloat16>(),
+            const_cast<const Tensor*>(&casted_output)->template flat<float>());
+  cast_back(
+      device, output_h->template flat<Eigen::bfloat16>(),
+      const_cast<const Tensor*>(&casted_output_h)->template flat<float>());
   if (model_types.HasInputC()) {
-    cast_back(device, output_c->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_output_c)->template flat<float>());
+    cast_back(
+        device, output_c->template flat<Eigen::bfloat16>(),
+        const_cast<const Tensor*>(&casted_output_c)->template flat<float>());
   }
   return OkStatus();
 }
-
 
 template <typename T>
 Status DoBackwardImpl(
@@ -1051,7 +1072,12 @@ Status DoBackward(
     Tensor* params_backprop, const Tensor* sequence_lengths, bool time_major,
     ScratchAllocator* workspace_allocator,
     ProfileResult* output_profile_result) {
-  return DoBackwardImpl<T>(context, rnn_desc, model_types, model_shapes, input, input_h, input_c, params, output, output_h, output_c, output_backprop, output_h_backprop, output_c_backprop, reserve_space, input_backprop, input_h_backprop, input_c_backprop, params_backprop, sequence_lengths, time_major, workspace_allocator, output_profile_result);
+  return DoBackwardImpl<T>(
+      context, rnn_desc, model_types, model_shapes, input, input_h, input_c,
+      params, output, output_h, output_c, output_backprop, output_h_backprop,
+      output_c_backprop, reserve_space, input_backprop, input_h_backprop,
+      input_c_backprop, params_backprop, sequence_lengths, time_major,
+      workspace_allocator, output_profile_result);
 }
 
 template <>
@@ -1089,9 +1115,12 @@ Status DoBackward<Eigen::bfloat16>(
   Tensor casted_params_backprop;
   const GPUDevice& device = context->eigen_device<GPUDevice>();
   functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-  auto allocate_and_cast_to_float = [&](const Tensor* tensor, Tensor* casted_tensor) {
-    TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, tensor->shape(), casted_tensor));
-    cast(device, casted_tensor->template flat<float>(), tensor->template flat<Eigen::bfloat16>());
+  auto allocate_and_cast_to_float = [&](const Tensor* tensor,
+                                        Tensor* casted_tensor) {
+    TF_RETURN_IF_ERROR(context, context->allocate_temp(
+                                    DT_FLOAT, tensor->shape(), casted_tensor));
+    cast(device, casted_tensor->template flat<float>(),
+         tensor->template flat<Eigen::bfloat16>());
     return OkStatus();
   };
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input, &casted_input));
@@ -1099,25 +1128,51 @@ Status DoBackward<Eigen::bfloat16>(
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(params, &casted_params));
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output, &casted_output));
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_h, &casted_output_h));
-  TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_backprop, &casted_output_backprop));
-  TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_h_backprop, &casted_output_h_backprop));
-  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, input_backprop->shape(), &casted_input_backprop));
-  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, input_h_backprop->shape(), &casted_input_h_backprop));
-  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, params_backprop->shape(), &casted_params_backprop));
+  TF_RETURN_IF_ERROR(
+      allocate_and_cast_to_float(output_backprop, &casted_output_backprop));
+  TF_RETURN_IF_ERROR(
+      allocate_and_cast_to_float(output_h_backprop, &casted_output_h_backprop));
+  TF_RETURN_IF_ERROR(context,
+                     context->allocate_temp(DT_FLOAT, input_backprop->shape(),
+                                            &casted_input_backprop));
+  TF_RETURN_IF_ERROR(context,
+                     context->allocate_temp(DT_FLOAT, input_h_backprop->shape(),
+                                            &casted_input_h_backprop));
+  TF_RETURN_IF_ERROR(context,
+                     context->allocate_temp(DT_FLOAT, params_backprop->shape(),
+                                            &casted_params_backprop));
   if (model_types.HasInputC()) {
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input_c, &casted_input_c));
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_c, &casted_output_c));
-    TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_c_backprop, &casted_output_c_backprop));
-    TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, input_c_backprop->shape(), &casted_input_c_backprop));
+    TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_c_backprop,
+                                                  &casted_output_c_backprop));
+    TF_RETURN_IF_ERROR(
+        context, context->allocate_temp(DT_FLOAT, input_c_backprop->shape(),
+                                        &casted_input_c_backprop));
   }
 
-  TF_RETURN_IF_ERROR(DoBackwardImpl<float>(context, rnn_desc, model_types, model_shapes, &casted_input, &casted_input_h, &casted_input_c, &casted_params, &casted_output, &casted_output_h, &casted_output_c, &casted_output_backprop, &casted_output_h_backprop, &casted_output_c_backprop, reserve_space, &casted_input_backprop, &casted_input_h_backprop, &casted_input_c_backprop, &casted_params_backprop, sequence_lengths, time_major, workspace_allocator, output_profile_result));
+  TF_RETURN_IF_ERROR(DoBackwardImpl<float>(
+      context, rnn_desc, model_types, model_shapes, &casted_input,
+      &casted_input_h, &casted_input_c, &casted_params, &casted_output,
+      &casted_output_h, &casted_output_c, &casted_output_backprop,
+      &casted_output_h_backprop, &casted_output_c_backprop, reserve_space,
+      &casted_input_backprop, &casted_input_h_backprop,
+      &casted_input_c_backprop, &casted_params_backprop, sequence_lengths,
+      time_major, workspace_allocator, output_profile_result));
 
   functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
-  cast_back(device, input_backprop->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_input_backprop)->template flat<float>());
-  cast_back(device, input_h_backprop->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_input_h_backprop)->template flat<float>());
-  cast_back(device, input_c_backprop->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_input_c_backprop)->template flat<float>());
-  cast_back(device, params_backprop->template flat<Eigen::bfloat16>(), const_cast<const Tensor*>(&casted_params_backprop)->template flat<float>());
+  cast_back(device, input_backprop->template flat<Eigen::bfloat16>(),
+            const_cast<const Tensor*>(&casted_input_backprop)
+                ->template flat<float>());
+  cast_back(device, input_h_backprop->template flat<Eigen::bfloat16>(),
+            const_cast<const Tensor*>(&casted_input_h_backprop)
+                ->template flat<float>());
+  cast_back(device, input_c_backprop->template flat<Eigen::bfloat16>(),
+            const_cast<const Tensor*>(&casted_input_c_backprop)
+                ->template flat<float>());
+  cast_back(device, params_backprop->template flat<Eigen::bfloat16>(),
+            const_cast<const Tensor*>(&casted_params_backprop)
+                ->template flat<float>());
   return OkStatus();
 }
 
