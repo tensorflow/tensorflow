@@ -120,6 +120,38 @@ StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   return sync_instruction;
 }
 
+/*static*/ Status
+ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
+    HloComputation* computation,
+    absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
+  for (auto& [async_start, async_done] : async_pairs) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * sync,
+                        CreateSyncVariant(async_start, async_done));
+    replaced_ops[async_start] = nullptr;
+    replaced_ops[async_done] = sync;
+  }
+
+  // Update schedule.
+  HloModule* module = computation->parent();
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  std::vector<HloInstruction*> new_sequence;
+  new_sequence.reserve(sequence.size());
+  for (HloInstruction* instr : sequence.instructions()) {
+    auto it = replaced_ops.find(instr);
+    if (it != replaced_ops.end()) {
+      if (it->second != nullptr) {
+        new_sequence.push_back(it->second);
+      }
+    } else {
+      new_sequence.push_back(instr);
+    }
+  }
+  module->schedule().set_sequence(computation, new_sequence);
+  return OkStatus();
+}
+
 StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
     HloComputation* computation) {
   HloModule* module = computation->parent();
@@ -165,29 +197,8 @@ StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
     return false;
   }
 
-  // Replace async pairs with corresponding sync op.
-  absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
-  for (auto& [async_start, async_done] : async_pairs) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * sync,
-                        CreateSyncVariant(async_start, async_done));
-    replaced_ops[async_start] = nullptr;
-    replaced_ops[async_done] = sync;
-  }
-
-  // Update schedule.
-  std::vector<HloInstruction*> new_sequence;
-  new_sequence.reserve(sequence.size());
-  for (HloInstruction* instr : sequence.instructions()) {
-    auto it = replaced_ops.find(instr);
-    if (it != replaced_ops.end()) {
-      if (it->second != nullptr) {
-        new_sequence.push_back(it->second);
-      }
-    } else {
-      new_sequence.push_back(instr);
-    }
-  }
-  module->schedule().set_sequence(computation, new_sequence);
+  TF_RETURN_IF_ERROR(
+      ReplaceAsyncInstructionsWithSync(computation, async_pairs));
   return true;
 }
 

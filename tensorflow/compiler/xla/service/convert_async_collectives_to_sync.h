@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONVERT_ASYNC_COLLECTIVES_TO_SYNC_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONVERT_ASYNC_COLLECTIVES_TO_SYNC_H_
 
+#include <utility>
+
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -35,6 +39,13 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Helper utility to replace pair of async-start/done ops in a computation
+  // with their synchronous variants and update the schedule.
+  static Status ReplaceAsyncInstructionsWithSync(
+      HloComputation* computation,
+      absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
+          async_pairs);
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
