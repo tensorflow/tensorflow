@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -946,6 +947,13 @@ string DatasetBaseIterator::BuildTraceMeName() {
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
+  activity_watcher::ActivityScope activity_scope([&]() {
+    activity_watcher::Activity::Attributes attributes;
+    attributes["iterator_prefix"] = prefix();
+    return std::make_unique<activity_watcher::Activity>(
+        "Iterator::GetNext", activity_watcher::ActivityCategory::kDatasetOp,
+        std::move(attributes));
+  });
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
