@@ -13,7 +13,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:templates",
         "//third_party/py/numpy",
         "@gast_archive//:gast",
     ],
@@ -46,7 +46,6 @@ py_strict_test(
     deps = [
         ":codegen",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
         "//third_party/py/numpy",
     ],
 )

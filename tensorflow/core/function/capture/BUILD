@@ -15,7 +15,12 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:inspect_utils",
+        "//tensorflow/python/autograph/pyct:naming",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
     ],
 )

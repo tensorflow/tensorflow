@@ -32,6 +32,7 @@ py_strict_library(
         "//tensorflow/python/autograph/lang:directives",
         "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/pyct/common_transformers",
         "//tensorflow/python/autograph/utils:__init__",
         "//tensorflow/python/autograph/utils:ag_logging",
     ],
