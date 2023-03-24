@@ -1936,10 +1936,35 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
               .getResult();
   }
 
+  Type output_ety;
+  if (result_is_qtype) {
+    auto lhs_qty_width = lhs_ty.getElementType()
+                             .cast<mlir::quant::QuantizedType>()
+                             .getStorageTypeIntegralWidth();
+    auto rhs_qty_width = rhs_ty.getElementType()
+                             .cast<mlir::quant::QuantizedType>()
+                             .getStorageTypeIntegralWidth();
+
+    if (lhs_qty_width != rhs_qty_width) {
+      return rewriter.notifyMatchFailure(
+          op, "input tensors should have same qtype storage width");
+    }
+
+    if (lhs_qty_width == 8) {
+      output_ety = rewriter.getI32Type();
+    } else if (lhs_qty_width == 16) {
+      output_ety = rewriter.getIntegerType(48);
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "only support 8-bit or 16-bit quantized type");
+    }
+  } else {
+    output_ety = result_ty.getElementType();
+  }
+
   auto matmul =
       CreateOpAndInfer<tosa::MatMulOp>(
-          rewriter, op->getLoc(),
-          UnrankedTensorType::get(result_ty.getElementType()), lhs, rhs)
+          rewriter, op->getLoc(), UnrankedTensorType::get(output_ety), lhs, rhs)
           .getResult();
 
   // Conditionally reshape rank back to expected rank.
