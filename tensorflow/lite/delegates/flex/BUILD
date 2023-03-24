@@ -80,6 +80,7 @@ tf_cc_test(
     name = "buffer_map_test",
     size = "small",
     srcs = ["buffer_map_test.cc"],
+    tags = ["no_oss"],  # TODO(b/275077206): Enable when fixed.
     deps = [
         ":buffer_map",
         ":buffer_map_util",
