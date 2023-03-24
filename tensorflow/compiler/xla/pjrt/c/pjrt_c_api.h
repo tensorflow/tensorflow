@@ -768,18 +768,14 @@ struct PJRT_Chunk {
 // `xla::CopyToDeviceStream`.
 typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
 
-struct PJRT_TransferMetadata;
-
 // Returns bool because the caller can't create PJRT_Error, which should be
 // returned by C API only. False indicates an error. The callback must call
 // `chunk->deleter(chunk->data, chunk->deleter_arg)` when it's finished with
 // `chunk`.
 // TODO(b/267255088) need to bubble up the callback error message to the caller.
-typedef bool (*PJRT_SendCallback)(PJRT_TransferMetadata* metadata,
-                                  PJRT_Chunk* chunk, size_t total_size_in_bytes,
+typedef bool (*PJRT_SendCallback)(PJRT_Chunk* chunk, size_t total_size_in_bytes,
                                   bool done, void* user_arg);
-typedef void (*PJRT_RecvCallback)(PJRT_TransferMetadata* metadata,
-                                  PJRT_CopyToDeviceStream* stream,
+typedef void (*PJRT_RecvCallback)(PJRT_CopyToDeviceStream* stream,
                                   void* user_arg);
 
 struct PJRT_SendCallbackInfo {

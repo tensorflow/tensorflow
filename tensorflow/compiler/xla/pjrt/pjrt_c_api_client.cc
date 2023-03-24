@@ -758,12 +758,12 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
     const xla::SendCallback& cpp_send_callback,
     PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback_function) {
   *send_callback_function = [&send_callback = cpp_send_callback.callback](
-                                PJRT_TransferMetadata* metadata,
                                 PJRT_Chunk* chunk, size_t total_size_in_bytes,
                                 bool done) -> bool {
-    // TODO(b/238999986) use `shape` with full information when available.
-    xla::Shape shape = metadata->device_shape;
-    xla::Status status = send_callback(xla::PjRtTransferMetadata{shape},
+    // PJRT C API doesn't support
+    // use_major_to_minor_data_layout_for_callbacks = false
+    xla::Shape dummy_shape;
+    xla::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
                                        ::pjrt::ConvertToCppChunk(*chunk),
                                        total_size_in_bytes, done);
     if (!status.ok()) {
@@ -775,8 +775,8 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
       /*channel_id=*/cpp_send_callback.channel_id,
       /*user_arg=*/send_callback_function,
       /*send_callback=*/
-      [](PJRT_TransferMetadata* metadata, PJRT_Chunk* chunk,
-         size_t total_size_in_bytes, bool done, void* user_arg) -> bool {
+      [](PJRT_Chunk* chunk, size_t total_size_in_bytes, bool done,
+         void* user_arg) -> bool {
         // PJRT_SendCallback, `send_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -785,7 +785,7 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
         PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::SendCallbackFunction*>(
                 user_arg);
-        return (*send_callback)(metadata, chunk, total_size_in_bytes, done);
+        return (*send_callback)(chunk, total_size_in_bytes, done);
       }};
 }
 
@@ -857,19 +857,18 @@ PJRT_RecvCallbackInfo CppRecvCallbackToC(
     const xla::RecvCallback& cpp_recv_callback, const PJRT_Api* c_api,
     PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback_function) {
   *recv_callback_function = [&recv_callback = cpp_recv_callback.callback,
-                             c_api](PJRT_TransferMetadata* metadata,
-                                    PJRT_CopyToDeviceStream* stream) {
-    // TODO(b/238999986) use `shape` with full information when available.
-    xla::Shape shape = metadata->device_shape;
-    recv_callback(xla::PjRtTransferMetadata{shape},
+                             c_api](PJRT_CopyToDeviceStream* stream) {
+    // PJRT C API doesn't support
+    // use_major_to_minor_data_layout_for_callbacks = false
+    xla::Shape dummy_shape;
+    recv_callback(xla::PjRtTransferMetadata{dummy_shape},
                   std::make_unique<CApiCopyToDeviceStream>(stream, c_api));
   };
   return PJRT_RecvCallbackInfo{
       /*channel_id=*/cpp_recv_callback.channel_id,
       /*user_arg=*/recv_callback_function,
       /*recv_callback=*/
-      [](PJRT_TransferMetadata* metadata, PJRT_CopyToDeviceStream* stream,
-         void* user_arg) {
+      [](PJRT_CopyToDeviceStream* stream, void* user_arg) {
         // PJRT_RecvCallback, `recv_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -878,7 +877,7 @@ PJRT_RecvCallbackInfo CppRecvCallbackToC(
         PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::RecvCallbackFunction*>(
                 user_arg);
-        (*recv_callback)(metadata, stream);
+        (*recv_callback)(stream);
       }};
 }
 
@@ -935,6 +934,12 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
     SendRecvCallbackData& callback_data) {
+  if (!options.use_major_to_minor_data_layout_for_callbacks) {
+    return Unimplemented(
+        "PJRT C API doesn't support "
+        "ExecuteOptions::use_major_to_minor_data_layout_for_callbacks = false");
+  }
+
   PJRT_LoadedExecutable_Execute_Args args;
   args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;

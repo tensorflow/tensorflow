@@ -249,6 +249,8 @@ class PjRtCApiClient : public PjRtClient {
     return Unimplemented("PJRT C API does not support Defragment");
   }
 
+  bool SupportsSendRecvCallbacks() const override { return true; }
+
   StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
       StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
 
@@ -476,11 +478,9 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   bool IsReturnedFutureSupported() const override { return true; }
 
   // std::function version of PJRT_SendCallback
-  using SendCallbackFunction =
-      std::function<bool(PJRT_TransferMetadata*, PJRT_Chunk*, size_t, bool)>;
+  using SendCallbackFunction = std::function<bool(PJRT_Chunk*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
-  using RecvCallbackFunction =
-      std::function<void(PJRT_TransferMetadata*, PJRT_CopyToDeviceStream*)>;
+  using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
 
  private:
   // Groups data needed to support send/recv execution callbacks.

@@ -709,15 +709,16 @@ static xla::SendCallback CSendCallbackToCpp(
     const PJRT_SendCallbackInfo& c_callback) {
   return xla::SendCallback{
       c_callback.channel_id,
+      // Transfer metadata is unused because PJRT C API doesn't support
+      // use_major_to_minor_data_layout_for_callbacks = false
       [user_arg = c_callback.user_arg, callback = c_callback.send_callback](
-          const xla::PjRtTransferMetadata& metadata, xla::PjRtChunk input,
-          size_t total_size_in_bytes, bool done) -> xla::Status {
-        PJRT_TransferMetadata c_metadata{metadata.device_shape};
+          const xla::PjRtTransferMetadata& unused_metadata,
+          xla::PjRtChunk input, size_t total_size_in_bytes,
+          bool done) -> xla::Status {
         PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
 
         // TODO(b/267255088) retrieve up the callback error message.
-        bool success = callback(&c_metadata, &c_chunk, total_size_in_bytes,
-                                done, user_arg);
+        bool success = callback(&c_chunk, total_size_in_bytes, done, user_arg);
         if (success) {
           return tsl::OkStatus();
         }
@@ -726,9 +727,8 @@ static xla::SendCallback CSendCallbackToCpp(
       }};
 }
 
-// Create new libtpu C++ callbacks that does the following:
-// - convert libtpu PjRtTransferMetadata to PJRT_TransferMetadata, etc.
-// - call C API callback with the converted arguments
+// Create new libtpu C++ callbacks that calls C API callback with converted
+// arguments.
 static void CSendCallbackListsToCpp(
     PJRT_SendCallbackInfo** c_lists, size_t outer_size, size_t inner_size,
     std::vector<std::vector<xla::SendCallback>>& cpp_lists) {
@@ -746,15 +746,13 @@ static xla::RecvCallback CRecvCallbackToCpp(
     const PJRT_RecvCallbackInfo& c_callback) {
   return xla::RecvCallback{
       c_callback.channel_id,
+      // Transfer metadata is unused because PJRT C API doesn't support
+      // use_major_to_minor_data_layout_for_callbacks = false
       [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
-          const xla::PjRtTransferMetadata& metadata,
+          const xla::PjRtTransferMetadata& unused_metadata,
           std::unique_ptr<xla::CopyToDeviceStream> stream) {
-        Int64List c_dimensions;
-        ApiConverter::CreateVector(metadata.device_shape.dimensions(),
-                                   &c_dimensions);
-        PJRT_TransferMetadata c_metadata{metadata.device_shape};
         PJRT_CopyToDeviceStream c_stream{std::move(stream)};
-        callback(&c_metadata, &c_stream, user_arg);
+        callback(&c_stream, user_arg);
       }};
 }
 
@@ -800,6 +798,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.untuple_result = true;
   options.context = nullptr;
   options.multi_slice_config = nullptr;
+  options.use_major_to_minor_data_layout_for_callbacks = true;
 
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
