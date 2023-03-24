@@ -2193,7 +2193,10 @@ cc_test(
     name = "squeeze_test",
     size = "small",
     srcs = ["squeeze_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
+        "tflite_nnapi",
+    ],
     deps = [
         ":test_main",
         ":test_util",
