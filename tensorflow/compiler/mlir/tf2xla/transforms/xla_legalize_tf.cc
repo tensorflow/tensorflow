@@ -793,7 +793,7 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
     // Add TF->HLO legalization patterns via TF2XLA fallback.
     PopulateLegalizeTfWithTf2XlaPatterns(
         tf2xla_fallback_device_type.value(), patterns, context, converter,
-        prefer_tf2xla, use_tf2xla_hlo_importer);
+        prefer_tf2xla, /*is_module_pass=*/false, use_tf2xla_hlo_importer);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
