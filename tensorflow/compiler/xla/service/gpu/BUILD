@@ -385,7 +385,6 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:IndexToLLVM",
