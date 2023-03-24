@@ -415,118 +415,165 @@ struct numeric_limits_float8 {
 template <>
 struct numeric_limits_float8<float8_e4m3fn>
     : public numeric_limits_float8_base {
+ private:
+  static inline constexpr const int kExponentBias = 7;
+  static inline constexpr const int kMantissaBits = 3;
+
+ public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 4;
   static inline constexpr const int digits10 = 0;      // floor(3 * log10(2));
   static inline constexpr const int max_digits10 = 3;  // ceil(4 * log10(2) + 1)
-  static inline constexpr const int min_exponent = -5;
+  static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
   static inline constexpr const int min_exponent10 = -1;
-  static inline constexpr const int max_exponent = 9;  // Extended format.
+  static inline constexpr const int max_exponent =
+      (0b1111 - 7) + 1;  // Extended format.
   static inline constexpr const int max_exponent10 = 2;
   static inline constexpr const bool is_iec559 = false;
   static inline constexpr const bool has_infinity = false;
   static inline constexpr const bool has_signaling_NaN = false;
   // NOLINTEND
 
-  static constexpr float8_e4m3fn min() { return float8_e4m3fn::FromRep(0x08); }
+  // 1.0 * 2^(0b0001 - 7) = 1.0 * 2^-6 = 0.015625
+  static constexpr float8_e4m3fn min() {
+    return float8_e4m3fn::FromRep(0b0'0001 << kMantissaBits);
+  }
+  // -(1 + 0b110 * 2^-3) * 2^(0b1111 - 7) = -1.75 * 2^8 = 448
   static constexpr float8_e4m3fn lowest() {
-    return float8_e4m3fn::FromRep(0xFE);
+    return float8_e4m3fn::FromRep(0b1'1111'110);
   }
-  static constexpr float8_e4m3fn max() { return float8_e4m3fn::FromRep(0x7E); }
+  // (1 + 0b110 * 2^-3) * 2**(0b1111 - 7) = 1.75 * 2^8 = 448
+  static constexpr float8_e4m3fn max() {
+    return float8_e4m3fn::FromRep(0b0'1111'110);
+  }
+  // 1.0 * 2^-3 = 0.125
   static constexpr float8_e4m3fn epsilon() {
-    return float8_e4m3fn::FromRep(0x20);
+    return float8_e4m3fn::FromRep((-kMantissaBits + kExponentBias)
+                                  << kMantissaBits);
   }
+  // 1.0 * 2^-1 = 0.5
   static constexpr float8_e4m3fn round_error() {
-    return float8_e4m3fn::FromRep(0x30);
+    return float8_e4m3fn::FromRep((-1 + kExponentBias) << kMantissaBits);
   }
   static constexpr float8_e4m3fn infinity() {
-    return float8_e4m3fn::FromRep(0x7F);
-  }  // NaN.
+    return float8_e4m3fn::FromRep(0b0'1111'111);
+  }
+  // NaN.
   static constexpr float8_e4m3fn quiet_NaN() {
-    return float8_e4m3fn::FromRep(0x7F);
+    return float8_e4m3fn::FromRep(0b0'1111'111);
   }
   static constexpr float8_e4m3fn signaling_NaN() {
-    return float8_e4m3fn::FromRep(0x7F);
+    return float8_e4m3fn::FromRep(0b0'1111'111);
   }
+  // 1.0 * 2^(-7 - 3 + 1) = 1.0 * 2^-9 = 0.001953125
   static constexpr float8_e4m3fn denorm_min() {
-    return float8_e4m3fn::FromRep(0x01);
+    return float8_e4m3fn::FromRep(0b0'0000'001);
   }
 };
 
 template <>
 struct numeric_limits_float8<float8_e4m3b11>
     : public numeric_limits_float8_base {
+ private:
+  static inline constexpr const int kExponentBias = 11;
+  static inline constexpr const int kMantissaBits = 3;
+
+ public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 4;
   static inline constexpr const int digits10 = 0;      // floor(3 * log10(2));
   static inline constexpr const int max_digits10 = 3;  // ceil(4 * log10(2) + 1)
-  static inline constexpr const int min_exponent = (1 - 11) + 1;
+  static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
   static inline constexpr const int min_exponent10 = -2;
   static inline constexpr const int max_exponent =
-      (0b1111 - 11) + 1;  // Extended format.
+      (0b1111 - kExponentBias) + 1;  // Extended format.
   static inline constexpr const int max_exponent10 = 1;
   static inline constexpr const bool is_iec559 = false;
   static inline constexpr const bool has_infinity = false;
   static inline constexpr const bool has_signaling_NaN = false;
   // NOLINTEND
 
+  // 1.0 * 2^(0b0001 - 11) = 1.0 * 2^-10 = 0.0009765625
   static constexpr float8_e4m3b11 min() {
-    return float8_e4m3b11::FromRep(0x08);
+    return float8_e4m3b11::FromRep(1 << kMantissaBits);
   }
+  // -(1 + 0b111 * 2^-3) * 2^(0b1111 - 11) = -1.875 * 2^4 = -30
   static constexpr float8_e4m3b11 lowest() {
-    return float8_e4m3b11::FromRep(0xFF);
+    return float8_e4m3b11::FromRep(0b1'1111'111);
   }
+  // (1 + 0b111 * 2^-3) * 2^(0b1111 - 11) = 1.875 * 2^4 = 30
   static constexpr float8_e4m3b11 max() {
-    return float8_e4m3b11::FromRep(0x7F);
+    return float8_e4m3b11::FromRep(0b0'1111'111);
   }
+  // 1.0 * 2^-3 = 0.125
   static constexpr float8_e4m3b11 epsilon() {
-    constexpr int kExponentBias = 11;
-    constexpr int kMantissaBits = 3;
-    return float8_e4m3b11::FromRep((kExponentBias - kMantissaBits)
+    return float8_e4m3b11::FromRep((-kMantissaBits + kExponentBias)
                                    << kMantissaBits);
   }
+  // 1.0 * 2^-1 = 0.5
   static constexpr float8_e4m3b11 round_error() {
-    constexpr int kExponentBias = 11;
-    constexpr int kMantissaBits = 3;
-    return float8_e4m3b11::FromRep((kExponentBias - 1) << kMantissaBits);
+    return float8_e4m3b11::FromRep((-1 + kExponentBias) << kMantissaBits);
   }
   static constexpr float8_e4m3b11 infinity() {
-    return float8_e4m3b11::FromRep(0x80);
-  }  // NaN.
+    return float8_e4m3b11::FromRep(0b1'0000'000);
+  }
+  // NaN.
   static constexpr float8_e4m3b11 quiet_NaN() {
-    return float8_e4m3b11::FromRep(0x80);
+    return float8_e4m3b11::FromRep(0b1'0000'000);
   }
   static constexpr float8_e4m3b11 signaling_NaN() {
-    return float8_e4m3b11::FromRep(0x80);
+    return float8_e4m3b11::FromRep(0b1'0000'000);
   }
+  // 1.0 * 2^(-11 - 3 + 1) = 1.0 * 2^-13 = 0.0001220703125
   static constexpr float8_e4m3b11 denorm_min() {
-    return float8_e4m3b11::FromRep(0x01);
+    return float8_e4m3b11::FromRep(0b0'0000'001);
   }
 };
 
 template <>
 struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
+ private:
+  static inline constexpr const int kExponentBias = 15;
+  static inline constexpr const int kMantissaBits = 2;
+
+ public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 3;
   static inline constexpr const int digits10 = 0;      // floor(2 * log10(2))
   static inline constexpr const int max_digits10 = 2;  // ceil(3 * log10(2) + 1)
-  static inline constexpr const int min_exponent = -13;
+  static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
   static inline constexpr const int min_exponent10 = -4;
-  static inline constexpr const int max_exponent = 16;
+  static inline constexpr const int max_exponent = 0b11111 - kExponentBias;
   static inline constexpr const int max_exponent10 = 4;
   static inline constexpr const bool is_iec559 = true;
   static inline constexpr const bool has_infinity = true;
   static inline constexpr const bool has_signaling_NaN = true;
   // NOLINTEND
 
-  static constexpr float8_e5m2 min() { return float8_e5m2::FromRep(0x04); }
-  static constexpr float8_e5m2 lowest() { return float8_e5m2::FromRep(0xFB); }
-  static constexpr float8_e5m2 max() { return float8_e5m2::FromRep(0x7B); }
-  static constexpr float8_e5m2 epsilon() { return float8_e5m2::FromRep(0x34); }
-  static constexpr float8_e5m2 round_error() {
-    return float8_e5m2::FromRep(0x38);
+  // 1.0 * 2^(0b00001 - 15) = 1.0 * 2^-14 = 0.00006103515625
+  static constexpr float8_e5m2 min() {
+    return float8_e5m2::FromRep(1 << kMantissaBits);
   }
-  static constexpr float8_e5m2 infinity() { return float8_e5m2::FromRep(0x7C); }
+  // -(1 + 0b11 * 2^-2) * 2^(0b11110 - 15) = -1.75 * 2^15 = -57344
+  static constexpr float8_e5m2 lowest() {
+    return float8_e5m2::FromRep(0b1'11110'11);
+  }
+  // (1 + 0b11 * 2^-2) * 2^(0b11110 - 15) = 1.75 * 2^15 = 57344
+  static constexpr float8_e5m2 max() {
+    return float8_e5m2::FromRep(0b0'11110'11);
+  }
+  // 1.0 * 2^-2 = 0.25
+  static constexpr float8_e5m2 epsilon() {
+    return float8_e5m2::FromRep((-kMantissaBits + kExponentBias)
+                                << kMantissaBits);
+  }
+  // 1.0 * 2^-1 = 0.5
+  static constexpr float8_e5m2 round_error() {
+    return float8_e5m2::FromRep((-1 + kExponentBias) << kMantissaBits);
+  }
+  static constexpr float8_e5m2 infinity() {
+    return float8_e5m2::FromRep(0b0'11111'00);
+  }
   static constexpr float8_e5m2 quiet_NaN() {
     // IEEE 754-2019 6.2.1: "All binary NaN bit strings have the sign bit S set
     // to 0 or 1 and all the bits of the biased exponent field E set to 1
@@ -539,8 +586,9 @@ struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
     // the first bit of the trailing significand field being 0."
     return float8_e5m2::FromRep(0b0'11111'01);
   }
+  // 1.0 * 2^(-15 - 2 + 1) = 1.0 * 2^-16 = 0.0000152587890625
   static constexpr float8_e5m2 denorm_min() {
-    return float8_e5m2::FromRep(0x01);
+    return float8_e5m2::FromRep(0b0'00000'01);
   }
 };
 
