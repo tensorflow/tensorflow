@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -114,8 +113,7 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   }
   std::unique_ptr<xla::PjRtBuffer> device_buffer = std::move(buffer_or.value());
   // TODO(b/244666476): evaluate the performance impact of marking ready when
-  // the data in device buffer is computed. In `tpu_device_context`, it is
-  // marked done when the allocation finished.
+  // the data in device buffer is computed.
   device_buffer->GetReadyFuture().OnReady(std::move(done));
   result_tensor->SetBuffer(std::move(device_buffer));
 }
