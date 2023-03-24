@@ -15,6 +15,7 @@
 """Various classes representing distributed values."""
 
 import copy
+from typing import Optional
 import weakref
 
 from tensorflow.core.protobuf import struct_pb2
@@ -27,6 +28,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_util
@@ -521,7 +523,19 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     if ops.executing_eagerly_outside_functions() and getattr(
         strategy, "_enable_packed_variable_in_eager_mode", False):
       name = "%s/packed/" % self._common_name
-      self._packed_var = packed.PackedDistributedVariable(values, name=name)
+      if hasattr(values[0], "_vars"):
+        # Handle when the resource variables are "nested" underneath another
+        # layer of values, e.g., TPUReplicatedVariable, by packing all them
+        # together and pushing the packed var down a level
+        # pylint: disable=protected-access
+        packed_var = packed.PackedDistributedVariable(
+            sum((value._vars for value in values), []), name=name)
+        for value in values:
+          value._packed_var = packed_var
+        self._packed_var = None
+        # pylint: enable=protected-access
+      else:
+        self._packed_var = packed.PackedDistributedVariable(values, name=name)
     else:
       self._packed_var = None
 
@@ -1011,6 +1025,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
+
+  def __tf_tensor__(self,
+                    dtype: Optional[dtypes.DType] = None,
+                    name: Optional[str] = None) -> ops.Tensor:
+    return self._dense_var_to_tensor(dtype, name)
 
   def _export_to_saved_model_graph(self,
                                    object_map=None,

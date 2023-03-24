@@ -1725,8 +1725,7 @@ class CopyRemover {
       if (result == "{") {
         result = node->value->ToShortString();
       } else {
-        StrAppend(&result, ", ");
-        StrAppend(&result, node->value->ToShortString());
+        StrAppend(&result, ", ", node->value->ToShortString());
       }
     };
     VisitValueNode(element);

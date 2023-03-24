@@ -181,18 +181,20 @@ typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
 // ------------------------ Other Common Data Types ----------------------------
 
+typedef enum {
+  PJRT_NamedValue_kString = 0,
+  PJRT_NamedValue_kInt64,
+  PJRT_NamedValue_kInt64List,
+  PJRT_NamedValue_kFloat,
+} PJRT_NamedValue_Type;
+
 // Named value for key-value pairs.
 struct PJRT_NamedValue {
   size_t struct_size;
   void* priv;
   const char* name;
   size_t name_size;
-  enum {
-    PJRT_NamedValue_kString = 0,
-    PJRT_NamedValue_kInt64,
-    PJRT_NamedValue_kInt64List,
-    PJRT_NamedValue_kFloat
-  } type;
+  PJRT_NamedValue_Type type;
   union {
     const char* string_value;
     int64_t int64_value;
@@ -216,6 +218,9 @@ typedef struct PJRT_Buffer PJRT_Buffer;
 struct PJRT_Client_Create_Args {
   size_t struct_size;
   void* priv;
+  // Extra platform-specific options to create a client.
+  PJRT_NamedValue* create_options;
+  size_t num_options;
   PJRT_Client* client;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Create_Args, client);
@@ -651,6 +656,31 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_Name_Args, executable_name_size);
 // Returns a string that identifies the executable.
 typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
 
+// TODO(b/269178731): Revisit whether num_replicas is needed.
+struct PJRT_Executable_NumReplicas_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_replicas;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_NumReplicas_Args, num_replicas);
+
+// Returns the number of replicas of the executable.
+typedef PJRT_Error* PJRT_Executable_NumReplicas(
+    PJRT_Executable_NumReplicas_Args* args);
+
+struct PJRT_Executable_NumPartitions_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_partitions;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_NumPartitions_Args, num_partitions);
+
+// Returns the number of partitions of the executable.
+typedef PJRT_Error* PJRT_Executable_NumPartitions(
+    PJRT_Executable_NumPartitions_Args* args);
+
 struct PJRT_LoadedExecutable_AddressableDevices_Args {
   size_t struct_size;
   void* priv;
@@ -726,9 +756,60 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_IsDeleted_Args, is_deleted);
 typedef PJRT_Error* PJRT_LoadedExecutable_IsDeleted(
     PJRT_LoadedExecutable_IsDeleted_Args* args);
 
+struct PJRT_Chunk {
+  void* data;
+  size_t size;
+  void (*deleter)(void* data, void* deleter_arg);
+  // `deleter_arg` will be passed to `deleter` as `deleter_arg` argument.
+  void* deleter_arg;
+};
+
+// TODO(b/263390934) implement C API that calls `AddChunk` and other
+// `xla::CopyToDeviceStream`.
+typedef struct PJRT_CopyToDeviceStream PJRT_CopyToDeviceStream;
+
+// Returns bool because the caller can't create PJRT_Error, which should be
+// returned by C API only. False indicates an error. The callback must call
+// `chunk->deleter(chunk->data, chunk->deleter_arg)` when it's finished with
+// `chunk`.
+// TODO(b/267255088) need to bubble up the callback error message to the caller.
+typedef bool (*PJRT_SendCallback)(PJRT_Chunk* chunk, size_t total_size_in_bytes,
+                                  bool done, void* user_arg);
+typedef void (*PJRT_RecvCallback)(PJRT_CopyToDeviceStream* stream,
+                                  void* user_arg);
+
+struct PJRT_SendCallbackInfo {
+  // Used to associate this callback with the correct send op.
+  int64_t channel_id;
+  // Will be passed to `send_callback` as `user_arg` argument.
+  void* user_arg;
+  PJRT_SendCallback send_callback;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_SendCallbackInfo, send_callback);
+
+struct PJRT_RecvCallbackInfo {
+  // Used to associate this callback with the correct recv op.
+  int64_t channel_id;
+  // Will be passed to `recv_callback` as `user_arg` argument.
+  void* user_arg;
+  PJRT_RecvCallback recv_callback;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RecvCallbackInfo, recv_callback);
+
 struct PJRT_ExecuteOptions {
   size_t struct_size;
   void* priv;
+  // Callbacks for when send/recv ops are executed. The outer lists correspond
+  // to each device returned by `PJRT_Executable_AddressableDevices` for
+  // `executable` (i.e. they will have length `num_devices`). Each inner list
+  // contains callback info for each send/recv op in `executable`; the order
+  // doesn't matter as the channel IDs are used instead. The callbacks can be
+  // stateful and the user code is responsible for managing state. The callback
+  // functions must outlive the execution (but not the info structs or lists).
+  PJRT_SendCallbackInfo** send_callbacks;
+  PJRT_RecvCallbackInfo** recv_callbacks;
+  size_t num_send_ops = 0;
+  size_t num_recv_ops = 0;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
@@ -770,8 +851,7 @@ struct PJRT_LoadedExecutable_Execute_Args {
   // or executables.
   PJRT_Device* execute_device;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_Execute_Args,
-                          device_complete_events);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_Execute_Args, execute_device);
 
 // Executes on devices addressable by the client.
 typedef PJRT_Error* PJRT_LoadedExecutable_Execute(
@@ -906,6 +986,8 @@ struct PJRT_Buffer_OnDeviceTrimmedShape_Args {
   Int64List dimensions;         // out
   BoolList dynamic_dimensions;  // out
   bool has_layout;
+  // Whether it calls logical_on_device_shape.
+  bool is_logical_on_device_shape;
   XLA_Layout layout;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
@@ -1045,6 +1127,150 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnsafePointer_Args, buffer_pointer);
 typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
     PJRT_Buffer_UnsafePointer_Args* args);
 
+// ---------------------------- CopyToDeviceStream -----------------------------
+
+struct PJRT_CopyToDeviceStream_AddChunk_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  // Takes ownership of `chunk` (i.e. implementation will call chunk.deleter).
+  PJRT_Chunk* chunk;
+  PJRT_Event* transfer_complete;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_AddChunk_Args, chunk);
+
+// Emplaces a new chunk of data to copy to the device. The transfer is started
+// immediately, and the returned event is triggered when the transfer completes
+// or fails.
+//
+// The returned event will indicate an error if the chunk's size causes the
+// amount of transferred data to exceed the total bytes, if the stream is
+// already complete, or if the chunk is not a multiple of the granule size.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
+    PJRT_CopyToDeviceStream_AddChunk_Args* args);
+
+struct PJRT_CopyToDeviceStream_TotalBytes_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  int64_t total_bytes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_TotalBytes_Args, total_bytes);
+
+// Returns the total amount of data the stream expects to be transferred.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
+    PJRT_CopyToDeviceStream_TotalBytes_Args* args);
+
+struct PJRT_CopyToDeviceStream_GranuleSize_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  int64_t granule_size_in_bytes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_GranuleSize_Args,
+                          granule_size_in_bytes);
+
+// Returns the granule size in bytes. The size of the chunk added to this stream
+// must be a multiple of this number.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_GranuleSize(
+    PJRT_CopyToDeviceStream_GranuleSize_Args* args);
+
+struct PJRT_CopyToDeviceStream_CurrentBytes_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+  int64_t current_bytes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_CurrentBytes_Args,
+                          current_bytes);
+
+// Returns the amount of data the stream currently has either transferred or has
+// buffered to transfer.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
+    PJRT_CopyToDeviceStream_CurrentBytes_Args* args);
+
+// ------------------------------ Device Topology ------------------------------
+
+typedef struct PJRT_DeviceTopology PJRT_DeviceTopology;
+
+struct PJRT_DeviceTopology_Create_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Create_Args, topology);
+
+// Creates and initializes a new PJRT_DeviceTopology and returns in `topology`.
+typedef PJRT_Error* PJRT_DeviceTopology_Create(
+    PJRT_DeviceTopology_Create_Args* args);
+
+struct PJRT_DeviceTopology_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Destroy_Args, topology);
+
+// Frees `topology`. `topology` can be nullptr.
+typedef PJRT_Error* PJRT_DeviceTopology_Destroy(
+    PJRT_DeviceTopology_Destroy_Args* args);
+
+struct PJRT_DeviceTopology_PlatformVersion_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;
+  // `platform_version` has the same lifetime as `topology`. It's owned by
+  // `topology`.
+  const char* platform_version;  // out
+  size_t platform_version_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformVersion_Args,
+                          platform_version_size);
+
+// Returns a string containing human-readable, platform-specific version info
+// (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
+typedef PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
+    PJRT_DeviceTopology_PlatformVersion_Args* args);
+
+struct PJRT_DeviceTopology_PlatformName_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_DeviceTopology* topology;
+  // `platform_name` has the same lifetime as `topology`. It is owned by
+  // `topology`.
+  const char* platform_name;  // out
+  size_t platform_name_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformName_Args,
+                          platform_name_size);
+
+// Returns a string that identifies the platform (e.g. "cpu", "gpu", "tpu").
+typedef PJRT_Error* PJRT_DeviceTopology_PlatformName(
+    PJRT_DeviceTopology_PlatformName_Args* args);
+
+struct PJRT_Compile_Args {
+  size_t struct_size;
+  void* priv;
+  const PJRT_DeviceTopology* topology;
+  // Only needs to stay alive for the duration of the Compile call.
+  // `program->format` and `program->format_size` are owned by the caller.
+  PJRT_Program* program;
+  // TODO(b/240560013): consider putting some of option fields in priv.
+  // Serialized CompileOptionsProto
+  // (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/pjrt/compile_options.proto)
+  const char* compile_options;
+  size_t compile_options_size;
+  // Optionally provided for performance-guided optimizations.
+  PJRT_Client* client;
+  PJRT_Executable* executable;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Compile_Args, executable);
+
+// Compiles a program in specified format (such as MLIR or HLO) with given
+// `options`. The returned executable must be loaded by a compatible
+// PJRT_Client before execution.
+typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -1088,6 +1314,8 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumReplicas);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumPartitions);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);
@@ -1116,10 +1344,21 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_CurrentBytes);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Create);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformName);
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformVersion);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;
 
-const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_UnsafePointer);
+const size_t PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Compile);
 
 #undef _PJRT_API_STRUCT_FIELD
 #undef PJRT_DEFINE_STRUCT_TRAITS

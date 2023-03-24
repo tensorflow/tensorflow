@@ -128,6 +128,10 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
+bool HasCostFunctionRegistered(absl::string_view op_name) {
+  return GetCostFunctionRegistry().contains(op_name);
+}
+
 int64_t CostAnalysis::GetCost(mlir::Operation* op) const {
   assert(cost_map_.count(op) > 0);
   return cost_map_.lookup(op);

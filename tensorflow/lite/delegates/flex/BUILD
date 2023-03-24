@@ -227,7 +227,7 @@ cc_library(
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
         "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

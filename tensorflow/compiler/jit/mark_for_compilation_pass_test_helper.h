@@ -30,7 +30,7 @@ class MarkForCompilationPassTestHelper {
     bool disable_deadness_analysis;
     bool enable_cluster_scoping;
     bool deterministic_cluster_names;
-    std::string friendly_name;  // TF ConfigProto.Experimental.friendly_name
+    std::string session_name;  // ConfigProto.Experimental.SessionMetadata.name
 
     Options()
         : enable_global_jit(true),
@@ -62,9 +62,9 @@ class MarkForCompilationPassTestHelper {
       return copy;
     }
 
-    Options WithFriendlyName(std::string name) {
+    Options WithSessionName(std::string name) {
       Options copy = *this;
-      copy.friendly_name = std::move(name);
+      copy.session_name = std::move(name);
       return copy;
     }
   };

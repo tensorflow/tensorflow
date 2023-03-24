@@ -19,6 +19,8 @@ import multiprocessing
 import os
 
 from tensorflow.dtensor.python import accelerator_util
+from tensorflow.dtensor.python import config
+from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.python.platform import test as tf_test
 
@@ -35,6 +37,16 @@ class DTensorTestBackendConfigurator:
     # runtime, the shutdown is done in initialization process.
     if accelerator_util.is_initialized():
       accelerator_util.shutdown_accelerator_system()
+
+
+def config_test_mesh(mesh: layout_lib.Mesh):
+  """No Op.
+
+  Args:
+    mesh: The DTensor mesh.
+  """
+  if config.backend_is_pw():
+    del mesh
 
 
 def slice_host_devices_for_multiworker(num_clients, client_id, ports):

@@ -163,9 +163,7 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags->always_specialize = false;
   jitrt_flags->cost_driven_async_parallel_for = false;
   jitrt_flags->enable_crash_reproducer = false;
-  jitrt_flags->enable_xla_cpu_transformations = false;
   jitrt_flags->log_query_of_death = false;
-  jitrt_flags->pack_matmul = false;
   jitrt_flags->vectorize = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
@@ -173,10 +171,7 @@ void AllocateAndParseJitRtFlags() {
            &jitrt_flags->cost_driven_async_parallel_for, ""),
       Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
            ""),
-      Flag("enable_xla_cpu_transformations",
-           &jitrt_flags->enable_xla_cpu_transformations, ""),
       Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
-      Flag("pack_matmul", &jitrt_flags->pack_matmul, ""),
       Flag("vectorize", &jitrt_flags->vectorize, ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
@@ -234,6 +229,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
+  bool enable_mlir_generic_outside_compilation = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -288,7 +284,11 @@ void AllocateAndParseFlags() {
             "MLIR-Based TensorFlow Compiler Bridge."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
-            "are dumped in MLIR TFG dialect and not in GraphDef")});
+            "are dumped in MLIR TFG dialect and not in GraphDef"),
+       Flag("tf_mlir_enable_generic_outside_compilation",
+            &enable_mlir_generic_outside_compilation,
+            "Enables OutsideCompilation passes for MLIR-Based TensorFlow "
+            "Generic Compiler Bridge.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -308,6 +308,8 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+  mlir_flags->tf_mlir_enable_generic_outside_compilation =
+      enable_mlir_generic_outside_compilation;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(

@@ -1867,7 +1867,9 @@ Status MarkForCompilation(
           .optimizer_options()
           .cpu_global_jit(),
       /*cluster_name_prefix=*/options.session_options != nullptr
-          ? options.session_options->config.experimental().friendly_name()
+          ? options.session_options->config.experimental()
+                .session_metadata()
+                .name()
           : ""}
       .Run();
 }
@@ -2163,6 +2165,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "ScatterNd",
       "SegmentSumV2",
       "SegmentProdV2",
+      "SegmentMinV2",
+      "SegmentMaxV2",
       "SelfAdjointEigV2",
       "SoftmaxCrossEntropyWithLogits",
       "SpaceToBatch",

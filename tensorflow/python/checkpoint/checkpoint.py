@@ -24,6 +24,7 @@ import time
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
@@ -35,6 +36,7 @@ from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -65,6 +67,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
 
 # The callable that provide Keras default session that is needed for saving.
 _SESSION_PROVIDER = None
@@ -391,8 +394,12 @@ class _NameBasedRestoreCoordinator:
     Yields:
       SaveableObjects for `trackable`'s attributes.
     """
-    for attribute_name, saveable_factory in (
-        trackable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+    for (
+        attribute_name,
+        saveable_factory,
+    ) in saveable_object_util.saveable_objects_from_trackable(
+        trackable, tf1_saver=True,
+    ).items():
       if callable(saveable_factory):
         try:
           # This saveable object factory does not have a default name= argument,
@@ -741,7 +748,10 @@ def streaming_restore(status, session=None):
 
 def _objects_with_attributes(full_list):
   """Filters out objects with no direct variable dependencies for assertions."""
-  return [o for o in full_list if o._gather_saveables_for_checkpoint()]  # pylint: disable=protected-access
+  return [
+      o for o in full_list
+      if saveable_object_util.saveable_objects_from_trackable(o)
+  ]
 
 
 class CheckpointLoadStatus(_LoadStatus):
@@ -840,7 +850,8 @@ class CheckpointLoadStatus(_LoadStatus):
       # restoration checks.
       if (isinstance(trackable_object,
                      data_structures.TrackableDataStructure) and
-          not trackable_object._trackable_children()):  # pylint: disable=protected-access
+          not trackable_object._trackable_children(  # pylint: disable=protected-access
+              save_type=base.SaveType.CHECKPOINT)):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
@@ -1401,7 +1412,6 @@ class TrackableSaver:
     global _ASYNC_CHECKPOINT_THREAD
     if _ASYNC_CHECKPOINT_THREAD is not None:
       _ASYNC_CHECKPOINT_THREAD.join()
-
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
     if graph_building:
@@ -1779,6 +1789,12 @@ class CheckpointV1(autotrackable.AutoTrackable):
           api_label=_CHECKPOINT_V1,
           microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
                                                   end_time))
+
+      if checkpoint_context.in_preemption_save_context():
+        _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
+            _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
+        )
+
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
@@ -2281,10 +2297,29 @@ class Checkpoint(autotrackable.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      return self._async_checkpointer()._write(  # pylint: disable=protected-access
-          file_prefix, options, write_done_callback)
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
+        return self._async_checkpointer()._write(  # pylint: disable=protected-access
+            file_prefix, options, write_done_callback)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     start_time = time.time()
     options = options or checkpoint_options.CheckpointOptions()
@@ -2300,21 +2335,30 @@ class Checkpoint(autotrackable.AutoTrackable):
 
     end_time = time.time()
 
-    # This records the time checkpoint._write() blocks on the main thread.
-    metrics.AddCheckpointWriteDuration(
-        api_label=_CHECKPOINT_V2,
-        microseconds=_get_duration_microseconds(start_time, end_time))
+    if not checkpoint_context.in_async_metrics_context():
+      # This records the time checkpoint._write() blocks on the main thread.
+      metrics.AddCheckpointWriteDuration(
+          api_label=_CHECKPOINT_V2,
+          microseconds=_get_duration_microseconds(start_time, end_time),
+      )
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      metrics.AddTrainingTimeSaved(
-          api_label=_CHECKPOINT_V2,
-          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
-                                                  end_time))
+      if not checkpoint_context.in_async_metrics_context():
+        metrics.AddTrainingTimeSaved(
+            api_label=_CHECKPOINT_V2,
+            microseconds=_get_duration_microseconds(
+                _END_TIME_OF_LAST_WRITE, end_time)
+        )
+      if checkpoint_context.in_preemption_save_context():
+        _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
+            _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
+        )
       _END_TIME_OF_LAST_WRITE = end_time
 
     metrics.RecordCheckpointSize(
-        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output))
+        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output)
+    )
     return output
 
   @property
@@ -2370,9 +2414,28 @@ class Checkpoint(autotrackable.AutoTrackable):
     Returns:
       The full path to the checkpoint.
     """
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. running in eager mode
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
-      return self._async_checkpointer().save(file_prefix, options)
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
+        return self._async_checkpointer().save(file_prefix, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     if isinstance(file_prefix, os.PathLike):
       file_prefix = os.fspath(file_prefix)
@@ -2452,9 +2515,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. there's a preceeding async save/write
+    # 3. running in eager mode
     if (self._checkpoint_options and
         self._checkpoint_options.experimental_enable_async_checkpoint):
-      return self._async_checkpointer().read(save_path, options)
+      if context.executing_eagerly():
+        return self._async_checkpointer().read(save_path, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     start_time = time.time()
     if isinstance(save_path, os.PathLike):
@@ -2574,9 +2646,18 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     if options and options.experimental_enable_async_checkpoint:
       self._checkpoint_options = options
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. there's a preceeding async save/write
+    # 3. running in eager mode
     if (self._checkpoint_options and
         self._checkpoint_options.experimental_enable_async_checkpoint):
-      return self._async_checkpointer().restore(save_path, options)
+      if context.executing_eagerly():
+        return self._async_checkpointer().restore(save_path, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
 
     orig_save_path = save_path
     if isinstance(save_path, os.PathLike):
@@ -2605,3 +2686,8 @@ class Checkpoint(autotrackable.AutoTrackable):
     if isinstance(status, NameBasedSaverStatus):
       status.add_to_optionally_restored(self.save_counter)
     return status
+
+
+_preemption_checkpoint_saved_time_usecs = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/preemption_checkpoint_saved_time_usecs",
+    "Training time saved by PreemptionCheckpointHandler (us).")

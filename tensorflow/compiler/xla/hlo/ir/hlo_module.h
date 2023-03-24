@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -102,6 +103,12 @@ class HloModule {
   // Removes unused computations.
   Status RemoveUnusedComputations();
 
+  // Marks duplicate fusions with the same name to be able to group them for
+  // analysis purposes (e.g. through Xprof).
+  void MarkFusionDuplications(
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
+
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
   // if applicable.
@@ -109,6 +116,12 @@ class HloModule {
   // This function iterates over all instructions in the module to find
   // computations to replace. We could speed it up by keeping track of users of
   // computations.
+  //
+  // N.B.: This function does not update the computations_ field of the
+  // HloModule with the newly added compututations. Therefore, along with
+  // invoking this function, if a replacement computation is not already present
+  // in module, it should be separately added into the module using
+  // `AddEmbeddedComputation`.
   void ReplaceComputations(
       const absl::flat_hash_map<HloComputation*, HloComputation*>&
           replacements);
@@ -329,7 +342,7 @@ class HloModule {
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
   void Print(Printer* printer) const {
-    return Print(printer, HloPrintOptions());
+    return Print(printer, HloPrintOptions::Default());
   }
   void Print(Printer* printer, const HloPrintOptions& options) const;
 
@@ -337,14 +350,14 @@ class HloModule {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString() const { return ToString(HloPrintOptions::Default()); }
   std::string ToString(const HloPrintOptions& options) const;
 
   // Returns a Cord representation of the module.
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
   absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
@@ -543,21 +556,18 @@ class HloModule {
     return profile_info_list_;
   }
 
-  void add_autofdo_pre_pass_fingerprint(absl::string_view fingerprint) {
-    autofdo_pre_pass_fingerprints_.push_back(std::string(fingerprint));
+  void set_autofdo_profile_key(HloModuleProto::ProfileType profile_type,
+                               absl::string_view profile_key) {
+    autofdo_profile_keys_[profile_type] = std::string(profile_key);
   }
 
-  void set_autofdo_pre_pass_fingerprints(
-      const std::vector<std::string>& fingerprints) {
-    autofdo_pre_pass_fingerprints_ = fingerprints;
-  }
-
-  const std::vector<std::string>& autofdo_pre_pass_fingerprints() const {
-    return autofdo_pre_pass_fingerprints_;
+  const absl::flat_hash_map<HloModuleProto::ProfileType, std::string>&
+  autofdo_profile_keys() const {
+    return autofdo_profile_keys_;
   }
 
   bool has_module_autofdo_profiles() const {
-    return !autofdo_pre_pass_fingerprints_.empty();
+    return !autofdo_profile_keys_.empty();
   }
 
   void set_relative_speedup(double relative_speedup) {
@@ -644,9 +654,10 @@ class HloModule {
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
 
-  // The pre-pass module fingerprints used to retrieve the optimization profiles
-  // this module contains.
-  std::vector<std::string> autofdo_pre_pass_fingerprints_;
+  // The keys used to retrieve the optimization profiles this module is compiled
+  // with, per profile type.
+  absl::flat_hash_map<HloModuleProto::ProfileType, std::string>
+      autofdo_profile_keys_;
 
   bool use_auto_spmd_partitioning_ = false;
 

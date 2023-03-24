@@ -18,6 +18,8 @@ import collections
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -102,6 +104,26 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testNoneElement(self):
     ds = dataset_ops.Dataset.from_tensors((2, None))
     self.assertDatasetProduces(ds, [(2, None)])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCompatibleWithCheckpoint(self):
+    ds = dataset_ops.Dataset.range(10)
+    iterator = ds.as_numpy_iterator()
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    ckpt_dir = self.get_temp_dir()
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, ckpt_dir, max_to_keep=3
+    )
+    for _ in range(5):
+      next(iterator)
+
+    manager.save()
+    self.assertEqual(5, next(iterator))
+    self.assertEqual(6, next(iterator))
+    restore_iter = ds.as_numpy_iterator()
+    restore_ckpt = trackable_utils.Checkpoint(iterator=restore_iter)
+    restore_ckpt.restore(manager.latest_checkpoint)
+    self.assertEqual(5, next(restore_iter))
 
 
 if __name__ == '__main__':

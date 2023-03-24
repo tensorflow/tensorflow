@@ -19,9 +19,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
@@ -133,7 +134,7 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
     rank_diff = weights_rank_tensor - array_ops.rank(predictions)
 
     def _maybe_expand_weights():
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(rank_diff, -1),
           lambda: array_ops.expand_dims(weights, [-1]), lambda: weights)
 
@@ -145,13 +146,13 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
       maybe_squeeze_weights = lambda: array_ops.squeeze(weights, [-1])
 
     def _maybe_adjust_weights():
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(rank_diff, 1), maybe_squeeze_weights,
           _maybe_expand_weights)
 
     # If weights are scalar, do nothing. Otherwise, try to add or remove a
     # dimension to match predictions.
-    weights = control_flow_ops.cond(
+    weights = cond.cond(
         math_ops.equal(weights_rank_tensor, 0), lambda: weights,
         _maybe_adjust_weights)
   return predictions, labels, weights
@@ -178,7 +179,7 @@ def _maybe_expand_labels(labels, predictions):
 
     # If sparse, expand sparse shape.
     if isinstance(labels, sparse_tensor.SparseTensor):
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(
               array_ops.rank(predictions),
               array_ops.size(labels.dense_shape) + 1),
@@ -203,7 +204,7 @@ def _maybe_expand_labels(labels, predictions):
             'same rank as labels rank or labels rank plus one .')
 
     # Otherwise, use dynamic shape.
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(array_ops.rank(predictions),
                        array_ops.rank(labels) + 1),
         lambda: array_ops.expand_dims(labels, -1, name=scope), lambda: labels)
@@ -716,7 +717,7 @@ def _confusion_matrix_at_thresholds(labels,
     num_predictions = array_ops.shape(predictions_2d)[0]
   thresh_tiled = array_ops.tile(
       array_ops.expand_dims(array_ops.constant(thresholds), [1]),
-      array_ops.stack([1, num_predictions]))
+      array_ops_stack.stack([1, num_predictions]))
 
   # Tile the predictions after thresholding them across different thresholds.
   pred_is_pos = math_ops.greater(
@@ -3397,7 +3398,7 @@ def _clean_out_of_range_indices(labels, num_classes):
 
   max_labels = math_ops.reduce_max(
       labels.values if _labels_is_sparse() else labels)
-  return control_flow_ops.cond(
+  return cond.cond(
       math_ops.greater_equal(max_labels, num_classes),
       _clean_labels_out_of_range,
       lambda: labels)

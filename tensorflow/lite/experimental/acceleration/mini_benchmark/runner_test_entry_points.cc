@@ -23,10 +23,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/numbers.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/tools/model_loader.h"
 
 extern "C" {
@@ -85,16 +84,12 @@ int TfLiteWriteArgs(int argc, char** argv) {
 int TfLiteReadFromPipe(int argc, char** argv) {
   std::unique_ptr<tflite::tools::ModelLoader> model_loader =
       tflite::tools::CreateModelLoaderFromPath(argv[3]);
-  if (!model_loader->Init()) {
+  const tflite::Allocation* alloc;
+  if (!model_loader->Init() ||
+      !(alloc = model_loader->GetModel()->allocation()) || !alloc->base()) {
     return 1;
   }
-  tflite::ModelT model;
-  model_loader->GetModel()->GetModel()->UnPackTo(&model);
-  flatbuffers::FlatBufferBuilder fbb;
-  fbb.Finish(CreateModel(fbb, &model));
-
-  return write(kStdOutFd, fbb.GetBufferPointer(), fbb.GetSize()) ==
-                 fbb.GetSize()
+  return write(kStdOutFd, alloc->base(), alloc->bytes()) == alloc->bytes()
              ? ::tflite::acceleration::kMinibenchmarkSuccess
              : 1;
 }

@@ -32,6 +32,9 @@ class PartitioningAlgorithm {
   // The kind/type/name of the (derived) algorithm.
   enum class AlgorithmKind {
     kNoop,
+    kExp0,
+    kExp1,
+    kExp2,
   };
 
   // Constructors and destructor.
@@ -91,6 +94,10 @@ class PartitionAssignment : public HloModulePass {
   // Returns the name of the pass.
   absl::string_view name() const override;
 
+  // Returns the PartitioningAlgorithm to be used by PartitionAssignment.
+  virtual std::unique_ptr<PartitioningAlgorithm> ChoosePartitioningAlgorithm(
+      const HloModule& module) const;
+
   // Runs the pass.
   using HloPassInterface::Run;
   StatusOr<bool> Run(
@@ -101,7 +108,7 @@ class PartitionAssignment : public HloModulePass {
   const PartitioningAlgorithm* algorithm();
 
   // Returns the number of partitions.
-  int64_t num_partitions();
+  int64_t num_partitions() const;
 
  private:
   // The partitioning algorithm to be used. For now, it is determined by a flag.

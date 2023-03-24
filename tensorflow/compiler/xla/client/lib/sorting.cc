@@ -22,10 +22,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
-XlaOp TopK(XlaOp input, int64_t k) {
+XlaOp TopK(XlaOp input, int64_t k, PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
@@ -41,16 +42,17 @@ XlaOp TopK(XlaOp input, int64_t k) {
       int64_t num_partitions =
           CeilOfRatio(last_dim_size - k, kPerPartitionSize - k);
       if (num_partitions >= kMinNumPartitions) {
-        return TopKWithPartitions(input, k, num_partitions);
+        return TopKWithPartitions(input, k, num_partitions, index_type);
       }
     }
 
-    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
-    XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
+    Shape iota_shape =
+        ShapeUtil::MakeShape(index_type, input_shape.dimensions());
+    XlaOp iota = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
         // Propagate dynamic dimension from inputs to iota.
-        iota_s32 = SetDimensionSize(iota_s32, GetDimensionSize(input, i), i);
+        iota = SetDimensionSize(iota, GetDimensionSize(input, i), i);
       }
     }
     auto input_dims = input_shape.dimensions();
@@ -101,13 +103,14 @@ XlaOp TopK(XlaOp input, int64_t k) {
           Or(sign_magnitude_to_from_ones_complement(
                  BitcastConvertType(ConvertElementType(input, F32), S32)),
              ConstantR0<int32_t>(builder, kLow16BitsMask));
-      XlaOp input_and_iota = Xor(input_f32_trimmed, iota_s32);
+      XlaOp input_and_iota = Xor(input_f32_trimmed, iota);
 
       // Sort in reverse order so the largest elements are at the beginning.
       // Breaking ties here is why the index bits need to be inverted.
-      XlaOp sort_result_raw = Sort(
-          {input_and_iota}, CreateScalarGtComputation({S32}, builder), last_dim,
-          /*is_stable=*/false);
+      XlaOp sort_result_raw =
+          Sort({input_and_iota},
+               CreateScalarGtComputation({index_type}, builder), last_dim,
+               /*is_stable=*/false);
 
       // Slice off the first k values.
       sort_result_raw =
@@ -132,9 +135,9 @@ XlaOp TopK(XlaOp input, int64_t k) {
           ConstantR0<int32_t>(builder, kLow16BitsMask));
     } else {
       XlaOp sort_result =
-          Sort({input, iota_s32},
-               CreateScalarGtComputation({input_shape.element_type(), S32},
-                                         iota_s32.builder()),
+          Sort({input, iota},
+               CreateScalarGtComputation(
+                   {input_shape.element_type(), index_type}, iota.builder()),
                last_dim, /*is_stable=*/true);
       values = Slice(GetTupleElement(sort_result, 0), start_indices,
                      limit_indices, strides);
@@ -150,7 +153,8 @@ XlaOp TopK(XlaOp input, int64_t k) {
   });
 }
 
-XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
+XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
+                         PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
@@ -162,15 +166,16 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
         CeilOfRatio(last_dim_size, num_partitions);
     // Do normal TopK when per partition size is smaller than or equal to k.
     if (k >= per_partition_size) {
-      return TopK(input, k);
+      return TopK(input, k, index_type);
     }
 
-    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
-    XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
+    Shape iota_shape =
+        ShapeUtil::MakeShape(index_type, input_shape.dimensions());
+    XlaOp iota = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
         // Propagate dynamic dimension from inputs to iota.
-        iota_s32 = SetDimensionSize(iota_s32, GetDimensionSize(input, i), i);
+        iota = SetDimensionSize(iota, GetDimensionSize(input, i), i);
       }
     }
 
@@ -180,25 +185,41 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       auto values = values_and_indices[0];
       auto indices = values_and_indices[1];
       auto input = values_and_indices[2];
-      auto iota_s32 = values_and_indices[3];
+      auto iota = values_and_indices[3];
 
       // Slice value and indices for this partition.
-      XlaOp start = Mul(Add(partition, ConstantR0<int32_t>(builder, 1)),
-                        ConstantR0<int32_t>(builder, per_partition_size));
+      XlaOp start;
+      switch (index_type) {
+        case PrimitiveType::S16:
+          start = Mul(Add(partition, ConstantR0<int16_t>(builder, 1)),
+                      ConstantR0<int16_t>(builder, per_partition_size));
+          break;
+        case PrimitiveType::S32:
+          start = Mul(Add(partition, ConstantR0<int32_t>(builder, 1)),
+                      ConstantR0<int32_t>(builder, per_partition_size));
+          break;
+        case PrimitiveType::S64:
+          start = Mul(Add(partition, ConstantR0<int64_t>(builder, 1)),
+                      ConstantR0<int64_t>(builder, per_partition_size));
+          break;
+        default:
+          LOG(FATAL) << "Unsupported index type "
+                     << PrimitiveType_Name(index_type);
+      }
       XlaOp sliced_input =
           DynamicSliceInMinorDims(input, {start}, {per_partition_size});
       XlaOp sliced_indices =
-          DynamicSliceInMinorDims(iota_s32, {start}, {per_partition_size});
+          DynamicSliceInMinorDims(iota, {start}, {per_partition_size});
       // Concat with previous results.
       sliced_input = ConcatInDim(builder, {values, sliced_input}, last_dim);
       sliced_indices =
           ConcatInDim(builder, {indices, sliced_indices}, last_dim);
       // Sort this slice
-      XlaOp sort_result =
-          Sort({sliced_input, sliced_indices},
-               CreateScalarGtComputation({input_shape.element_type(), S32},
-                                         sliced_indices.builder()),
-               last_dim, true);
+      XlaOp sort_result = Sort(
+          {sliced_input, sliced_indices},
+          CreateScalarGtComputation({input_shape.element_type(), index_type},
+                                    sliced_indices.builder()),
+          last_dim, true);
 
       std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
       std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
@@ -210,7 +231,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
                      limit_indices, strides);
       indices = Slice(GetTupleElement(sort_result, 1), start_indices,
                       limit_indices, strides);
-      return std::vector<XlaOp>{values, indices, input, iota_s32};
+      return std::vector<XlaOp>{values, indices, input, iota};
     };
 
     // Get the values and indices for the first topk so that they can
@@ -222,12 +243,11 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
     limit_indices[last_dim] = per_partition_size;
     // Slice value and indices for the first partition.
     XlaOp sliced_input = Slice(input, start_indices, limit_indices, strides);
-    XlaOp sliced_indices =
-        Slice(iota_s32, start_indices, limit_indices, strides);
+    XlaOp sliced_indices = Slice(iota, start_indices, limit_indices, strides);
     // Sort this slice
     XlaOp sort_result =
         Sort({sliced_input, sliced_indices},
-             CreateScalarGtComputation({input_shape.element_type(), S32},
+             CreateScalarGtComputation({input_shape.element_type(), index_type},
                                        sliced_indices.builder()),
              last_dim, /*is_stable=*/true);
 
@@ -241,10 +261,11 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
 
     // Pass the result of the first TopK to the while loop and do
     // num_partition - 1 iterations.
-    TF_ASSIGN_OR_RETURN(auto values_and_indices,
-                        ForEachIndex(num_partitions - 1, S32, topk_body_fn,
-                                     {values, indices, input, iota_s32},
-                                     "topk_with_partition", builder));
+    TF_ASSIGN_OR_RETURN(
+        auto values_and_indices,
+        ForEachIndex(num_partitions - 1, index_type, topk_body_fn,
+                     {values, indices, input, iota}, "topk_with_partition",
+                     builder));
     return Tuple(builder, {values_and_indices[0], values_and_indices[1]});
   });
 }

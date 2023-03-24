@@ -207,9 +207,9 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_session",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -303,7 +303,6 @@ cc_library(
         ":grpc_worker_cache",
         ":grpc_worker_service",
         ":rpc_rendezvous_mgr",
-        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -325,6 +324,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service_impl",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),

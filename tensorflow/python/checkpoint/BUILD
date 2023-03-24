@@ -32,7 +32,10 @@ py_library(
     name = "async_checkpoint_helper",
     srcs = ["async_checkpoint_helper.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python/tpu:tpu_embedding_v2"],
+    deps = [
+        ":checkpoint_context",
+        "//tensorflow/python/tpu:tpu_embedding_v2",
+    ],
 )
 
 py_library(
@@ -51,6 +54,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_context",
         ":checkpoint_options",
         ":checkpoint_view",
         ":functional_saver",
@@ -94,7 +98,6 @@ tf_py_test(
     tags = [
         "no_pip",  # TODO(b/250108043)
         "no_windows",  # TODO(b/201457117)
-        "notsan",  # TODO(b/74395663)
     ],
     deps = [
         ":checkpoint",
@@ -122,6 +125,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:stack",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
@@ -129,12 +133,17 @@ tf_py_test(
     ],
 )
 
+py_library(
+    name = "checkpoint_context",
+    srcs = [
+        "checkpoint_context.py",
+    ],
+    srcs_version = "PY3",
+)
+
 tf_py_test(
     name = "checkpoint_with_v1_optimizers_test",
     srcs = ["checkpoint_with_v1_optimizers_test.py"],
-    tags = [
-        "notsan",  # b/74395663
-    ],
     deps = [
         ":checkpoint",
         "//tensorflow/python:framework_ops",
@@ -288,7 +297,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/trackable:trackable_utils",
-        "//tensorflow/python/training:optimizer",
     ],
 )
 

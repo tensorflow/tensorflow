@@ -26,7 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -47,7 +47,7 @@ class LoggingOpsTest(test.TestCase):
       # assert(epsilon < y)
       # z / y
       with sess.graph.control_dependencies([
-          control_flow_ops.Assert(
+          control_flow_assert.Assert(
               math_ops.less(epsilon, y), ["Divide-by-zero"])
       ]):
         out = math_ops.div(z, y)
@@ -57,7 +57,7 @@ class LoggingOpsTest(test.TestCase):
       #
       # This tests printing out multiple tensors
       with sess.graph.control_dependencies([
-          control_flow_ops.Assert(
+          control_flow_assert.Assert(
               math_ops.less(epsilon, x), ["Divide-by-zero", "less than x"])
       ]):
         out = math_ops.div(z, x)

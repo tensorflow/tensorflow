@@ -27,6 +27,7 @@ import weakref
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function.capture import capture_container
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.lang import directives
@@ -46,7 +47,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
-from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -59,10 +59,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
@@ -133,6 +135,33 @@ class _HasDecoratedMethod(object):
   @polymorphic_function.function
   def f(self, x):
     return x * 3.
+
+
+class FunctionBenchmark(test.Benchmark):
+  """Benchmark the tf.function implementation."""
+
+  def benchmark_repeat_captures_property_access(self):
+    n_iters = 1000000
+    n_captures = 100
+    vs = []
+    for _ in range(n_captures):
+      vs.append(variables.Variable(1.0))
+
+    def f():
+      result = 0
+      for idx in range(n_captures):
+        result += vs[idx]
+      return result
+
+    pf = polymorphic_function.function(f)
+    g = pf.get_concrete_function().graph
+
+    start_time = time.time()
+    for _ in range(n_iters):
+      temp = g.captures  # pylint: disable=unused-variable
+    duration = time.time() - start_time
+
+    self.report_benchmark(iters=n_iters, wall_time=duration / float(n_iters))
 
 
 # TODO(mdan): Organize these tests.
@@ -891,7 +920,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return n - 1
 
     @polymorphic_function.function(input_signature=signature)
-    def cond(n):
+    def cond_fn(n):
       return n > 0
 
     # Instead of calling the send & recv functions directly we want to call them
@@ -899,9 +928,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # while boundary.
     @polymorphic_function.function
     def fn(n):
-      functional_ops.While([n], cond.get_concrete_function(),
+      functional_ops.While([n], cond_fn.get_concrete_function(),
                            send_body.get_concrete_function())
-      return functional_ops.While([n], cond.get_concrete_function(),
+      return functional_ops.While([n], cond_fn.get_concrete_function(),
                                   recv_body.get_concrete_function())
 
     # Use a graph context since functions will not be automatically inlined
@@ -1072,7 +1101,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     v = variables.Variable(1.0)
 
     def trivial_function():
-      return control_flow_ops.cond(
+      return cond.cond(
           array_ops.placeholder_with_default(True, ()), v.read_value,
           v.read_value)
 
@@ -1233,7 +1262,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     o = Dummy()
     wr = weakref.ref(o)
 
-    with self.assertRaisesRegex(ValueError, 'weakref'):
+    with self.assertRaisesRegex(TypeError, 'weakref'):
       f(wr)
 
   def testTensorConversionWithDefun(self):
@@ -1706,14 +1735,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return x
 
       with self.assertRaisesRegex(
-          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+          TypeError, 'Binding inputs to tf.function `f` failed .*'):
         f.get_concrete_function(1)(constant_op.constant(1))
 
-      with self.assertRaisesRegex(TypeError, r'f\(x\) expected .* but got .*'):
-        f.get_concrete_function(constant_op.constant(1))(1)
+      f.get_concrete_function(constant_op.constant(1))(1)
 
       with self.assertRaisesRegex(
-          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+          TypeError, 'Binding inputs to tf.function `f` failed .*'):
         f.get_concrete_function(1)(2)
 
     run_test()
@@ -1850,7 +1878,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*py_composite.*',
@@ -1876,10 +1904,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testEagerCaptures(self):
     with context.eager_mode():
       large_tensor = array_ops.ones(shape=(256,))
-      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertGreater(256, capture_container._EAGER_CONST_THRESHOLD)
 
       small_tensor = array_ops.ones(shape=(4,))
-      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+      self.assertLessEqual(4, capture_container._EAGER_CONST_THRESHOLD)
 
       v = resource_variable_ops.ResourceVariable(0.0)
 
@@ -2394,7 +2422,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         f.get_concrete_function(a, y=b),
         f.get_concrete_function(x=a, y=b)
     ]:
-      for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+      for output in [cf(a, b), cf(x=a, y=b)]:
         self.assertAllEqual(output[0] + output[1], 1253)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2426,7 +2454,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         f.get_concrete_function(a, y=b),
         f.get_concrete_function(x=a, y=b)
     ]:
-      for output in [cf(a, b), cf(a, y=b), cf(y=b), cf(x=a, y=b)]:
+      for output in [cf(a, b), cf(a, y=b), cf(x=a, y=b)]:
         self.assertAllEqual(output[0] + output[1], 3234)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2440,7 +2468,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     b = (50, 5)
 
     cf = f.get_concrete_function(a, b)
-    for output in [cf(), cf(a), cf(y=b)]:
+    for output in [cf(), cf(a, b), cf(x=a, y=b)]:
       self.assertAllEqual(output[0] + output[1], 5555)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2521,94 +2549,107 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='MissingArg',
           conc_args=lambda: (1, constant_op.constant(2)),
           call_args=lambda: (1,),
-          error=r'func\(x, y\) missing required arguments: y'),
+          error=r'missing a required argument: \'y\'',
+      ),
       dict(
           testcase_name='MissingVararg',
           conc_args=lambda: (1, 2, constant_op.constant(1.0)),
           call_args=lambda: (1, 2),
-          error=r'func\(x, y, arg3\) missing required arguments: arg3'),
+          error=r'missing a required argument: \'varargs_0\'',
+      ),
       dict(
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2, 3),
-          error=r'too many positional arguments'),
+          error=r'too many positional arguments',
+      ),
       dict(
           testcase_name='MissingKeywordOnlyArg',
           conc_args=lambda: (1, 2),
           conc_kwargs=lambda: {'c': constant_op.constant(1.0)},
           call_args=lambda: (1, 2),
-          error=r'func\(x, y, \*, c\) missing required arguments: c'),
+          error=r'missing a required argument: \'c\'',
+      ),
       dict(
           testcase_name='ExtraKeywordArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'c': constant_op.constant(1.0)},
-          error=r'got an unexpected keyword argument'),
+          error=r'got an unexpected keyword argument',
+      ),
       dict(
           testcase_name='ExpectedRaggedGotNest',
           conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
-          call_args=lambda: ({
-              'a': constant_op.constant([1, 2, 3])
-          },),
-          error=r'func\(x, y\): argument x had incorrect type\n'
-          r'  expected: RaggedTensor\n'
-          r"       got: {'a': (Eager)?Tensor}"),
+          call_args=lambda: ({'a': constant_op.constant([1, 2, 3])}, 5),
+          error=(
+              r'Binding inputs .* failed .* don\'t have the same nested'
+              r' structure'
+          ),
+      ),
       dict(
           testcase_name='WrongRaggedRank',
           conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
-          call_args=lambda: (ragged_factory_ops.constant([[[1]]]),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          call_args=lambda: (ragged_factory_ops.constant([[[1]]]), 5),
+          error=(
+              r'Binding inputs .* failed .* don\'t have the same nested'
+              r' structure'
+          ),
+      ),
       dict(
           testcase_name='WrongRaggedDType',
           conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
-          call_args=lambda: (ragged_factory_ops.constant([[1.0]]),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          call_args=lambda: (ragged_factory_ops.constant([[1.0]]), 5),
+          error=(
+              r'Binding inputs .* failed .* dtype int32 for Tensor with dtype'
+              r' float32:'
+          ),
+      ),
       dict(
           testcase_name='ExpectedDictGotTensor',
-          conc_args=lambda: ({
-              'a': constant_op.constant(1),
-              'b': constant_op.constant(1)
-          },),
-          call_args=lambda: (constant_op.constant(1),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          conc_args=lambda: (
+              {'a': constant_op.constant(1), 'b': constant_op.constant(1)},
+          ),
+          call_args=lambda: (constant_op.constant(1), 5),
+          error=r'Binding inputs .* failed .*Can not cast .*Tensor.* to a Dict',
+      ),
       dict(
           testcase_name='ExpectedTupleGotTensor',
-          conc_args=lambda:
-          ((constant_op.constant(1), constant_op.constant(2)),),
-          call_args=lambda: (constant_op.constant(1),),
-          error=r'func\(x, y\): argument x had incorrect type\n'),
+          conc_args=lambda: (
+              (constant_op.constant(1), constant_op.constant(2)),
+          ),
+          call_args=lambda: (constant_op.constant(1), 5),
+          error=r'Binding inputs .* failed .*Can not cast .*Tensor.* to tuple',
+      ),
       dict(
           testcase_name='WrongDType',
           conc_args=lambda: (constant_op.constant(1),),
-          call_args=lambda: (constant_op.constant(1.0),),
+          call_args=lambda: (constant_op.constant(1.0), 5),
           exception=(
-              ValueError,
+              TypeError,
               errors.InvalidArgumentError,
               # on xla_gpu, we get InternalError instead.
-              errors.InternalError)),
-      dict(
-          testcase_name='ExpectedTensorGotInt',
-          conc_args=lambda: (constant_op.constant(1),),
-          call_args=lambda: (5,),
-          error=r'func\(x, y\) expected a Tensor in x, but got int value 5'),
+              errors.InternalError,
+          ),
+      ),
       dict(
           testcase_name='ExpectedIntGotDifferentInt',
           conc_args=lambda: (5,),
-          call_args=lambda: (8,),
-          error=r'ConcreteFunction func\(x, y\) was constructed with int '
-          r'value 5 in x, but was called with int value 8'),
+          call_args=lambda: (8, 5),
+          error=r'Binding inputs .* failed .*Can not cast 8 to .*5',
+      ),
       dict(
           testcase_name='ExpectedIntGotTensor',
           conc_args=lambda: (5,),
-          call_args=lambda: (constant_op.constant(6),),
-          error=r'ConcreteFunction func\(x, y\) was constructed with int '
-          'value 5 in x, but was called with (Eager)?Tensor value .*'),
+          call_args=lambda: (constant_op.constant(6), 5),
+          error=r'Binding inputs .* failed .*Can not cast .*Tensor.* to .*5',
+      ),
       dict(
           testcase_name='TwoValuesForArgument',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'x': 3},
-          error=r'multiple values for argument'),
+          error=r'got an unexpected keyword argument \'x\'',
+      ),
   ])
   # pylint: enable=g-long-lambda
   @test_util.run_in_graph_and_eager_modes
@@ -2830,7 +2871,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return (x, y, args, kwargs)
 
     c4 = func2.get_concrete_function(scalar, 4, 5, a=scalar)
-    c4_summary = 'func2(x, y=4, arg3=5, *, a)'
+    c4_summary = 'func2(x, y=4, args_0=5, *, a)'
     self.assertEqual(c4.pretty_printed_signature(verbose=False), c4_summary)
 
     c5 = func2.get_concrete_function(8, vector)
@@ -3060,7 +3101,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     ])
     def f(x, s):
       old_shape = array_ops.shape(x)
-      new_shape = array_ops.stack([old_shape[0], s], axis=0)
+      new_shape = array_ops_stack.stack([old_shape[0], s], axis=0)
       y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
       return y
 
@@ -3082,8 +3123,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec((), dtype=dtypes.int32),
     ])
     def f(x, s):
-      s0, _ = array_ops.unstack(array_ops.shape(x), axis=0)
-      new_shape = array_ops.stack([s0, s], axis=0)
+      s0, _ = array_ops_stack.unstack(array_ops.shape(x), axis=0)
+      new_shape = array_ops_stack.stack([s0, s], axis=0)
       y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
       return y
 
@@ -3733,10 +3774,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('y', signature_args[0].name)
 
+    # If name is not specified, the previously named one will be returned.
     conc = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
     conc(x=constant_op.constant(3.0))
     signature_args, _ = conc.structured_input_signature
-    self.assertEqual('x', signature_args[0].name)
+    self.assertEqual('y', signature_args[0].name)
+
+    # New name will return updated signature.
+    conc = f.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32, 'z')
+    )
+    conc(x=constant_op.constant(3.0))
+    signature_args, _ = conc.structured_input_signature
+    self.assertEqual('z', signature_args[0].name)
 
     @polymorphic_function.function
     def g(x):
@@ -3752,7 +3802,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     @polymorphic_function.function
     def fail(i):
-      control_flow_ops.Assert(math_ops.equal(i, 0), ['ick'])
+      control_flow_assert.Assert(math_ops.equal(i, 0), ['ick'])
 
     fail(constant_op.constant(0))  # OK
     with self.assertRaises(errors.InvalidArgumentError):
@@ -4412,6 +4462,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     obj2.testDouble(constant_op.constant('a'))
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_tensor_shape_casted_to_specific(self):
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec([1])]
+    )
+    def specific(x):
+      self.assertEqual(x.shape, [1])
+      return x
+
+    @polymorphic_function.function(
+        input_signature=[tensor_spec.TensorSpec(None)]
+    )
+    def general(x):
+      return specific(x)
+
+    self.assertEqual(general(constant_op.constant([1.0])).numpy(), 1.0)
 
   def test_recursive_tf_function(self):
 

@@ -3,9 +3,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/core/function/capture:__subpackages__",
-        "//tensorflow/python/eager/polymorphic_function:__subpackages__",
-        "//tensorflow/python/framework:__subpackages__",
+        "//tensorflow:internal",
     ],
 )
 
@@ -18,7 +16,7 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/pyct/static_analysis:activity",
     ],
 )
 
@@ -59,7 +57,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/types",

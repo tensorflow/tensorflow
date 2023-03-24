@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <variant>
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/Support/MathExtras.h"
 #include "tools/mlir_interpreter/framework/tensor_or_memref.h"
 
@@ -122,41 +123,46 @@ llvm::SmallVector<InterpreterValue> noOpTerminator(
   return llvm::to_vector(args);
 }
 
-int64_t evalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims) {
+int64_t evalAffineExpr(AffineExpr expr, ArrayRef<int64_t> dims,
+                       ArrayRef<int64_t> symbols) {
+  int64_t lhs = 0, rhs = 0;
+  if (auto bin = expr.dyn_cast<AffineBinaryOpExpr>()) {
+    lhs = evalAffineExpr(bin.getLHS(), dims, symbols);
+    rhs = evalAffineExpr(bin.getRHS(), dims, symbols);
+  }
   switch (expr.getKind()) {
     case AffineExprKind::Add:
-      return evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims) +
-             evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims);
+      return lhs + rhs;
     case AffineExprKind::Mul:
-      return evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims) *
-             evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims);
+      return lhs * rhs;
     case AffineExprKind::Mod:
-      return mod(
-          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims),
-          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims));
+      return mod(lhs, rhs);
     case AffineExprKind::FloorDiv:
-      return floorDiv(
-          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims),
-          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims));
+      return floorDiv(lhs, rhs);
     case AffineExprKind::CeilDiv:
-      return ceilDiv(
-          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getLHS(), dims),
-          evalAffineExpr(expr.cast<AffineBinaryOpExpr>().getRHS(), dims));
+      return ceilDiv(lhs, rhs);
     case AffineExprKind::Constant:
       return expr.cast<AffineConstantExpr>().getValue();
     case AffineExprKind::DimId:
       return dims[expr.cast<AffineDimExpr>().getPosition()];
     case AffineExprKind::SymbolId:
-      llvm_unreachable("Symbol is unsupported");
+      return symbols[expr.cast<AffineSymbolExpr>().getPosition()];
   }
 }
 
-SmallVector<int64_t> evalAffineMap(AffineMap map, ArrayRef<int64_t> dims) {
+SmallVector<int64_t> evalAffineMap(AffineMap map, ArrayRef<int64_t> dims,
+                                   ArrayRef<int64_t> symbols) {
   SmallVector<int64_t> result;
   for (auto expr : map.getResults()) {
-    result.push_back(evalAffineExpr(expr, dims));
+    result.push_back(evalAffineExpr(expr, dims, symbols));
   }
   return result;
+}
+
+llvm::SmallVector<int64_t> evalAffineMap(AffineMap map,
+                                         ArrayRef<int64_t> operands) {
+  return evalAffineMap(map, operands.take_front(map.getNumDims()),
+                       operands.drop_front(map.getNumDims()));
 }
 
 }  // namespace interpreter

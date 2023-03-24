@@ -208,6 +208,7 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
     TF_ASSERT_OK(packed_handle->ExtractPackedHandle(i, &h));
     EXPECT_EQ(h->device(), ListDevices().at(i));
     EXPECT_EQ(h->Type(), expected_handle_types.at(i));
+    EXPECT_EQ(h->FullType().type_id(), TFT_UNSET);
   }
   EXPECT_FALSE(IsReady(packed_handle));
 
@@ -273,7 +274,7 @@ TEST_F(PackedTensorHandleTest, PoisonHandle) {
   TF_EXPECT_OK(WaitReady(packed_handle));
 
   // Poisoning the handle will make WaitReady fail.
-  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+  tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   packed_handle->Poison(fake_failure_status, packed_handle->device());
   EXPECT_THAT(
@@ -473,7 +474,7 @@ TEST_F(RemoteTensorHandleTest, PoisonRemote) {
       /*unknown_device=*/true);
   EXPECT_EQ(h->device(), d1);
 
-  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+  tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   h->PoisonRemote(fake_failure_status, d1, context->GetContextViewId());
 
@@ -522,7 +523,7 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
   TF_ASSERT_OK(
       h->AddUnshapedRemoteMirror(d2, op_id, output_num, remote_task, context));
 
-  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+  tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   h->PoisonRemote(fake_failure_status, d2, context->GetContextViewId());
 

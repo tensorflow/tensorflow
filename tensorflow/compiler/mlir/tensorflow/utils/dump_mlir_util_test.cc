@@ -87,59 +87,6 @@ TEST(DumpMlirModuleTest, Valid) {
   EXPECT_EQ(file_txt_module, expected_txt_module);
 }
 
-TEST(DumpCrashReproducerTest, NoEnvPrefix) {
-  mlir::MLIRContext context;
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::PassManager pm(&context);
-  unsetenv("TF_DUMP_GRAPH_PREFIX");
-
-  std::string filepath =
-      DumpCrashReproducerToFile("module", pm, module_ref.get());
-  EXPECT_EQ(filepath, "(TF_DUMP_GRAPH_PREFIX not specified)");
-}
-
-TEST(DumpCrashReproducerTest, LogInfo) {
-  mlir::MLIRContext context;
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::PassManager pm(&context);
-  setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
-
-  std::string filepath =
-      DumpCrashReproducerToFile("module", pm, module_ref.get());
-  EXPECT_EQ(filepath, "(stderr)");
-}
-
-TEST(DumpCrashReproducerTest, Valid) {
-  mlir::MLIRContext context;
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  mlir::PassManager pm(&context);
-  setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
-  std::string expected_txt_module;
-  {
-    llvm::raw_string_ostream os(expected_txt_module);
-    os << "{-# external_resources: { mlir_reproducer: { pipeline: "
-          "\"builtin.module()\", "
-          "disable_threading: true, verify_each: true } } #-}\n\n";
-    module_ref->getOperation()->print(os,
-                                      mlir::OpPrintingFlags().useLocalScope());
-    os.flush();
-  }
-
-  std::string filepath =
-      DumpCrashReproducerToFile("module", pm, module_ref.get());
-  ASSERT_NE(filepath, "(TF_DUMP_GRAPH_PREFIX not specified)");
-  ASSERT_NE(filepath, "LOG(INFO)");
-  ASSERT_NE(filepath, "(unavailable)");
-
-  Env* env = Env::Default();
-  std::string file_txt_module;
-  TF_ASSERT_OK(ReadFileToString(env, filepath, &file_txt_module));
-  EXPECT_EQ(file_txt_module, expected_txt_module);
-}
-
 TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
@@ -172,11 +119,13 @@ TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
   mlir::registerTensorFlowPasses();
 
   EXPECT_TRUE(mlir::MlirOptMain(output_stream->os(), std::move(input_file),
-                                passPipeline, registry,
-                                /*splitInputFile=*/false,
-                                /*verifyDiagnostics=*/false,
-                                /*verifyPasses=*/false,
-                                /*allowUnregisteredDialects=*/false)
+                                registry,
+                                mlir::MlirOptMainConfig{}
+                                    .splitInputFile(false)
+                                    .verifyDiagnostics(false)
+                                    .verifyPasses(false)
+                                    .allowUnregisteredDialects(false)
+                                    .setPassPipelineParser(passPipeline))
                   .succeeded());
 }
 

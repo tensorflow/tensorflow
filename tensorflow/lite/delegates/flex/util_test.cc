@@ -189,10 +189,10 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorResourceOrVariant) {
   TfLiteTensor tensor;
   tensor.type = kTfLiteResource;
   EXPECT_EQ(CreateTfTensorFromTfLiteTensor(&tensor).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
   tensor.type = kTfLiteVariant;
   EXPECT_EQ(CreateTfTensorFromTfLiteTensor(&tensor).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST(UtilTest, CreateTfTensorFromTfLiteTensorFloat) {

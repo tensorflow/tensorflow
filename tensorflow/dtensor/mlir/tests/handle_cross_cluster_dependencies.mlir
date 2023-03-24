@@ -200,7 +200,7 @@ func.func @main() {
 
 // -----
 
-// Check that CopyToMesh inside cluster is elided.
+// Check that CopyToMesh inside cluster is replaced with Relayout.
 // CHECK-LABEL: func @main
 func.func @main() -> tensor<i32> {
     // CHECK:        %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
@@ -218,7 +218,9 @@ func.func @main() -> tensor<i32> {
     // CHECK-NEXT:     %[[CONST_OUT:.*]] = "tf.Const"()
     // CHECK-NEXT:     %[[LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT]])
     // CHECK-SAME:     layout = #dtensor.layout<sharding_specs: mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
-    // CHECK-NEXT:     %[[NEG_OUT:.*]] = "tf.Neg"(%[[LAYOUT_OUT]]
+    // CHECK-NEXT:     %[[RELAYOUT_OUT:.*]] = "tf.Relayout"(%[[LAYOUT_OUT]])
+    // CHECK-SAME:     layout = "sharding_specs:scalar, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"
+    // CHECK-NEXT:     %[[NEG_OUT:.*]] = "tf.Neg"(%[[RELAYOUT_OUT]]
     // CHECK-NEXT:     tf_device.return
     // CHECK-NEXT:   () -> ()
     %2 = "tf_device.cluster"() ({

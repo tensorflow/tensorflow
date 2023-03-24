@@ -22,7 +22,7 @@ namespace {
 
 llvm::SmallVector<InterpreterValue> unrealizedConversionCast(
     MutableArrayRef<InterpreterValue> args, mlir::Operation* op,
-    InterpreterState& state) {
+    InterpreterState&) {
   auto resultTy = op->getResultTypes()[0];
   auto operandTy = op->getOperandTypes()[0];
   if (resultTy == operandTy) {
@@ -31,9 +31,13 @@ llvm::SmallVector<InterpreterValue> unrealizedConversionCast(
 
   if (auto r = llvm::dyn_cast<ShapedType>(resultTy)) {
     if (auto o = llvm::dyn_cast<ShapedType>(operandTy)) {
-      if (r.getElementType() == o.getElementType() &&
-          r.getRank() == o.getRank()) {
-        return {args[0]};
+      if (verifyCompatibleShapes({o, r}).succeeded()) {
+        return {dispatchScalarType(r, [&](auto dummy) -> InterpreterValue {
+          TensorOrMemref<decltype(dummy)> result;
+          result.view = args[0].view();
+          result.buffer = args[0].buffer();
+          return {result};
+        })};
       }
     }
   }

@@ -16,17 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include <utility>
+
+#include "absl/base/optimization.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -297,9 +295,11 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> RunOnModule(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
-    for (const auto& computation :
+    Status status;
+    for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
-      TF_RETURN_IF_ERROR(computation->Accept(this));
+      status = computation->Accept(this);
+      if (ABSL_PREDICT_FALSE(!status.ok())) return status;
     }
     return changed();
   }
@@ -318,13 +318,15 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction) {
-    VLOG(3) << "Replacing instruction:";
-    VLOG(3) << "  old: " << old_instruction->ToString();
-    VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(old_instruction->parent()->ReplaceWithNewInstruction(
-        old_instruction, std::move(new_instruction)));
-    changed_ = true;
-    return OkStatus();
+    VLOG(3) << "Replacing instruction:"
+            << "\n  old: " << old_instruction->ToString()
+            << "\n  new: " << new_instruction->ToString();
+    Status status = old_instruction->parent()->ReplaceWithNewInstruction(
+        old_instruction, std::move(new_instruction));
+    if (ABSL_PREDICT_TRUE(status.ok())) {
+      changed_ = true;
+    }
+    return status;
   }
 
   // Replaces the existing HLO instruction old_instruction, with
@@ -333,23 +335,26 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
                                     HloInstruction* new_instruction,
                                     bool preserve_sharding) {
-    VLOG(3) << "Replacing instruction:";
-    VLOG(3) << "  old: " << old_instruction->ToString();
-    VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_ASSIGN_OR_RETURN(
-        bool changed, old_instruction->parent()->ReplaceInstruction(
-                          old_instruction, new_instruction, preserve_sharding));
-    changed_ |= changed;
-    return changed;
+    VLOG(3) << "Replacing instruction:"
+            << "\n  old: " << old_instruction->ToString()
+            << "\n  new: " << new_instruction->ToString();
+    StatusOr<bool> changed_or = old_instruction->parent()->ReplaceInstruction(
+        old_instruction, new_instruction, preserve_sharding);
+    if (ABSL_PREDICT_TRUE(changed_or.ok())) {
+      changed_ |= changed_or.value();
+    }
+    return changed_or;
   }
 
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction) {
-    TF_ASSIGN_OR_RETURN(bool changed,
-                        ReplaceInstruction(old_instruction, new_instruction,
-                                           /*preserve_sharding=*/false));
-    DCHECK(changed);
-    return OkStatus();
+    StatusOr<bool> changed_or =
+        ReplaceInstruction(old_instruction, new_instruction,
+                           /*preserve_sharding=*/false);
+    if (ABSL_PREDICT_TRUE(changed_or.ok())) {
+      DCHECK(changed_or.value());
+    }
+    return changed_or.status();
   }
 
   // Mark the computation as having changed.

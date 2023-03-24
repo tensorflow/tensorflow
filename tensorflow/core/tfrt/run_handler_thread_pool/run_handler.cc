@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <memory>
 #define EIGEN_USE_THREADS
+
+#include <optional>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
@@ -30,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -774,9 +776,9 @@ class RunHandlerPool::Impl {
     thread_local std::unique_ptr<
         Eigen::MaxSizeVector<internal::ThreadWorkSource*>>
         thread_work_sources =
-            std::unique_ptr<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
-                new Eigen::MaxSizeVector<internal::ThreadWorkSource*>(
-                    max_handlers_));
+            std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+
+                max_handlers_);
     uint64_t version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
@@ -823,7 +825,7 @@ class RunHandlerPool::Impl {
       version = ++version_;
     }
     RecomputePoolStats(num_active_requests, version, *thread_work_sources);
-    return tensorflow::WrapUnique<RunHandler>(new RunHandler(handler_impl));
+    return std::unique_ptr<RunHandler>(new RunHandler(handler_impl));
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {
@@ -1068,7 +1070,7 @@ void RunHandlerWorkQueue::AddTask(TaskFunction work) {
       run_handler_->step_id(), "inter", std::move(work)));
 }
 
-Optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
+std::optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
     TaskFunction work, bool allow_queuing) {
   LOG_EVERY_N_SEC(ERROR, 10)
       << "RunHandlerWorkQueue::AddBlockingTask() is not supposed to be called.";

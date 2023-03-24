@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -22,33 +23,38 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/statusor.h"
 
-namespace tensorflow {
-namespace fuzzing {
+namespace tensorflow::fuzzing {
 namespace {
 
-using ::fuzztest::Arbitrary;
 using ::fuzztest::Domain;
 using ::fuzztest::Filter;
+using ::fuzztest::InRange;
 using ::fuzztest::Map;
 using ::fuzztest::VectorOf;
 
-Domain<StatusOr<TensorShape>> AnyStatusOrTensorShape() {
+Domain<StatusOr<TensorShape>> AnyStatusOrTensorShape(size_t max_rank,
+                                                     int64_t dim_lower_bound,
+                                                     int64_t dim_upper_bound) {
   return Map(
       [](std::vector<int64_t> v) -> StatusOr<TensorShape> {
         TensorShape out;
         TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(v, &out));
         return out;
       },
-      VectorOf(Arbitrary<int64_t>()));
+      VectorOf(InRange(dim_lower_bound, dim_upper_bound))
+          .WithMaxSize(max_rank));
 }
 
 }  // namespace
 
-Domain<TensorShape> AnyValidTensorShape() {
+Domain<TensorShape> AnyValidTensorShape(
+    size_t max_rank = std::numeric_limits<size_t>::max(),
+    int64_t dim_lower_bound = std::numeric_limits<int64_t>::min(),
+    int64_t dim_upper_bound = std::numeric_limits<int64_t>::max()) {
   return Map([](StatusOr<TensorShape> t) { return *t; },
-             Filter([](auto mfts) { return mfts.status().ok(); },
-                    AnyStatusOrTensorShape()));
+             Filter([](auto t_inner) { return t_inner.status().ok(); },
+                    AnyStatusOrTensorShape(max_rank, dim_lower_bound,
+                                           dim_upper_bound)));
 }
 
-}  // namespace fuzzing
-}  // namespace tensorflow
+}  // namespace tensorflow::fuzzing

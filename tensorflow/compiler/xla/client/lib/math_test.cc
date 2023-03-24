@@ -188,6 +188,10 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     auto ty = static_cast<PrimitiveType>(i);
     SCOPED_TRACE(PrimitiveType_Name(ty));
     Shape shape;
+    if (ty == U4 || ty == S4) {
+      // TODO(b/259306620): breaking MakeShape()
+      continue;
+    }
     if (primitive_util::IsArrayType(ty)) {
       shape = ShapeUtil::MakeShape(ty, {42});
     } else if (ty == PrimitiveType::TUPLE) {

@@ -55,6 +55,8 @@ using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::CublasLtMatmulF8Op;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
+using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
+using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
 using mlir::lmhlo_gpu::GEMMOp;
 
 using xla::runtime::CustomCallDeclarations;
@@ -419,6 +421,57 @@ class ConvForwardFusedSideInputOpLowering
 
 //===----------------------------------------------------------------------===//
 
+template <typename ConvReorder>
+class CudnnConvReorderOpLowering : public OpRewritePattern<ConvReorder> {
+ private:
+  static StringRef CustomCallTarget(CudnnConvReorderFilterOp) {
+    return "xla.gpu.conv.reorder.filter";
+  }
+  static StringRef CustomCallTarget(CudnnConvReorderFilterAndBiasOp) {
+    return "xla.gpu.conv.reorder.filter_and_bias";
+  }
+
+ public:
+  explicit CudnnConvReorderOpLowering(MLIRContext* ctx,
+                                      CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<ConvReorder>(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(ConvReorder op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee =
+        custom_calls_.GetOrCreate(b, CustomCallTarget(op), op);
+
+    auto filterDims = rewriter.getDenseI64ArrayAttr(
+        llvm::to_vector(op.getFilterDims().template getValues<int64_t>()));
+
+    // Replace ConvOp with an equivalent custom call.
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
+        op, callee.getName(), TypeRange(), op.getOperands());
+    call->setAttr(b.getStringAttr("filter_dims"), filterDims);
+
+    return success();
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
+class CudnnConvReorderFilterOpLowering
+    : public CudnnConvReorderOpLowering<CudnnConvReorderFilterOp> {
+ public:
+  using CudnnConvReorderOpLowering::CudnnConvReorderOpLowering;
+};
+
+class CudnnConvReorderFilterAndBiasOpLowering
+    : public CudnnConvReorderOpLowering<CudnnConvReorderFilterAndBiasOp> {
+ public:
+  using CudnnConvReorderOpLowering::CudnnConvReorderOpLowering;
+};
+
+//===----------------------------------------------------------------------===//
+
 class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
  private:
   static constexpr const char kCustomCallTarget[] = "xla.gpu.cholesky";
@@ -490,6 +543,8 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
       ctx, conv_uid, custom_calls);
 
   // Patterns for every other Gpu operation.
+  patterns.insert<CudnnConvReorderFilterOpLowering>(ctx, custom_calls);
+  patterns.insert<CudnnConvReorderFilterAndBiasOpLowering>(ctx, custom_calls);
   patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))

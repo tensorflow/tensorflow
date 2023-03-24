@@ -261,10 +261,10 @@ def transform_eager_defined_function(
       mlir_pipeline if isinstance(mlir_pipeline, list) else [mlir_pipeline])
   # First apply the MLIR based transformation.
   for mlir_pipeline in mlir_pipelines:
-    rt.TransformFunction(f.signature.name, mlir_pipeline)
+    rt.TransformFunction(f.cached_definition.signature.name, mlir_pipeline)
 
   # Get the `FunctionDef` after MLIR transformation.
-  fndef = rt.GetFunctionProto(f.signature.name)
+  fndef = rt.GetFunctionProto(f.cached_definition.signature.name)
 
   # Apply the Python function based transformation.
   for transform_fn in transform_fns:
@@ -283,9 +283,13 @@ def transform_eager_defined_function(
   # pylint: disable=protected-access
   # Ref: third_party/tensorflow/python/ops/control_flow_util_v2.py
   # Generate a new `_EagerDefinedFunction`.
-  edf = function_lib._EagerDefinedFunction(fndef.signature.name, func_graph,
-                                           func_graph.inputs,
-                                           func_graph.outputs, fndef.attr)
+  edf = function_lib._EagerDefinedFunction(
+      fndef.signature.name,
+      func_graph,
+      func_graph.inputs,
+      func_graph.outputs,
+      fndef.attr,
+  )
   # pylint: enable=protected-access
 
   return edf

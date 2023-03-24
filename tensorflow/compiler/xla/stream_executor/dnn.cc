@@ -297,6 +297,8 @@ std::string FilterLayoutString(FilterLayout layout) {
       return "OutputInputYX4";
     case FilterLayout::kOutputInputYX32:
       return "OutputInputYX32";
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
+      return "OutputInputYX32_CudnnReordered";
     case FilterLayout::kInputYXOutput:
       return "InputYXOutput";
     case FilterLayout::kYXInputOutput:
@@ -391,6 +393,7 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
     case FilterLayout::kOutputInputYX:
     case FilterLayout::kOutputInputYX4:
     case FilterLayout::kOutputInputYX32:
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
       dim_indices.filter.input_idx = 1;
       dim_indices.filter.output_idx = 0;
       dim_indices.filter.spatial_idx = 2;
@@ -689,6 +692,7 @@ std::string FilterDescriptor::ToShortString() const {
       return absl::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
     case FilterLayout::kOutputInputYX32:
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
       return absl::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
       return absl::StrCat(id, spatial, od);

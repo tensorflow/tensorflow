@@ -432,7 +432,7 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
                                  /*is_reported_error=*/true));
   LOG(INFO) << "Reporting error to coordination service: " << error;
   ReportErrorToServiceRequest request;
-  request.set_error_code(error.code());
+  request.set_error_code(error.raw_code());
   request.set_error_message(error.error_message());
   *request.mutable_error_origin() = task_;
   VLOG(5) << "ReportErrorToServiceRequest: " << request.DebugString();

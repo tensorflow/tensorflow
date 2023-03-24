@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <string.h>
 
+#include <array>
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -34,7 +36,7 @@ using tflite::delegates::test_utils::TestDelegate;
 
 namespace {
 
-const TfLiteRegistration* GetDummyRegistration() {
+const TfLiteRegistration* GetNoOpRegistration() {
   static const TfLiteRegistration registration = {
       /*init=*/nullptr,
       /*free=*/nullptr,
@@ -43,14 +45,26 @@ const TfLiteRegistration* GetDummyRegistration() {
   return &registration;
 }
 
+const TfLiteRegistrationExternal* GetNoOpRegistrationExternal() {
+  static TfLiteRegistrationExternal* registration =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "NoOp", 1);
+  TfLiteRegistrationExternalSetInvoke(
+      registration,
+      /*invoke=*/[](TfLiteOpaqueContext*, TfLiteOpaqueNode*) {
+        return kTfLiteOk;
+      });
+  return registration;
+}
+
 TEST(CApiExperimentalTest, Smoke) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
+          .c_str());
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                       GetDummyRegistration(), 1, 1);
+                                       GetNoOpRegistration(), 1, 1);
   TfLiteInterpreterOptionsSetUseNNAPI(options, true);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
@@ -66,13 +80,14 @@ TEST(CApiExperimentalTest, Smoke) {
 
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SelectedBuiltins) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
+          .c_str());
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                       GetDummyRegistration(), 1, 1);
+                                       GetNoOpRegistration(), 1, 1);
 
   TfLiteInterpreter* interpreter =
       TfLiteInterpreterCreateWithSelectedOps(model, options);
@@ -89,8 +104,9 @@ TEST(CApiExperimentalTest, SelectedBuiltins) {
 // Test that when using TfLiteInterpreterCreateWithSelectedOps,
 // we do NOT get the standard builtin operators by default.
 TEST(CApiExperimentalTest, MissingBuiltin) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
+          .c_str());
   ASSERT_NE(model, nullptr);
 
   // Install a custom error reporter into the interpreter by way of options.
@@ -131,7 +147,7 @@ const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
   OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
   if (op == kTfLiteBuiltinAdd && version == 1) {
     my_data->called_for_add = true;
-    return GetDummyRegistration();
+    return GetNoOpRegistration();
   }
   return nullptr;
 }
@@ -139,15 +155,16 @@ const TfLiteRegistration* MyFindBuiltinOp(void* user_data,
 const TfLiteRegistration* MyFindCustomOp(void*, const char* custom_op,
                                          int version) {
   if (absl::string_view(custom_op) == "foo" && version == 1) {
-    return GetDummyRegistration();
+    return GetNoOpRegistration();
   }
   return nullptr;
 }
 
 // Test using TfLiteInterpreterCreateWithSelectedOps.
 TEST(CApiExperimentalTest, SetOpResolver) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
+          .c_str());
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -155,6 +172,51 @@ TEST(CApiExperimentalTest, SetOpResolver) {
   OpResolverData my_data;
   TfLiteInterpreterOptionsSetOpResolver(options, MyFindBuiltinOp,
                                         MyFindCustomOp, &my_data);
+  EXPECT_FALSE(my_data.called_for_add);
+
+  TfLiteInterpreter* interpreter =
+      TfLiteInterpreterCreateWithSelectedOps(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  EXPECT_TRUE(my_data.called_for_add);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+const TfLiteRegistrationExternal* MyFindBuiltinOpExternal(void* user_data,
+                                                          int op, int version) {
+  OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
+  if (op == kTfLiteBuiltinAdd && version == 1) {
+    my_data->called_for_add = true;
+    return GetNoOpRegistrationExternal();
+  }
+  return nullptr;
+}
+
+const TfLiteRegistrationExternal* MyFindCustomOpExternal(void*,
+                                                         const char* custom_op,
+                                                         int version) {
+  if (absl::string_view(custom_op) == "foo" && version == 1) {
+    return GetNoOpRegistrationExternal();
+  }
+  return nullptr;
+}
+
+// Test using TfLiteInterpreterCreateWithSelectedOps.
+TEST(CApiExperimentalTest, SetOpResolverExternal) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+
+  OpResolverData my_data;
+  TfLiteInterpreterOptionsSetOpResolverExternal(
+      options, MyFindBuiltinOpExternal, MyFindCustomOpExternal, &my_data);
   EXPECT_FALSE(my_data.called_for_add);
 
   TfLiteInterpreter* interpreter =
@@ -199,8 +261,9 @@ void VerifyOutputs(TfLiteInterpreter* interpreter) {
 void CheckExecution(TfLiteInterpreterOptions* options,
                     TfLiteStatus expected_first_result,
                     TfLiteStatus expected_subsequent_results) {
-  TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      tensorflow::GetDataDependencyFilepath("tensorflow/lite/testdata/add.bin")
+          .c_str());
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);

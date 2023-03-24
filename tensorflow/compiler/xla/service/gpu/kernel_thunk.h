@@ -1,4 +1,3 @@
-#include "absl/container/flat_hash_map.h"
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -44,9 +45,11 @@ class KernelThunk : public Thunk {
  public:
   // Constructs a thunk for the given kernel.
   //
-  // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(ThunkInfo thunk_info,
-              absl::Span<const BufferAllocation* const> args,
+  // KernelThunk takes args as BufferAllocation::Slice's. Each slice directly
+  // corresponds to an argument or output of the computation. Also, the values
+  // must correspond to each arg directly, not to their base allocation (e.g.
+  // they can be the result of an mlir::memref::ViewOp).
+  KernelThunk(ThunkInfo thunk_info, std::vector<BufferAllocation::Slice> args,
               const std::string& kernel_name,
               const LaunchDimensions& launch_dimensions,
               std::vector<mlir::Value> values);
@@ -67,7 +70,7 @@ class KernelThunk : public Thunk {
     }
   }
 
-  const std::vector<const BufferAllocation*>& arguments() const {
+  const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }
   const std::string& kernel_name() const { return kernel_name_; }
@@ -77,8 +80,8 @@ class KernelThunk : public Thunk {
   absl::Span<const mlir::Value> values() const { return values_; }
 
  private:
-  // Buffers passed to the kernel as arguments.
-  const std::vector<const BufferAllocation*> args_;
+  // Buffer slices passed to the kernel as arguments.
+  const std::vector<BufferAllocation::Slice> args_;
 
   // Entry kernel name for the computation.
   const std::string kernel_name_;
@@ -86,7 +89,7 @@ class KernelThunk : public Thunk {
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;
 
-  // mlir::Value(s) corresponding to the buffer allocation arguments.
+  // mlir::Value(s) corresponding to the buffer slice arguments.
   std::vector<mlir::Value> values_;
 
   mutable absl::Mutex mutex_;

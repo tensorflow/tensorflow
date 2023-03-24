@@ -642,9 +642,49 @@ class Conv2DOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(reader->AddOutputs(node));
       RETURN_IF_ERROR(MaybeFuseActivation(tf_options->activation, graph, node));
       return absl::OkStatus();
-    } else {
-      // weights are constants
+    } else {  // weights are constants
+      BHWC src_shape, dst_shape;
+      RETURN_IF_ERROR(
+          ExtractTensorShape(*reader->GetInputTensor(0), &src_shape));
+      RETURN_IF_ERROR(
+          ExtractTensorShape(*reader->GetOutputTensor(0), &dst_shape));
       const int src_group_size = attr.weights.shape.i;
+      if (attr.weights.shape.i == 1 && src_shape.c == dst_shape.c) {
+        // when weights shape input channels = 1 =>
+        // groups count = src_shape channels =>
+        // when src channels == dst channels && weights input channels == 1 =>
+        // CONVOLUTION_2D equivalent to DEPTHWISE_CONVOLUTION
+        DepthwiseConvolution2DAttributes dw_attr;
+        dw_attr.weights.id = attr.weights.id;
+        dw_attr.weights.shape =
+            OHWI(attr.weights.shape.i, attr.weights.shape.h,
+                 attr.weights.shape.w, attr.weights.shape.o);
+        dw_attr.weights.data.resize(dw_attr.weights.shape.DimensionsProduct());
+        for (int o = 0; o < dw_attr.weights.shape.o; ++o) {
+          for (int h = 0; h < dw_attr.weights.shape.h; ++h) {
+            for (int w = 0; w < dw_attr.weights.shape.w; ++w) {
+              for (int i = 0; i < dw_attr.weights.shape.i; ++i) {
+                dw_attr.weights
+                    .data[dw_attr.weights.shape.LinearIndex({o, h, w, i})] =
+                    attr.weights
+                        .data[attr.weights.shape.LinearIndex({i, h, w, o})];
+              }
+            }
+          }
+        }
+        dw_attr.bias = attr.bias;
+        dw_attr.strides = attr.strides;
+        dw_attr.dilations = attr.dilations;
+        dw_attr.padding = attr.padding;
+        Node* node = graph->NewNode();
+        node->operation.type = ToString(OperationType::DEPTHWISE_CONVOLUTION);
+        node->operation.attributes = std::move(dw_attr);
+        RETURN_IF_ERROR(reader->AddInput(node, 0));
+        RETURN_IF_ERROR(reader->AddOutputs(node));
+        RETURN_IF_ERROR(
+            MaybeFuseActivation(tf_options->activation, graph, node));
+        return absl::OkStatus();
+      }
       const int dst_group_size = attr.weights.shape.o / attr.groups;
       const bool supported_grouped_conv =
           src_group_size % 4 == 0 && dst_group_size % 4 == 0;
@@ -1032,7 +1072,10 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       const auto& next_node = output_tensor_info.consumers[0];
       TfLiteType dst_type =
           context->tensors[next_node.first->outputs->data[0]].type;
-      if (next_node.second->builtin_code == kTfLiteBuiltinCast &&
+      int next_code = next_node.second->builtin_code;
+      if ((next_code == kTfLiteBuiltinCast ||
+           next_code == kTfLiteBuiltinSelect ||
+           next_code == kTfLiteBuiltinSelectV2) &&
           (dst_type == kTfLiteFloat16 || dst_type == kTfLiteFloat32)) {
         return absl::OkStatus();
       } else {
@@ -1164,6 +1207,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::NEG:
       case OperationType::RSQRT:
       case OperationType::SIGMOID:
+      case OperationType::SIGN:
       case OperationType::SIN:
       case OperationType::SQRT:
       case OperationType::SQUARE:
@@ -1673,6 +1717,12 @@ class PadOperationParser : public TFLiteOperationParser {
 
     Tensor<HW, DataType::INT32> paddings;
     RETURN_IF_ERROR(reader->ReadTensor(1, &paddings));
+
+    if (registration->builtin_code == kTfLiteBuiltinPadv2 &&
+        tflite_node->inputs->size == 3) {
+      const TfLiteTensor* const_tensor = reader->GetInputTensor(2);
+      attr.constant_values = GetTensorData<float>(const_tensor)[0];
+    }
 
     if (paddings.shape.h == 4 && paddings.shape.w == 2) {
       // 4x2 tensor with paddings.
@@ -2372,7 +2422,8 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    // Although we support up to v4, we do not support boolean inputs
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     return CheckGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
@@ -2664,7 +2715,8 @@ class TransposeOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    // Although we support up to v4, we do not support boolean inputs
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     return CheckGpuDelegateCompatibility(context, tflite_node, registration);
   }
 
@@ -3076,6 +3128,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<PackOperationParser>();
     case kTfLiteBuiltinPad:
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
+    case kTfLiteBuiltinPadv2:
+      return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
       return std::make_unique<ElementwiseOperationParser>(OperationType::POW);
     case kTfLiteBuiltinReduceMax:
@@ -3110,8 +3164,11 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<Resize2DOperationParser>(SamplingType::NEAREST);
     case kTfLiteBuiltinRsqrt:
       return std::make_unique<ElementwiseOperationParser>(OperationType::RSQRT);
+    case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return std::make_unique<SelectV2OperationParser>();
+    case kTfLiteBuiltinSign:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::SIGN);
     case kTfLiteBuiltinSin:
       return std::make_unique<ElementwiseOperationParser>(OperationType::SIN);
     case kTfLiteBuiltinSlice:
@@ -3150,6 +3207,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<UnpackOperationParser>();
     case kTfLiteBuiltinCustom: {
       const absl::string_view custom_name = registration->custom_name;
+      fprintf(stderr, "Found Custom Op: %s\n", registration->custom_name);
       if (custom_name == "Convolution2DTransposeBias") {
         return std::make_unique<TransposeConvCustomOperationParser>();
       }
@@ -3210,7 +3268,8 @@ TfLiteIntArray* GetOpsToReplace(
     if (registration->builtin_code == kTfLiteBuiltinOneHot) {
       allowed_in_types.push_back(kTfLiteInt32);
     }
-    if (registration->builtin_code == kTfLiteBuiltinSelectV2) {
+    if (registration->builtin_code == kTfLiteBuiltinSelect ||
+        registration->builtin_code == kTfLiteBuiltinSelectV2) {
       allowed_in_types.push_back(kTfLiteBool);
     }
     if (registration->builtin_code == kTfLiteBuiltinLogicalAnd) {

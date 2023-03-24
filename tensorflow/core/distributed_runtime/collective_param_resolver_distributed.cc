@@ -61,6 +61,7 @@ class CompleteInstanceCall : public CancellableCall {
       : CancellableCall(cancel_mgr, remote_worker, wc) {
     req_.set_name(node_name);
     req_.set_type(instance.type);
+    req_.set_step_id(instance.step_id);
     req_.set_data_type(instance.data_type);
     instance.shape.AsProto(req_.mutable_shape());
     req_.set_group_key(group.group_key);
@@ -172,6 +173,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   cp->name = request->name();
   cp->instance.type = CollectiveType(request->type());
   cp->instance.instance_key = request->instance_key();
+  cp->instance.step_id = request->step_id();
   cp->instance.data_type = request->data_type();
   cp->instance.shape = TensorShape(request->shape());
   cp->is_source = request->is_source();
@@ -314,13 +316,14 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
 }
 
 bool CollectiveParamResolverDistributed::InstanceIsCached(
-    int32_t group_key, int32_t instance_key) {
+    int32_t group_key, const CollInstanceParams& instance) {
   mutex_lock l(instance_mu_);
   auto group_it = instance_table_.find(group_key);
   if (group_it == instance_table_.end()) {
     return false;
   }
-  auto instance_it = group_it->second.find(instance_key);
+  auto instance_it =
+      group_it->second.find({instance.step_id, instance.instance_key});
   return instance_it != group_it->second.end();
 }
 
@@ -366,7 +369,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
   if (group_leader_.empty()) {
     // This is the group leader so resolution is local.
     return CompleteInstanceLocal(device, cp, done);
-  } else if (InstanceIsCached(cp->group.group_key, cp->instance.instance_key)) {
+  } else if (InstanceIsCached(cp->group.group_key, cp->instance)) {
     return CompleteInstanceLocal(device, cp, done);
   } else {
     CompleteInstanceCall* call = new CompleteInstanceCall(

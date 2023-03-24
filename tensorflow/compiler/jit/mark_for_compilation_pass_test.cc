@@ -1859,7 +1859,7 @@ TEST(XlaCompilationTest, DeterministicClusterNames) {
   // clusters0/2 should differ from clusters1/3
 }
 
-TEST(XlaCompilationTest, ClusterFriendlyName) {
+TEST(XlaCompilationTest, ClusterSessionName) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Output variable = ops::Variable(root.WithOpName("variable"),
                                   PartialTensorShape{}, DT_FLOAT);
@@ -1869,8 +1869,8 @@ TEST(XlaCompilationTest, ClusterFriendlyName) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   TF_ASSERT_OK(root.ToGraph(graph.get()));
-  auto options = MarkForCompilationPassTestHelper::Options().WithFriendlyName(
-      "test_friendly_name");
+  auto options = MarkForCompilationPassTestHelper::Options().WithSessionName(
+      "test_session_name");
   TF_ASSERT_OK(
       MarkForCompilationPassTestHelper::MarkForCompilation(&graph, options));
 
@@ -1882,7 +1882,7 @@ TEST(XlaCompilationTest, ClusterFriendlyName) {
   std::unordered_map<string, string> expected_clusters(
       {{"negate", cluster_name}, {"add", cluster_name}});
   EXPECT_EQ(clusters, expected_clusters);
-  EXPECT_THAT(cluster_name, ::testing::StartsWith("test_friendly_name"));
+  EXPECT_THAT(cluster_name, ::testing::StartsWith("test_session_name"));
 }
 
 namespace {

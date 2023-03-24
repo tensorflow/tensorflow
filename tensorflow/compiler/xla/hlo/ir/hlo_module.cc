@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -173,6 +173,28 @@ HloComputation* HloModule::AddEmbeddedComputation(
                                 /*preserve_entry_layouts=*/false);
 }
 
+void HloModule::MarkFusionDuplications(
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
+  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        auto rep =
+            replacements.find(instruction->fused_instructions_computation());
+        if (rep != replacements.end()) {
+          xla::HloComputation* new_comp = rep->second;
+          if (new_comp->IsFusionComputation()) {
+            auto dedup_name = new_comp->FusionInstruction()->name();
+            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
+                std::string(dedup_name));
+            instruction->set_metadata_deduplicated_name(
+                std::string(dedup_name));
+          }
+        }
+      }
+    }
+  }
+}
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
@@ -271,16 +293,12 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   }
   if (config_.allow_spmd_sharding_propagation_to_output().size() != 1 ||
       config_.allow_spmd_sharding_propagation_to_output().back()) {
-    struct BoolFormatter {
-      void operator()(std::string* out, bool i) const {
-        out->append(i ? "true" : "false");
-      }
-    };
-    printer->Append(absl::StrCat(
-        ", allow_spmd_sharding_propagation_to_output={",
-        absl::StrJoin(config_.allow_spmd_sharding_propagation_to_output(), ",",
-                      BoolFormatter()),
-        "}"));
+    printer->Append(", allow_spmd_sharding_propagation_to_output={");
+    AppendJoin(printer, config_.allow_spmd_sharding_propagation_to_output(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
   }
   printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()
@@ -322,7 +340,8 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_id(unique_id_);
   proto.set_name(name_);
   if (entry_computation_) {
-    proto.set_entry_computation_name(entry_computation_->name());
+    *proto.mutable_entry_computation_name() =
+        std::string(entry_computation_->name());
     proto.set_entry_computation_id(entry_computation_->unique_id());
     *proto.mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
@@ -386,9 +405,9 @@ StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
-  absl::flat_hash_set<std::string> computation_names;
+  absl::flat_hash_set<absl::string_view> computation_names;
   absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<std::string> instruction_names;
+  absl::flat_hash_set<absl::string_view> instruction_names;
   absl::flat_hash_set<int> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
@@ -922,9 +941,9 @@ std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::WrapUnique(new HloModule(
+  auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config,
-      std::make_unique<CompilationEnvironments>(*comp_envs_)));
+      std::make_unique<CompilationEnvironments>(*comp_envs_));
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
@@ -975,7 +994,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config(),
+      absl::StrCat(name_, "-", suffix), config(),
       std::make_unique<CompilationEnvironments>(*comp_envs_));
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);

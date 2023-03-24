@@ -2635,6 +2635,17 @@ func.func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 
 // -----
 
+// Test tf.Transpose with invalid index of perm
+func.func @testTranspose(tensor<2x2xf32>) -> tensor<2x2xf32> {
+^bb0(%arg0: tensor<2x2xf32>):
+  %cst = arith.constant dense<[1, -3]> : tensor<2xi32>
+  // expected-error @+1 {{'tf.Transpose' op perm[1]=-3 must be in range [-2, 2)}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // Test tf.Transpose with invalid rank of y
 func.func @testTranspose(tensor<2x3xf32>) -> tensor<3x2x1xf32> {
 ^bb0(%arg0: tensor<2x3xf32>):
@@ -4972,6 +4983,43 @@ func.func @testUniformQuantizedDot(
         tensor<f32>, tensor<i32>,
         tensor<f32>, tensor<i32>,
         tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolution(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<2xf32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<f32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedConvolution' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedConvolution"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      window_strides = [1, 2],
+      padding = "VALID",
+      explicit_padding = [],
+      lhs_dilation = [1, 1],
+      rhs_dilation = [2, 2],
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64,
+      dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
   func.return
 }
 

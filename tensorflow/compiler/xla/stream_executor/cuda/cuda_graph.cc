@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
 
+#include <string>
+
 #include "absl/strings/str_format.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -45,7 +49,11 @@ void CudaGraphSupport::DestroyGraphExec::operator()(cudaGraphExec_t instance) {
 }
 
 tsl::Status OwnedCudaGraphExec::Update(OwnedCudaGraph graph) {
-  VLOG(3) << "Update CUDA graph exec with a new graph";
+  VLOG(3) << "Update CUDA graph exec with a new graph after " << num_launches_
+          << " launches since last update "
+          << " #" << num_updates_++;
+
+  num_launches_ = 0;
 
 #if CUDA_VERSION >= 12000
   cudaGraphExecUpdateResultInfo updated;
@@ -69,7 +77,9 @@ tsl::Status OwnedCudaGraphExec::Update(OwnedCudaGraph graph) {
 }
 
 tsl::Status OwnedCudaGraphExec::Launch(stream_executor::Stream* stream) {
-  VLOG(3) << "Launch CUDA graph on a stream: " << stream->DebugStreamPointers();
+  VLOG(3) << "Launch CUDA graph " << get()
+          << " on a stream: " << stream->DebugStreamPointers() << " #"
+          << ++num_launches_;
 
   if (auto err = cudaGraphLaunch(get(), AsGpuStreamValue(stream));
       err != cudaSuccess)
@@ -110,6 +120,41 @@ tsl::StatusOr<OwnedCudaGraph> CaptureCudaGraph(
   if (!captured.ok())
     return InternalError("failed to capture CUDA graph: %s",
                          captured.error_message());
+
+  VLOG(5) << "Captured CUDA graph " << graph;
+
+#if CUDA_VERSION >= 12000
+  // If verbose logging is enabled print captured CUDA graph debug information.
+  if (VLOG_IS_ON(100)) {
+    if (const char* path = getenv("XLA_CUDA_GRAPH_DEBUG_DIRECTORY"); path) {
+      std::string file = tsl::io::JoinPath(std::string(path), "/cuda_graph-");
+
+      if (tsl::Env::Default()->CreateUniqueFileName(&file, ".dot")) {
+        VLOG(100) << "Print CUDA graph " << graph
+                  << " debug dot file to: " << file;
+
+        int flags = cudaGraphDebugDotFlagsVerbose;
+        if (auto err = cudaGraphDebugDotPrint(graph, file.c_str(), flags);
+            err != cudaSuccess) {
+          LOG(WARNING) << "failed to print CUDA graph debug file: "
+                       << cudaGetErrorString(err);
+
+        } else if (VLOG_IS_ON(200)) {
+          std::string data;
+          if (tsl::ReadFileToString(tsl::Env::Default(), file, &data).ok()) {
+            VLOG(200) << "CUDA graph " << graph << " debug file:\n" << data;
+          } else {
+            LOG(WARNING) << "failed to read CUDA graph debug file";
+          }
+        }
+
+      } else {
+        LOG(WARNING) << "cannot create unique filename, won't enable CUDA "
+                        "graph debugging";
+      }
+    }
+  }
+#endif  // CUDA_VERSION >= 12000
 
   return OwnedCudaGraph(graph);
 }

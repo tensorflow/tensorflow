@@ -55,9 +55,7 @@ using ::testing::ElementsAre;
 using ::testing::EqualsProto;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
-using ::testing::NotNull;
 using ::testing::Pair;
-using ::testing::SizeIs;
 using ::testing::proto::IgnoringFieldPaths;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 

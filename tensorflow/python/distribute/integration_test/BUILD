@@ -13,7 +13,6 @@ distribute_py_test(
     tags = [
         "no_windows",  # TODO(b/171350360)
         "nomultivm",  # multi_worker_test_base incompatible with multivm base
-        "notsan",  # b/195248428
     ],
     deps = [
         "//tensorflow:tensorflow_py",

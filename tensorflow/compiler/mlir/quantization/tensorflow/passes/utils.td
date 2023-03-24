@@ -57,6 +57,14 @@ def IsInt32ElementType : Constraint<
 def IsF32ElementType : Constraint<
   CPred<"getElementTypeOrSelf($0).isF32()">>;
 
+// Checks if the value has the type of bfloat16.
+def IsBF16ElementType : Constraint<
+  CPred<"getElementTypeOrSelf($0).isBF16()">>;
+
+// Checks if the given two values have the same type.
+def AreTheSameElementType : Constraint<
+  CPred<"$0.getType() == $1.getType()">>;
+
 // Checks if the value has rank.
 def HasRank : Constraint<
   CPred<"$0.getType().cast<ShapedType>().hasRank()">>;

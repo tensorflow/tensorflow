@@ -21,7 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/interop/attribute_map_internal.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/core/async/testing/test_backend.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 
 using ::testing::_;
 
@@ -120,13 +120,13 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   EXPECT_CALL(*kernel_, Finish(_, _));
 
   auto* buffer = TfLiteBackendBufferCreate();
-  auto* attrs = new TfLiteAttributeMap(kTfLiteBufferAttrMap);
+  auto* attrs = new TfLiteAttributeMap(kTfLiteAttrMapTypeBuffer);
   TfLiteBufferHandle handle = 1;
   TfLiteBufferHandle another_handle = 1;
   auto* task = new TfLiteExecutionTask;
   EXPECT_FALSE(task->task->Scheduled());
 
-  subgraph_->RegisterBuffer(kTfLiteIoInput, buffer, attrs, &handle);
+  subgraph_->RegisterBuffer(kTfLiteIoTypeInput, buffer, attrs, &handle);
   subgraph_->RegisterBufferSlice(handle, attrs, &another_handle);
   subgraph_->UnregisterBuffer(handle);
   subgraph_->ReconcileRestrictions(0, attrs, attrs, attrs);

@@ -15,6 +15,7 @@
 """Bring in all of the public TensorFlow interface into this module."""
 
 import distutils as _distutils
+import importlib
 import inspect as _inspect
 import os as _os
 import site as _site
@@ -52,7 +53,7 @@ if "dev" in __version__:   # pylint: disable=undefined-variable
 _API_MODULE = _sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
 _current_module = _sys.modules[__name__]
 _tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
-if not hasattr(_current_module, '__path__'):
+if not hasattr(_current_module, "__path__"):
   __path__ = [_tf_api_dir]
 elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
@@ -65,8 +66,8 @@ _current_module.compat.v2  # pylint: disable=pointless-statement
 
 # Load tensorflow-io-gcs-filesystem if enabled
 # pylint: disable=g-import-not-at-top
-if (_os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == 'true' or
-    _os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == '1'):
+if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
+    _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
 # pylint: enable=g-import-not-at-top
 
@@ -95,17 +96,17 @@ For more information, please see:
   * https://github.com/tensorflow/io (for I/O related ops)
 If you depend on functionality not listed there, please file an issue.
 """
-contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib',
+contrib = LazyLoader("contrib", globals(), "tensorflow.contrib",
                      _CONTRIB_WARNING)
 del LazyLoader
 # The templated code that replaces the placeholder above sometimes
 # sets the __all__ variable. If it does, we have to be sure to add
 # "contrib".
-if '__all__' in vars():
-  vars()['__all__'].append('contrib')
+if "__all__" in vars():
+  vars()["__all__"].append("contrib")
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-# The 'app' module will be imported as part of the placeholder section above.
+# The "app" module will be imported as part of the placeholder section above.
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
 
@@ -134,14 +135,19 @@ if hasattr(_current_module, "keras"):
   except ImportError:
     pass
 
-# Do an eager load for Keras' code so that any function/method that needs to
-# happen at load time will trigger, eg registration of optimizers in the
-# SavedModel registry.
-if hasattr(_current_module, "keras"):
+  # Do an eager load for Keras' code so that any function/method that needs to
+  # happen at load time will trigger, eg registration of optimizers in the
+  # SavedModel registry.
+  # See b/196254385 for more details.
   try:
-    keras._load()
-  except ImportError:
+    importlib.import_module("keras.optimizers")
+  except (ImportError, AttributeError):
     pass
+  try:
+    importlib.import_module("keras.src.optimizers")
+  except (ImportError, AttributeError):
+    pass
+del importlib
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
@@ -152,11 +158,11 @@ from tensorflow.python.lib.io import file_io as _fi
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []
 _site_packages_dirs += [] if _site.USER_SITE is None else [_site.USER_SITE]
-_site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
-if 'getsitepackages' in dir(_site):
+_site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
+if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if 'sysconfig' in dir(_distutils):
+if "sysconfig" in dir(_distutils):
   _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
@@ -173,13 +179,13 @@ if _running_from_pip_package():
 
   # Load first party dynamic kernels.
   _tf_dir = _os.path.dirname(_current_file_location)
-  _kernel_dir = _os.path.join(_tf_dir, 'core', 'kernels')
+  _kernel_dir = _os.path.join(_tf_dir, "core", "kernels")
   if _os.path.exists(_kernel_dir):
     _ll.load_library(_kernel_dir)
 
   # Load third party dynamic kernels.
   for _s in _site_packages_dirs:
-    _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
+    _plugin_dir = _os.path.join(_s, "tensorflow-plugins")
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
       # Load Pluggable Device Library
@@ -204,7 +210,7 @@ if _typing.TYPE_CHECKING:
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-# does not have 'python', 'core' directories. Then, it will be copied
+# does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
 
 # pylint: disable=undefined-variable

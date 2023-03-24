@@ -87,9 +87,9 @@ pybind_extension(
     deps = [
         ":interpreter_wrapper_lib",
         "@pybind11",
-        "//tensorflow/lite/core:headers",
         "//third_party/python_runtime:headers",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python:pybind11_lib",
     ] + select({
         ":tflite_pip_with_flex": ["//tensorflow/lite/delegates/flex:delegate"],

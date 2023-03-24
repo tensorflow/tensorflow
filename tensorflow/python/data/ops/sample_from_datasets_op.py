@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.types import data as data_types
 
 
 def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
@@ -41,7 +42,7 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
   if not datasets:
     raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
 
-  if not isinstance(weights, dataset_ops.DatasetV2):
+  if not isinstance(weights, data_types.DatasetV2):
     if weights is None:
       # Select inputs with uniform probability.
       logits = [[1.0] * len(datasets)]

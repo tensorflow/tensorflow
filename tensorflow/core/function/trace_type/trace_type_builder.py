@@ -15,7 +15,7 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable, Hashable, Optional, Dict
+from typing import Any, Hashable, Optional, Dict
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
@@ -23,43 +23,10 @@ from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
 
 
-class WeakrefDeletionObserver:
-  """An observer for the event of deleting a weakref.
-
-  This allows users of FunctionTraceType to be notified when an instance which
-  depends on a weakref becomes invalid by the deletion of the weakref. In
-  particular, tf.function caches can use this mechanism to clear the cache of
-  keys that are no longer valid.
-
-  We use the observer pattern and not just basic callbacks because the keys
-  are typically created before they are used by the cache.
-  """
-
-  def __init__(self):
-    self._triggered = False
-    self._callables = []
-
-  def add_listener(self, on_delete: Callable[[], None]):
-    if self._triggered:
-      on_delete()
-    else:
-      self._callables.append(on_delete)
-
-  def weakref_deleted(self):
-    self._triggered = True
-    for c in self._callables:
-      c()
-
-  def __call__(self, _):
-    """Call handler for convenience of use with weakref."""
-    self.weakref_deleted()
-
-
 class InternalTracingContext(trace.TracingContext):
   """Container for variables and flags shared across TraceType generation."""
 
   def __init__(self, is_legacy_signature: bool = False):
-    self._deletion_observer = WeakrefDeletionObserver()
     self._global_to_local_id = {}
     self._alias_id_to_placeholder = {}
     self._spec_id_to_handledata = {}
@@ -84,11 +51,6 @@ class InternalTracingContext(trace.TracingContext):
     return self._spec_id_to_handledata
 
   @property
-  def deletion_observer(self) -> WeakrefDeletionObserver:
-    """Returns a functor which invalidates the current key when called."""
-    return self._deletion_observer
-
-  @property
   def is_legacy_signature(self) -> bool:
     """If the value is from a legacy signature representation.
 
@@ -105,12 +67,16 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
                context_graph=None,
                placeholder_mapping=None,
                handledata_mapping=None,
-               unnest_only=False):
+               unnest_only=False,
+               with_none_control_dependencies=False,
+               composite_device_name=None):
     self._alias_id_to_placeholder = placeholder_mapping or {}
     self._spec_id_to_handledata = handledata_mapping or {}
     self._naming_scope = None
     self._context_graph = context_graph
     self._unnest_only = unnest_only
+    self._with_none_control_dependencies = with_none_control_dependencies
+    self._composite_device_name = composite_device_name
 
   def has_placeholder(self, alias_id: Hashable) -> bool:
     return alias_id in self._alias_id_to_placeholder
@@ -151,13 +117,20 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
   def unnest_only(self) -> bool:
     return self._unnest_only
 
+  @property
+  def with_none_control_dependencies(self) -> bool:
+    return self._with_none_control_dependencies
+
+  @property
+  def composite_device_name(self) -> Any:
+    return self._composite_device_name
+
 
 class InternalCastContext(trace.CastContext):
   """Default casting behaviors."""
 
-  def __init__(self, allow_specs=False, allow_supertype_tensors=False):
+  def __init__(self, allow_specs=False):
     self._allow_specs = allow_specs
-    self._allow_supertype_tensors = allow_supertype_tensors
 
   @property
   def allow_specs(self) -> bool:
@@ -165,15 +138,6 @@ class InternalCastContext(trace.CastContext):
     # Public APIs like get_concrete_function allow users to pass in specs
     # instead which need to pass through input binding etc.
     return self._allow_specs
-
-  @property
-  def allow_supertype_tensors(self) -> bool:
-    """Allow Tensors to have supertype of the TensorSpec after casting."""
-    # This happens only in graph mode where graph tensor shape can be inferred
-    # to not have a particular shape but users specify a more specific shape on
-    # the tf.function called from graph mode.
-    # EagerTensors can never have supertype of any TensorSpec.
-    return self._allow_supertype_tensors
 
 
 def from_value(value: Any,
@@ -201,6 +165,12 @@ def from_value(value: Any,
           str(value) + " but got " + str(generated_type))
     return generated_type
 
+  # TODO(b/183107079): Allow these once they're handled properly.
+  if isinstance(value, weakref.ref):
+    raise TypeError(
+        f"weakref input {value} not supported for tf.function."
+    )
+
   if hasattr(value, "__wrapped__"):
     return from_value(value.__wrapped__, context)
 
@@ -227,8 +197,12 @@ def from_value(value: Any,
             from_value(getattr(value, a.name), context)
             for a in value.__attrs_attrs__))
 
+  if util.is_np_ndarray(value):
+    ndarray = value.__array__()
+    return default_types.TENSOR(ndarray.shape, ndarray.dtype)
+
   try:
-    ref = weakref.ref(value, context.deletion_observer)
+    ref = weakref.ref(value)
     if ref is None:
       raise TypeError(
           f"Deleted objects are not valid tf.function arguments, Got {value!r}")

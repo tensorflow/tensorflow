@@ -21,6 +21,20 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
+// Creates Einsum Op from XlaDotV2 Op by generating equation.
+def CreateEinsumOpFromXlaDotV2Op : NativeCodeCall<
+  "CreateEinsumOpFromXlaDotV2Op($_builder, $_loc, $0...)">;
+
+// Only handles the case where precision config is default.
+def IsPrecisionEmpty :
+  Constraint<CPred<"IsPrecisionEmpty($0)">>;
+
+// Convert XlaDotV2 Op to Einsum Op with above two functions.
+def ConvertXlaDotV2OpToEinsumOp : Pat<
+  (TF_XlaDotV2Op:$dot $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+  (CreateEinsumOpFromXlaDotV2Op $lhs, $rhs, $dot, $dot_dimension_numbers),
+  [(IsPrecisionEmpty $precision_config)]>;
+
 // Converts arith.constant ops from freezing passes back to tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
   (Arith_ConstantOp:$res DenseElementsAttr:$value),
@@ -153,4 +167,3 @@ def FuseAffineOpWithBiasAddAndMul : Pat<
    (CanBeSymmetricallyQuantized $weight),
    (CanBeSymmetricallyQuantized $bias),
    (HasEqualShape $bias, $mul_rhs_value)]>;
-

@@ -4,6 +4,7 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/tsl:tsl.bzl", "if_not_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +21,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//platforms/xla/megascale/tensorflow/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/jit/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
@@ -75,14 +77,15 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":global_state",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ],
 )
 
+# This target does not have depend on GPU and XLA compilation to have a small size.
+# Uses this target if you do not need to create a PJRT client.
 cc_library(
     name = "pjrt_util",
     srcs = [
@@ -95,14 +98,37 @@ cc_library(
     deps = [
         ":global_state",
         ":pjrt_state",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+# Uses this target if you need to create a PJRT client.
+# TODO(b/269308144): consider adding a PJRT client factory to separate the
+# dependenceis of different PJRT clients.
+cc_library(
+    name = "create_pjrt_client_util",
+    srcs = [
+        "create_pjrt_client_util.cc",
+    ],
+    hdrs = [
+        "create_pjrt_client_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":pjrt_util",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
         "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-    ],
+    ] + if_not_windows(
+        # pjrt_c_api_client depends on //third_party/tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper, which does not support windows.
+        ["//tensorflow/compiler/xla/pjrt:pjrt_c_api_client"],
+    ),
 )
 
 tf_cc_test(
@@ -121,14 +147,30 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cc_test(
     name = "pjrt_util_test",
     srcs = ["pjrt_util_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":global_state",
         ":pjrt_state",
         ":pjrt_util",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "create_pjrt_client_util_test",
+    srcs = ["create_pjrt_client_util_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":create_pjrt_client_util",
+        ":global_state",
+        ":pjrt_state",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",

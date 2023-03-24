@@ -98,12 +98,13 @@ TfLiteStatus InferenceProfilerStage::Init(
   for (int i = 0; i < model_info_->inputs.size(); ++i) {
     const TfLiteType model_input_type = model_info_->inputs[i]->type;
     if (model_input_type == kTfLiteUInt8 || model_input_type == kTfLiteInt8 ||
+        model_input_type == kTfLiteInt64 ||
         model_input_type == kTfLiteFloat32 ||
         model_input_type == kTfLiteFloat16) {
     } else {
-      LOG(ERROR)
-          << "InferenceProfilerStage only supports float16/float32/int8/uint8 "
-             "input types";
+      LOG(ERROR) << "InferenceProfilerStage only supports "
+                    "float16/float32/int8/uint8/int64 "
+                    "input types";
       return kTfLiteError;
     }
     auto* input_shape = model_info_->inputs[i]->dims;
@@ -116,6 +117,7 @@ TfLiteStatus InferenceProfilerStage::Init(
     uint8_tensors_.emplace_back();
     int8_tensors_.emplace_back();
     float16_tensors_.emplace_back();
+    int64_tensors_.emplace_back();
   }
   // Preprocess output metadata for calculating diffs later.
   for (int i = 0; i < model_info_->outputs.size(); ++i) {
@@ -155,6 +157,11 @@ TfLiteStatus InferenceProfilerStage::Run() {
           input_num_elements_[i], std::numeric_limits<int8_t>::min(),
           std::numeric_limits<int8_t>::max(), &int8_tensors_[i]);
       input_ptrs.push_back(int8_tensors_[i].data());
+    } else if (model_input_type == kTfLiteInt64) {
+      GenerateRandomGaussianData(
+          input_num_elements_[i], std::numeric_limits<int64_t>::min(),
+          std::numeric_limits<int64_t>::max(), &int64_tensors_[i]);
+      input_ptrs.push_back(int64_tensors_[i].data());
     } else if (model_input_type == kTfLiteFloat32) {
       GenerateRandomGaussianData(input_num_elements_[i], -1, 1,
                                  &(float_tensors_[i]));
@@ -168,9 +175,9 @@ TfLiteStatus InferenceProfilerStage::Run() {
       }
       input_ptrs.push_back(float16_tensors_[i].data());
     } else {
-      LOG(ERROR)
-          << "InferenceProfilerStage only supports float16/float32/int8/uint8 "
-             "input types";
+      LOG(ERROR) << "InferenceProfilerStage only supports "
+                    "float16/float32/int8/uint8/int64 "
+                    "input types";
       return kTfLiteError;
     }
   }

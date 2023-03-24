@@ -43,6 +43,10 @@ namespace xla::gpu {
 // above into the pad from the next convolution (when we can prove that the
 // sliced-off elements are all 0). We then rely on algsimp to remove the pad if
 // it's a nop and then to merge and eliminate the remaining reshapes.
+//
+// This pass should run after CudnnVectorizeConvolutions and there should be no
+// simplification passes in between that modify the reshape-transpose-reshape
+// introduced by int8x32 convolution filter reordering.
 class CudnnSimplifyPadding : public HloModulePass {
  public:
   CudnnSimplifyPadding() = default;

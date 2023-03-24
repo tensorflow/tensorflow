@@ -68,16 +68,10 @@ class NnapiPlugin : public DelegatePluginInterface {
       accelerator_ = nnapi_settings->accelerator_name()->str();
       options_.accelerator_name = accelerator_.c_str();
     }
-    if (nnapi_settings->cache_directory() &&
-        nnapi_settings->cache_directory()->Length() != 0) {
-      cache_dir_ = nnapi_settings->cache_directory()->str();
-      options_.cache_dir = cache_dir_.c_str();
-    }
-    if (nnapi_settings->model_token() &&
-        nnapi_settings->model_token()->Length() != 0) {
-      model_token_ = nnapi_settings->model_token()->str();
-      options_.model_token = model_token_.c_str();
-    }
+
+    SetCompilationCacheDir(tflite_settings);
+    SetModelToken(tflite_settings);
+
     options_.execution_preference =
         ConvertExecutionPrefence(nnapi_settings->execution_preference());
     options_.disallow_nnapi_cpu =
@@ -96,6 +90,39 @@ class NnapiPlugin : public DelegatePluginInterface {
   const int64_t GetSupportLibraryHandle() { return support_library_handle_; }
 
  private:
+  void SetCompilationCacheDir(const TFLiteSettings& tflite_settings) {
+    if (tflite_settings.compilation_caching_settings() &&
+        tflite_settings.compilation_caching_settings()->cache_dir() &&
+        tflite_settings.compilation_caching_settings()->cache_dir()->Length() !=
+            0) {
+      cache_dir_ =
+          tflite_settings.compilation_caching_settings()->cache_dir()->str();
+      options_.cache_dir = cache_dir_.c_str();
+    } else if (tflite_settings.nnapi_settings() &&
+               tflite_settings.nnapi_settings()->cache_directory() &&
+               tflite_settings.nnapi_settings()->cache_directory()->Length() !=
+                   0) {
+      cache_dir_ = tflite_settings.nnapi_settings()->cache_directory()->str();
+      options_.cache_dir = cache_dir_.c_str();
+    }
+  }
+
+  void SetModelToken(const TFLiteSettings& tflite_settings) {
+    if (tflite_settings.compilation_caching_settings() &&
+        tflite_settings.compilation_caching_settings()->model_token() &&
+        tflite_settings.compilation_caching_settings()
+                ->model_token()
+                ->Length() != 0) {
+      model_token_ =
+          tflite_settings.compilation_caching_settings()->model_token()->str();
+      options_.model_token = model_token_.c_str();
+    } else if (tflite_settings.nnapi_settings()->model_token() &&
+               tflite_settings.nnapi_settings()->model_token()->Length() != 0) {
+      model_token_ = tflite_settings.nnapi_settings()->model_token()->str();
+      options_.model_token = model_token_.c_str();
+    }
+  }
+
   static inline tflite::StatefulNnApiDelegate::Options::ExecutionPreference
   ConvertExecutionPrefence(
       NNAPIExecutionPreference from_compatibility_preference) {

@@ -77,7 +77,7 @@ TEST_F(AccuracyBenchmarkTest, FailedWithInvalidModelFileDescriptor) {
   flatbuffers::FlatBufferBuilder builder;
   std::vector<std::string> args;
   const TFLiteSettings* tflite_settings = parser.Parse(
-      "third_party/tensorflow/lite/tools/delegates/experimental/"
+      "tensorflow/lite/tools/delegates/experimental/"
       "stable_delegate/test_sample_stable_delegate_settings.json");
 
   flatbuffers::Offset<BenchmarkEvent> offset =
@@ -104,7 +104,7 @@ TEST_F(AccuracyBenchmarkTest, SucceedWithSampleStableDelegate) {
   delegates::utils::TfLiteSettingsJsonParser parser;
   flatbuffers::FlatBufferBuilder builder;
   const TFLiteSettings* tflite_settings = parser.Parse(
-      "third_party/tensorflow/lite/tools/delegates/experimental/"
+      "tensorflow/lite/tools/delegates/experimental/"
       "stable_delegate/test_sample_stable_delegate_settings.json");
 
   flatbuffers::Offset<BenchmarkEvent> offset = Benchmark(
@@ -128,7 +128,7 @@ TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationAndXNNPack) {
   delegates::utils::TfLiteSettingsJsonParser parser;
   flatbuffers::FlatBufferBuilder builder;
   const TFLiteSettings* tflite_settings = parser.Parse(
-      "third_party/tensorflow/lite/delegates/utils/experimental/"
+      "tensorflow/lite/delegates/utils/experimental/"
       "stable_delegate/test_xnnpack_settings.json");
 
   flatbuffers::Offset<BenchmarkEvent> offset = Benchmark(

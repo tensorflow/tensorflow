@@ -1,7 +1,9 @@
 path: "tensorflow.experimental.numpy.ndarray"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyTensor\'>"
   is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Symbol\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -25,6 +27,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "ndim"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "op"
     mtype: "<type \'property\'>"
   }
@@ -38,11 +44,9 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'op\', \'value_index\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "consumers"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "eval"
