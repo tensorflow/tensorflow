@@ -2053,6 +2053,22 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorStaticOrPersistentRoAllocation(
+      TfLiteContext* context, const TfLiteTensor& tensor, int tensor_index,
+      int node_index) {
+    if (tensor.allocation_type == kTfLiteMmapRo ||
+        tensor.allocation_type == kTfLitePersistentRo ||
+        tensor.data.raw_const == nullptr) {
+      return kTfLiteOk;
+    }
+    TF_LITE_MAYBE_KERNEL_LOG(
+        context,
+        "invalid allocation type in tensor #%d in node #%d: "
+        "expected static or persistent read-only tensor",
+        tensor_index, node_index);
+    return kTfLiteError;
+  }
+
   static TfLiteStatus CheckTensorsDimensionMatch(
       TfLiteContext* context, const TfLiteTensor& input_tensor,
       const TfLiteTensor& output_tensor, int dimension_index, int node_index,
@@ -4583,7 +4599,7 @@ class Subgraph {
                                             node_index));
       TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
           logging_context, shape_tensor, node->inputs->data[1], node_index));
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+      TF_LITE_ENSURE_STATUS(CheckTensorStaticOrPersistentRoAllocation(
           logging_context, shape_tensor, node->inputs->data[1], node_index));
     }
 
