@@ -118,7 +118,5 @@ TEST(UnsortedSegmentProdModelTest, FloatTest_Simple2D) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
 }
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(UnsortedSegmentTest);
-
 }  // namespace
 }  // namespace tflite

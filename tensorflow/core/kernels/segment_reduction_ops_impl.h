@@ -299,15 +299,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
           context, context->allocate_output(0, output_shape, &output), done);
 
       bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-          // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows
-          // CI build error.
-          false;
-#else
           UseDeterministicSegmentReductions() ||
           (!SegmentReductionFunctor::atomic_reduction_is_associative &&
            OpDeterminismRequired());
-#endif
 
       // The determinism check is here, rather than inside the functor (as it is
       // for the unsorted segment reduction ops) because the done callback
@@ -1100,7 +1094,7 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
                            ? static_cast<T>(1)
                            : static_cast<T>(scaling[idx]));
       if (is_modified[output_idx]) {
-        if (scale == 1.0) {
+        if (scale == T{1.0}) {
           output_flat.template chip<0>(output_idx) +=
               input_flat.template chip<0>(idx);
         } else {
@@ -1108,7 +1102,7 @@ struct SparseSegmentGradFunctor<CPUDevice, T, Index, SegmentId> {
               input_flat.template chip<0>(idx) * scale;
         }
       } else {
-        if (scale == 1.0) {
+        if (scale == T{1.0}) {
           output_flat.template chip<0>(output_idx) =
               input_flat.template chip<0>(idx);
         } else {

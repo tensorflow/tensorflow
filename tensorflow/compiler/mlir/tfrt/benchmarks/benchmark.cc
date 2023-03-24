@@ -22,7 +22,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -62,15 +64,16 @@ JitExecutable& CreateJitExecutable(
   copts.num_worker_threads = host.GetNumWorkerThreads();
 
   JitExecutable::Options opts;
-  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        tfrt::jitrt::RegisterDefaultJitRtDialects(dialects);
+      };
   opts.compiler.create_compilation_pipeline =
-      [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
+      [&, copts, lower_from_tensorflow](xla::runtime::PassManager& passes) {
         if (lower_from_tensorflow)
-          tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
-        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
+          tensorflow::CreateTfJitRtPipeline(*passes, tf_jitrt_opts);
+        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(passes, copts);
       };
   opts.compiler.create_specialization_pipeline =
       CreateJitRtSpecializationPipeline;
@@ -124,6 +127,16 @@ MemrefDesc TensorToMemrefDesc(const Tensor& tensor) {
         shape.GetDimensions(sizes_ref);
         shape.GetStrides(strides_ref);
       });
+}
+
+llvm::SmallVector<int64_t> GetTensorTypeShape(
+    llvm::ArrayRef<int64_t> shape, llvm::ArrayRef<bool> dynamic_dims) {
+  llvm::SmallVector<int64_t> type_shape;
+  for (int64_t i = 0; i < shape.size(); ++i) {
+    type_shape.push_back(
+        dynamic_dims[i] == kDynamicDim ? mlir::ShapedType::kDynamic : shape[i]);
+  }
+  return type_shape;
 }
 
 std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,

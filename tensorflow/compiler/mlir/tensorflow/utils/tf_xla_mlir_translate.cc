@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -27,26 +28,27 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -132,7 +134,7 @@ Status ParseArgumentShapes(
     absl::string_view input_shapes_str,
     llvm::SmallVectorImpl<TensorOrResourceShape>& arg_shapes) {
   arg_shapes.clear();
-  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
+  std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
   for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
@@ -142,7 +144,7 @@ Status ParseArgumentShapes(
       continue;
     }
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-        shape.value().getValue(), &arg_shapes[shape.index()].shape));
+        *shape.value(), &arg_shapes[shape.index()].shape));
   }
 
   return OkStatus();
@@ -201,7 +203,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
                          absl::string_view arg_kinds_str,
                          llvm::SmallVectorImpl<XlaArgument>& xla_arguments) {
   xla_arguments.clear();
-  std::vector<llvm::Optional<std::vector<int>>> input_shapes_vector;
+  std::vector<std::optional<std::vector<int>>> input_shapes_vector;
   TF_RETURN_IF_ERROR(
       tensorflow::ParseNodeShapes(input_shapes_str, input_shapes_vector));
   llvm::SmallVector<DataType, 4> dtypes_vector;
@@ -232,8 +234,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
     if (input_shapes.has_value()) {
-      TF_RETURN_IF_ERROR(
-          TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
+      TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(*input_shapes, &shape));
     } else {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(static_cast<int*>(nullptr), 0, &shape));
@@ -371,8 +372,10 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
-                  mlir::TF::TensorFlowDialect>();
+  // TODO(b/259459405): Remove support for stablehlo as an input.
+  registry
+      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect>();
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
@@ -383,7 +386,10 @@ static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
 static mlir::OwningOpRef<mlir::ModuleOp>
 SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
                                               mlir::MLIRContext* context) {
-  mlir::Attribute attr = mlir::parseAttribute(input, context);
+  // When the parser doesn't read all the input chars, it issues an error unless
+  // an output parameter is provided for returning the number of chars read.
+  size_t numRead;
+  mlir::Attribute attr = mlir::parseAttribute(input, context, {}, &numRead);
   if (!attr || !attr.isa<mlir::StringAttr>()) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
     return nullptr;
@@ -426,24 +432,25 @@ static mlir::LogicalResult MlirTfToHloTextViaBuilderTranslateFunction(
 }  // namespace tensorflow
 
 static mlir::TranslateFromMLIRRegistration MlirTfToHloTextTranslate(
-    "mlir-tf-to-hlo-text", tensorflow::MlirTfToHloTextTranslateFunction,
+    "mlir-tf-to-hlo-text", "mlir-tf-to-hlo-text",
+    tensorflow::MlirTfToHloTextTranslateFunction,
     tensorflow::RegisterMlirInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirTfToHloTextViaBuilderTranslate(
-    "mlir-tf-to-hlo-text-via-builder",
+    "mlir-tf-to-hlo-text-via-builder", "mlir-tf-to-hlo-text-via-builder",
     tensorflow::MlirTfToHloTextViaBuilderTranslateFunction,
     tensorflow::RegisterMlirInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirTfGraphToHloTextTranslate(
-    "mlir-tf-graph-to-hlo-text",
+    "mlir-tf-graph-to-hlo-text", "mlir-tf-graph-to-hlo-text",
     tensorflow::MlirTfGraphToHloTextTranslateFunction,
     tensorflow::RegisterGraphInputDialects);
 
 static mlir::TranslateToMLIRRegistration SerializedMlirStringAttrToMlirModule(
-    "mlir-tf-str-attr-to-mlir",
+    "mlir-tf-str-attr-to-mlir", "mlir-tf-str-attr-to-mlir",
     tensorflow::SerializedMlirStringAttrToMlirModuleTranslate);
 
 static mlir::TranslateFromMLIRRegistration MlirModuleToSerializedMlirStringAttr(
-    "mlir-tf-mlir-to-str-attr",
+    "mlir-tf-mlir-to-str-attr", "mlir-tf-mlir-to-str-attr",
     tensorflow::MlirModuleToSerializedMlirStringAttrTranslate,
     tensorflow::RegisterMlirInputDialects);

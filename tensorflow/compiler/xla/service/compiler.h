@@ -20,26 +20,28 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 
+#include <any>
 #include <functional>
-#include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/metrics_hook_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
@@ -173,6 +175,11 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
+  const std::any& target_config() const { return target_config_; }
+  void set_target_config(std::any target_config) {
+    target_config_ = std::move(target_config);
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -190,6 +197,8 @@ class AotCompilationOptions {
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
+  // Contains target-specific information required by AOT compilation.
+  std::any target_config_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -231,9 +240,13 @@ class Compiler {
 
     // An optional thread pool for parallel compilation.
     tsl::thread::ThreadPool* thread_pool = nullptr;
+
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>
+        layout_canonicalization_callback = {};
   };
 
-  virtual ~Compiler() {}
+  virtual ~Compiler() = default;
 
   // Returns the ID of the platform that this compiler targets.
   virtual se::Platform::Id PlatformId() const = 0;
@@ -255,7 +268,7 @@ class Compiler {
   // The returned 'BufferAssignment' retains a pointer to the 'HloModule', so
   // the module must live at least as long as the buffer assignments.
   virtual StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      const HloModule* module) {
+      HloModule* module, se::StreamExecutor* executor) {
     return Unimplemented("This compiler does not support this method");
   }
 
@@ -374,17 +387,22 @@ class Compiler {
     return Unimplemented("Export unimplemented");
   }
 
+  // Returns a MetricsHookInterface object used to instrument Compiler's
+  // compilation stages.
+  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
+      absl::string_view filename_prefix) const;
+
  private:
   // Mutex that guards the platform-compiler map.
   static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
-  static std::map<se::Platform::Id, CompilerFactory>*
+  static absl::flat_hash_map<se::Platform::Id, CompilerFactory>*
   GetPlatformCompilerFactories();
 
   // Map from platform kind to compiler instance, if we made one already (based
   // on the factories above).
-  static std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
+  static absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
   GetPlatformCompilers();
 };
 

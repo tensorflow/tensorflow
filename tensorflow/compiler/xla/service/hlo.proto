@@ -87,10 +87,31 @@ enum CustomCallApiVersion {
   //                       XlaCustomCallStatus* status);
   //
   API_VERSION_STATUS_RETURNING_UNIFIED = 3;
+
+  // Api version implementing XLA runtime custom call calling convention. These
+  // custom calls can be registered as an XLA runtime custom call (1) or as XLA
+  // runtime FFI binding (2).
+  //
+  // This type of custom call uses custom ABI to pass type information along
+  // with custom call arguments. Also it passes buffer arguments together with
+  // data type, sizes and strides.
+  //
+  // Example: (XLA runtime custom call)
+  //
+  //   absl::Status DoCustomCall(StridedMemrefView arg, float attr);
+  //
+  //   CustomCall::Bind("custom_call")
+  //     .Arg<StridedMemrefView>()
+  //     .Attr<float>("attr")
+  //     .To(DoCustomCall);
+  //
+  // (1) xla/runtime/custom_call.h
+  // (2) xla/runtime/ffi/ffi.h
+  API_VERSION_TYPED_FFI = 4;
 }
 
 // Serialization of HloInstruction.
-// Next ID: 80
+// Next ID: 81
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -174,11 +195,13 @@ message HloInstructionProto {
   xla.RandomDistribution distribution = 23;
 
   // A small float number added to the variance to avoid divide-by-zero error.
-  // Only present for kBatchNormTraining.
+  // Only present for kBatchNormTraining, kBatchNormInference, and
+  // kBatchNormGrad.
   float epsilon = 24;
 
   // An integer value representing the index of the feature dimension.
-  // Only present for kBatchNormTraining.
+  // Only present for kBatchNormTraining, kBatchNormInference, and
+  // kBatchNormGrad.
   int64 feature_index = 25;
 
   // Represents a unique identifier for each Send/Recv instruction pair or
@@ -212,9 +235,9 @@ message HloInstructionProto {
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
   repeated int64 gather_slice_sizes = 34;
 
-  // Compute Host.
-  string channel_name = 41;
-  int64 cost_estimate_ns = 42;
+  // Used to be compute host-related fields.
+  reserved 41;
+  reserved 42;
 
   // The id of this instruction.
   int64 id = 35;
@@ -280,10 +303,9 @@ message HloInstructionProto {
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
 
-  // A list of CustomCallOutputOperandAliasing pairs that specifies aliasing
-  // buffers between output and operands for kCustomCall.
-  repeated xla.CustomCallOutputOperandAliasing
-      custom_call_output_operand_aliasing = 74;
+  // A list of OutputOperandAliasing pairs that specifies aliasing buffers
+  // between output and operands for kCustomCall and kFusion.
+  repeated xla.OutputOperandAliasing output_operand_aliasing = 74;
 
   // Specifies the desired schedule for the custom-call. The field is only
   // present for custom-call.
@@ -310,7 +332,15 @@ message HloInstructionProto {
   string comparison_type = 72;
 
   // Specifies if this is a cross-program-prefetch, used by kCopyStart.
-  bool is_cross_program_prefetch = 73;
+  // Deprecated and replaced by optional_cross_program_prefetch_index.
+  bool is_cross_program_prefetch = 73 [deprecated = true];
+
+  // Specifies the cross-program-prefetch index used by kCopyStart. Uses oneof
+  // to emulate the 'optional' keyword for proto3 versions before v3.15.0
+  // released 2021/2/18.
+  oneof optional_cross_program_prefetch_index {
+    int32 cross_program_prefetch_index = 80;
+  }
 
   // If a convolution is dynamic, a dynamic padding type will be specified.
   xla.PaddingType padding_type = 75;
@@ -412,7 +442,7 @@ message HloInputOutputAliasProto {
 }
 
 message DynamicParameterBindingProto {
-  // A list of bindings which indicates that the `target_dim_num` in
+  // A list of bindings which indicates that the `target_param_dim_num` in
   // the subshape `target_param_index` of parameter `target_param_num`
   // is a dynamic dimension and its real dynamic size is represented
   // by `dynamic_param_index` in parameter `dynamic_param_num`.
@@ -434,7 +464,7 @@ message DynamicParameterBindingProto {
   // dynamic_param_index = {}
   // target_param_num = 0
   // target_param_index = {}
-  // target_param_dim = 0
+  // target_param_dim_num = 0
   message Binding {
     int64 dynamic_param_num = 1;
     repeated int64 dynamic_param_index = 2;
@@ -449,6 +479,7 @@ message DynamicParameterBindingProto {
 message CrossProgramPrefetch {
   int64 parameter = 1;
   repeated int64 index = 2;
+  int64 offset = 3;
 }
 
 // Serialization of HloModule.
@@ -493,6 +524,7 @@ message HloModuleProto {
     FLAG = 1;
     FUSION = 2;
     LAYOUT = 3;
+    DOT = 4;
   }
 
   // Information about the optimization profile that this module contains.
@@ -519,13 +551,12 @@ message LogicalBufferProto {
   // Location represents an instruction and its shape index, which uniquely
   // identifies a point where a buffer is needed.
   message Location {
-    // NOTE: module_name isn't necessary, since all LogicalBuffers are
-    // associated with a single HloModule.
     // TODO(b/239098765): Remove instruction_name and computation_name.
-    string computation_name = 1 [deprecated = true];
     string instruction_name = 2 [deprecated = true];
     int64 instruction_id = 4;
     repeated int64 shape_index = 3;
+
+    reserved 1;
   }
 
   int64 id = 1;
@@ -742,12 +773,9 @@ message EntryFunctionAttributes {
   string result_xla_shape = 2;
 }
 
-// Encodes the underlying JitRt executable compiled from the XLA module.
-message JitRtExecutableProto {
+// Encodes the underlying Xla runtime executable compiled from the XLA module.
+message XlaRuntimeExecutableProto {
   HloModuleProto hlo_module_proto = 1;
-
-  // XLA-specific attributes of the executable's entry function.
-  EntryFunctionAttributes entry_func_attrs = 2;
 
   // TODO(b/232263665)): We need to know the TargetMachine this executable was
   // compiled for, otherwise we can accidentally use illegal instrauctions (e.g.
@@ -762,10 +790,4 @@ message JitRtExecutableProto {
 
   // Serialized MLIR module corresponding to compiled object file.
   string mlir_module = 4;
-
-  // PTX for the compiled GPU kernels.
-  string gpu_asm_text = 5;
-
-  // Corresponding CUBIN for the above PTX.
-  bytes gpu_binary = 6;
 }

@@ -34,6 +34,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
+from tensorflow.tsl.protobuf import rpc_options_pb2
 
 
 class GrpcServerTest(test.TestCase):
@@ -112,7 +113,7 @@ class GrpcServerTest(test.TestCase):
     Returns:
       A `tf.compat.v1.ConfigProto`.
     """
-    return config_pb2.ConfigProto(rpc_options=config_pb2.RPCOptions(
+    return config_pb2.ConfigProto(rpc_options=rpc_options_pb2.RPCOptions(
         use_rpc_for_inprocess_master=True))
 
   def testLargeConstant(self):

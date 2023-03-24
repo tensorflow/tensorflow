@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -101,9 +102,8 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
   if (op_name == "Const") {
     cached_tensor_values_[op->getResult(0)] =
         op->getAttrOfType<DenseElementsAttr>("value");
-  } else if (op_name == "Identity" ||
-             (op_name == "IdentityN" &&
-              TFOp(op).getNonControlOperands().size() == 1)) {
+  } else if ((op_name == "Identity" || op_name == "IdentityN") &&
+             TFOp(op).getNonControlOperands().size() == 1) {
     DenseElementsAttr operand_tensor_value = GetTensorValue(op->getOperand(0));
     if (!operand_tensor_value) return;
     cached_tensor_values_[op->getResult(0)] = operand_tensor_value;
@@ -207,8 +207,8 @@ void ShapeInference::runOnOperation() {
       ShapedTypeComponents result = std::get<1>(it);
       TensorType inferred_type;
       if (result.hasRank()) {
-        inferred_type =
-            RankedTensorType::get(result.getDims(), result.getElementType());
+        inferred_type = mlir::RankedTensorType::get(result.getDims(),
+                                                    result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }
@@ -306,7 +306,7 @@ void ShapeInference::runOnOperation() {
     Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
-    for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
+    for (const auto &indexed_type : llvm::enumerate(func_type.getResults())) {
       int res_num = indexed_type.index();
       Type return_arg_type = return_op->getOperand(res_num).getType();
       if (return_arg_type != indexed_type.value()) {

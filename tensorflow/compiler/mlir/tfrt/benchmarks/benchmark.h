@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tfrt/jitrt/async_task_runner.h"  // from @tf_runtime
 #include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -167,7 +168,10 @@ struct ExecuteAssignOp {
 // Common utilities.
 // -------------------------------------------------------------------------- //
 
-static constexpr int64_t kDynSize = mlir::ShapedType::kDynamicSize;
+static constexpr int64_t kDynSize = mlir::ShapedType::kDynamic;
+
+llvm::SmallVector<int64_t> GetTensorTypeShape(
+    llvm::ArrayRef<int64_t> shape, llvm::ArrayRef<bool> dynamic_dims);
 
 // Prints an MLIR tensor type, i.e. for `shape` {1, kDynSize} and `element_type`
 // "f32" the output is "tensor<1x?xf32>".

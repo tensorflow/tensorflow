@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 
+#include <limits>
+
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -67,15 +72,43 @@ TEST(PartialTensorShapeTest, Concatenate) {
 
 TEST(PartialTensorShapeTest, ConcatenateWithStatus) {
   PartialTensorShape s({10, 5, 20});
-  Status status = s.ConcatenateWithStatus(400, &s);
+  PartialTensorShape s2;
+  Status status = s.ConcatenateWithStatus(400, &s2);
   EXPECT_TRUE(status.ok());
-  EXPECT_EQ(400000, s.num_elements());
-  ASSERT_EQ(4, s.dims());
+  EXPECT_EQ(s2.num_elements(), 400000);
+  EXPECT_EQ(s2.dims(), 4);
 
-  status = s.ConcatenateWithStatus(-10, &s);
+  PartialTensorShape s3;
+  status = s2.ConcatenateWithStatus(-10, &s3);
   EXPECT_TRUE(status.ok());
-  EXPECT_EQ(-1, s.num_elements());
-  ASSERT_EQ(5, s.dims());
+  EXPECT_EQ(s3.num_elements(), -1);
+  EXPECT_EQ(s3.dims(), 5);
+
+  PartialTensorShape s4;
+  status = s.ConcatenateWithStatus(s, &s4);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(s4.num_elements(), 1000000);
+  EXPECT_EQ(s4.dims(), 6);
+
+  PartialTensorShape s5;
+  // Concatenate with unknown rank
+  status = s5.ConcatenateWithStatus(s5, &s4);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST(PartialTensorShapeTest, PartialTensorShapeIsValid) {
+  PartialTensorShape s({10, 5, 20});
+  EXPECT_TRUE(s.IsValid());
+
+  PartialTensorShape s2({-1, 5, 20});
+  EXPECT_TRUE(s2.IsValid());
+
+  PartialTensorShape s3;
+  // Default PartialTensorShape has unkown rank that is regarded as invalid.
+  EXPECT_FALSE(s3.IsValid());
+
+  PartialTensorShape s4(s3.AsProto());
+  EXPECT_FALSE(s4.IsValid());
 }
 
 TEST(PartialTensorShapeTest, InvalidShapeProto) {
@@ -101,6 +134,58 @@ TEST(PartialTensorShapeTest, InvalidShapeProto) {
   proto.Clear();
   proto.add_dim()->set_size(-2);
   EXPECT_FALSE(PartialTensorShape::IsValid(proto));
+}
+
+TEST(PartialTensorShapeTest, PartialTensorShapeIsValidShape) {
+  // NOTE: This test is about PartialTensorShape::IsValidShape(proto), which
+  // returns a Status with descriptive error, while the above test is about
+  // PartialTensorShape::IsValid(proto), which returns a bool.
+
+  PartialTensorShape s;
+  // In TensorShapeProto, unkown rank with 0 dimension is regarded as valid.
+  TensorShapeProto proto = s.AsProto();
+  TF_EXPECT_OK(PartialTensorShape::IsValidShape(proto));
+
+  proto.add_dim()->set_size(1);
+  EXPECT_THAT(PartialTensorShape::IsValidShape(proto),
+              testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex(
+                      "An unknown shape must not have any dimensions set.")));
+
+  proto.set_unknown_rank(false);
+  proto.add_dim()->set_size(-1);
+  proto.add_dim()->set_size(-2);
+  EXPECT_THAT(PartialTensorShape::IsValidShape(proto),
+              testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                                ::testing::ContainsRegex(
+                                    "has dimensions with values below -1")));
+
+  EXPECT_THAT(TensorShape::IsValidShape(proto),
+              testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex("Shape.*is not fully defined")));
+}
+
+TEST(PartialTensorShapeTest, BuildPartialTensorShape) {
+  PartialTensorShape s;
+  TensorShapeProto sp = s.AsProto();
+  PartialTensorShape s2;
+  TF_EXPECT_OK(PartialTensorShape::BuildPartialTensorShape(sp, &s2));
+  EXPECT_EQ(s2.AsProto().DebugString(), sp.DebugString());
+
+  PartialTensorShape s3({-1, 5, 10});
+  TensorShapeProto sp3 = s3.AsProto();
+  PartialTensorShape s4;
+  TF_EXPECT_OK(PartialTensorShape::BuildPartialTensorShape(sp3, &s4));
+  EXPECT_EQ(s4.AsProto().DebugString(), sp3.DebugString());
+
+  sp3.add_dim()->set_size(std::numeric_limits<int64_t>::max());
+  EXPECT_THAT(
+      PartialTensorShape::BuildPartialTensorShape(sp3, &s4),
+      testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                        ::testing::ContainsRegex(
+                            "Encountered overflow when multiplying shape")));
 }
 
 TEST(PartialTensorShapeTest, PartialShapeFullyDefined) {
@@ -144,7 +229,7 @@ TEST(PartialTensorShapeTest, PartialShapeIdenticalTo) {
   const PartialTensorShape g;
   std::vector<PartialTensorShape> shapes = {a, b, c, d, e, f, g};
   for (int i = 0; i < shapes.size(); ++i) {
-    for (int j = 0; j < i; ++j) {
+    for (int j = 0; j <= i; ++j) {
       if (i == j) {
         EXPECT_TRUE(shapes[i].IsIdenticalTo(shapes[j]));
       } else {
@@ -207,9 +292,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   const PartialTensorShape b({1, 0, 1});
   const PartialTensorShape c({-1, -1, 1});
   const PartialTensorShape d({1, 0});
-  const PartialTensorShape e({-1, 0, 2});
-  const PartialTensorShape f({});
-  const PartialTensorShape g;
+  const PartialTensorShape e;
 
   PartialTensorShape test;
   EXPECT_EQ(OkStatus(), a.MergeWith(a, &test));
@@ -243,18 +326,38 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), a.MergeWith(g, &test));
+  EXPECT_EQ(OkStatus(), a.MergeWith(e, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_EQ(OkStatus(), g.MergeWith(a, &test));
+  EXPECT_EQ(OkStatus(), e.MergeWith(a, &test));
   EXPECT_EQ(test.dims(), 3);
   EXPECT_EQ(test.dim_size(0), -1);
   EXPECT_EQ(test.dim_size(1), 0);
   EXPECT_EQ(test.dim_size(2), 1);
+}
+
+TEST(PartialTensorShapeTest, PartialShapeMergeWithInvalidData) {
+  PartialTensorShape a = PartialTensorShape({-1, 0, 1});
+  const PartialTensorShape b({-1, 0, 2});
+  const PartialTensorShape c({1, -1, 3});
+  const PartialTensorShape d({-1, std::numeric_limits<int64_t>::max(), -1});
+
+  EXPECT_THAT(a.MergeWith(b, &a),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex("Cannot output result to itself")));
+  EXPECT_THAT(b.MergeWith(c, &a),
+              testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                                ::testing::ContainsRegex(
+                                    "Incompatible shapes during merge")));
+  EXPECT_THAT(c.MergeWith(d, &a),
+              testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                                ::testing::ContainsRegex(
+                                    "Encountered overflow when multiplying")));
 }
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
@@ -283,6 +386,45 @@ TEST(PartialTensorShapeTest, MakePartialShapeInvalid) {
   PartialTensorShape shape;
   EXPECT_EQ(error::INVALID_ARGUMENT,
             PartialTensorShape::MakePartialShape(dims, 3, &shape).code());
+}
+
+TEST(PartialTensorShapeUtilsTest, PartialShapeListString) {
+  PartialTensorShape s({2, 5, 20});
+  EXPECT_EQ(PartialTensorShapeUtils::PartialShapeListString({s}), "[[2,5,20]]");
+
+  PartialTensorShape s2;
+  PartialTensorShape s3({-1, -1, 10});
+  EXPECT_EQ(PartialTensorShapeUtils::PartialShapeListString({s, s2, s3}),
+            "[[2,5,20], <unknown>, [?,?,10]]");
+}
+
+TEST(PartialTensorShapeUtilsTest, PartialShapeAreCompatible) {
+  PartialTensorShape s1a({-1, 5, 20});
+  PartialTensorShape s1b({2, 5, 20});
+  PartialTensorShape s2a({-1, -1, 20});
+  PartialTensorShape s2b({5, 10, 20});
+
+  EXPECT_TRUE(PartialTensorShapeUtils::AreCompatible({s1a}, {s1b}));
+  EXPECT_TRUE(PartialTensorShapeUtils::AreCompatible({s1b}, {s1a}));
+  EXPECT_TRUE(PartialTensorShapeUtils::AreCompatible({s1a, s2b}, {s1b, s2b}));
+  EXPECT_FALSE(PartialTensorShapeUtils::AreCompatible({s1a}, {s2a, s1a}));
+  EXPECT_FALSE(PartialTensorShapeUtils::AreCompatible({s1a, s1b}, {s2a, s2b}));
+}
+
+TEST(PartialTensorShapeUtilsTest, PartialShapeAreIdentical) {
+  PartialTensorShape s1a({-1, 5, 20});
+  PartialTensorShape s1b({2, 5, 20});
+  PartialTensorShape s1c({-1, 5, 20});
+  PartialTensorShape s2a({-1, -1, 20});
+  PartialTensorShape s2b({5, 10, 20});
+
+  EXPECT_TRUE(PartialTensorShapeUtils::AreIdentical({s1a}, {s1a}));
+  EXPECT_TRUE(PartialTensorShapeUtils::AreIdentical({s1a, s1b}, {s1c, s1b}));
+  EXPECT_TRUE(PartialTensorShapeUtils::AreIdentical({s1c}, {s1a}));
+  EXPECT_FALSE(PartialTensorShapeUtils::AreIdentical({s1a}, {s1b}));
+  EXPECT_FALSE(PartialTensorShapeUtils::AreIdentical({s1a, s2b}, {s1b, s2b}));
+  EXPECT_FALSE(PartialTensorShapeUtils::AreIdentical({s1a}, {s2a, s1a}));
+  EXPECT_FALSE(PartialTensorShapeUtils::AreIdentical({s1a, s1b}, {s2a, s2b}));
 }
 
 }  // namespace

@@ -55,6 +55,7 @@ void createTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Post conversion cleanup.
   //----------------------------------------------------------------------------
+  pm.addPass(mlir::tosa::createLowerComplexTypesPass());
   pm.addPass(mlir::tosa::createTosaInferShapesPass());
   pm.addPass(mlir::tosa::createTosaMakeBroadcastablePass());
   // Inline the call/return basic blocks within TOSA control flow ops.

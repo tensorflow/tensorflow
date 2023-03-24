@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 
@@ -29,6 +29,9 @@ namespace hlo_query {
 
 // Returns whether the given opcode is a collective communications operation.
 bool IsCollectiveCommunicationOp(HloOpcode op);
+
+bool IsAsyncCollectiveStartOp(HloOpcode op);
+bool IsAsyncCollectiveDoneOp(HloOpcode op);
 
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.

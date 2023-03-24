@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "VERSION")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/lite/experimental/tac:__subpackages__",
     ],
@@ -59,6 +60,8 @@ pybind_extension(
         "@farmhash_gpu_archive//:__subpackages__",
         "@fft2d//:__subpackages__",
         "@flatbuffers//:__subpackages__",
+        "@FP16//:__subpackages__",
+        "@FXdiv//:__subpackages__",
         "@gemmlowp//:__subpackages__",
         "@gif//:__subpackages__",
         "@highwayhash//:__subpackages__",
@@ -66,12 +69,10 @@ pybind_extension(
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",
@@ -85,6 +86,7 @@ pybind_extension(
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
+        "@pthreadpool//:__subpackages__",
         "@pybind11//:__subpackages__",
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",

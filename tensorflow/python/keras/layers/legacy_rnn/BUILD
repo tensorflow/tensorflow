@@ -2,6 +2,7 @@
 #   Contains the legacy TF RNN APIs (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
@@ -34,10 +35,10 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/initializers",
@@ -45,6 +46,8 @@ py_library(
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -61,7 +64,8 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/util:nest",
     ],
 )

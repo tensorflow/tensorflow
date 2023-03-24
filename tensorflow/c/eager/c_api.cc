@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -65,10 +66,10 @@ limitations under the License.
 
 // "tensorflow/core/platform/platform.h" must be included first before using
 // PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
+    !defined(PLATFORM_FUCHSIA)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_impl.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -116,22 +117,18 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
+    !defined(PLATFORM_FUCHSIA)
     tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
             opts->device_placement_policy),
-        opts->async, opts->use_tfrt_distributed_runtime);
-#if !defined(IS_MOBILE_PLATFORM)
-    tfrt_context->SetDistributedManager(
-        tfrt::tf::CreateDistributedManagerContext(
-            tfrt_context->GetCoreRuntime()->GetHostContext()));
-#endif  // !IS_MOBILE_PLATFORM
+        opts->async);
     return tensorflow::wrap(tfrt_context);
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
   }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
@@ -283,7 +280,7 @@ void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   tensorflow::profiler::TraceMe activity(
       "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
   if (h) {
-    tensorflow::unwrap(h)->Release();
+    tensorflow::unwrap(h)->Unref();
   }
 }
 
@@ -349,7 +346,8 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     return nullptr;
   }
 
-  return tensorflow::wrap(tensorflow::unwrap(h)->Copy());
+  tensorflow::unwrap(h)->Ref();
+  return h;
 }
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
@@ -429,7 +427,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TF_Status status;
     TFE_TensorHandle* result_handle = device_.copy_tensor_to_device(
         context_, tensorflow::wrap(handle), &status, info_);
-    handle->Release();
+    handle->Unref();
     if (!status.status.ok()) return status.status;
     *result = tensorflow::unwrap(result_handle);
     (*result)->Ref();
@@ -446,7 +444,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
         context_, tensorflow::wrap(handle), target_device_name.c_str(), &status,
         info_);
-    handle->Release();
+    handle->Unref();
     if (!status.status.ok()) return status.status;
     *result = tensorflow::unwrap(result_handle);
     (*result)->Ref();
@@ -934,9 +932,32 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  AnnotateEagerRuntimeConstructionContext(function->fdef);
+  auto fdef_or = function->record->mutable_fdef();
+  if (!fdef_or.ok()) {
+    status->status = fdef_or.status();
+    return;
+  }
+
+  AnnotateEagerRuntimeConstructionContext(*fdef_or.value());
   status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithStackTraces(
-      function->fdef, function->stack_traces);
+      *fdef_or.value(), function->record->stack_traces());
+}
+
+TF_Function* TFE_ContextGetFunction(TFE_Context* ctx, const char* name,
+                                    TF_Status* status) {
+  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> record =
+      tensorflow::unwrap(ctx)->FindRecord(name);
+
+  if (record == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find Function with name: ", name);
+    return nullptr;
+  }
+
+  TF_Function* result = new TF_Function();
+  record->Ref();
+  result->record = record.get();
+  return result;
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,

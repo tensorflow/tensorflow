@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include <unordered_map>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
-
-ABSL_DECLARE_FLAG(bool, tf_use_pjrt);
 
 namespace tensorflow {
 
@@ -38,13 +36,18 @@ class PjRtState : public ResourceBase {
   StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
   Status SetPjRtClient(const DeviceType& device_type,
                        std::unique_ptr<xla::PjRtClient> client);
-  Status DeletePjRtClientIfExists(const DeviceType& device_type);
+  // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not
+  // be returned by `GetPjRtClient`.
+  Status MovePjRtClientToUnused(const DeviceType& device_type);
   string DebugString() const override;
 
  private:
   explicit PjRtState() {}
   absl::Mutex mu_;
   PjRtClientsMap clients_ ABSL_GUARDED_BY(mu_);
+  // Store the PJRT clients that are no longer used to guarantee that PJRT
+  // clients outlive PJRT buffers.
+  std::vector<std::unique_ptr<xla::PjRtClient>> unused_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

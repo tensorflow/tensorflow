@@ -47,6 +47,10 @@ template <>
 struct PseudoHalfType<Eigen::half> {
   using Type = float;
 };
+template <>
+struct PseudoHalfType<Eigen::bfloat16> {
+  using Type = float;
+};
 }  // namespace detail
 
 using Eigen::GpuDevice;

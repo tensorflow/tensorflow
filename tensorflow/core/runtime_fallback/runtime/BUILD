@@ -1,6 +1,5 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_oss",
     "tf_cuda_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -13,6 +12,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -40,7 +40,6 @@ tf_cuda_library(
     name = "runtime_fallback_alwayslink",
     srcs = [
         "conversion_function.cc",
-        "runtime_fallback_batch_kernels.cc",
         "runtime_fallback_batch_tf_opkernels.cc",
         "runtime_fallback_gpu_allocator.cc",
         "runtime_fallback_gpu_allocator.h",
@@ -68,9 +67,10 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":op_logger",
         ":kernel_utils",
+        ":op_logger",
         ":runtime_fallback_tensor",
+        ":fallback_batch_kernel",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -107,18 +107,18 @@ tf_cuda_library(
             "//tensorflow/core:session_options",
             "//tensorflow/core/common_runtime:core_cpu_impl",
             "//tensorflow/core/common_runtime/eager:context",
-            "//tensorflow/core/common_runtime/eager:execute",
             "//tensorflow/core/common_runtime/eager:core",  # Needed due to circular dep
             "//tensorflow/core/common_runtime/eager:eager_operation",
+            "//tensorflow/core/common_runtime/eager:execute",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/framework:node_def_proto_cc",
             "//tensorflow/core/framework:tensor",
+            "//tensorflow/core/kernels/batching_util:batch_resource_base",
+            "//tensorflow/core/kernels/batching_util:bounded_executor",
             "//tensorflow/core/platform:errors",
             "//tensorflow/core/platform:random",
             "//tensorflow/core/platform:status",
             "//tensorflow/core/profiler/lib:traceme",
-            "//tensorflow/core/kernels/batching_util:batch_resource_base",
-            "//tensorflow/core/kernels/batching_util:bounded_executor",
         ],
     }),
     alwayslink = 1,
@@ -171,7 +171,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/eager:__subpackages__",
-        "//tensorflow/core/tfrt/saved_model:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings",
@@ -187,16 +186,35 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/c:tf_tensor",
-            "//tensorflow/core/common_runtime:device_mgr",
-            "//tensorflow/core/common_runtime/eager:context_distributed_manager",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/common_runtime:device_mgr",
             "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:context_distributed_manager",
             "//tensorflow/core/common_runtime/eager:eager_operation",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/platform:status",
         ],
     }),
+)
+
+cc_library(
+    name = "fallback_batch_kernel",
+    srcs = ["fallback_batch_kernel.cc"],
+    hdrs = ["fallback_batch_kernel.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
+        "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:bounded_executor",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@tf_runtime//:hostcontext",
+    ],
 )
 
 tf_cuda_library(
@@ -211,9 +229,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_utils",

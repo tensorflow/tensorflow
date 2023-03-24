@@ -29,7 +29,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import adam
 
@@ -68,7 +70,7 @@ class EagerTest(xla_test.XLATestCase):
   def testExecuteListOutputLen0(self):
     with self.test_scope():
       empty = constant_op.constant([], dtype=dtypes.float32)
-      result = array_ops.unstack(empty, 0)
+      result = array_ops_stack.unstack(empty, 0)
       self.assertTrue(isinstance(result, list))
       self.assertEqual(0, len(result))
 
@@ -299,7 +301,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
-      matmul = function.defun(math_ops.matmul)
+      matmul = def_function.function(math_ops.matmul)
       t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
       sq = matmul(t, t, transpose_a=True)
       self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
@@ -321,7 +323,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def model(x):
         x = conv(x)
         return pool(x)
-      model = function.defun(model)
+      model = def_function.function(model)
 
       x = array_ops.ones([1, 4, 4, 1])
       y = model(x)
@@ -331,7 +333,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(1.0)
 
-      @function.defun
+      @def_function.function
       def f():
         return v.read_value()
 
@@ -397,7 +399,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
         v.assign_add(1.0)
         return v
 
-      f = function.defun(f)
+      f = def_function.function(f)
 
       var = f(v)
       self.assertEqual(2.0, var.numpy())
@@ -409,7 +411,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(v):
         return v.handle
 
-      f = function.defun(f)
+      f = def_function.function(f)
       handle = f(v)
       self.assertAllEqual(v.numpy(),
                           resource_variable_ops.read_variable_op(
@@ -423,7 +425,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(v):
         return v.handle, 3.0 * v, v2.handle, v + v2
 
-      f = function.defun(f)
+      f = def_function.function(f)
       v1_handle, v1_times_3, v2_handle, variable_sum = f(v1)
       self.assertAllEqual(v1.numpy(),
                           resource_variable_ops.read_variable_op(
@@ -457,7 +459,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
         d = r2 * v2
         return a, b, c, d
 
-      foo = function.defun(foo)
+      foo = def_function.function(foo)
 
       c1 = [0, 0]
       c2 = array_ops.ones([2], dtype=dtypes.int32)
@@ -479,7 +481,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
-      @function.defun
+      @def_function.function
       def f(x):
         x = v0 * v0 * x
         return x
@@ -496,7 +498,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
-      @function.defun
+      @def_function.function
       def f():
         x = constant_op.constant(1.0)
         with backprop.GradientTape() as tape:
@@ -510,7 +512,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
   def testSliceInDefun(self):
     with self.test_scope():
 
-      @function.defun
+      @def_function.function
       def f(x, y):
         return x[0::2, y:, ...]
 
@@ -528,11 +530,11 @@ class EagerFunctionTest(xla_test.XLATestCase):
   def testNestedDefun(self):
     with self.test_scope():
 
-      @function.defun
+      @def_function.function
       def times_two(x):
         return 2. * x
 
-      @function.defun
+      @def_function.function
       def two_x_plus_1(x):
         return times_two(x) + 1.
 
@@ -544,12 +546,12 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
-      @function.defun
+      @def_function.function
       def g(x):
         x = v0 * x
         return x
 
-      @function.defun
+      @def_function.function
       def f(x):
         x = g(v0 * x)
         return x
@@ -563,12 +565,12 @@ class EagerFunctionTest(xla_test.XLATestCase):
     with self.test_scope():
       v0 = resource_variable_ops.ResourceVariable(5.0)
 
-      @function.defun
+      @def_function.function
       def g(x):
         x = v0 * x
         return x
 
-      @function.defun
+      @def_function.function
       def f(x):
         x = g(v0 * x)
         return x
@@ -586,12 +588,12 @@ class EagerFunctionTest(xla_test.XLATestCase):
       v0 = resource_variable_ops.ResourceVariable(5.0)
       v1 = resource_variable_ops.ResourceVariable(3.0)
 
-      @function.defun
+      @def_function.function
       def g(x):
         x = v1 * x
         return x
 
-      @function.defun
+      @def_function.function
       def f(x):
         x = g(v0 * x)
         return x
@@ -612,7 +614,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(start):
         c = lambda x: math_ops.less(x, 13.0)
         b = lambda x: math_ops.add(x, 1.0)
-        return control_flow_ops.while_loop(c, b, [start])
+        return while_loop.while_loop(c, b, [start])
 
       y = f(constant_op.constant(3.0))
     self.assertEqual(13.0, y.numpy())
@@ -635,7 +637,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(pred, value):
         fn1 = lambda: math_ops.add(value, 1.0)
         fn2 = lambda: math_ops.subtract(value, 1.0)
-        return control_flow_ops.cond(pred, fn1, fn2)
+        return cond.cond(pred, fn1, fn2)
 
       plus_one = f(constant_op.constant(True), constant_op.constant(10.0))
       minus_one = f(constant_op.constant(False), constant_op.constant(10.0))
@@ -672,7 +674,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
 
   def testFeedDeviceMemoryToOpExpectingHostMemory(self):
-    @function.defun
+    @def_function.function
     def f(dims, value):
       return array_ops.fill(dims, value)
 
@@ -746,7 +748,7 @@ class ExcessivePaddingTest(xla_test.XLATestCase):
   def testAsFunctionInput(self):
     with self.test_scope():
 
-      @function.defun
+      @def_function.function
       def f(x):
         return math_ops.reduce_sum(x, axis=2)
 
@@ -757,7 +759,7 @@ class ExcessivePaddingTest(xla_test.XLATestCase):
   def testAsFunctionOutput(self):
     with self.test_scope():
 
-      @function.defun
+      @def_function.function
       def f(x):
         return x * constant_op.constant(100 * [[[10.0, 2.0]]])
 

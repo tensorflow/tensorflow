@@ -75,20 +75,17 @@ TEST(MathUtilsTest, AffineDequantize) {
 TEST(MathUtilsTest, AsymmetricQuantize) {
   float scale;
   int32_t zero_point;
-  TensorShape shape({2, 2, 2});
-  Tensor quantized_tensor =
-      test::AsTensor<qint8>({0, 0, 0, 0, 0, 0, 0, 0}, shape);
-
-  AsymmetricQuantize(
-      test::AsTensor<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f},
-                            shape),
-      /*apply_offset=*/4, /*apply_size=*/4, /*quantization_min_val=*/-128,
-      /*quantization_max_val=*/127, scale, zero_point, quantized_tensor);
+  TensorShape shape({2, 2});
+  Tensor quantized_tensor = test::AsTensor<qint8>({0, 0, 0, 0}, shape);
+  TF_ASSERT_OK(AsymmetricQuantize(
+      test::AsTensor<float>({5.0f, 6.0f, 7.0f, 8.0f}, shape).tensor<float, 2>(),
+      /*quantization_min_val=*/-128,
+      /*quantization_max_val=*/127, scale, zero_point,
+      quantized_tensor.tensor<qint8, 2>()));
 
   // Only flattened_tensor[apply_offset : apply_offset + apply_size] is
   // quantized.
-  Tensor expected_tensor =
-      test::AsTensor<qint8>({0, 0, 0, 0, 31, 63, 95, 127}, shape);
+  Tensor expected_tensor = test::AsTensor<qint8>({31, 63, 95, 127}, shape);
   test::ExpectEqual(quantized_tensor, expected_tensor);
   EXPECT_FLOAT_EQ(scale, 0.031372551f);
   EXPECT_EQ(zero_point, -128);
@@ -97,21 +94,18 @@ TEST(MathUtilsTest, AsymmetricQuantize) {
 TEST(MathUtilsTest, AsymmetricQuantizeZeroValuesTensor) {
   float scale;
   int32_t zero_point;
-  TensorShape shape({2, 2, 2});
-  Tensor quantized_tensor =
-      test::AsTensor<qint8>({0, 0, 0, 0, 0, 0, 0, 0}, shape);
-
-  AsymmetricQuantize(
-      test::AsTensor<float>({0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 6.0f, 7.0f, 8.0f},
-                            shape),
-      /*apply_offset=*/0, /*apply_size=*/4, /*quantization_min_val=*/-128,
-      /*quantization_max_val=*/127, scale, zero_point, quantized_tensor);
+  TensorShape shape({2, 2});
+  Tensor quantized_tensor = test::AsTensor<qint8>({0, 0, 0, 0}, shape);
+  TF_ASSERT_OK(AsymmetricQuantize(
+      test::AsTensor<float>({0.0f, 0.0f, 0.0f, 0.0f}, shape).tensor<float, 2>(),
+      /*quantization_min_val=*/-128,
+      /*quantization_max_val=*/127, scale, zero_point,
+      quantized_tensor.tensor<qint8, 2>()));
 
   // All values in flattened_tensor[apply_offset : apply_offset + apply_size]
   // are zero, Thus all the quantized output values are zero. Scale and
   // zero_point is set to 1.0f and 0 respectively.
-  Tensor expected_tensor =
-      test::AsTensor<qint8>({0, 0, 0, 0, 0, 0, 0, 0}, shape);
+  Tensor expected_tensor = test::AsTensor<qint8>({0, 0, 0, 0}, shape);
   test::ExpectEqual(quantized_tensor, expected_tensor);
   EXPECT_FLOAT_EQ(scale, 1.0f);
   EXPECT_EQ(zero_point, 0);

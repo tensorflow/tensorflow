@@ -107,11 +107,11 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     # the element just read thus negating the use of the cache as other
     # trainers will not get the correct element.
     # Hence the need to calculate the size of the cache based on the
-    # number of CPU cores and the element size of 363. The extra 8
+    # number of CPU cores and the element size of 423. The extra 8
     # entries are simply a bit of margin.
     num_cpus = multiprocessing.cpu_count()
     cluster = self._create_cluster(
-        num_workers=1, cross_trainer_cache_size_bytes=(num_cpus + 8) * 363)
+        num_workers=1, cross_trainer_cache_size_bytes=(num_cpus + 8) * 423)
     num_readers = 20
     num_elements = 50
     dataset = dataset_ops.Dataset.range(10000000).repeat()

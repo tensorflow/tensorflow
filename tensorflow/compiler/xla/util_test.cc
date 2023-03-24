@@ -25,6 +25,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -70,7 +72,7 @@ TEST(UtilTest, VectorString) {
 
 TEST(UtilTest, LogLines) {
   // Just make sure this code runs (not verifying the output).
-  LogLines(tensorflow::INFO, "hello\n\nworld", __FILE__, __LINE__);
+  LogLines(tsl::INFO, "hello\n\nworld", __FILE__, __LINE__);
 }
 
 TEST(UtilTest, CommonFactors) {
@@ -117,6 +119,18 @@ TEST(UtilTest, SanitizeFileName) {
 }
 
 TEST(UtilTest, RoundTripFpToString) {
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e5m2>(
+                false, QuietNanWithoutPayload<tsl::float8_e5m2>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e5m2>(
+                true, QuietNanWithoutPayload<tsl::float8_e5m2>())),
+            "-nan");
+  EXPECT_EQ(
+      RoundTripFpToString(std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
+      "nan");
+  EXPECT_EQ(RoundTripFpToString(
+                -std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
+            "-nan");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(
                 false, QuietNanWithoutPayload<half>())),
             "nan");

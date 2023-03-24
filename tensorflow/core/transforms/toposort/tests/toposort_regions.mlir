@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt %s --pass-pipeline="tfg.graph(tfg-toposort), tfg.func(tfg-toposort)" | FileCheck %s
+// RUN: tfg-transforms-opt %s --pass-pipeline="builtin.module(tfg.graph(tfg-toposort), tfg.func(tfg-toposort))" | FileCheck %s
 
 // Test with region ops
 // CHECK-LABEL: tfg.graph

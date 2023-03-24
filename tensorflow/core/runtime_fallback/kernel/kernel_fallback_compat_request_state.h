@@ -17,20 +17,21 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -98,6 +99,8 @@ class KernelFallbackCompatRequestState {
       const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
+  int64_t step_id() const { return step_id_; }
+
   // Returns the user-specified custom device corresponding to the given device.
   // It is currently only used for configure per-request intra op threadpool.
   tensorflow::Device* custom_device(const tensorflow::Device* device) const {
@@ -105,6 +108,8 @@ class KernelFallbackCompatRequestState {
     if (it == custom_device_.end()) return nullptr;
     return it->second.get();
   }
+
+  tensorflow::Device* cpu_device() const { return cpu_device_; }
 
   ScopedStepContainer* step_container() const { return step_container_.get(); }
 
@@ -142,13 +147,24 @@ class KernelFallbackCompatRequestState {
 
   const SessionMetadata& session_metadata() const { return session_metadata_; }
 
+  // Nullable.
+  tensorflow::tfrt_stub::CostRecorder* cost_recorder() const {
+    return cost_recorder_;
+  }
+  void set_cost_recorder(tensorflow::tfrt_stub::CostRecorder* cost_recorder) {
+    cost_recorder_ = cost_recorder;
+  }
+
  private:
+  int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
   std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
   absl::flat_hash_map<const tensorflow::Device*,
                       std::unique_ptr<tensorflow::Device>>
       custom_device_;
+  std::unique_ptr<tensorflow::Device> custom_cpu_device_;
+  tensorflow::Device* cpu_device_ = nullptr;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;
@@ -173,7 +189,25 @@ class KernelFallbackCompatRequestState {
   const tensorflow::ProcessFunctionLibraryRuntime* pflr_ = nullptr;
 
   bool log_device_placement_ = false;
+
+  // Records the cost per op.
+  tensorflow::tfrt_stub::CostRecorder* cost_recorder_ = nullptr;
 };
+
+// Set up fallback context with common tensorflow states such as devices,
+// function library runtime. They will be forwarded to tensorflow::OpKernel as
+// in tensorflow::Executor. If `runner` is nullptr, internally it will use a
+// default runner that executes tasks in the caller thread.
+Status SetUpKernelFallbackCompatRequestContext(
+    tfrt::RequestContextBuilder* builder,
+    const tensorflow::DeviceMgr* device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime* pflr,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array,
+    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
+    const std::optional<SessionMetadata>& model_metadata = std::nullopt,
+    std::function<void(std::function<void()>)>* runner = nullptr,
+    tfrt_stub::CostRecorder* cost_recorder = nullptr);
 
 }  // namespace tfd
 }  // namespace tensorflow

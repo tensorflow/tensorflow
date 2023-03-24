@@ -79,8 +79,8 @@ ENTRY main {
 )";
   CheckLayoutNormalization(hlo, R"(
 // CHECK:  [[p_0:%[^ ]+]] = f32[5,1,4,1]{0,1,2,3} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[p_0]])
-// CHECK:  [[abs_2:%[^ ]+]] = f32[4,5]{1,0} abs([[bitcast_1]])
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,4,1,5]{3,2,1,0} bitcast([[p_0]])
+// CHECK:  [[abs_2:%[^ ]+]] = f32[1,4,1,5]{3,2,1,0} abs([[bitcast_1]])
 // CHECK:  ROOT [[bitcast_2_3:%[^ ]+]] = f32[5,1,4,1]{0,1,2,3} bitcast([[abs_2]])
 )");
 }
@@ -174,9 +174,9 @@ ENTRY main {
 )";
 
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast_0:%[^ ]+]] = f32[5,4,3]{2,1,0} bitcast([[p_1:%[^ ]+]])
-// CHECK: [[transpose_2:%[^ ]+]] = f32[5,4,3]{2,1,0} transpose([[bitcast_0]]), dimensions={0,1,2}
-// CHECK: [[abs_3:%[^ ]+]] = f32[5,4,3]{2,1,0} abs([[transpose_2]])
+// CHECK: [[bitcast_0:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} bitcast([[p_1:%[^ ]+]])
+// CHECK: [[transpose_2:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} transpose([[bitcast_0]]), dimensions={0,1,2,3}
+// CHECK: [[abs_3:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} abs([[transpose_2]])
 )");
 }
 
@@ -212,9 +212,9 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[p_0:%[^ ]+]] = f32[3,1,4,1,5]{0,1,2,3,4} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4,3]{2,1,0} bitcast([[p_0]])
-// CHECK: [[transpose_2:%[^ ]+]] = f32[3,4,5]{2,1,0} transpose([[bitcast_1]]), dimensions={2,1,0}
-// CHECK: [[abs_3:%[^ ]+]] = f32[3,4,5]{2,1,0} abs([[transpose_2]])
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,1,4,1,3]{4,3,2,1,0} bitcast([[p_0]])
+// CHECK: [[transpose_2:%[^ ]+]] = f32[3,1,4,1,5]{4,3,2,1,0} transpose([[bitcast_1]]), dimensions={4,3,2,1,0}
+// CHECK: [[abs_3:%[^ ]+]] = f32[3,1,4,1,5]{4,3,2,1,0} abs([[transpose_2]])
 )");
 }
 
@@ -268,8 +268,8 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[bitcast_0:%[^ ]+]] = f32[9]{0} bitcast([[a_1:%[^ ]+]])
-// CHECK: [[broadcast_2:%[^ ]+]] = f32[9,2,4]{2,1,0} broadcast([[bitcast_0]]), dimensions={0}
-// CHECK: [[abs_3:%[^ ]+]] = f32[9,2,4]{2,1,0} abs([[broadcast_2]])
+// CHECK: [[broadcast_2:%[^ ]+]] = f32[9,1,2,4]{3,2,1,0} broadcast([[bitcast_0]]), dimensions={0}
+// CHECK: [[abs_3:%[^ ]+]] = f32[9,1,2,4]{3,2,1,0} abs([[broadcast_2]])
 // CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,1,4,9]{2,0,1,3} bitcast([[abs_3]])
 )");
 }
@@ -286,8 +286,8 @@ ENTRY main {
 )";
 
   CheckLayoutNormalization(hlo, R"(
-// CHECK:  [[broadcast_0:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} broadcast([[bitcast_1:%[^ ]+]]), dimensions={0,3}
-// CHECK:  [[abs_2:%[^ ]+]] = f32[5,2,3,4]{3,2,1,0} abs([[broadcast_0]])
+// CHECK:  [[broadcast_0:%[^ ]+]] = f32[1,5,2,1,3,4,1]{6,5,4,3,2,1,0} broadcast([[bitcast_1:%[^ ]+]]), dimensions={1,5,6}
+// CHECK:  [[abs_2:%[^ ]+]] = f32[1,5,2,1,3,4,1]{6,5,4,3,2,1,0} abs([[broadcast_0]])
 )");
 }
 
@@ -327,12 +327,10 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[a_0:%[^ ]+]] = f32[1,4,5]{0,1,2} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4]{1,0} bitcast([[a_0]])
-// CHECK: [[bitcast_4_2:%[^ ]+]] = f32[5,4,1]{2,1,0} bitcast([[bitcast_1]])
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4,1]{2,1,0} bitcast([[a_0]])
 // CHECK: [[b_3:%[^ ]+]] = f32[1,4,5]{0,1,2} parameter(1)
-// CHECK: [[bitcast_2_4:%[^ ]+]] = f32[5,4]{1,0} bitcast([[b_3]])
-// CHECK: [[bitcast_5_5:%[^ ]+]] = f32[5,4,1]{2,1,0} bitcast([[bitcast_2_4]])
-// CHECK: [[concatenate_6:%[^ ]+]] = f32[5,4,2]{2,1,0} concatenate([[bitcast_4_2]], [[bitcast_5_5]]), dimensions={2}
+// CHECK: [[bitcast_2:%[^ ]+]] = f32[5,4,1]{2,1,0} bitcast([[b_3]])
+// CHECK: [[concatenate_6:%[^ ]+]] = f32[5,4,2]{2,1,0} concatenate([[bitcast_1]], [[bitcast_2]]), dimensions={2}
 // CHECK: [[abs_7:%[^ ]+]] = f32[5,4,2]{2,1,0} abs([[concatenate_6]])
 )");
 }
@@ -351,11 +349,10 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[a_0:%[^ ]+]] = f32[1,5]{0,1} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[5]{0} bitcast([[a_0]])
-// CHECK: [[bitcast_4_2:%[^ ]+]] = f32[5,1]{1,0} bitcast([[bitcast_1]])
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,1]{1,0} bitcast([[a_0]])
 // CHECK: [[b_3:%[^ ]+]] = f32[2,5]{0,1} parameter(1)
 // CHECK: [[bitcast_2_4:%[^ ]+]] = f32[5,2]{1,0} bitcast([[b_3]])
-// CHECK: [[concatenate_5:%[^ ]+]] = f32[5,3]{1,0} concatenate([[bitcast_4_2]], [[bitcast_2_4]]), dimensions={1}
+// CHECK: [[concatenate_5:%[^ ]+]] = f32[5,3]{1,0} concatenate([[bitcast_1]], [[bitcast_2_4]]), dimensions={1}
 // CHECK: [[abs_6:%[^ ]+]] = f32[5,3]{1,0} abs([[concatenate_5]])
 // CHECK: ROOT [[bitcast_6_7:%[^ ]+]] = f32[3,5]{0,1} bitcast([[abs_6]])
 )");
@@ -375,13 +372,11 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[a_0:%[^ ]+]] = f32[1,5,1,4]{0,1,3,2} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[a_0]])
-// CHECK: [[bitcast_4_2:%[^ ]+]] = f32[4,5,1]{2,1,0} bitcast([[bitcast_1]])
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[1,4,5,1]{3,2,1,0} bitcast([[a_0]])
 // CHECK: [[b_3:%[^ ]+]] = f32[1,5,1,4]{0,1,3,2} parameter(1)
-// CHECK: [[bitcast_2_4:%[^ ]+]] = f32[4,5]{1,0} bitcast([[b_3]])
-// CHECK: [[bitcast_5_5:%[^ ]+]] = f32[4,5,1]{2,1,0} bitcast([[bitcast_2_4]])
-// CHECK: [[concatenate_6:%[^ ]+]] = f32[4,5,2]{2,1,0} concatenate([[bitcast_4_2]], [[bitcast_5_5]]), dimensions={2}
-// CHECK: [[abs_7:%[^ ]+]] = f32[4,5,2]{2,1,0} abs([[concatenate_6]])
+// CHECK: [[bitcast_2_4:%[^ ]+]] = f32[1,4,5,1]{3,2,1,0} bitcast([[b_3]])
+// CHECK: [[concatenate_6:%[^ ]+]] = f32[1,4,5,2]{3,2,1,0} concatenate([[bitcast_1]], [[bitcast_2_4]]), dimensions={3}
+// CHECK: [[abs_7:%[^ ]+]] = f32[1,4,5,2]{3,2,1,0} abs([[concatenate_6]])
 // CHECK: ROOT [[bitcast_7_8:%[^ ]+]] = f32[2,5,1,4]{0,1,3,2} bitcast([[abs_7]])
 )");
 }
@@ -400,11 +395,11 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[a_0:%[^ ]+]] = f32[1,5]{0,1} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[5]{0} bitcast([[a_0]])
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,1]{1,0} bitcast([[a_0]])
 // CHECK: [[b_2:%[^ ]+]] = f32[1,5]{0,1} parameter(1)
-// CHECK: [[bitcast_2_3:%[^ ]+]] = f32[5]{0} bitcast([[b_2]])
-// CHECK: [[concatenate_4:%[^ ]+]] = f32[10]{0} concatenate([[bitcast_1]], [[bitcast_2_3]]), dimensions={0}
-// CHECK: [[abs_5:%[^ ]+]] = f32[10]{0} abs([[concatenate_4]])
+// CHECK: [[bitcast_2_3:%[^ ]+]] = f32[5,1]{1,0} bitcast([[b_2]])
+// CHECK: [[concatenate_4:%[^ ]+]] = f32[10,1]{1,0} concatenate([[bitcast_1]], [[bitcast_2_3]]), dimensions={0}
+// CHECK: [[abs_5:%[^ ]+]] = f32[10,1]{1,0} abs([[concatenate_4]])
 // CHECK: ROOT [[bitcast_5_6:%[^ ]+]] = f32[1,10]{0,1} bitcast([[abs_5]])
 )");
 }
@@ -440,8 +435,8 @@ ENTRY main {
 )";
 
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[reverse_0:%[^ ]+]] = f32[3,5]{1,0} reverse([[bitcast_1:%[^ ]+]]), dimensions={1}
-// CHECK: [[abs_2:%[^ ]+]] = f32[3,5]{1,0} abs([[reverse_0]])
+// CHECK: [[reverse_0:%[^ ]+]] = f32[3,5,1]{2,1,0} reverse([[bitcast_1:%[^ ]+]]), dimensions={0,2}
+// CHECK: [[abs_2:%[^ ]+]] = f32[3,5,1]{2,1,0} abs([[reverse_0]])
 )");
 }
 
@@ -458,8 +453,8 @@ ENTRY main {
 )";
 
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[pad_0:%[^ ]+]] = f32[7,13,15]{2,1,0} pad([[bitcast_1:%[^ ]+]], [[bitcast_3_2:%[^ ]+]]), padding=0_0x5_5x5_5
-// CHECK: [[abs_3:%[^ ]+]] = f32[7,13,15]{2,1,0} abs([[pad_0]])
+// CHECK: [[pad_0:%[^ ]+]] = f32[7,13,15,1]{3,2,1,0} pad([[bitcast_1:%[^ ]+]], [[bitcast_3_2:%[^ ]+]]), padding=0_0x5_5x5_5x0_0
+// CHECK: [[abs_3:%[^ ]+]] = f32[7,13,15,1]{3,2,1,0} abs([[pad_0]])
 // CHECK: ROOT [[bitcast_5_4:%[^ ]+]] = f32[1,13,15,7]{0,2,1,3} bitcast([[abs_3]])
 )");
 }
@@ -477,11 +472,8 @@ ENTRY main {
 
 )";
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast_2_0:%[^ ]+]] = f32[] bitcast([[z_1:%[^ ]+]])
-// CHECK: [[bitcast_3_2:%[^ ]+]] = f32[] bitcast([[bitcast_2_0]])
-// CHECK: [[pad_3:%[^ ]+]] = f32[13,15,11]{2,1,0} pad([[bitcast_4_4:%[^ ]+]], [[bitcast_3_2]]), padding=5_5x5_5x5_5
+// CHECK: [[pad_3:%[^ ]+]] = f32[13,15,11]{2,1,0} pad([[bitcast_4_4:%[^ ]+]], [[bitcast_3_2:%[^ ]+]]), padding=5_5x5_5x5_5
 // CHECK: [[abs_5:%[^ ]+]] = f32[13,15,11]{2,1,0} abs([[pad_3]])
-// CHECK: ROOT [[bitcast_6_6:%[^ ]+]] = f32[11,13,15]{0,2,1} bitcast([[abs_5]])
 )");
 }
 
@@ -498,14 +490,172 @@ ENTRY main {
 
 )";
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast_0:%[^ ]+]] = f32[3,5]{1,0} bitcast([[a_1:%[^ ]+]])
-// CHECK: [[bitcast_4_2:%[^ ]+]] = f32[3,5,1]{2,1,0} bitcast([[bitcast_0]])
-// CHECK: [[z_3:%[^ ]+]] = f32[] constant(0)
-// CHECK: [[bitcast_2_4:%[^ ]+]] = f32[] bitcast([[z_3]])
-// CHECK: [[bitcast_3_5:%[^ ]+]] = f32[] bitcast([[bitcast_2_4]])
-// CHECK: [[pad_6:%[^ ]+]] = f32[13,7,11]{2,1,0} pad([[bitcast_4_2]], [[bitcast_3_5]]), padding=5_5x1_1x5_5
-// CHECK: [[abs_7:%[^ ]+]] = f32[13,7,11]{2,1,0} abs([[pad_6]])
-// CHECK: ROOT [[bitcast_6_8:%[^ ]+]] = f32[11,13,7,1]{0,2,1,3} bitcast([[abs_7]])
+// CHECK: [[pad_6:%[^ ]+]] = f32[1,13,7,11]{3,2,1,0} pad([[bitcast_4_2:%[^ ]+]], [[bitcast_3_5:%[^ ]+]]), padding=0_0x5_5x1_1x5_5
+// CHECK: [[abs_7:%[^ ]+]] = f32[1,13,7,11]{3,2,1,0} abs([[pad_6]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ReduceWindow) {
+  const char* hlo = R"(
+HloModule R2Window
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+ENTRY R2Window {
+  operand = f32[256,384]{0,1} parameter(0)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[256,384]{0,1} reduce-window(operand, constant), window={size=2x3 pad=0_1x1_1}, to_apply=mul
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[reduce_window_1_0:%[^ ]+]] = f32[384,256]{1,0} reduce-window([[bitcast_5_1:%[^ ]+]], [[bitcast_8_2:%[^ ]+]]), window={size=3x2 pad=1_1x0_1}, to_apply=[[mul_3:%[^ ]+]]
+  )");
+}
+
+TEST_F(LayoutNormalizationTest, Constant) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[5,4]{0,1} parameter(0)
+  c = f32[5,4]{0,1} constant({...})
+  ROOT o = f32[5,4]{0,1} add(p, c)
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[p_0:%[^ ]+]] = f32[5,4]{0,1} parameter(0)
+// CHECK-NEXT: [[bitcast_1:%[^ ]+]] = f32[4,5]{1,0} bitcast([[p_0]])
+// CHECK-NEXT: [[constant_2:%[^ ]+]] = f32[4,5]{1,0} constant({...})
+// CHECK-NEXT: [[add_3:%[^ ]+]] = f32[4,5]{1,0} add([[bitcast_1]], [[constant_2]])
+// CHECK-NEXT: ROOT [[bitcast_3_4:%[^ ]+]] = f32[5,4]{0,1} bitcast([[add_3]])
+  )");
+}
+
+TEST_F(LayoutNormalizationTest, Slice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  ROOT converted = f32[1,4,6,6]{1,3,2,0} slice(input), slice={[0:1],[0:4],[0:6],[0:6]}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[input_0:%[^ ]+]] = f32[1,17,9,9]{1,3,2,0} parameter(0)
+// CHECK-NEXT: [[bitcast_1:%[^ ]+]] = f32[1,9,9,17]{3,2,1,0} bitcast([[input_0]])
+// CHECK-NEXT: [[slice_2:%[^ ]+]] = f32[1,6,6,4]{3,2,1,0} slice([[bitcast_1]]), slice={[0:1], [0:6], [0:6], [0:4]}
+// CHECK-NEXT: ROOT [[bitcast_3_4:%[^ ]+]] = f32[1,4,6,6]{1,3,2,0} bitcast([[slice_2]])
+  )");
+}
+
+TEST_F(LayoutNormalizationTest, Select) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[1,17,9,9]{1,3,2,0} parameter(0)
+  p1 = f32[1,17,9,9]{1,3,2,0} parameter(1)
+  b = pred[1,17,9,9]{1,3,2,0} parameter(2)
+  ROOT out = f32[1,17,9,9]{1,3,2,0} select(b, p0, p1), metadata={op_name="test"}
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[1,9,9,17]{3,2,1,0} select({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicSlice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[3,4,32]{1,0,2} parameter(0)
+  s1 = s32[] parameter(1)
+  s2 = s32[] parameter(2)
+  s3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+}
+  )";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,1,4]{2,1,0} dynamic-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), dynamic_slice_sizes={32,1,4}, metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicSliceHasDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,4,32]{1,0,2} parameter(0)
+  s1 = s32[] parameter(1)
+  s2 = s32[] parameter(2)
+  s3 = s32[] parameter(3)
+  ROOT out = f32[1,4,32]{1,0,2} dynamic-slice(input, s1, s2, s3), dynamic_slice_sizes={1,4,32}, metadata={op_name="test"}
+}
+  )";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,1,4]{2,1,0} dynamic-slice({{.*}}, {{.*}}, {{.*}}), dynamic_slice_sizes={32,1,4}, metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSlice) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[3,1,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[3,1,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,3,1]{2,1,0} dynamic-update-slice({{.*}}, {{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, DynamicUpdateSliceNonDeg) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  to_update = f32[5,3,32]{1,0,2} parameter(0)
+  updates = f32[1,1,32]{1,0,2} parameter(1)
+  p0 = s32[] parameter(2)
+  p1 = s32[] parameter(3)
+  p2 = s32[] parameter(4)
+
+  ROOT out = f32[5,3,32]{1,0,2} dynamic-update-slice(to_update, updates, p0, p1, p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,5,3]{2,1,0} dynamic-update-slice
+)");
+}
+
+TEST_F(LayoutNormalizationTest, Clamp) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[64,1,32]{1,0,2} parameter(0)
+  p1 = f32[64,1,32]{1,0,2} parameter(1)
+  p2 = f32[64,1,32]{1,0,2} parameter(2)
+  ROOT out = f32[64,1,32]{1,0,2} clamp(f32[64,1,32]{1,0,2} p0, f32[64,1,32]{1,0,2} p1, f32[64,1,32]{1,0,2} p2), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: f32[32,64,1]{2,1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
 )");
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <utility>
 
 namespace tsl {
 
@@ -25,6 +26,12 @@ struct StackFrame {
   std::string file_name;
   int line_number;
   std::string function_name;
+
+  StackFrame() = default;
+  StackFrame(std::string file_name, int line_number, std::string function_name)
+      : file_name(std::move(file_name)),
+        line_number(line_number),
+        function_name(std::move(function_name)) {}
 
   bool operator==(const StackFrame& other) const {
     return line_number == other.line_number &&

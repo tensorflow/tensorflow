@@ -41,7 +41,8 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -106,7 +107,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     def case_fn(x):
       branch_index = constant_op.constant(1)
       branches = [lambda: x, lambda: x + 1]
-      case_out = control_flow_ops.switch_case(branch_index, branches)
+      case_out = control_flow_switch_case.switch_case(branch_index, branches)
       return case_out
 
     root.f = def_function.function(
@@ -1062,6 +1063,26 @@ class AssetTests(test.TestCase):
     with self.assertRaisesRegex(AssertionError, "tf.function"):
       _calls_save()
 
+  def test_rewrite_asset_to_same_destination(self):
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    asset_path = os.path.join(self.get_temp_dir(), "asset")
+
+    def save_and_load(label):
+      with open(asset_path, "w") as f:
+        f.write(label)
+
+      model = autotrackable.AutoTrackable()
+      model.asset = asset.Asset(asset_path)
+      model.fn = def_function.function(lambda: io_ops.read_file(model.asset))
+      self.assertEqual(label, model.fn().numpy().decode("utf-8"))
+
+      save.save(model, save_dir)
+      imported = load.load(save_dir)
+      self.assertEqual(label, imported.fn().numpy().decode("utf-8"))
+
+    save_and_load("first")
+    save_and_load("second")
+
 
 class ExportMetaGraphTests(test.TestCase):
 
@@ -1116,9 +1137,9 @@ class ExportMetaGraphTests(test.TestCase):
 class FingerprintingTests(test.TestCase):
 
   def test_toggle_flag(self):
-    self.assertFalse(flags.config().saved_model_fingerprinting.value())
-    flags.config().saved_model_fingerprinting.reset(True)
     self.assertTrue(flags.config().saved_model_fingerprinting.value())
+    flags.config().saved_model_fingerprinting.reset(False)
+    self.assertFalse(flags.config().saved_model_fingerprinting.value())
 
 
 if __name__ == "__main__":

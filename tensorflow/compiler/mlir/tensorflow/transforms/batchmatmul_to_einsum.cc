@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -50,8 +49,8 @@ class ConvertTFBatchMatMulToEinsumOp
 
   LogicalResult matchAndRewrite(BatchMatMulOpType op,
                                 PatternRewriter& rewriter) const override {
-    Value input_lhs = op.x();
-    Value input_rhs = op.y();
+    Value input_lhs = op.getX();
+    Value input_rhs = op.getY();
 
     // LHS and RHS must be a ranked tensor type
     auto lhs_type = input_lhs.getType().dyn_cast<RankedTensorType>();
@@ -71,8 +70,8 @@ class ConvertTFBatchMatMulToEinsumOp
 
     // einsum equation for batchmatmul
     std::string equation("...mk,...kn->...mn");
-    if (op.adj_x()) std::swap(equation[3], equation[4]);
-    if (op.adj_y()) std::swap(equation[6 + 3], equation[6 + 4]);
+    if (op.getAdjX()) std::swap(equation[3], equation[4]);
+    if (op.getAdjY()) std::swap(equation[6 + 3], equation[6 + 4]);
 
     rewriter.replaceOpWithNewOp<TF::EinsumOp>(
         op, op.getType(),
@@ -83,8 +82,11 @@ class ConvertTFBatchMatMulToEinsumOp
   }
 };
 
+#define GEN_PASS_DEF_BATCHMATMULTOEINSUMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct BatchMatMulToEinsumPass
-    : public BatchMatMulToEinsumPassBase<BatchMatMulToEinsumPass> {
+    : public impl::BatchMatMulToEinsumPassBase<BatchMatMulToEinsumPass> {
   void runOnOperation() override;
 };
 

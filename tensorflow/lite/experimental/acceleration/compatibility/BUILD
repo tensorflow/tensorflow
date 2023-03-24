@@ -18,6 +18,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -131,7 +132,10 @@ genrule(
 cc_library(
     name = "devicedb_sample",
     srcs = ["devicedb-sample.cc"],
-    hdrs = ["devicedb-sample.h"],
+    hdrs = [
+        "devicedb-sample.h",
+        "variables.h",
+    ],
     deps = [":database_fbs"],
 )
 

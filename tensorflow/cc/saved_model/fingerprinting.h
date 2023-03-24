@@ -16,16 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 #define TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_
 
+#include <string>
+#include <unordered_map>
+
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
-// Creates a FingerprintDef proto from a MetaGraph and the checkpoint meta file
+// Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
 // (.index) in `export_dir`.
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
-                                    absl::string_view export_dir);
+StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
+                                              absl::string_view export_dir);
+
+// Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
+// none.
+StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir);
+
+// Canonical fingerprinting ID for a SavedModel.
+std::string Singleprint(uint64 graph_def_program_hash,
+                        uint64 signature_def_hash,
+                        uint64 saved_object_graph_hash, uint64 checkpoint_hash);
+std::string Singleprint(const FingerprintDef& fingerprint);
+std::string Singleprint(absl::string_view export_dir);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

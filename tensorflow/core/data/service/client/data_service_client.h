@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/client/common.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -53,9 +54,12 @@ class DataServiceContext {
 using DataServiceContextFactory =
     std::function<std::unique_ptr<DataServiceContext>()>;
 
-// Interface for reading data from tf.data service. This class is thread-safe.
-// It is intended to be used by `data_service_dataset_op.cc` to read data from
-// tf.data service.
+// API for reading data from tf.data service.
+//
+// The client works by reading from tf.data workers in parallel and interleaving
+// the dataset elements. It periodically queries the dispatcher to decide which
+// workers to read from (in case workers are added or removed). The data reading
+// is non-deterministic. This class is thread-safe.
 class DataServiceClient {
  public:
   explicit DataServiceClient(const DataServiceParams& params);
@@ -83,7 +87,7 @@ class DataServiceClient {
 
     const TaskInfo info;
     // Client for fetching task elements from the tf.data service worker.
-    const std::unique_ptr<DataServiceWorkerClient> worker;
+    std::unique_ptr<DataServiceWorkerClient> worker;
     // The next round to read from the task.
     int64_t round = 0;
     // Whether the task has been removed. The task will eventually be
@@ -132,6 +136,10 @@ class DataServiceClient {
   void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateIterationFinished(bool iteration_finished);
   Status AddTask(const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+      const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+      const std::string& protocol, const TaskInfo& task_info);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);
   bool ShouldReadFromTask(const TaskInfo& task) const;

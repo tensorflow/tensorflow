@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_expensive_invariant_code_motion.h"
 
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -233,6 +233,48 @@ ENTRY entry {
   HloComputation* while_body = m->GetComputationWithName("wide.body");
   ASSERT_NE(while_body, nullptr);
   EXPECT_THAT(while_body->instructions(), Not(Contains(op::Dot())));
+}
+
+TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
+       DoesNotHoistShardingCustomCalls) {
+  constexpr char kModuleWithShardingCustomCalls[] = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[4, 4], f32[4, 4]) parameter(0)
+  a = f32[4, 4] get-tuple-element(p_body), index=0
+  custom-call.1 = f32[4, 4] custom-call(a), custom_call_target="Sharding", sharding={devices=[4,1]0,1,2,3}
+  custom-call.2 = f32[4, 4] custom-call(custom-call.1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  dot = f32[4, 4] dot(a, a), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  b = f32[4, 4] get-tuple-element(p_body), index=1
+  add = f32[4, 4] add(b, dot)
+  custom-call.3 = f32[4, 4] custom-call(add), custom_call_target="Sharding", sharding={manual}
+  custom-call.4 = f32[4, 4] custom-call(custom-call.3), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1]0,1,2,3}
+  ROOT root = (f32[4, 4], f32[4, 4]) tuple(a, custom-call.4)
+}
+
+condition {
+  p_cond = (f32[4, 4], f32[4, 4]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param0 = f32[4, 4] parameter(0)
+  param1 = f32[4, 4] parameter(1)
+  while_init = (f32[4, 4], f32[4, 4]) tuple(param0, param1)
+  ROOT while = (f32[4, 4], f32[4, 4]) while(while_init), condition=condition, body=body
+}
+)";
+  auto m = ParseAndReturnVerifiedModule(kModuleWithShardingCustomCalls).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopExpensiveInvariantCodeMotion(
+          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
+            return instr.opcode() == HloOpcode::kDot;
+          })
+          .Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
 }
 
 }  // namespace

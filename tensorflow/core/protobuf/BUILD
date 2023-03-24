@@ -16,6 +16,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow/core:__subpackages__",
@@ -26,10 +27,8 @@ package(
 )
 
 COMMON_PROTO_SRCS = [
-    "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
-    "coordination_config.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
@@ -64,9 +63,9 @@ COMMON_PROTO_SRCS = [
 tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/compiler/xla/stream_executor:dnn_proto"],
+    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
 )
 
 tf_proto_library(
@@ -130,18 +129,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "coordination_service_proto",
-    srcs = ["coordination_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
-    create_grpc_library = True,
-    create_service = True,
-    protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
-                tf_additional_all_protos(),
-)
-
-tf_proto_library(
     name = "replay_log_proto",
     srcs = ["replay_log.proto"],
     cc_api_version = 2,
@@ -153,8 +140,9 @@ tf_proto_library(
 tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -181,7 +169,6 @@ exports_files(
         "tensorflow_server.proto",
         "trackable_object_graph.proto",
         "transport_options.proto",
-        "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
@@ -195,6 +182,7 @@ tf_proto_library(
         #
         # Note that some protos are in neither core_proto_srcs nor this
         # filegroup; e.g. ones with individual proto_library targets.
+        "bfc_memory_map.proto",
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
@@ -209,13 +197,13 @@ tf_proto_library(
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
+        "rpc_options.proto",
         "saved_model.proto",
         "saved_object_graph.proto",
         "struct.proto",
         "tensorflow_server.proto",
         "trackable_object_graph.proto",
         "transport_options.proto",
-        "distributed_runtime_payloads.proto",
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
@@ -224,8 +212,17 @@ tf_proto_library(
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
+        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
+        "//tensorflow/tsl/protobuf:coordination_config_proto",
+        "//tensorflow/tsl/protobuf:rpc_options_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
+    exports = [
+        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
+        "//tensorflow/tsl/protobuf:rpc_options_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
+    ],
 )
 
 # copybara:uncomment_begin(google-only)

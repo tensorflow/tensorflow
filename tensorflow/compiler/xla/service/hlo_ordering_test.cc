@@ -18,16 +18,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -587,6 +587,53 @@ ENTRY entry {
   const HloValue& value = dataflow->GetUniqueValueAt(p_body_2, {0});
   EXPECT_FALSE(
       ordering.UsesBeforeValueDefinition({&tuple_use}, value, *dataflow));
+}
+
+TEST_F(HloOrderingTest, AsyncCallUses) {
+  absl::string_view hlo_string = R"(
+HloModule single_sc_async_call
+
+%called_computation {
+  %out_param = s32[1024]{0} parameter(1)
+  %input = s32[1024]{0} parameter(0)
+  %size = s32[] constant(256)
+  %index = s32[] custom-call(), custom_call_target="Baz"
+  %start = s32[] multiply(s32[] %size, s32[] %index)
+  %input2 = s32[256]{0} dynamic-slice(s32[1024]{0} %input, s32[] %start), dynamic_slice_sizes={256}
+  %output = s32[256]{0} add(s32[256]{0} %input2, s32[256]{0} %input2)
+  ROOT %output2 = s32[1024]{0} dynamic-update-slice(s32[1024]{0} %out_param, s32[256]{0} %output, s32[] %start)
+}, execution_thread="foobar"
+
+%async_wrapped {
+  %async_param = s32[1024]{0} parameter(0)
+  %async_param.1 = s32[1024]{0} parameter(1)
+  ROOT %call = s32[1024]{0} call(s32[1024]{0} %async_param, s32[1024]{0} %async_param.1), to_apply=%called_computation
+}, execution_thread="foobar"
+
+ENTRY %main {
+  %input.1 = s32[1024]{0} parameter(0)
+  %buf = s32[1024]{0} custom-call(), custom_call_target="AllocateBuffer"
+  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %buf), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+}
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+  auto async_start = FindInstruction(module.get(), "async-start");
+  auto async_done = FindInstruction(module.get(), "async-done");
+  auto call = FindInstruction(module.get(), "call");
+  auto output2 = FindInstruction(module.get(), "output2");
+
+  auto async_start_use = HloUse{async_start, 1};
+  auto async_done_use = HloUse{async_done, 0, {0, 1}};
+  auto call_use = HloUse{call, 1};
+  const HloValue& value = dataflow->GetUniqueValueAt(output2, {});
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
+      {&async_start_use, &call_use, &async_done_use}, value, *dataflow));
 }
 
 }  // namespace

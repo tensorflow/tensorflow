@@ -32,7 +32,9 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 
 
 # TODO(allenl): Allow something other than "CUSTOM" so we don't need device
@@ -45,7 +47,10 @@ _next_device_number_lock = threading.Lock()
 class DTensorDevice(object):
   """Wraps a custom device which attempts to propagate tensor layouts."""
 
-  def __init__(self, meshes: List[layout_lib.Mesh], is_async=True):
+  def __init__(self,
+               meshes: List[layout_lib.Mesh],
+               is_async=True,
+               in_flight_nodes_limit=8):
     """Create a new DTensorDevice which executes ops on `underlying_device`.
 
     Args:
@@ -54,6 +59,9 @@ class DTensorDevice(object):
       is_async: Indicates whether DTensor operations on this client will return
         immediately (with "non-ready" handles) or block until executed. This is
         on by default and is exposed as an option for ease of debugging.
+      in_flight_nodes_limit: Indicates the limit of in-flight nodes before
+        enqueueing of async operations to DTensorDevice is blocked. This limit
+        is per mesh. 0 for no limits from DTensor. Default is 8.
     """
     if any(not isinstance(mesh, layout_lib.Mesh) for mesh in meshes):
       raise TypeError(
@@ -64,13 +72,14 @@ class DTensorDevice(object):
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
                                                _next_device_number)
       _next_device_number += 1
-    device, device_info = _pywrap_dtensor_device.Allocate(self.name)
+    device, device_info = _pywrap_dtensor_device.Allocate(
+        self.name, is_async, in_flight_nodes_limit
+    )
     context.register_custom_device(device, self.name, device_info)
 
     self._device_info = device_info
     self._current_output_layout = None
     self._current_default_mesh = None
-    self._is_async = is_async
     self._meshes = set()
     self._mesh_lock = threading.Lock()
     for mesh in meshes:
@@ -127,39 +136,37 @@ class DTensorDevice(object):
     """Idempotently register `mesh` with the dtensor device."""
     with self._mesh_lock:
       if mesh not in self._meshes:
-        _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                       self._is_async, False)
+        _pywrap_dtensor_device.AddMesh(
+            self._device_info, mesh.to_string(), False
+        )
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
               "Registering virtual 1:1 mapped host mesh %s for mesh %s",
               mesh.host_mesh().to_string(), mesh.to_string())
-          _pywrap_dtensor_device.AddMesh(self._device_info,
-                                         mesh.host_mesh().to_string(),
-                                         self._is_async, True)
+          _pywrap_dtensor_device.AddMesh(
+              self._device_info, mesh.host_mesh().to_string(), True
+          )
           self._meshes.add(mesh.host_mesh())
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
             logging.info(
                 "Registering embedding host mesh %s on each client for mesh %s",
                 embedding_host_mesh.to_string(), mesh.to_string())
-            _pywrap_dtensor_device.AddMesh(self._device_info,
-                                           embedding_host_mesh.to_string(),
-                                           self._is_async, False)
+            _pywrap_dtensor_device.AddMesh(
+                self._device_info, embedding_host_mesh.to_string(), False
+            )
             self._meshes.add(embedding_host_mesh)
 
   @property
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
 
-  def copy_to_mesh(self, tensor, new_layout, source_layout=None) -> ops.Tensor:
+  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
     """Copy `tensor` to `device` with the given layout."""
     self._register_mesh(new_layout.mesh)
     with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(
-          tensor,
-          layout=new_layout.to_string(),
-          source_layout=source_layout.to_string() if source_layout else "")
+      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.
@@ -184,7 +191,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Pack must be called eagerly.")
+      raise RuntimeError("`pack` must be called eagerly.")
     if any(
         issubclass(type(t), resource_variable_ops.BaseResourceVariable)
         for t in tensors):
@@ -235,7 +242,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("Unpack must be called eagerly.")
+      raise RuntimeError("`unpack` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       raise TypeError(
           "Received Variable input to unpack, Variable is not supported.")
@@ -275,7 +282,7 @@ class DTensorDevice(object):
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("FetchLayout must be called eagerly.")
+      raise RuntimeError("`fetch_layout` must be called eagerly.")
     if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       dtensor = dtensor.read_value()
     try:
@@ -287,16 +294,33 @@ class DTensorDevice(object):
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
     return layout_lib.Layout.from_string(layout_string)
 
-  def set_same_shape_policy(self, enabled):
-    """Guess layouts using the layouts of other tensors with the same shape.
+  def is_dtensor(self, tensor: Any) -> bool:
+    """Check whether the input tensor is a DTensor.
 
-    This is the default behavior, and is quite safe. The `default_layout` scope
-    overrides shape-based guesses.
+    In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+    let you check and handle the tensor differently if a tf.Tensor is a DTensor.
 
     Args:
-      enabled: A boolean indicating whether to use the policy.
+      tensor: an object to be checked.
+
+    Returns:
+      bool, True if the given tensor is a DTensor.
+
+    Raises:
+      RuntimeError: When not called eagerly.
     """
-    _pywrap_dtensor_device.SetSameShapePolicy(self._device_info, enabled)
+    if not context.executing_eagerly():
+      raise RuntimeError("`is_dtensor` must be called eagerly.")
+    if not tensor_util.is_tensor(tensor):
+      return False
+    if isinstance(tensor, variables.Variable):
+      # Get the resource handle for tf.Variable
+      tensor = tensor._handle   # pylint: disable=protected-access
+    return _pywrap_dtensor_device.IsDTensor(
+        context.context()._handle,  # pylint: disable=protected-access
+        tensor,
+        self._device_info,
+    )
 
   def set_tpu_core_ids(self, mesh_name, tpu_core_ids):
     """Sets the singleton global device ID-to-physical core ID map.
@@ -340,15 +364,35 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_hit_and_miss_count(self):
+  def _get_function_cache_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
-      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      A dictionary.
+        'miss': number of cache misses;
+        'hit': number of cache hits; and
+        'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+    return _pywrap_dtensor_device.GetFunctionCacheStats(
         context.context()._handle,  # pylint: disable=protected-access,
+        self._device_info,
+    )
+
+  def set_iterator_element_layouts(self, iterator_resource_dtensor,
+                                   layouts: List[layout_lib.Layout]):
+    """Sets the element layouts on an iterator resource tensor.
+
+    Args:
+      iterator_resource_dtensor: a DTensor created by packing the individiual
+        iterator resource tensors.
+      layouts: the flattened list of layouts to be applied to the elements
+        emitted by the iterator resource DTensor.
+    """
+    _pywrap_dtensor_device.SetIteratorElementLayouts(
+        context.context()._handle,  # pylint: disable=protected-access
+        iterator_resource_dtensor,
+        [layout.to_string() for layout in layouts],
         self._device_info)
 
   @contextlib.contextmanager

@@ -24,7 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops
@@ -579,14 +579,15 @@ class RGBToHSVOpTestBase(test.TestCase):
     def f(x):
       return gen_image_ops.rgb_to_hsv(x)
 
-    # Building a simple input tensor to avoid any discontinuity
-    x = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8,
-                                                     0.9]]).astype(np.float32)
-    rgb_input_tensor = constant_op.constant(x, shape=x.shape)
-    # Computing Analytical and Numerical gradients of f(x)
-    analytical, numerical = gradient_checker_v2.compute_gradient(
-        f, [rgb_input_tensor])
-    self.assertAllClose(numerical, analytical, atol=1e-4)
+    for nptype in self.TYPES:
+      # Building a simple input tensor to avoid any discontinuity
+      x = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8,
+                                                       0.9]]).astype(nptype)
+      rgb_input_tensor = constant_op.constant(x, shape=x.shape)
+      # Computing Analytical and Numerical gradients of f(x)
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [rgb_input_tensor])
+      self.assertAllClose(numerical, analytical, atol=1e-4)
 
   def testRGBToHSVGradRandomCase(self):
 
@@ -621,7 +622,7 @@ class RGBToHSVOpTestBase(test.TestCase):
       s = 1 - math_ops.div_no_nan(b, r)
       h = 60 * math_ops.div_no_nan(g - b, r - b)
       h = h / 360
-      return array_ops.stack([h, s, v], axis=-1)
+      return array_ops_stack.stack([h, s, v], axis=-1)
 
     # Building a custom input tensor where R>G>B
     x_reds = np.ones((in_shape[0], in_shape[1], in_shape[2])).astype(np.float32)

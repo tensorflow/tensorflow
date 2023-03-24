@@ -40,8 +40,6 @@ def TF_JITRT_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_jitrt";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
 }
 
 //===----------------------------------------------------------------------===//
@@ -84,7 +82,7 @@ def FallbackCompileOp : TF_JITRT_Op<"fallback.compile",
 }
 
 def FallbackExecuteOp : TF_JITRT_Op<"fallback.execute",
-    [NoSideEffect, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
+    [Pure, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
   let summary = "jitrt execute operation with a fallback runtime interop";
   let description = [{
     `tf_jitrt.fallback.execute` compiles a Tensorflow program defined by the
@@ -117,17 +115,15 @@ def FallbackExecuteOp : TF_JITRT_Op<"fallback.execute",
 
   let arguments = (ins
     SymbolRefAttr:$kernel,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>,
     StrAttr:$device
   );
 
-  let results = (outs
-    Variadic<TFTensorType>:$results
-  );
+  let results = (outs Variadic<TFTensorType>);
 
   let assemblyFormat = [{
-    $kernel `(` $operands `)` `device` `(` $device `)` attr-dict `:`
-    functional-type($operands, $results)
+    $kernel `(` operands `)` `device` `(` $device `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 
@@ -141,7 +137,7 @@ def FallbackDebugExecuteOp : TF_JITRT_Op<"fallback.debug.execute"> {
 
   let arguments = (ins
     SymbolRefAttr:$kernel,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>,
     StrAttr:$device,
     // Print to standard output whenever compiled kernel specialized for the
     // operands shapes or values.
@@ -154,13 +150,11 @@ def FallbackDebugExecuteOp : TF_JITRT_Op<"fallback.debug.execute"> {
     BoolAttr:$legalize_i1_tensors
   );
 
-  let results = (outs
-    Variadic<TFTensorType>:$results
-  );
+  let results = (outs Variadic<TFTensorType>);
 
   let assemblyFormat = [{
-    $kernel `(` $operands `)` `device` `(` $device `)` attr-dict `:`
-    functional-type($operands, $results)
+    $kernel `(` operands `)` `device` `(` $device `)` attr-dict `:`
+    functional-type(operands, results)
   }];
 }
 

@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -13,8 +14,8 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
     ] + if_google([
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive/google:google_env",
@@ -31,8 +32,8 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
     ] + if_google([
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive:status_macro",

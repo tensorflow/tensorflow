@@ -41,7 +41,6 @@ from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -50,12 +49,13 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util as util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import traceback_utils
 
@@ -316,9 +316,16 @@ class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
     @def_function.function
     def fn():
       strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
-      self.assertEqual(
-          strategy.extended._collective_ops._options.implementation,
-          collective_util.CommunicationImplementation.RING)
+      if ops.executing_eagerly_outside_functions():
+        self.assertIsInstance(
+            strategy.extended._collective_ops,
+            cross_device_ops_lib.CollectiveAllReduce)
+        self.assertEqual(
+            strategy.extended._collective_ops._options.implementation,
+            collective_util.CommunicationImplementation.RING)
+      else:
+        self.assertIsInstance(strategy.extended._collective_ops,
+                              cross_device_ops_lib.ReductionToOneDevice)
     fn()
 
   def testMixedDevices(self):
@@ -334,15 +341,19 @@ class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
     @def_function.function
     def fn():
       strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1"])
+      self.assertIsInstance(
+          strategy.extended._collective_ops,
+          cross_device_ops_lib.CollectiveAllReduce)
       self.assertEqual(
           strategy.extended._collective_ops._options.implementation,
           collective_util.CommunicationImplementation.NCCL)
     fn()
 
   def testVirtualGpu(self):
-    physical_gpus = context.context().list_physical_devices(device_type="GPU")
     # Logical devices cannot be changed after context initialization.
     context._reset_context()
+
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
     context.context().set_logical_device_configuration(physical_gpus[1], [
         context.LogicalDeviceConfiguration(memory_limit=1024),
         context.LogicalDeviceConfiguration(memory_limit=1024)
@@ -350,10 +361,141 @@ class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
     @def_function.function
     def fn():
       strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2"])
-      self.assertEqual(
-          strategy.extended._collective_ops._options.implementation,
-          collective_util.CommunicationImplementation.RING)
+      if ops.executing_eagerly_outside_functions():
+        self.assertIsInstance(
+            strategy.extended._collective_ops,
+            cross_device_ops_lib.CollectiveAllReduce)
+        self.assertEqual(
+            strategy.extended._collective_ops._options.implementation,
+            collective_util.CommunicationImplementation.RING)
+      else:
+        self.assertEqual(strategy.extended._collective_ops,
+                         cross_device_ops_lib.ReductionToOneDevice)
     fn()
+
+
+@combinations.generate(
+    combinations.combine(
+        mode=["graph", "eager"], required_gpus=[2], use_default=[True, False]))
+class MirroredGetCrossDeviceOpTest(
+    strategy_test_lib.DistributionTestBase,
+    strategy_test_lib.TwoDeviceDistributionTestBase, parameterized.TestCase):
+
+  def tearDown(self):
+    super().tearDown()
+    context._reset_context()
+
+  def testGpusCollectiveOp(self, use_default):
+
+    @def_function.function(jit_compile=util.is_xla_enabled())
+    def fn(var, use_default):
+
+      if use_default or util.is_xla_enabled():
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.CollectiveAllReduce)
+      else:
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.NcclAllReduce)
+
+    strategy = mirrored_strategy.MirroredStrategy(
+        ["GPU:0", "GPU:1"],
+        cross_device_ops=None
+        if use_default else cross_device_ops_lib.NcclAllReduce())
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    fn(var, use_default)
+
+  def testVirtualGpusCollectiveOp(self, use_default):
+    # Logical devices cannot be changed after context initialization.
+    context._reset_context()
+
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    context.context().set_logical_device_configuration(physical_gpus[1], [
+        context.LogicalDeviceConfiguration(memory_limit=1024),
+        context.LogicalDeviceConfiguration(memory_limit=1024)
+    ])
+
+    @def_function.function(jit_compile=util.is_xla_enabled())
+    def fn(var, use_default):
+
+      if use_default or util.is_xla_enabled():
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.CollectiveAllReduce)
+        self.assertEqual(
+            strategy.extended._get_cross_device_ops(
+                var)._options.implementation,
+            collective_util.CommunicationImplementation.RING)
+      else:
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.NcclAllReduce)
+
+    strategy = mirrored_strategy.MirroredStrategy(
+        ["GPU:0", "GPU:1", "GPU:2"],
+        cross_device_ops=None
+        if use_default else cross_device_ops_lib.NcclAllReduce())
+
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    fn(var, use_default)
+
+  def testCpusCollectiveOp(self, use_default):
+    del use_default
+    if util.is_xla_enabled():
+      self.skipTest("Only expected to run under non-XLA context.")
+
+    @def_function.function(jit_compile=True)
+    def fn(var):
+
+      if not ops.executing_eagerly_outside_functions():
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.ReductionToOneDevice)
+      else:
+        self.assertIsInstance(
+            strategy.extended._get_cross_device_ops(var),
+            cross_device_ops_lib.CollectiveAllReduce)
+
+    strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    fn(var)
+
+  def testMixedDevicesCollectiveOp(self, use_default):
+    del use_default
+    if util.is_xla_enabled():
+      self.skipTest("All devices should be identical in XLA context.")
+
+    # XLA is not supported if devices are not of the same type.
+    strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "GPU:0"])
+    with strategy.scope():
+      var = variables.Variable(1.)
+
+    self.assertIsInstance(
+        strategy.extended._get_cross_device_ops(var),
+        cross_device_ops_lib.ReductionToOneDevice)
+
+  def testMirroredStrategyInt32VariableCollectiveOp(self, use_default):
+    if util.is_xla_enabled():
+      self.skipTest("Only expected to run under non-XLA context.")
+
+    strategy = mirrored_strategy.MirroredStrategy(
+        ["GPU:0", "GPU:1"],
+        cross_device_ops=None
+        if use_default else cross_device_ops_lib.NcclAllReduce())
+    with strategy.scope():
+      # CollevtiveOp does not support int32 on GPU.
+      var = variables.Variable(1)
+
+    self.assertIsInstance(
+        strategy.extended._get_cross_device_ops(var),
+        cross_device_ops_lib.ReductionToOneDevice)
 
 
 def one_device_combinations():
@@ -516,7 +658,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       def body_fn(i):
         return ds_context.get_replica_context().merge_call(merge_fn, args=(i,))
 
-      return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+      return while_loop.while_loop_v2(lambda i: i < 2, body_fn, [0])
 
     with distribution.scope():
       with self.assertRaisesRegex(
@@ -1117,119 +1259,6 @@ class MockModel(object):
 @combinations.generate(
     combinations.combine(
         distribution=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-        ],
-        mode=["graph", "eager"]))
-class MirroredStrategyDefunTest(test.TestCase):
-
-  def _call_and_check(self, distribution, model_fn, inputs, expected_result,
-                      defuns, two_variables=False):
-    cpu_dev = device_util.canonicalize("CPU:0")
-    gpu_dev = device_util.canonicalize("GPU:0")
-    devices = [cpu_dev, gpu_dev]
-
-    with distribution.scope():
-      mock_model = MockModel(two_variables)
-      self.evaluate(variables.global_variables_initializer())
-
-      result = distribution.extended.call_for_each_replica(
-          model_fn, args=[mock_model] + inputs)
-      for r in range(len(devices)):
-        device_result = distribute_utils.select_replica(r, result)
-        device_expected_result = distribute_utils.select_replica(
-            r, expected_result)
-        self.assertAllClose(device_expected_result,
-                            self.evaluate(device_result))
-
-      for defun in defuns:
-        # `Function`s are specialized to the current device stack, so
-        # call_for_each has one trace per device. To check that the expected set
-        # of variables was accessed on each trace, we first retrieve each
-        # device-specific graph function.
-        per_replica_graph_functions = (
-            distribution.extended.call_for_each_replica(
-                defun.get_concrete_function, args=[mock_model] + inputs))
-        for i in range(len(devices)):
-          graph_function = distribution.experimental_local_results(
-              per_replica_graph_functions)[i]
-          # TODO(b/129555712): re-enable an assertion here that the two sets of
-          # variables are the same.
-          # self.assertEqual(set(graph_function.graph.variables),
-          #  set(mock_model.variables))
-          del graph_function
-
-  def testVariableInDefun(self, distribution):
-    @function.defun
-    def times_two(mock_model):
-      return mock_model()
-
-    def model_fn(mock_model):
-      return times_two(mock_model)
-
-    self._call_and_check(distribution, model_fn, [], 2.5, [times_two])
-
-  def testVariableInNestedDefun(self, distribution):
-    @function.defun
-    def times_two(mock_model):
-      return mock_model()
-
-    @function.defun
-    def two_x_plus_one(mock_model):
-      return times_two(mock_model) + 1
-
-    def model_fn(mock_model):
-      return two_x_plus_one(mock_model)
-
-    self._call_and_check(distribution, model_fn, [], 3.5,
-                         [times_two, two_x_plus_one])
-
-  def testTwoVariablesInNestedDefun(self, distribution):
-    @function.defun
-    def fn1(mock_model):
-      return mock_model()
-
-    @function.defun
-    def fn2(mock_model):
-      return fn1(mock_model) + 1
-
-    def model_fn(mock_model):
-      return fn2(mock_model)
-
-    self._call_and_check(distribution, model_fn, [], 5.5, [fn1, fn2],
-                         two_variables=True)
-
-  def testGradientTapeOverNestedDefuns(self, distribution):
-    @function.defun
-    def fn1(mock_model):
-      return mock_model()
-
-    @function.defun
-    def fn2(mock_model):
-      return fn1(mock_model) + 1
-
-    def model_fn(mock_model):
-      with backprop.GradientTape(persistent=True) as gtape:
-        result = fn2(mock_model)
-      grads = gtape.gradient(result,
-                             [v._get() for v in mock_model.variables])
-      return grads
-
-    self._call_and_check(distribution, model_fn, [], [2.0, 1.0], [fn1, fn2],
-                         two_variables=True)
-
-  def testPassPerReplica(self, distribution):
-    @function.defun
-    def fn1(mock_model, factor):
-      return mock_model(factor)
-
-    factors = values.PerReplica((5.0, 3.0))
-    expected_result = values.PerReplica((5.0 * 1.25, 3.0 * 1.25))
-    self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
-
-
-@combinations.generate(
-    combinations.combine(
-        distribution=[
             combinations.NamedDistribution(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
@@ -1401,7 +1430,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
         if context.num_gpus() == 0:
-          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+          self.assertIsInstance(strategy.extended._cross_device_ops,
                                 cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
       self._test_minimize_loss_graph(strategy, learning_rate=0.05)

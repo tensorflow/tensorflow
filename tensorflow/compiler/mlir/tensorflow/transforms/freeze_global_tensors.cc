@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 
 #define DEBUG_TYPE "freeze-global-tensor"
 
@@ -42,8 +43,10 @@ namespace tf_saved_model {
 
 namespace {
 
+#define GEN_PASS_DEF_FREEZEGLOBALTENSORSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 struct FreezeGlobalTensorsPass
-    : public FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
+    : public impl::FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
   explicit FreezeGlobalTensorsPass(bool allow_mutable_tensors) {
     this->allow_mutable_tensors = allow_mutable_tensors;
   }
@@ -56,6 +59,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<dataflow::SparseConstantPropagation>();
   solver.load<TF::ResourceDataflowAnalysis>();
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
@@ -138,6 +142,9 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       if (!global_tensor)
         continue;  // happens if the name is e.g. in a VarHandleOp.
 
+      if (!global_tensor.getValue())
+        continue;  // a value wasn't loaded for this tensor.
+
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
       frozen_global_tensors.insert(global_tensor);
 
@@ -157,7 +164,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
-                                                  global_tensor.getValue());
+                                                  *global_tensor.getValue());
       args_to_erase.set(val.getArgNumber());
       for (auto read_op : read_variable_ops_to_erase) {
         read_op.getResult().replaceAllUsesWith(const_op.getResult());

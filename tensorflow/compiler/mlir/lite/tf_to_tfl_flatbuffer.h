@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 
@@ -30,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -40,8 +41,7 @@ namespace tensorflow {
 // file; otherwise, load from a GraphDef.
 // Setting prune_unused_nodes to true, would prune unreachable nodes if
 // output_arrays is specified.
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-LoadFromGraphdefOrMlirSource(
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     const GraphImportConfig& specs, absl::string_view debug_info_file,
@@ -52,8 +52,7 @@ LoadFromGraphdefOrMlirSource(
 
 // Load Saved model (either v1 or v2) into MLIR.
 // 'saved_model_bundle' will be initialized if V1 model was loaded.
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-ImportSavedModel(
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
@@ -63,7 +62,9 @@ ImportSavedModel(
 
 Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
-    mlir::StatusScopedDiagnosticHandler& statusHandler, std::string* result);
+    mlir::StatusScopedDiagnosticHandler& statusHandler,
+    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+    std::optional<tensorflow::Session*> session, std::string* result);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes (configured accordingly to the provided
@@ -82,7 +83,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
-    llvm::Optional<tensorflow::Session*> session, std::string* result);
+    std::optional<tensorflow::Session*> session, std::string* result);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

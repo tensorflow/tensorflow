@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
@@ -36,9 +35,13 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_REMOVEUNUSEDWHILERESULTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Removes unused results and related ops from while loops.
 struct RemoveUnusedWhileResultsPass
-    : public RemoveUnusedWhileResultsPassBase<RemoveUnusedWhileResultsPass> {
+    : public impl::RemoveUnusedWhileResultsPassBase<
+          RemoveUnusedWhileResultsPass> {
   void runOnOperation() override;
 };
 
@@ -47,8 +50,8 @@ bool TryPruneResultDefiningOp(TF::WhileRegionOp while_op, OpResult result) {
   // Don't prune if result is used.
   if (!result.use_empty()) return false;
 
-  Block& body_block = while_op.body().front();
-  Block& cond_block = while_op.cond().front();
+  Block& body_block = while_op.getBody().front();
+  Block& cond_block = while_op.getCond().front();
   Operation* body_yield_op = body_block.getTerminator();
 
   // The body yield operand, body block argument, condition block argument, and
@@ -66,7 +69,7 @@ bool TryPruneResultDefiningOp(TF::WhileRegionOp while_op, OpResult result) {
     if (TF::TensorFlowDialect::CanHaveSideEffects(candidate_op)) {
       return false;
     }
-  } else if (!MemoryEffectOpInterface::hasNoEffect(candidate_op)) {
+  } else if (!isMemoryEffectFree(candidate_op)) {
     return false;
   }
 

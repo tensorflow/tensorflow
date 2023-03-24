@@ -15,53 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 
-#include <memory>
-#include <string>
-
-#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 
 namespace tensorflow {
-
-// Enables multiple tasks to coordinate on a safe sync point if any of the tasks
-// receive a preemption notice. Example: tasks agree on a safe checkpointing
-// step after a preemption notice so that training can resume with minimal
-// disruption after the preemption.
-// Note: the sync point can only be set once whenever the first preemption
-// occurs.
-// TODO(b/230630494): Add Reset() to allow multiple sync points to be set.
-class PreemptionSyncManager {
- public:
-  virtual ~PreemptionSyncManager() = default;
-
-  virtual Status Initialize(xla::DistributedRuntimeClient* client) = 0;
-  virtual Status Initialize(CoordinationServiceAgent* agent) = 0;
-  virtual Status Initialize(CoordinationServiceAgent* agent,
-                            const std::string& preemption_notifier_type) = 0;
-  virtual Status Initialize(CoordinationServiceAgent* agent,
-                            std::unique_ptr<PreemptionNotifier> notifier) = 0;
-
-  // Check if the synchronized point has been reached. When a task has been
-  // preempted, a safe sync point will be determined by using the fastest task's
-  // next possible sync point, which is then propagated to all tasks via this
-  // method.
-  // Notes:
-  // 1) This must be called during every possible sync point so that the library
-  //    is aware of each task's progress.
-  // 2) This assumes that each task begins from the same point.
-  //    Internally, it updates a counter to track the last `step_counter` passed
-  //    in as argument to record each task's current progress.
-  // Example use case: this can be called during every training step for every
-  // task. Once a preemption notice is received, all tasks will agree on a safe
-  // step to pause training and handle the preemption (e.g. save checkpoint and
-  // exit, or wait for preempted task to restart, then resume training).
-  virtual bool ReachedSyncPoint(int step_counter) = 0;
-};
-
-std::unique_ptr<PreemptionSyncManager> CreatePreemptionSyncManager();
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::CreatePreemptionSyncManager;
+using tsl::PreemptionSyncManager;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_

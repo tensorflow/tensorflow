@@ -16,12 +16,7 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/python:nn_grad_test \
--//tensorflow/python/client:session_list_devices_test \
--//tensorflow/python/data/kernel_tests:iterator_test_cpu \
--//tensorflow/python/data/kernel_tests:iterator_test_gpu \
--//tensorflow/python/eager:forwardprop_test \
--//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
--//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
 -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
--//tensorflow/python/training:server_lib_test"
+-//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
+-//tensorflow/python/kernel_tests/nn_ops:pooling_ops_test \
+"

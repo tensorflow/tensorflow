@@ -17,7 +17,7 @@ if(TARGET opengl_headers OR opengl_headers_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   opengl_headers

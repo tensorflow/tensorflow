@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for TF_DETERMINISTIC_OPS=1."""
 
+import os
 from tensorflow.python.framework import config
 from tensorflow.python.kernel_tests.nn_ops import cudnn_deterministic_base
 from tensorflow.python.platform import test
@@ -23,4 +24,6 @@ ConvolutionTest = cudnn_deterministic_base.ConvolutionTest
 if __name__ == '__main__':
   # TODO(reedwm): Merge this file with cudnn_deterministic_base.py.
   config.enable_op_determinism()
+
+  os.environ['TF_DETERMINISTIC_OPS'] = '1'
   test.main()

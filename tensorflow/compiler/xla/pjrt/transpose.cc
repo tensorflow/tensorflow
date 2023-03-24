@@ -86,8 +86,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose_kernels.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -496,8 +496,8 @@ void TransposePlan::Execute(
     absl::BlockingCounter counter(nodes_.size());
     for (absl::Span<Node const> nodes : nodes_) {
       schedule_work([&, nodes]() {
-        tensorflow::profiler::TraceMe traceme("Transpose::Execute",
-                                              /*level=*/2);
+        tsl::profiler::TraceMe traceme("Transpose::Execute",
+                                       /*level=*/2);
         execute_by_type(nodes);
         counter.DecrementCount();
       });

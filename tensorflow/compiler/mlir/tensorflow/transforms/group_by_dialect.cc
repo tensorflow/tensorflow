@@ -23,20 +23,29 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 namespace {
 
-void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id);
+void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
+                       Operation* module);
 
-class GroupByDialectPass : public GroupByDialectPassBase<GroupByDialectPass> {
+#define GEN_PASS_DEF_GROUPBYDIALECTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class GroupByDialectPass
+    : public impl::GroupByDialectPassBase<GroupByDialectPass> {
  public:
   void runOnOperation() override;
 
  private:
-  void processFunction(mlir::func::FuncOp func, int& counter);
+  void processFunction(mlir::func::FuncOp func, int& counter,
+                       llvm::SmallDenseSet<StringRef>& dialects,
+                       Operation* module);
+  void processRegion(mlir::Region& region, int& counter,
+                     llvm::SmallDenseSet<StringRef>& dialects,
+                     Operation* module);
 
   llvm::SmallDenseSet<StringRef> top_level_dialects_ = {"ml_program", "glue",
                                                         "func"};
@@ -102,7 +111,8 @@ void computeInputsOutputs(std::vector<Operation*>& ops,
   }
 }
 
-void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
+void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
+                       Operation* module) {
   if (ops.empty()) {
     return;
   }
@@ -127,7 +137,9 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
   MLIRContext* context = ops[0]->getContext();
   StringRef dialect = ops[0]->getName().getDialectNamespace();
   OpBuilder builder(context);
-  builder.setInsertionPointToEnd(ops[0]->getParentOp()->getBlock());
+  // Every ModuleOp has at least one region and one block.
+  Block* first_block = &module->getRegion(0).front();
+  builder.setInsertionPointToEnd(first_block);
   auto func = builder.create<mlir::func::FuncOp>(
       ops[0]->getLoc(), dialect.str() + std::to_string(function_id),
       builder.getFunctionType(input_types, output_types));
@@ -152,7 +164,7 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
   auto call = builder.create<mlir::func::CallOp>(
       ops[0]->getLoc(), func.getFunctionType().getResults(), func.getSymName(),
       inputs);
-  for (auto& v : llvm::enumerate(outputs)) {
+  for (const auto& v : llvm::enumerate(outputs)) {
     v.value().replaceUsesWithIf(call.getResult(v.index()), [=](OpOperand& o) {
       // Outside of what we're moving, results of our operations need to
       // be replaced by results from the function call.
@@ -171,36 +183,49 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id) {
 
 }  // namespace
 
-void GroupByDialectPass::processFunction(mlir::func::FuncOp func,
-                                         int& counter) {
+void GroupByDialectPass::processFunction(
+    mlir::func::FuncOp func, int& counter,
+    llvm::SmallDenseSet<StringRef>& dialects, Operation* module) {
   // don't re-process functions we generated
   if (func->getAttr("dialect")) return;
+  processRegion(func.getBody(), counter, dialects, module);
+}
 
-  for (Block& block : func.getBody().getBlocks()) {
+void GroupByDialectPass::processRegion(mlir::Region& region, int& counter,
+                                       llvm::SmallDenseSet<StringRef>& dialects,
+                                       Operation* module) {
+  for (Block& block : region.getBlocks()) {
     StringRef current_dialect("<none>");
     std::vector<Operation*> ops;
     for (Operation& op : block.getOperations()) {
       StringRef dialect = op.getName().getDialectNamespace();
+      for (Region& region : op.getRegions()) {
+        // When processing nested operations, move all ops (except for func.*)
+        // that aren't of the parent dialect into a function or their own.
+        llvm::SmallDenseSet<StringRef> parent_dialect = {dialect, "func"};
+        processRegion(region, counter, parent_dialect, module);
+      }
       if (dialect != current_dialect) {
-        if (!top_level_dialects_.contains(current_dialect)) {
-          wrapOpsInFunction(ops, counter++);
+        if (!dialects.contains(current_dialect)) {
+          wrapOpsInFunction(ops, counter++, module);
         }
         ops.clear();
         current_dialect = dialect;
       }
       ops.push_back(&op);
     }
-    if (!top_level_dialects_.contains(current_dialect)) {
-      wrapOpsInFunction(ops, counter++);
+    if (!dialects.contains(current_dialect)) {
+      wrapOpsInFunction(ops, counter++, module);
     }
   }
-  counter++;
 }
 
 void GroupByDialectPass::runOnOperation() {
   int counter = 0;
-  getOperation().walk(
-      [&](func::FuncOp func) { processFunction(func, counter); });
+  Operation* module = getOperation();
+  module->walk([&](func::FuncOp func) {
+    processFunction(func, counter, top_level_dialects_, module);
+  });
 }
 
 std::unique_ptr<Pass> CreateGroupByDialectPass() {

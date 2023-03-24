@@ -130,7 +130,7 @@ To add module dependencies:
     ...
         // Tensorflow Lite dependencies
         implementation 'org.tensorflow:tensorflow-lite-task-vision-play-services:0.4.2'
-        implementation 'com.google.android.gms:play-services-tflite-gpu:16.0.0'
+        implementation 'com.google.android.gms:play-services-tflite-gpu:16.1.0'
     ...
     }
     ```

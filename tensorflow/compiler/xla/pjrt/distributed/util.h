@@ -25,7 +25,7 @@ inline Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
     return OkStatus();
   } else {
-    return Status(static_cast<tensorflow::error::Code>(s.error_code()),
+    return Status(static_cast<absl::StatusCode>(s.error_code()),
                   s.error_message());
   }
 }

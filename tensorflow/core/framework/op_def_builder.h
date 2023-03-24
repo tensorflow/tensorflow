@@ -36,8 +36,13 @@ namespace tensorflow {
 typedef std::function<Status(OpDef* c)> OpTypeConstructor;
 
 typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
-typedef std::map<std::string, std::reference_wrapper<const FullTypeDef>>
-    TypeRefMap;
+
+// A callback into the type inference process, allowing type inference functions
+// to request inferring the type of some function (assumed to exist in the
+// runtime). The function is specified by name.
+typedef std::function<StatusOr<FullTypeDef>(const string&,
+                                            const TypeRefVector&)>
+    FunctionTypeInferrer;
 
 // A type inference function, called for each node during type inference
 // (possibly multiple times).
@@ -47,10 +52,9 @@ typedef std::map<std::string, std::reference_wrapper<const FullTypeDef>>
 // in the node's corresponding op definition.
 //
 // TODO(mdan): Consider a vector-in, vector-out contract.
-// TODO(mdan): Rename to just TypeInferenceFn (since it's not always "forward").
 typedef std::function<StatusOr<FullTypeDef>(const TypeRefVector&,
-                                            const TypeRefMap&)>
-    ForwardTypeInferenceFn;
+                                            const FunctionTypeInferrer&)>
+    TypeInferenceFn;
 
 class FunctionDefHelper;
 
@@ -120,13 +124,13 @@ struct OpRegistrationData {
   //
   // TODO(mdan): Merge with shape inference.
   // TODO(mdan): Replace with a union-based type inference algorithm.
-  ForwardTypeInferenceFn fwd_type_fn;
+  TypeInferenceFn fwd_type_fn;
 
   // Reverse type inference function. This callable infers some input types
   // based on the return type.
   //
   // TODO(mdan): Replace with a union-based type inference algorithm.
-  ForwardTypeInferenceFn rev_type_fn;
+  TypeInferenceFn rev_type_fn;
 
   // The input number affected by reverse type inference. Only one input may be
   // updated in this manner.
@@ -225,11 +229,11 @@ class OpDefBuilder {
 
   // Sets the function to be used for forward type inference.
   // See OpRegistrationData::fwd_type_fn.
-  OpDefBuilder& SetForwardTypeFn(ForwardTypeInferenceFn f);
+  OpDefBuilder& SetForwardTypeFn(TypeInferenceFn f);
 
   // Sets the function to be used for reverse type inference.
   // See OpRegistrationData::rew_type_fn.
-  OpDefBuilder& SetReverseTypeFn(int input_number, ForwardTypeInferenceFn f);
+  OpDefBuilder& SetReverseTypeFn(int input_number, TypeInferenceFn f);
 
   // Sets the shape function to be used for shape inference.
   //

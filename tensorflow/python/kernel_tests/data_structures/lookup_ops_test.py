@@ -30,7 +30,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -41,7 +40,8 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import gen_lookup_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import variables
@@ -460,7 +460,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
         "n/a",
         experimental_is_anonymous=is_anonymous)
 
-    @function.defun()
+    @def_function.function
     def lookup_table_func(k):
       return table.lookup(k)
 
@@ -475,7 +475,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
     values = constant_op.constant(["brain", "salad", "surgery"])
 
-    @function.defun()
+    @def_function.function
     def lookup_table_func(k):
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values),
@@ -564,7 +564,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
       def false_fn():
         return constant_op.constant(0, dtype=dtypes.float32)
 
-      return beta * control_flow_ops.cond(
+      return beta * cond.cond(
           constant_op.constant(True), true_fn=true_fn, false_fn=false_fn)
 
     with backprop.GradientTape() as tape:
@@ -573,6 +573,20 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(lookup_ops.tables_initializer())
     self.assertAllEqual(grad, -10.)
+
+  def testImportShapeInference(self, is_anonymous):
+    v = variables.Variable(1)
+
+    @def_function.function(jit_compile=True)
+    def foo():
+      return gen_lookup_ops.lookup_table_import_v2(
+          table_handle=v.handle, keys=[1.1, 2.2], values=1
+      )
+
+    with self.assertRaisesRegex(
+        ValueError, r"Shape must be at least rank 1 but is rank 0"
+    ):
+      foo()
 
   def testExportShapeInference(self, is_anonymous):
     table = self.getHashTable()(

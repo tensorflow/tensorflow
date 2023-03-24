@@ -1,9 +1,8 @@
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
 
-// -----
-
 // Valid: Generic convolution
 
+// CHECK-LABEL: func @main
 func.func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) ->
     tensor<100x28x28x1xf32> {
   %result = "mhlo.convolution"(%arg0, %arg1) {
@@ -29,8 +28,11 @@ func.func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) 
   func.return %result : tensor<100x28x28x1xf32>
 }
 
+// -----
+
 // Valid: Test convolution i8xi8 -> i32.
 
+// CHECK-LABEL: func @convolution_upcast
 func.func @convolution_upcast(%arg0 : tensor<100x26x26x32xi8>,
     %arg1 : tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32> {
   %result = "mhlo.convolution"(%arg0, %arg1) {
@@ -54,6 +56,8 @@ func.func @convolution_upcast(%arg0 : tensor<100x26x26x32xi8>,
   } : (tensor<100x26x26x32xi8>, tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32>
   func.return %result : tensor<100x28x28x1xi32>
 }
+
+// -----
 
 // Valid: Empty spatial dimensions
 
@@ -218,7 +222,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
 
 func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
     %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  // expected-error@+1 {{expects kernel dimension-numbers to be unique, got {0, 2, 3, 3}.}}
+  // expected-error@+1 {{expects kernel dimension-numbers to be unique, got {3, 2, 0, 0}.}}
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -246,7 +250,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
 
 func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
     %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  // expected-error@+1 {{expects output dimension-numbers to be unique, got {0, 3, 3, 3}.}}
+  // expected-error@+1 {{expects output dimension-numbers to be unique, got {0, 3, 0, 3}.}}
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -274,7 +278,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
 
 func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
-  // expected-error@+1 {{op expects batch_group_count to be a positive number, got 0.}}
+  // expected-error@+1 {{expects batch_group_count to be a positive number, got 0.}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1, 1]],
@@ -292,7 +296,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
 
 func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
-  // expected-error@+1 {{op expects feature_group_count to be a positive number, got 0.}}
+  // expected-error@+1 {{expects feature_group_count to be a positive number, got 0.}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1, 1]],
@@ -470,6 +474,23 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
 
 func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+  // expected-error@+1 {{expects window-reversal to have same dimension-size as size of window dimensions (2), but got: 1.}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+         window = {stride = [1, 1], pad = [[1, 1], [1, 1]],
+           lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [false]}
+         {
+           batch_group_count = 1 : i64,
+           feature_group_count = 1 : i64,
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
+       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  func.return %0 : tensor<1x8x8x16xf32>
+}
+
+// -----
+
+func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
+    %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
   // expected-error@+1 {{expects padding-entries to have same dimension-size as size of window dimensions (2), but got: 1.}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
@@ -521,35 +542,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>, %arg1 : ten
     >,
     feature_group_count = 1 : i64,
     lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<2> : tensor<6xi64>,
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf32>) ->
-    tensor<100x28x28x1xf32>
-  func.return %result : tensor<100x28x28x1xf32>
-}
-
-// -----
-
-func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) ->
-    tensor<100x28x28x1xf32> {
-  // expected-error@+1 {{expects the padding-entries to have even number of elements, but got 5 elements.}}
-  %result = "mhlo.convolution"(%arg0, %arg1) {
-    batch_group_count = 1 : i64,
-    dimension_numbers = #mhlo.conv<raw
-      input_batch_dimension = 0,
-      input_feature_dimension = 3,
-      input_spatial_dimensions = [1, 2],
-      kernel_input_feature_dimension = 3,
-      kernel_output_feature_dimension = 2,
-      kernel_spatial_dimensions = [0, 1],
-      output_batch_dimension = 0,
-      output_feature_dimension = 3,
-      output_spatial_dimensions = [1, 2]
-    >,
-    feature_group_count = 1 : i64,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    padding = dense<2> : tensor<5xi64>,
+    padding = dense<2> : tensor<3x2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_strides = dense<1> : tensor<2xi64>
   } : (tensor<100x26x26x32xf32>, tensor<3x3x1x32xf32>) ->
@@ -633,7 +626,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
 
 func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x16xf32> {
-  // expected-error @+1 {{expects rank of convolution return-type to be equal to input-ranks (4), but got 3.}}
+  // expected-error @+1 {{expects rank of convolution return-type to be equal to input-ranks (4), but got 3}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1, 1]],
@@ -654,7 +647,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
 
 func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<2x8x8x16xf32> {
-  // expected-error@+1 {{nvolution' op has shape mismatch between the expected return-type ('tensor<1x8x8x16xf32>') and actual return-type ('tensor<2x8x8x16xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, 8, 8, 16]' is incompatible with return type of operation 'tensor<2x8x8x16xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -675,7 +668,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
 
 func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x32xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<1x8x8x16xf32>') and actual return-type ('tensor<1x8x8x32xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, 8, 8, 16]' is incompatible with return type of operation 'tensor<1x8x8x32xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -698,7 +691,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
 // Dynamic input-batch-dimension
 func.func @invalid_conv_dynamic_shapes(%arg0: tensor<?x8x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x1x1x1xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<?x8x8x16xf32>') and actual return-type ('tensor<1x1x1x1xf32>').}}
+  // expected-error@+1 {{inferred shape '[?, 8, 8, 16]' is incompatible with return type of operation 'tensor<1x1x1x1xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -717,7 +710,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<?x8x8x207xf32>,
 // Dynamic input-feature-dimension: No effect on output dimensions.
 func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x8x8x?xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x1x1x1xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<1x8x8x16xf32>') and actual return-type ('tensor<1x1x1x1xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, 8, 8, 16]' is incompatible with return type of operation 'tensor<1x1x1x1xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -736,7 +729,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x8x8x?xf32>,
 // Dynamic input-spatial-dimension
 func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x?x8x207xf32>,
     %arg1: tensor<3x3x207x16xf32>) -> tensor<1x1x1x1xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<1x?x8x16xf32>') and actual return-type ('tensor<1x1x1x1xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, ?, 8, 16]' is incompatible with return type of operation 'tensor<1x1x1x1xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -755,7 +748,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x?x8x207xf32>,
 // Dynamic kernel-input-feature-dimension: No effect on output dimensions.
 func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x?x16xf32>) -> tensor<1x1x1x1xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<1x8x8x16xf32>') and actual return-type ('tensor<1x1x1x1xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, 8, 8, 16]' is incompatible with return type of operation 'tensor<1x1x1x1xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -774,7 +767,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x8x8x207xf32>,
 // Dynamic kernel-output-feature-dimension
 func.func @check_inferred_type_with_dynamic_input_dims(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x3x207x?xf32>) -> tensor<1x1x1x1xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<1x8x8x?xf32>') and actual return-type ('tensor<1x1x1x1xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, 8, 8, ?]' is incompatible with return type of operation 'tensor<1x1x1x1xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -793,7 +786,7 @@ func.func @check_inferred_type_with_dynamic_input_dims(%arg0: tensor<1x8x8x207xf
 // Dynamic kernel-spatial-dimension
 func.func @check_inferred_type_with_dynamic_input_dims(%arg0: tensor<1x8x8x207xf32>,
     %arg1: tensor<3x?x207x16xf32>) -> tensor<1x1x1x1xf32> {
-  // expected-error@+1 {{has shape mismatch between the expected return-type ('tensor<1x8x?x16xf32>') and actual return-type ('tensor<1x1x1x1xf32>').}}
+  // expected-error@+1 {{inferred shape '[1, 8, ?, 16]' is incompatible with return type of operation 'tensor<1x1x1x1xf32>'}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
          window = {stride = [1, 1], pad = [[1, 1], [1,1]],
@@ -807,3 +800,155 @@ func.func @check_inferred_type_with_dynamic_input_dims(%arg0: tensor<1x8x8x207xf
   func.return %0 : tensor<1x1x1x1xf32>
 }
 
+// -----
+
+func.func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+  // expected-error @+3 {{'mhlo.convolution' Expected array with 2 elements, got 3 elements instead}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+         window = {stride = [1, 1], pad = [[1, 1, 1], [1, 1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
+       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  func.return %0 : tensor<1x8x8x16xf32>
+}
+
+// -----
+
+// CHECK: module
+// CHECK-SAME: mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 1, 0, f]>
+module attributes { mhlo.conv = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [2, 1]>} {}
+
+// -----
+
+// CHECK: module
+// CHECK: mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+module attributes {
+  mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension c, expecting b, f}}
+  mhlo.conv = #mhlo.conv<[c, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension b, expecting i, o}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, b, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension i, expecting o}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, i]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Expected dimensions f not specified}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected keyword b}}
+  mhlo.conv = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o, b]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{expected '['}}
+  mhlo.conv = #mhlo.conv<{b, 0, 1, f}x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Expected spatial dimensions 0 not specified}}
+  mhlo.conv = #mhlo.conv<[b, f, 1]x[o, 0, 1, i]->[f, b, 0, 1]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Duplicate entries for spatial dimension 1}}
+  mhlo.conv = #mhlo.conv<[b, f, 1, 0, 1]x[o, 0, 1, i]->[f, b, 0, 1]>
+} {}
+
+// -----
+
+module attributes {
+  // expected-error@+1{{Unexpected dimension -2}}
+  mhlo.conv = #mhlo.conv<[b, f, 1, -2]x[o, 0, 1, i]->[f, b, 0, 1]>
+} {}
+
+// -----
+
+func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{Unexpected keyword stide}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stide = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  func.return %0 : tensor<3x5x5x4xf32>
+}
+
+// -----
+
+func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{expected integer value}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, b], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  func.return %0 : tensor<3x5x5x4xf32>
+}
+
+// -----
+
+func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32> {
+  // expected-error@+3{{Unexpected keyword stride}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+     window = {stride = [2, 1], pad = [[0, 1], [0, 1]], rhs_dilate = [1, 2], stride=[2,1]}
+     { batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  : (tensor<2x2x3x4xf32>, tensor<3x5x5x3xf32>) -> tensor<3x5x5x4xf32>
+  func.return %0 : tensor<3x5x5x4xf32>
+}
+
+// -----
+
+func.func @conv_invalid_precision_config(%arg0: tensor<3x2xf16>,
+    %arg1: tensor<2x2xf16>) -> tuple<tensor<3x2xf16>> {
+  // expected-error@+1 {{expects precision config to be empty or have <= 2 elements}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, f]x[i, o]->[b, f],
+         window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [],
+           reverse = []}
+         {
+           batch_group_count = 1 : i64,
+           feature_group_count = 1 : i64,
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+         }
+       : (tensor<3x2xf16>, tensor<2x2xf16>) -> tensor<3x2xf16>
+  %1 = "mhlo.tuple"(%0) : (tensor<3x2xf16>) -> tuple<tensor<3x2xf16>>
+  func.return %1 : tuple<tensor<3x2xf16>>
+}

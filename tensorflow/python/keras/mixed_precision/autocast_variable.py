@@ -17,6 +17,8 @@
 import threading
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -138,15 +140,17 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       raise ValueError('Cannot convert AutoCastVariable to a tensor if '
                        'as_ref=True is passed to convert_to_tensor')
     if not self._should_cast():
-      return ops.convert_to_tensor_v2_with_dispatch(self._variable, dtype=dtype,
-                                                    name=name)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._variable, dtype=dtype, name=name
+      )
     if dtype is not None and not dtype.is_compatible_with(self._cast_dtype):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for '
           'AutoCastVariable which is casted to type {!r}'.format(
               dtype.name, self._cast_dtype.name))
-    val = ops.convert_to_tensor_v2_with_dispatch(
-        self._variable, dtype=self._variable.dtype, name=name)
+    val = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self._variable, dtype=self._variable.dtype, name=name
+    )
     return math_ops.cast(val, self._cast_dtype)
 
   def _should_act_as_resource_variable(self):
@@ -349,12 +353,14 @@ class AutoCastVariable(variables.Variable, core.Tensor):
     # models with normal variables, and vice versa.
     return self._variable._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map, options,
+                                   **kwargs):
     # By delegating this method to the wrapped variable, SavedModel with
     # AutoCastVariables are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._variable._map_resources(save_options)  # pylint:disable=protected-access
-    obj_map[self] = obj_map[self._variable]
-    return obj_map, resource_map
+    resource_list = self._variable._export_to_saved_model_graph(  # pylint:disable=protected-access
+        object_map, tensor_map, options, **kwargs)
+    object_map[self] = object_map[self._variable]
+    return resource_list
 
   # TODO(reedwm): Maybe encode the fact the variable is an AutoCastVariable in
   # to_proto().
@@ -488,8 +494,8 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   # pylint: enable=multiple-statements
 
 
-ops.register_tensor_conversion_function(AutoCastVariable,
-                                        AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
+tensor_conversion_registry.register_tensor_conversion_function(
+    AutoCastVariable, AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
 
 
 def create_autocast_variable(variable):

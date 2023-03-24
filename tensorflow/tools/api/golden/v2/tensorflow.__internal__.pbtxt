@@ -129,6 +129,10 @@ tf_module {
     argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "register_load_context_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "register_load_model_function"
     argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
   }

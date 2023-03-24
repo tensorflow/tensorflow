@@ -352,6 +352,7 @@ class api_export(object):  # pylint: disable=invalid-name
       _NAME_TO_SYMBOL_MAPPING[name] = func
     for name_v1 in self._names_v1:
       _NAME_TO_SYMBOL_MAPPING['compat.v1.%s' % name_v1] = func
+
     return func
 
   def set_attr(self, func, api_names_attr, names):
@@ -401,7 +402,7 @@ class api_export(object):  # pylint: disable=invalid-name
 
 def kwarg_only(f):
   """A wrapper that throws away all non-kwarg arguments."""
-  f_argspec = tf_inspect.getargspec(f)
+  f_argspec = tf_inspect.getfullargspec(f)
 
   def wrapper(*args, **kwargs):
     if args:
@@ -411,9 +412,9 @@ def kwarg_only(f):
           .format(f=f.__name__, kwargs=f_argspec.args))
     return f(**kwargs)
 
-  return tf_decorator.make_decorator(f, wrapper, decorator_argspec=f_argspec)
+  return tf_decorator.make_decorator(
+      f, wrapper, decorator_argspec=f_argspec)
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)
 keras_export = functools.partial(api_export, api_name=KERAS_API_NAME)

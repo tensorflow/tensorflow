@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_TO_ALL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_TO_ALL_THUNK_H_
 
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include <vector>
+
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -31,8 +31,24 @@ struct NcclAllToAllConfig {
   bool has_split_dimension;
 };
 
-// Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
-class NcclAllToAllThunk : public NcclCollectiveThunk {
+// Base class for thunks that performs a NCCL-based All-to-All among CUDA
+// GPU-based replicas.
+class NcclAllToAllThunkBase : public NcclCollectiveThunk {
+ public:
+  NcclAllToAllThunkBase(Kind kind, ThunkInfo thunk_info,
+                        NcclAllToAllConfig config, std::vector<Buffer> buffers);
+
+ protected:
+  Status RunAllToAll(const ExecuteParams& params, se::Stream& stream,
+                     ncclComm_t comm);
+  const NcclCollectiveConfig& config() const override { return config_.config; }
+
+ private:
+  const NcclAllToAllConfig config_;
+  const std::vector<Buffer> buffers_;
+};
+
+class NcclAllToAllThunk : public NcclAllToAllThunkBase {
  public:
   NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
                     std::vector<Buffer> buffers);
@@ -43,26 +59,46 @@ class NcclAllToAllThunk : public NcclCollectiveThunk {
 
   static const char* GetName() { return "AllToAll"; }
   static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64_t replica_count,
-                           int64_t partition_count) {
-    return GetNcclAllToAllConfig(op).config.IsDegenerate(replica_count,
-                                                         partition_count);
-  }
+                           int64_t partition_count);
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op);
+  static constexpr bool IsAsync() { return false; }
 
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op) {
-    return GetNcclAllToAllConfig(op).config.group_mode;
-  }
+ protected:
+  Status RunNcclCollective(const ExecuteParams& params,
+                           ncclComm_t comm) override;
+};
+
+class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {
+ public:
+  NcclAllToAllStartThunk(ThunkInfo thunk_info,
+                         mlir::lmhlo_gpu::AllToAllStartOp op,
+                         std::vector<Buffer> buffers);
+
+  // Returns whether the given instruction can be lowered to a nccl all-to-all
+  // call.
+  static bool CanImplement(mlir::lmhlo_gpu::AllToAllStartOp op);
+
+  static const char* GetName() { return "AllToAllStart"; }
+  static bool IsDegenerate(mlir::lmhlo_gpu::AllToAllStartOp op,
+                           int64_t replica_count, int64_t partition_count);
+  static CollectiveOpGroupMode GetGroupMode(
+      mlir::lmhlo_gpu::AllToAllStartOp op);
+
+  static constexpr bool IsAsync() { return true; }
+  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-
  private:
-  static NcclAllToAllConfig GetNcclAllToAllConfig(mlir::lmhlo::AllToAllOp op);
+  AsyncExecutor async_;
+};
 
-  const NcclAllToAllConfig config_;
-  const std::vector<Buffer> buffers_;
+class NcclAllToAllDoneThunk : public NcclCollectiveDoneThunk {
+ public:
+  NcclAllToAllDoneThunk(ThunkInfo thunk_info,
+                        NcclCollectiveThunk::AsyncExecutor& async);
 };
 
 Status RunAllToAll(bool has_split_dimension,

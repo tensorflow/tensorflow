@@ -24,7 +24,7 @@ func.func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK: %[[EXPAND_2:.*]] = arith.cmpi slt, %[[OPER_DIM_1]], %[[C1]] : index
 // CHECK: %[[STRIDE_2:.*]] = arith.select %[[EXPAND_2]], %[[C0]], %[[C1]] : index
 
-// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: [%[[C1]], %[[C1]], %[[C1]]], strides: [%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xf32> to memref<?x?x?xf32, #map>
+// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: [%[[C1]], %[[C1]], %[[C1]]], strides: [%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xf32> to memref<?x?x?xf32, #map{{[0-9]*}}>
 // CHECK: %[[RESULT:.*]] = bufferization.to_tensor %[[TRANSFORMED_MEMREF]]
 
 // CHECK: return %[[RESULT]]
@@ -63,7 +63,7 @@ func.func @dyn_broadcast_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi6
 // CHECK: %[[EXPAND_2:.*]] = arith.cmpi slt, %[[OPER_DIM_1]], %[[SIZE_2]] : index
 // CHECK: %[[STRIDE_2:.*]] = arith.select %[[EXPAND_2]], %[[C0]], %[[C1]] : index
 
-// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: [%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: [%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xi32> to memref<?x?x?xi32, #map>
+// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: [%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: [%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xi32> to memref<?x?x?xi32, #map{{[0-9]*}}>
 
 // CHECK: %[[RESULT:.*]] = bufferization.to_tensor %[[TRANSFORMED_MEMREF]]
 
@@ -118,10 +118,49 @@ func.func @custom_call_multiple_inputs_outputs(%x: tensor<2xf32>,
 
 // CHECK-DAG: %[[I0:.+]] = bufferization.to_memref %[[ARG0]] : memref<2xf32>
 // CHECK-DAG: %[[I1:.+]] = bufferization.to_memref %[[ARG1]] : memref<5xi32>
-// CHECK-DAG: %[[O0:.*]] = memref.alloc() {alignment = 128 : i64} : memref<2xf32>
-// CHECK-DAG: %[[O1:.*]] = memref.alloc() {alignment = 128 : i64} : memref<2xf32>
-// CHECK-DAG: %[[O2:.*]] = memref.alloc() {alignment = 128 : i64} : memref<5xi32>
-// CHECK: "lmhlo.custom_call"(%[[I0]], %[[I1]], %[[O0]], %[[O1]], %[[O2]]) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = array<i32: 2, 3>} : (memref<2xf32>, memref<5xi32>, memref<2xf32>, memref<2xf32>, memref<5xi32>) -> ()
+// CHECK-DAG: %[[O0:.*]] = memref.alloc() {{.*}} : memref<2xf32>
+// CHECK-DAG: %[[O1:.*]] = memref.alloc() {{.*}} : memref<2xf32>
+// CHECK-DAG: %[[O2:.*]] = memref.alloc() {{.*}} : memref<5xi32>
+// CHECK: "lmhlo.custom_call"(%[[I0]], %[[I1]], %[[O0]], %[[O1]], %[[O2]]) ({
+// CHECK-NEXT: }) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = array<i32: 2, 3>} : (memref<2xf32>, memref<5xi32>, memref<2xf32>, memref<2xf32>, memref<5xi32>) -> ()
 // CHECK-DAG: %[[T0:.+]] = bufferization.to_tensor %[[O0]] : memref<2xf32>
 // CHECK-DAG: %[[T1:.+]] = bufferization.to_tensor %[[O1]] : memref<2xf32>
 // CHECK: return %[[T0]], %[[T1]] : tensor<2xf32>, tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: func @custom_call_side_effect
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2xf32>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<5xi32>
+func.func @custom_call_side_effect(%x: tensor<2xf32>,
+                                   %y: tensor<5xi32>) -> !mhlo.token {
+  %token = mhlo.create_token : !mhlo.token
+  %0:2 = "mhlo.custom_call"(%x, %y, %token) {
+    backend_config = "",
+    call_target_name = "bar",
+    has_side_effect = true
+  } : (tensor<2xf32>, tensor<5xi32>, !mhlo.token)
+    -> (!mhlo.token, tensor<2xi32>)
+  func.return %0#0 : !mhlo.token
+}
+
+// CHECK-DAG: %[[TOKEN:.*]] = mhlo.create_token
+// CHECK-DAG: %[[I0:.+]] = bufferization.to_memref %[[ARG0]] : memref<2xf32>
+// CHECK-DAG: %[[I1:.+]] = bufferization.to_memref %[[ARG1]] : memref<5xi32>
+// CHECK-DAG: %[[ALLOC:.+]] = memref.alloc
+// CHECK: "lmhlo.custom_call"(%[[I0]], %[[I1]], %[[ALLOC]]) ({
+// CHECK-NEXT: }) {backend_config = "", call_target_name = "bar", has_side_effect = true, operand_segment_sizes = array<i32: 2, 1>, target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<num_args = 3, num_results = 2, args_to_target_args = [0, 1], results_to_target_results = [1]>} : (memref<2xf32>, memref<5xi32>, memref<2xi32>)
+// CHECK: return %[[TOKEN]] : !mhlo.token
+
+// -----
+
+// CHECK-LABEL: func @infeed_outfeed
+func.func @infeed_outfeed(%arg0: tensor<f32>) {
+  %0 = mhlo.create_token : !mhlo.token
+  %1:2 = "mhlo.infeed"(%0) {infeed_config = "", layout = [[1, 0]]} : (!mhlo.token) -> (tensor<3x4xf32>, !mhlo.token)
+// CHECK: %[[ALLOC:.*]] = memref.alloc() {{.*}} : memref<3x4xf32>
+// CHECK: "lmhlo.infeed"(%[[ALLOC]]) {config = "", infeed_config = "", layout = {{\[}}[1, 0]]} : (memref<3x4xf32>) -> ()
+  %2 = "mhlo.outfeed"(%1#0, %1#1) {outfeed_config = ""} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
+// CHECK: "lmhlo.outfeed"(%[[ALLOC]]) {config = "", outfeed_config = ""} : (memref<3x4xf32>) -> ()
+  func.return
+}

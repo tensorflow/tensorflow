@@ -17,6 +17,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -45,11 +46,11 @@ cc_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/framework:tensor",
             "//tensorflow/core/framework:tensor_proto_cc",
             "//tensorflow/core/framework:types_proto_cc",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -63,8 +64,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:dtype",
         "//tensorflow/core/platform:logging",
+        "@tf_runtime//:dtype",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -108,10 +109,10 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            "//tensorflow/core/framework:tensor",
-            "//tensorflow/core/platform:status",
             "//tensorflow/c:tf_tensor",
             "//tensorflow/c:tf_tensor_internal",
+            "//tensorflow/core/framework:tensor",
+            "//tensorflow/core/platform:status",
         ],
     }),
 )
@@ -127,26 +128,27 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     deps = [
-        "@tf_runtime//backends/gpu:gpu_device",
-        "@tf_runtime//backends/gpu:gpu_config",
-        "@tf_runtime//:support",
-        ":type_util",
         ":tensor_util",
+        ":type_util",
+        "@tf_runtime//:support",
+        "@tf_runtime//backends/gpu:gpu_config",
+        "@tf_runtime//backends/gpu:gpu_device",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
-            "//tensorflow/core/common_runtime/eager:tensor_handle",
-            "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-            "//tensorflow/compiler/xla/stream_executor:platform",
-            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
             "//tensorflow/c:tf_tensor",
             "//tensorflow/c:tf_tensor_internal",
+            "//tensorflow/compiler/xla/stream_executor:platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
+            "//tensorflow/core/common_runtime/eager:tensor_handle",
+            "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         ],
     }),
 )

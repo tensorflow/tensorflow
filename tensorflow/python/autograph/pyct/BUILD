@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -127,7 +128,8 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct/testing",
+        "//tensorflow/python/autograph/pyct/testing:basic_definitions",
+        "//tensorflow/python/autograph/pyct/testing:decorators",
         "@gast_archive//:gast",
     ],
 )
@@ -157,7 +159,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct/testing",
+        "//tensorflow/python/autograph/pyct/testing:basic_definitions",
     ],
 )
 

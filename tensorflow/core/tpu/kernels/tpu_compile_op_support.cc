@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-using ::stream_executor::port::Status;
-using ::stream_executor::port::StatusOr;
+using ::tsl::Status;
+using ::tsl::StatusOr;
 using ::xla::ComputationLayout;
 using ::xla::DebugOptions;
 using ::xla::DeviceAssignment;
@@ -192,8 +192,8 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
     dimensions[i] = limit[i] - offset[i];
   }
   if (shape.has_layout()) {
-    return xla::ShapeUtil::MakeShapeWithLayout(shape.element_type(), dimensions,
-                                               shape.layout().minor_to_major());
+    return xla::ShapeUtil::MakeShapeWithDenseLayout(
+        shape.element_type(), dimensions, shape.layout().minor_to_major());
   }
   return xla::ShapeUtil::MakeShape(shape.element_type(), dimensions);
 }

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
@@ -24,7 +25,7 @@ namespace mlir {
 namespace quant {
 
 bool HasQuantizedTensors(Operation* op) {
-  if (IsOpNotQuantizable(op)) return false;
+  if (!IsOpQuantizable(op)) return false;
   for (Type operand_type : op->getOperandTypes()) {
     auto tensor_type = operand_type.dyn_cast<TensorType>();
     if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
@@ -49,7 +50,7 @@ bool HasStaticShape(Value value) {
 
 bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();
-  if (!shaped_type) return false;
+  if (!shaped_type || !shaped_type.hasRank()) return false;
 
   for (auto dim : dims) {
     if (shaped_type.isDynamicDim(dim)) return false;
@@ -76,7 +77,7 @@ LogicalResult IsOperationFoldable(Operation* op) {
   // folded to preserve the original semantics.
   if (op->hasTrait<OpTrait::IsTerminator>() ||
       op->hasTrait<OpTrait::TF::NoConstantFold>() || op->getNumRegions() != 0 ||
-      !MemoryEffectOpInterface::hasNoEffect(op)) {
+      !isMemoryEffectFree(op)) {
     return failure();
   }
 
@@ -135,7 +136,7 @@ LogicalResult FoldOperation(TFE_Context* ctx, OpBuilder& builder, Operation* op,
   for (auto operand : op->getOperands()) {
     auto preceding_const_op = operand.getDefiningOp<TF::ConstOp>();
     if (preceding_const_op) {
-      inputs.push_back(preceding_const_op.value());
+      inputs.push_back(preceding_const_op.getValue());
       continue;
     }
 
@@ -153,7 +154,7 @@ LogicalResult FoldOperation(TFE_Context* ctx, OpBuilder& builder, Operation* op,
     }
     auto preceding_result = preceding_results[preceding_result_id];
     preceding_const_op = preceding_result.getDefiningOp<TF::ConstOp>();
-    inputs.push_back(preceding_const_op.value());
+    inputs.push_back(preceding_const_op.getValue());
   }
 
   // Avoid overlapping folds with the same context.
@@ -240,6 +241,16 @@ llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
     return op->getResults();
   }
   return results;
+}
+
+llvm::SmallVector<Value> CloneOpWithReplacedOperands(
+    OpBuilder& builder, Operation* op,
+    const llvm::SmallVector<Value>& new_operands) {
+  IRMapping mapping;
+  for (const auto& arg : llvm::enumerate(new_operands)) {
+    mapping.map(op->getOperand(arg.index()), arg.value());
+  }
+  return builder.clone(*op, mapping)->getResults();
 }
 
 }  // namespace quant

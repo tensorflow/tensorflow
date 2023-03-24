@@ -61,9 +61,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 
@@ -527,7 +527,7 @@ class RunManyGraphs {
     Call* call = get(index);
     call->done = true;
     auto resp = call->resp.get();
-    if (resp->status_code() != error::Code::OK) {
+    if (resp->status_code() != absl::StatusCode::kOk) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
       Status resp_status = call->resp->status();

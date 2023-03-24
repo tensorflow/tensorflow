@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
@@ -356,7 +356,7 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(tensorflow::error::INTERNAL,
+            return tensorflow::Status(absl::StatusCode::kInternal,
                                       "failed to copy data from TF tensor");
           }
         } else {
@@ -474,7 +474,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   // tensors (buffer forwarding).
   auto check_if_op_reuses_input = [](const string& op_name) {
     return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
-           op_name == "SparseReshape";
+           op_name == "SparseReshape" || op_name == "StridedSlice";
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {
@@ -742,7 +742,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
 
     // Execute the TensorFlow Ops sequentially.
     for (auto& node_data : op_data_->nodes) {
-      TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
+      TFLITE_SCOPED_DELEGATE_PROFILED_OPERATOR_PROFILE(
           reinterpret_cast<Profiler*>(context->profiler),
           node_data->name().c_str(), node_data->index());
 

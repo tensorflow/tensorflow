@@ -17,11 +17,11 @@ limitations under the License.
 
 #if CUDA_VERSION >= 10020
 
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 namespace {
@@ -35,10 +35,10 @@ constexpr size_t k2MiB{2 << 20};
 
 // Creates an allocator with 8 MiB of virtual address space.
 std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
-  PlatformDeviceId gpu_id(0);
-  auto executor =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value();
+  tsl::PlatformDeviceId gpu_id(0);
+  auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                      se::GPUMachineManager(), gpu_id)
+                      .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
       executor->implementation()->GpuContextHack());
   return GpuVirtualMemAllocator::Create(
@@ -48,10 +48,10 @@ std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
 }
 
 TEST(GpuVirtualMemAllocatorTest, SimpleAlloc) {
-  PlatformDeviceId gpu_id(0);
-  auto executor =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value();
+  tsl::PlatformDeviceId gpu_id(0);
+  auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                      se::GPUMachineManager(), gpu_id)
+                      .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
       executor->implementation()->GpuContextHack());
   auto allocator = GpuVirtualMemAllocator::Create(

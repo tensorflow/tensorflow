@@ -40,8 +40,8 @@ TEST(DeathStatus, CheckOK) {
 
 TEST(Status, Set) {
   Status status;
-  status = Status(error::CANCELLED, "Error message");
-  EXPECT_EQ(status.code(), error::CANCELLED);
+  status = Status(absl::StatusCode::kCancelled, "Error message");
+  EXPECT_EQ(status.code(), absl::StatusCode::kCancelled);
   EXPECT_EQ(status.error_message(), "Error message");
 }
 
@@ -177,23 +177,23 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
 
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
-  s.SetPayload("Invalid", "Invalid Val");
+  s.SetPayload("Invalid", absl::Cord("Invalid Val"));
   ASSERT_FALSE(s.GetPayload("Invalid").has_value());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
 }
 
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
+  Status s(absl::StatusCode::kInternal, "Error message");
+  s.SetPayload("Error key", absl::Cord("Original"));
   ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Original"));
-  s.SetPayload("Error key", "Updated");
+  s.SetPayload("Error key", absl::Cord("Updated"));
   ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
+  Status s(absl::StatusCode::kInternal, "Error message");
+  s.SetPayload("Error key", absl::Cord("Original"));
 
   bool is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, true);

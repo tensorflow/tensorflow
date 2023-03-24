@@ -17,9 +17,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 namespace testing {
@@ -45,7 +45,8 @@ bool StatusIsMatcherCommonImpl::MatchAndExplain(
   ::testing::StringMatchResultListener inner_listener;
 
   inner_listener.Clear();
-  if (!code_matcher_.MatchAndExplain(status.code(), &inner_listener)) {
+  if (!code_matcher_.MatchAndExplain(
+          static_cast<absl::StatusCode>(status.code()), &inner_listener)) {
     *result_listener << (inner_listener.str().empty()
                              ? "whose status code is wrong"
                              : "which has a status code " +

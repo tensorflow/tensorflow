@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/data:__pkg__",
         "//tensorflow/core/data/service:__pkg__",
@@ -756,7 +757,6 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ptr_util",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

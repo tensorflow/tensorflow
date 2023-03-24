@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/monitoring/types.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

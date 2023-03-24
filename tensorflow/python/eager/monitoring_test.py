@@ -105,8 +105,46 @@ class MonitoringTest(test_util.TensorFlowTestCase):
       with monitoring.MonitoredTimer(counter.get_cell('short')):
         time.sleep(0.01)
     self.assertGreater(
-        counter.get_cell('long').value(),
-        counter.get_cell('short').value())
+        counter.get_cell('long').value(), counter.get_cell('short').value()
+    )
+
+  def test_monitored_timer_tracker(self):
+    counter = monitoring.Counter('test/ctxmgr', 'test context manager', 'slot')
+    counter2 = monitoring.Counter('test/ctxmgr2', 'slot')
+    with monitoring.MonitoredTimer(counter.get_cell('long'), 'counter'):
+      time.sleep(0.01)
+      self.assertIn('counter', monitoring.MonitoredTimerSections)
+      with monitoring.MonitoredTimer(counter2.get_cell(), 'counter2'):
+        time.sleep(0.01)
+        self.assertIn('counter', monitoring.MonitoredTimerSections)
+        self.assertIn('counter2', monitoring.MonitoredTimerSections)
+        with monitoring.MonitoredTimer(counter.get_cell('long'), 'counter'):
+          time.sleep(0.01)
+      self.assertNotIn('counter2', monitoring.MonitoredTimerSections)
+    self.assertGreater(
+        counter.get_cell('long').value(), counter.get_cell('short').value()
+    )
+    self.assertGreater(counter2.get_cell().value(), 0)
+
+  def test_repetitive_monitored_timer(self):
+    counter = monitoring.Counter('test/ctxmgr', 'test context manager')
+    with monitoring.MonitoredTimer(
+        counter.get_cell(),
+        monitored_section_name='action1',
+        avoid_repetitive_counting=True,
+    ):
+      time.sleep(1)
+      with monitoring.MonitoredTimer(
+          counter.get_cell(),
+          monitored_section_name='action1',
+          avoid_repetitive_counting=True,
+      ):
+        time.sleep(1)
+
+      # The inner section is not timed.
+      self.assertEqual(counter.get_cell().value(), 0)
+
+    self.assertGreater(counter.get_cell().value(), 0)
 
   def test_function_decorator(self):
     counter = monitoring.Counter('test/funcdecorator', 'test func decorator')

@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -41,6 +42,7 @@ cuda_py_test(
     srcs = ["resnet50_test.py"],
     shard_count = 4,
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/141617449): needs investigation
         "optonly",
         "oss_serial",
@@ -59,6 +61,7 @@ cuda_py_test(
     srcs = ["hvp_test.py"],
     shard_count = 7,
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/141617449): needs investigation
         "optonly",
         "oss_serial",
@@ -80,10 +83,8 @@ cuda_py_test(
     srcs = ["resnet50_graph_test.py"],
     shard_count = 4,
     tags = [
+        "no_pip",
         "no_windows",  # TODO(b/141617449): needs investigation
-        "noasan",
-        "nomsan",
-        "notsan",
         "optonly",
         "oss_serial",
     ],

@@ -59,7 +59,9 @@ void SetTensorShapeProto(ShapeContainerT shape,
                          tensorflow::TensorShapeProto* proto) {
   if (shape.hasRank()) {
     for (int64_t dim : shape.getShape()) {
-      proto->add_dim()->set_size(dim);
+      // TODO(hinsu): Use tensorflow::kTFDynamicSize instead of -1 without
+      // depending on tensorflow/compiler
+      proto->add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
     }
   } else {
     proto->set_unknown_rank(true);
@@ -73,6 +75,17 @@ tensorflow::Status ConvertToTensorProto(ElementsAttr attr,
 // Converts an MLIR elements attribute to a TensorFlow tensor.
 tensorflow::Status ConvertToTensor(ElementsAttr attr,
                                    tensorflow::Tensor* output_tensor);
+
+// Converts a TF shape to MLIR shape, i.e. -1 becomes kDynamicSize.
+llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape);
+
+// Converts an MLIR shape to TF shape, i.e. kDynamicSize becomes -1.
+llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape);
+
+// Creates a TF TensorShape using MLIR shape, element type and encoding.
+mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
+                                                mlir::Type elementType,
+                                                mlir::Attribute encoding = {});
 
 }  // namespace tfg
 }  // namespace mlir

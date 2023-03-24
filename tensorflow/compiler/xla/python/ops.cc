@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "pybind11/attr.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/lib/approx_topk.h"
 #include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
@@ -95,7 +95,8 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
-          py::arg("layout") = std::nullopt);
+          py::arg("layout") = std::nullopt,
+          py::arg("channel_id") = std::nullopt);
   ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
           py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
           py::arg("comparator"), py::arg("recall_target") = 0.9,
@@ -121,7 +122,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Clamp", &Clamp, py::arg("min"), py::arg("operand"), py::arg("max"));
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
   ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
-          py::arg("source_target_pairs"));
+          py::arg("source_target_pairs"), py::arg("channel_id") = std::nullopt);
   ops.def("ConcatInDim", &ConcatInDim, py::arg("builder"), py::arg("operands"),
           py::arg("dimension"));
   ops.def("Conditional",
@@ -205,6 +206,26 @@ void BuildOpsSubmodule(py::module* m) {
       },
       py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
+      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
+      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
+      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
+  ops.def(
+      "CustomCallWithComputation",
+      [](XlaBuilder* builder, const std::string& call_target_name,
+         absl::Span<const XlaOp> operands, const XlaComputation& computation,
+         const Shape& shape, const std::string& opaque, bool has_side_effect,
+         absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+             output_operand_aliasing,
+         const Literal* literal, CustomCallSchedule schedule,
+         CustomCallApiVersion api_version) -> XlaOp {
+        return CustomCallWithComputation(
+            builder, call_target_name, operands, computation, shape, opaque,
+            has_side_effect, output_operand_aliasing, literal, schedule,
+            api_version);
+      },
+      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
+      py::arg("computation"), py::arg("shape"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
       py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
       py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
@@ -412,7 +433,12 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_tuple(svd.u, svd.d, svd.v);
       },
       py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
-  ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
+  ops.def(
+      "TopK",
+      [](XlaOp input, int64_t k) {
+        return TopK(input, k, /*index_type=*/PrimitiveType::S32);
+      },
+      py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
   ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),
           py::arg("left_side"), py::arg("lower"), py::arg("unit_diagonal"),
@@ -476,6 +502,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Sign);
   UNARY_OP(Cos);
   UNARY_OP(Sin);
+  UNARY_OP(Tan);
   UNARY_OP(Tanh);
   UNARY_OP(IsFinite);
   UNARY_OP(Neg);

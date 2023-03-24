@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallSet.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -41,12 +41,12 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
   if (mlir::isa<mlir::TF::BatchMatMulV2Op>(op)) {
     mlir::TF::BatchMatMulV2Op mm = mlir::cast<mlir::TF::BatchMatMulV2Op>(op);
     // Adjoint is just conjugate transpose.
-    *left_transposed = mm.adj_x();
-    *right_transposed = mm.adj_y();
+    *left_transposed = mm.getAdjX();
+    *right_transposed = mm.getAdjY();
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     mlir::TF::MatMulOp mm = mlir::cast<mlir::TF::MatMulOp>(op);
-    *left_transposed = mm.transpose_a();
-    *right_transposed = mm.transpose_b();
+    *left_transposed = mm.getTransposeA();
+    *right_transposed = mm.getTransposeB();
   }
 }
 
@@ -75,7 +75,7 @@ StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   mlir::OpBuilder builder(op);
 
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   mapping.map(op->getOperand(0), left);
   mapping.map(op->getOperand(1), right);
   mlir::Operation* new_op = builder.clone(*op, mapping);
@@ -124,8 +124,8 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
     // Note that it doesn't matter if we pass the global or local shape to
     // GetBroadcastLayoutForElementWise, it will return the same result.
-    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.x()));
-    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.y()));
+    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.getX()));
+    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.getY()));
     std::vector<std::string> left_splits;
     std::vector<std::string> right_splits;
     TF_ASSIGN_OR_RETURN(
@@ -134,12 +134,15 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
             left->value(), right->value(), left_shape, right_shape,
             /*dims_to_ignore=*/2, left_splits, right_splits));
 
-    left_layout = (*left)->Truncate(left_shape.size() - 2, /*end=*/true);
-    right_layout = (*right)->Truncate(right_shape.size() - 2, /*end=*/true);
+    TF_ASSIGN_OR_RETURN(left_layout,
+                        (*left)->Truncate(left_shape.size() - 2, /*end=*/true));
+    TF_ASSIGN_OR_RETURN(
+        right_layout, (*right)->Truncate(right_shape.size() - 2, /*end=*/true));
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     // There are no batch dims for MatMul op, so get an 'empty' layout that
     // we can concat later.
-    batch_layout = (*left)->Truncate(/*split_point=*/0, /*end=*/false);
+    TF_ASSIGN_OR_RETURN(batch_layout,
+                        (*left)->Truncate(/*split_point=*/0, /*end=*/false));
     left_layout = left->value();
     right_layout = right->value();
   } else {
@@ -414,10 +417,13 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // output->rank() == std::max(left_shape.size(), right_shape.size()) due to
   // broadcasting one of these truncations is just a copy of output and the
   // other may be shorter.
-  Layout left = output_layout.Truncate(output_layout.rank() - left_shape.size(),
-                                       /*end=*/true);
-  Layout right = output_layout.Truncate(
-      output_layout.rank() - right_shape.size(), /*end=*/true);
+  TF_ASSIGN_OR_RETURN(Layout left, output_layout.Truncate(
+                                       output_layout.rank() - left_shape.size(),
+                                       /*end=*/true));
+  TF_ASSIGN_OR_RETURN(
+      Layout right,
+      output_layout.Truncate(output_layout.rank() - right_shape.size(),
+                             /*end=*/true));
 
   // Make sure necessary dimensions are replicated.
   //

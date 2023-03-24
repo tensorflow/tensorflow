@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -25,8 +26,11 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -42,6 +46,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
@@ -57,7 +62,9 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -71,6 +78,7 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:while_loop",
         "@absl_py//absl/flags",
     ],
 )
@@ -83,6 +91,7 @@ py_library(
     deps = [
         ":pfor_lib",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -91,8 +100,10 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/signal",
     ],
 )
@@ -122,6 +133,8 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
@@ -130,6 +143,7 @@ cuda_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
     ],
 )
 
@@ -142,6 +156,7 @@ cuda_py_test(
         "no_windows",
         "no_gpu",  # TODO(b/155761551): Flaky on GPU on TAP
         "no_tfrt",  # Note: Legacy XLA test, which depends on EncapsulateXlaComputationsPass.
+        "notsan",  # TODO(b/271486347): Fails TSAN on TAP
     ],
     xla_enabled = True,
     deps = [
@@ -153,6 +168,7 @@ cuda_py_test(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/compiler/xla",
     ],
 )
@@ -162,7 +178,6 @@ cuda_py_test(
     srcs = ["array_test.py"],
     tags = [
         "nogpu",  # b/217374776
-        "notsan",  # TODO(b/170999669): Data race
     ],
     deps = [
         ":control_flow_ops",
@@ -210,10 +225,10 @@ cuda_py_test(
         ":control_flow_ops",
         ":gradients",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
     ],

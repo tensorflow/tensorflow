@@ -15,13 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -32,7 +27,10 @@ namespace {
 class CublasGemmPadForTensorCoresTest : public HloTestBase {
  protected:
   bool PadForF16Gemms(HloModule* module) {
-    return CublasPadForGemms(PrimitiveType::F16, 8).Run(module).value();
+    return CublasPadForGemms(se::CudaComputeCapability(7, 0),
+                             PrimitiveType::F16, 8)
+        .Run(module)
+        .value();
   }
 };
 
@@ -85,7 +83,9 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotS8RootComputation) {
                     .value();
 
   EXPECT_TRUE(
-      CublasPadForGemms(PrimitiveType::S8, 4).Run(module.get()).value());
+      CublasPadForGemms(se::CudaComputeCapability(7, 0), PrimitiveType::S8, 4)
+          .Run(module.get())
+          .value());
   SCOPED_TRACE(module->ToString());
 
   auto* root = module->entry_computation()->root_instruction();

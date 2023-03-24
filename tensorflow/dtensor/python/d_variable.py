@@ -225,7 +225,7 @@ class DVariable(resource_variable_ops.ResourceVariable):
           self.layout = None
           pass
       mesh = self.layout.mesh if self.layout else None
-      with api.run_on(mesh) if mesh else contextlib.nullcontext():
+      with api.default_mesh(mesh) if mesh else contextlib.nullcontext():
         super(DVariable, self).__init__(
             initial_value, *args, dtype=dtype, **kwargs)
 

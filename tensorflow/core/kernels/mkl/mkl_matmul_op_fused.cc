@@ -129,14 +129,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
-#ifdef DNNL_AARCH64_USE_ACL
-    // TODO(milpuz01): Remove once Arm Compute Library provides support for
-    // in-place updates
-    matmul_params.weight_hash =
-        Hash64(weight_tensor.tensor_data().data(),
-               std::min(kWeightTensorHashLength,
-                        static_cast<int>(weight_tensor.tensor_data().size())));
-#endif
+
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -322,9 +315,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;
-#ifdef DNNL_AARCH64_USE_ACL
-  const int kWeightTensorHashLength = 1024;
-#endif
 };  // namespace tensorflow
 
 // Register mkl kernels for supported operations and types.

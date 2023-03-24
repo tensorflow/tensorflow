@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace se = stream_executor;
@@ -55,10 +56,10 @@ TEST(HostStream, ReportsHostCallbackError) {
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error!"); });
+      []() { return tsl::errors::Internal("error!"); });
 
-  se::port::Status status = stream.BlockHostUntilDone();
-  ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
+  auto status = stream.BlockHostUntilDone();
+  ASSERT_EQ(status.code(), tsl::error::INTERNAL);
   ASSERT_EQ(status.error_message(), "error!");
 }
 
@@ -70,9 +71,9 @@ TEST(HostStream, ReportsFirstHostCallbackError) {
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error 1"); });
+      []() { return tsl::errors::Internal("error 1"); });
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error 2"); });
+      []() { return tsl::errors::Internal("error 2"); });
 
   // "error 2" is just lost.
   ASSERT_EQ(stream.BlockHostUntilDone().error_message(), "error 1");

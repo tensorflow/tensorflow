@@ -35,7 +35,6 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
@@ -49,6 +48,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
 from tensorflow.python.util import deprecation
@@ -616,7 +616,7 @@ class TrtGraphConverter(object):
 
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
-      frozen_graph_def = graph_util.convert_variables_to_constants(
+      frozen_graph_def = convert_to_constants.convert_variables_to_constants(
           sess, sess.graph.as_graph_def(add_shapes=True),
           list(output_node_names))
       self._grappler_meta_graph_def = meta_graph_pb2.MetaGraphDef()
@@ -841,10 +841,49 @@ class TrtGraphConverter(object):
     # Ignore other meta graphs from the input SavedModel.
     saved_model_builder.save()
 
-
 def _get_resource_handle(name, device):
   with ops.device(device):
     return gen_trt_ops.create_trt_resource_handle(resource_name=name)
+
+
+def _remove_native_segments(input_func):
+  """Remove native segments from the input TF-TRT Converted Function.
+
+  Args:
+    input_func: provide the concrete function with native segment nodes. The
+      transformed output func will not contain any native segment nodes. All the
+      TRTEngineOp references will be deleted and reset to default empty func.
+  """
+  input_graph_def = input_func.graph.as_graph_def()
+  # Deleting the Native Segment node in each TRTEngineOp node.
+  nodes_deleted = 0
+  for func_id in reversed(range(len(input_graph_def.library.function))):
+    f = input_graph_def.library.function[func_id]
+    if "native_segment" in f.signature.name:
+      nodes_deleted += 1
+      while context.context().has_function(f.signature.name):
+        context.context().remove_function(f.signature.name)
+      del input_graph_def.library.function[func_id]
+
+  logging.info(
+      "Found and deleted native segments from "
+      f"{nodes_deleted} TRTEngineOp nodes."
+  )
+
+  # Deleting the references to `<EngineName>_native_segment`s.
+  # This helps TRTEngineOp constructor to not look for native segment handles
+  # during construction of graph for inference.
+  for node in input_graph_def.node:
+    if node.op == "TRTEngineOp":
+      del node.attr["segment_func"]
+  for func in input_graph_def.library.function:
+    for node in func.node_def:
+      if node.op == "TRTEngineOp":
+        del node.attr["segment_func"]
+  # Reconstruct the converted_func with the new graph
+  new_func = _construct_function_from_graph_def(input_func, input_graph_def)
+
+  return new_func
 
 
 class _TRTEngineResource(resource.TrackableResource):
@@ -906,10 +945,9 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
     while context.context().has_function(f.signature.name):
       context.context().remove_function(f.signature.name)
 
-  # pylint: disable = protected-access
   captures = {
-      t2.name.split(":")[0]: t1
-      for _, (t1, t2) in frozen_func.graph._captures.items()
+      c.internal.name.split(":")[0]: c.external
+      for c in frozen_func.graph._function_captures.by_val_captures.values()  # pylint: disable = protected-access
   }
   new_func = wrap_function.function_from_graph_def(
       graph_def, [tensor.name for tensor in frozen_func.inputs],
@@ -1135,8 +1173,6 @@ class TrtGraphConverterV2(object):
        inputs with the same dimensions as the input it is created for. The GPU
        engine will be run with optimal performance with such inputs.
      * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
-     * `ImplicitBatchModeCompatible`: create the profiles that will produce the
-       same GPU engines as the implicit_batch_mode would produce.
   """
 
   def _verify_profile_strategy(self, strategy):
@@ -1145,6 +1181,11 @@ class TrtGraphConverterV2(object):
       raise ValueError(
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
+    if strategy == "ImplicitBatchModeCompatible":
+      logging.warn(
+          "ImplicitBatchModeCompatible strategy is deprecated, and"
+          " using it may result in errors during engine building. Please"
+          " consider using a different profile strategy.")
 
   @deprecation.deprecated_args(None,
                                "Use individual converter parameters instead",
@@ -1530,6 +1571,23 @@ class TrtGraphConverterV2(object):
       RuntimeError: if the needed calibration hasn't been done.
     """
     assert self._converted
+
+    # 'remove_native_segments': setting this value to True removes native segments
+    # associated with each TRT engine. This option can be used to reduce the size
+    # of the converted model. Please note that a converted model without native
+    # segments can't be used for collecting profiles, building or re-converting.
+    # The reduced model can only be used for inference when no native segments
+    # are required for computation. When remove_native_segments flag is set to
+    # True, the converted_graph_def needs to be reduced before saved_model
+    # function serialization.
+    if trt_utils.is_experimental_feature_activated("remove_native_segments"):
+      logging.info(
+          "'remove_native_segments' experimental feature is enabled"
+          " during saving of converted SavedModel."
+      )
+      self._converted_func = _remove_native_segments(self._converted_func)
+      self._converted_graph_def = self._converted_func.graph.as_graph_def()
+
     if self._need_calibration and not self._calibrated:
       raise RuntimeError("A model that requires INT8 calibration has to be "
                          "built before saving it. Call build() to build and "
@@ -1570,12 +1628,10 @@ class TrtGraphConverterV2(object):
 
     self._for_each_trt_node(self._converted_graph_def,
                             _serialize_and_track_engine)
-    self._saved_model.trt_engine_resources = resource_map
-
-    # Rewrite the signature map using the optimized ConcreteFunction.
-    signatures = {
-        key: value for key, value in self._saved_model.signatures.items()
-    }
+    # If the graph is frozen, tracked variables are not needed by the converted model.
+    trackable = autotrackable.AutoTrackable(
+    ) if self.freeze else self._saved_model
+    trackable.trt_engine_resources = resource_map
 
     # Set allow_build_at_runtime=False if asked by user.
     #
@@ -1600,9 +1656,9 @@ class TrtGraphConverterV2(object):
           self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 
-    signatures[self._input_saved_model_signature_key] = self._converted_func
-    save.save(
-        self._saved_model, output_saved_model_dir, signatures, options=options)
+    # Rewrite the signature map using the optimized ConcreteFunction.
+    signatures = {self._input_saved_model_signature_key: self._converted_func}
+    save.save(trackable, output_saved_model_dir, signatures, options=options)
 
   def summary(self, line_length=160, detailed=True, print_fn=None):
     """This method describes the results of the conversion by TF-TRT.

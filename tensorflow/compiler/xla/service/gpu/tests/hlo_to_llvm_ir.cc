@@ -19,16 +19,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #endif
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 const char* const kUsage = R"(
 This tool reads in an HloModule from a file, compiles it using the NVPTX
@@ -87,15 +86,13 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
     llvm_module->print(llvm::outs(), nullptr);
   } else {
 #if GOOGLE_CUDA
-    std::string libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module->config());
-    TF_ASSIGN_OR_RETURN(std::string ptx,
-                        xla::gpu::nvptx::CompileToPtx(
-                            llvm_module.get(), cuda_compute_capability,
-                            hlo_module->config(), libdevice_dir));
+    TF_ASSIGN_OR_RETURN(
+        std::string ptx,
+        xla::gpu::nvptx::CompileToPtx(
+            llvm_module.get(), cuda_compute_capability, hlo_module->config()));
     std::cout << ptx << std::endl;
 #else
-    return {tensorflow::error::UNIMPLEMENTED,
-            "Feature not yet implemented in ROCm"};
+    return {tsl::error::UNIMPLEMENTED, "Feature not yet implemented in ROCm"};
 #endif
   }
   return xla::OkStatus();
@@ -120,7 +117,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
 int main(int argc, char** argv) {
   bool ptx = false;
   int sm = 70;
-  std::vector<tensorflow::Flag> flag_list;
+  std::vector<tsl::Flag> flag_list;
   xla::AppendDebugOptionsFlags(&flag_list);
   flag_list.emplace_back("ptx", &ptx,
                          "Print PTX instead of not optimized LLVM.");
@@ -128,9 +125,9 @@ int main(int argc, char** argv) {
                          "Specify the SM to target (useful only with --ptx).");
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.
-  const std::string kUsageString = absl::StrCat(
-      kUsage, "\n\n", tensorflow::Flags::Usage(argv[0], flag_list));
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  const std::string kUsageString =
+      absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
     LOG(QFATAL) << kUsageString;

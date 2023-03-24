@@ -30,7 +30,7 @@ interpreter are located in the root of the project, accompanied by tests:
     uses a lot of memory. In production applications, you should use
     `micro_mutable_op_resolver.h` to pull in only the operations your model
     needs.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h)
     outputs debug information.
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to handle and run models.
@@ -60,7 +60,7 @@ instructions in this section.
 ### Use the Arduino library
 
 If you are using Arduino, the *Hello World* example is included in the
-`Arduino_TensorFlowLite` Arduino library, which you can download from the
+`Arduino_TensorFlowLite` Arduino library, which you can manually install in the
 Arduino IDE and in [Arduino Create](https://create.arduino.cc/).
 
 Once the library has been added, go to `File -> Examples`. You should see an
@@ -75,8 +75,8 @@ that contain all of the necessary source files, using a `Makefile`. The current
 supported environments are Keil, Make, and Mbed.
 
 To generate these projects with Make, clone the
-[TensorFlow repository](http://github.com/tensorflow/tensorflow) and run the
-following command:
+[TensorFlow/tflite-micro repository](https://github.com/tensorflow/tflite-micro)
+and run the following command:
 
 ```bash
 make -f tensorflow/lite/micro/tools/make/Makefile generate_projects
@@ -168,9 +168,6 @@ You can add your own optimizations by creating a new subfolder for them. We
 encourage pull requests for new optimized implementations.
 
 ## Generate the Arduino library
-
-A nightly build of the Arduino library is available via the Arduino IDE's
-library manager.
 
 If you need to generate a new build of the library, you can run the following
 script from the TensorFlow repository:

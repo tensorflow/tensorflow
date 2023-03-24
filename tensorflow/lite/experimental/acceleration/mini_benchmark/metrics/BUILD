@@ -15,13 +15,15 @@
 
 # Building blocks for generating accuracy validation metric graphs.
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "validation_model", "validation_test")
-load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "minibenchmark_default_visibility_allowlist")
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "minibenchmark_visibility_allowlist")
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-] + minibenchmark_default_visibility_allowlist()
+    "//tensorflow/lite/tools/benchmark:__subpackages__",
+] + minibenchmark_visibility_allowlist()
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility_group,
     licenses = ["notice"],
 )

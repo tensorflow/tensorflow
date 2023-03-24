@@ -150,6 +150,11 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
     Ref();
     return this;
   }
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
+  }
 
   static bool classof(const AbstractTensorHandle* ptr) { return true; }
 
@@ -356,7 +361,8 @@ class SelectorTest : public ::testing::Test {
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
         /* async */ false, device_manager_,
         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-        /* cluster_flr */ nullptr);
+        /* cluster_flr */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
     corert_ = CreateCoreRuntime();
     fallback_op_handler_ = CreateOpHandler();
     cpu_op_handler_ = CreateOpHandler();
@@ -459,7 +465,7 @@ TEST_F(SelectorTest, InvalidDeviceNameTest) {
   OpHandler* op_handler = nullptr;
   s = selector()->SelectFromNodeDef(*op, &op->GetAttrs()->BuildNodeDef(),
                                     &op_handler);
-  ASSERT_EQ(s.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_FALSE(static_cast<bool>(op_handler));
   EXPECT_TRUE(
       absl::StrContains(s.error_message(), "Failed to parse device name"));

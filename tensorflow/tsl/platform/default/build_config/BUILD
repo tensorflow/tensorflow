@@ -1,10 +1,10 @@
 # Description:
 # Platform-specific build configurations.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tsl:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -13,7 +13,7 @@ exports_files(["LICENSE"])
 cc_library(
     name = "gtest",
     testonly = 1,
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "@com_google_googletest//:gtest",
     ],
@@ -21,22 +21,13 @@ cc_library(
 
 cc_library(
     name = "tensorflow_platform_specific",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     linkstatic = 1,
     deps = [],
 )
 
 cc_library(
     name = "_empty_lib",
-    visibility = ["//visibility:private"],
-)
-
-alias(
-    name = "_cuda_runtime",
-    actual = select({
-        "//tensorflow:framework_shared_object": ":_empty_lib",
-        "//conditions:default": "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
-    }),
     visibility = ["//visibility:private"],
 )
 
@@ -60,9 +51,9 @@ cc_library(
 # don't have to depend on platformlib.
 cc_library(
     name = "proto_parsing",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -72,27 +63,12 @@ cc_library(
 cc_library(
     name = "minimal",
     srcs = [],
-    copts = tf_copts(),
-)
-
-cc_library(
-    name = "platformlib",
-    copts = tf_copts(),
-    deps = [
-        ":gif",
-        ":jpeg",
-        "//tensorflow/core:protos_all_cc",
-        "@com_googlesource_code_re2//:re2",
-        "@farmhash_archive//:farmhash",
-        "@fft2d",
-        "@highwayhash//:sip_hash",
-        "@zlib",
-    ],
+    copts = tsl_copts(),
 )
 
 cc_library(
     name = "gif",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "@gif",
     ],
@@ -100,7 +76,7 @@ cc_library(
 
 cc_library(
     name = "jpeg",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "@libjpeg_turbo//:jpeg",
     ],
@@ -108,7 +84,7 @@ cc_library(
 
 cc_library(
     name = "png",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "@png",
         "@zlib",
@@ -128,7 +104,7 @@ cc_library(
         "@local_config_cuda//cuda:cudart",
     ],
     linkopts = select({
-        "//tensorflow:macos": [
+        "//tensorflow/tsl:macos": [
             "-Wl,-rpath,../local_config_cuda/cuda/lib",
             "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
         ],

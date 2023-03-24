@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
-#include <cstring>
-#include <optional>
+#include <cstring>   // NOLINT
+#include <optional>  // NOLINT
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -24,9 +28,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 namespace tensorflow {
 namespace {
@@ -176,7 +182,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
-      if (pyarray_type == Bfloat16NumpyType()) {
+      if (pyarray_type == tsl::Bfloat16NumpyType()) {
         *out_tf_datatype = TF_BFLOAT16;
         break;
       } else if (pyarray_type == NPY_ULONGLONG) {
@@ -198,6 +204,12 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         // NPY_UINT is equivalent to NPY_UINT32, while their enum values might
         // be different on certain platforms.
         *out_tf_datatype = TF_UINT32;
+        break;
+      } else if (pyarray_type == tsl::Float8e5m2NumpyType()) {
+        *out_tf_datatype = TF_FLOAT8_E5M2;
+        break;
+      } else if (pyarray_type == tsl::Float8e4m3fnNumpyType()) {
+        *out_tf_datatype = TF_FLOAT8_E4M3FN;
         break;
       }
       return errors::Internal("Unsupported numpy type: ",
@@ -457,13 +469,26 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   }
   PyArrayObject* py_array =
       reinterpret_cast<PyArrayObject*>(safe_out_array.get());
+
   if (TF_TensorType(tensor.get()) == TF_STRING) {
     Status s = CopyTF_TensorStringsToPyArray(tensor.get(), nelems, py_array);
     if (!s.ok()) {
       return s;
     }
-  } else if (static_cast<size_t>(PyArray_NBYTES(py_array)) !=
-             TF_TensorByteSize(tensor.get())) {
+  } else if ((!IsZenDnnEnabled()) &&
+             (static_cast<size_t>(PyArray_NBYTES(py_array)) !=
+              TF_TensorByteSize(tensor.get()))) {
+    return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
+                            " bytes but TF_Tensor was ",
+                            TF_TensorByteSize(tensor.get()), " bytes");
+  }
+  // Default TF implementation compares ndarray bytes with TF_Tensor bytes
+  // which is allocated using allocate_output API for fixed size.
+  // ZenDNN mempool optimization utilizes pre-allocated buffers with TF_Tensor.
+  // Hence, the amount of allocated TF_Tensor bytes is always greater than or
+  // equal to the number of bytes requested by the op execution.
+  else if (IsZenDnnEnabled() && (static_cast<size_t>(PyArray_NBYTES(py_array)) >
+                                 TF_TensorByteSize(tensor.get()))) {
     return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
                             " bytes but TF_Tensor was ",
                             TF_TensorByteSize(tensor.get()), " bytes");

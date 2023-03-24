@@ -31,6 +31,7 @@ limitations under the License.
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -128,8 +129,9 @@ ConvertRuntimeFallbackTensorToDenseGpuTensor(
     // tfrt::DenseGpuTensor. Otherwise, the TensorHandle will be released
     // when he RuntimeFallbackTensor goes out of scope after the tensor
     // conversion. The GPU buffer will be deleted as well.
+    tf_tensor_handle->Ref();
     OwnedTensorHandle owned_tf_tensor_handle =
-        OwnedTensorHandle{TensorHandleFromInterface(tf_tensor_handle->Copy())};
+        OwnedTensorHandle{TensorHandleFromInterface(tf_tensor_handle)};
 
     // The OwnedTensorHandle holds a reference on underlying Tensorflow buffer
     // and is held alive by GpuOneShotAllocator.

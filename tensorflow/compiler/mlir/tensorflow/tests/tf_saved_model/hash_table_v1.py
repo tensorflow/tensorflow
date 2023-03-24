@@ -33,6 +33,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[init:.*]]]} : () -> ()
 
 # CHECK:      func @[[init]]
+# CHECK-SAME: tf_saved_model.initializer_type = "init_op"
 # CHECK-NEXT: [[R6:%.*]] = "tf.Const"()
 # CHECK-NEXT: [[R5:%.*]] = "tf.Const"() {device = "", value = dense<[1, 2,
 # CHECK-NEXT: [[R7:%.*]] = "tf.HashTableV2"()

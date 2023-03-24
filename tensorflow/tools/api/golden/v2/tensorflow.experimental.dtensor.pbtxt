@@ -14,7 +14,7 @@ tf_module {
   }
   member {
     name: "Layout"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "MATCH"
@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "Mesh"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "UNSHARDED"
@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "barrier"
-    argspec: "args=[\'mesh\', \'barrier_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'mesh\', \'barrier_name\', \'timeout_in_ms\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "call_with_layout"
@@ -50,11 +50,19 @@ tf_module {
   }
   member_method {
     name: "create_distributed_mesh"
-    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'local_devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\'], "
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'local_devices\', \'device_type\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "create_mesh"
-    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\'], "
+    argspec: "args=[\'mesh_dims\', \'mesh_name\', \'devices\', \'device_type\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "create_tpu_mesh"
+    argspec: "args=[\'mesh_dim_names\', \'mesh_shape\', \'mesh_name\', \'ring_dims\', \'ring_axes\', \'ring_bounds\', \'can_split_host_across_rings\', \'build_ring_across_rings\', \'rotate_ring_across_rings\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "default_mesh"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
   }
   member_method {
     name: "device_name"
@@ -78,15 +86,19 @@ tf_module {
   }
   member_method {
     name: "initialize_accelerator_system"
-    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "initialize_multi_client"
-    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "initialize_tpu_system"
-    argspec: "args=[\'device_type\', \'enable_coordination_service\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'device_type\', \'enable_coordination_service\', \'experimental_reset_context\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'False\'], "
+  }
+  member_method {
+    name: "is_dtensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "job_name"

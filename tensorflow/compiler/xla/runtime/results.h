@@ -134,6 +134,52 @@ template <typename RetError, typename... RetValue>
 ResultConverterSet(RetError, RetValue...)
     -> ResultConverterSet<RetError, RetValue...>;
 
+//===----------------------------------------------------------------------===//
+// Helper functions for converting results of canonical types.
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// This struct corresponds to the `llvm.struct` used by memref to llvm lowering
+// pass to represent memref descriptors in the compilation pipeline. It is a
+// type-erased version of `::mlir::StridedMemRefType<T>` template.
+struct MemrefDescriptor {
+  void* base_ptr;
+  void* data_ptr;
+  int64_t offset;
+  int64_t sizes_and_strides[];
+};
+
+}  // namespace internal
+
+// Converts returned memref using user-provided converter. Converter must
+// satisfy this concept:
+//
+//   struct Converter {
+//     ResultType operator()(PrimitiveType element_type, void* base_ptr,
+//                           void* data_ptr, int64_t offset,
+//                           absl::Span<const int64_t> dims,
+//                           absl::Span<const int64_t> strides);
+//   };
+//
+template <typename T, typename Converter>
+FailureOr<T> ConvertReturnedMemref(const Converter& converter,
+                                   const Type* memref_type, void* ret) {
+  // Check if the runtime type is a valid memref.
+  auto* memref = llvm::dyn_cast<MemrefType>(memref_type);
+  if (!memref) return failure();
+
+  PrimitiveType element_type = memref->element_type();
+  size_t rank = memref->rank();
+
+  auto* desc = reinterpret_cast<internal::MemrefDescriptor*>(ret);
+  absl::Span<const int64_t> dims(desc->sizes_and_strides, rank);
+  absl::Span<const int64_t> strides(desc->sizes_and_strides + rank, rank);
+
+  return converter(element_type, desc->base_ptr, desc->data_ptr, desc->offset,
+                   dims, strides);
+}
+
 }  // namespace runtime
 }  // namespace xla
 

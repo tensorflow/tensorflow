@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 // Defines the following utilities:
 //
@@ -209,7 +209,7 @@ class IsOkAndHoldsMatcher {
 class StatusIsMatcherCommonImpl {
  public:
   StatusIsMatcherCommonImpl(
-      ::testing::Matcher<const tsl::error::Code> code_matcher,
+      ::testing::Matcher<const absl::StatusCode> code_matcher,
       ::testing::Matcher<const std::string&> message_matcher)
       : code_matcher_(std::move(code_matcher)),
         message_matcher_(std::move(message_matcher)) {}
@@ -222,7 +222,7 @@ class StatusIsMatcherCommonImpl {
                        ::testing::MatchResultListener* result_listener) const;
 
  private:
-  const ::testing::Matcher<const tsl::error::Code> code_matcher_;
+  const ::testing::Matcher<const absl::StatusCode> code_matcher_;
   const ::testing::Matcher<const std::string&> message_matcher_;
 };
 
@@ -256,10 +256,10 @@ class MonoStatusIsMatcherImpl : public ::testing::MatcherInterface<T> {
 // Implements StatusIs() as a polymorphic matcher.
 class StatusIsMatcher {
  public:
-  StatusIsMatcher(::testing::Matcher<const tsl::error::Code> code_matcher,
+  StatusIsMatcher(::testing::Matcher<const absl::StatusCode> code_matcher,
                   ::testing::Matcher<const std::string&> message_matcher)
       : common_impl_(
-            ::testing::MatcherCast<const tsl::error::Code>(code_matcher),
+            ::testing::MatcherCast<const absl::StatusCode>(code_matcher),
             ::testing::MatcherCast<const std::string&>(message_matcher)) {}
 
   // Converts this polymorphic matcher to a monomorphic matcher of the given
@@ -316,12 +316,25 @@ internal_status::StatusIsMatcher StatusIs(CodeMatcher code_matcher,
   return internal_status::StatusIsMatcher(std::move(code_matcher),
                                           std::move(message_matcher));
 }
+// Remove this specialization when tensorflow::Status is absl::Status
+template <typename MessageMatcher>
+internal_status::StatusIsMatcher StatusIs(tensorflow::error::Code code_matcher,
+                                          MessageMatcher message_matcher) {
+  return internal_status::StatusIsMatcher(
+      static_cast<absl::StatusCode>(code_matcher), std::move(message_matcher));
+}
 
 // Returns a matcher that matches a Status or StatusOr<> whose status code
 // matches code_matcher.
 template <typename CodeMatcher>
 internal_status::StatusIsMatcher StatusIs(CodeMatcher code_matcher) {
   return StatusIs(std::move(code_matcher), ::testing::_);
+}
+// Remove this specialization when tensorflow::Status is absl::Status
+template <>
+inline internal_status::StatusIsMatcher StatusIs(
+    tensorflow::error::Code code_matcher) {
+  return StatusIs(static_cast<absl::StatusCode>(code_matcher), ::testing::_);
 }
 
 // Returns a matcher that matches a Status or StatusOr<> which is OK.

@@ -20,6 +20,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shapes);
+
+llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape);
+
 static constexpr int64_t kTFDynamicSize = -1;
 mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
                                                 mlir::Type elementType,

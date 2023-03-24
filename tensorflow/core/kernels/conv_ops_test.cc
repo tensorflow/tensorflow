@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
@@ -744,8 +745,10 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     if (v > 1) {
       {
-        Tensor input_data_nchwv(
-            dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, h, w, ic));
+        TensorShape shape;
+        TF_EXPECT_OK(
+            ShapeFromFormatWithStatus(FORMAT_NCHW_VECT_C, n, h, w, ic, &shape));
+        Tensor input_data_nchwv(dtype, shape);
         input_data_nchwv.tensor<T, 5>() =
             input_data.shaped<T, 5>({n, h, w, ic / v, v})
                 .shuffle(Eigen::array<int, 5>{0, 3, 1, 2, 4});
@@ -798,25 +801,21 @@ class FusedConv2DOpTest : public OpsTestBase {
 
     Tensor side_input(dtype);
     if (has_extra_parameters) {
-      auto calculate_convolve_output_dim =
-          [](int input_dim, int filter_dim, int stride,
-             const std::string& padding) -> int {
-        if (padding == "VALID") {
-          return (input_dim - filter_dim + stride) / stride;
-        } else if (padding == "SAME") {
-          return (input_dim + stride - 1) / stride;
-        } else {
-          return -1;  // Not supported
-        }
-      };
-
       // Create side_input
-      int oh = calculate_convolve_output_dim(h, kh, stride, padding);
-      ASSERT_NE(oh, -1);
-      int ow = calculate_convolve_output_dim(w, kw, stride, padding);
-      ASSERT_NE(ow, -1);
-      side_input =
-          Tensor(dtype, ShapeFromFormat(FORMAT_NCHW_VECT_C, n, oh, ow, oc));
+      Padding padding_type;
+      ASSERT_TRUE(GetPaddingFromString(padding, &padding_type).ok());
+      int64_t oh, oh_padding;
+      ASSERT_TRUE(
+          GetWindowedOutputSize(h, kh, stride, padding_type, &oh, &oh_padding)
+              .ok());
+      int64_t ow, ow_padding;
+      ASSERT_TRUE(
+          GetWindowedOutputSize(w, kw, stride, padding_type, &ow, &ow_padding)
+              .ok());
+      TensorShape shape;
+      TF_EXPECT_OK(
+          ShapeFromFormatWithStatus(FORMAT_NCHW_VECT_C, n, oh, ow, oc, &shape));
+      side_input = Tensor(dtype, shape);
       side_input.flat<T>() = side_input.flat<T>().setConstant(0);
     }
 
@@ -868,7 +867,10 @@ class FusedConv2DOpTest : public OpsTestBase {
       // Convert the output from NCHW_VECT_C to NHWC
       const int oh = GetTensorDim(*output, FORMAT_NCHW_VECT_C, 'H');
       const int ow = GetTensorDim(*output, FORMAT_NCHW_VECT_C, 'W');
-      Tensor output_nhwc(dtype, ShapeFromFormat(FORMAT_NHWC, n, oh, ow, oc));
+      TensorShape shape;
+      TF_EXPECT_OK(
+          ShapeFromFormatWithStatus(FORMAT_NHWC, n, oh, ow, oc, &shape));
+      Tensor output_nhwc(dtype, shape);
       output_nhwc.tensor<T, 4>() =
           output->tensor<T, 5>()
               .shuffle(Eigen::array<int, 5>{0, 2, 3, 1, 4})

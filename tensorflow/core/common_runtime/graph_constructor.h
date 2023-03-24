@@ -70,7 +70,8 @@ struct ImportGraphDefOptions {
       : uniquify_names(false),
         uniquify_prefix(false),
         skip_mapped_nodes(false),
-        validate_shape(true) {}
+        validate_shape(true),
+        propagate_device_spec(false) {}
 
   // Name prefix to use for nodes imported from the GraphDef.  For example, if
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
@@ -153,6 +154,10 @@ struct ImportGraphDefOptions {
 
   // Try to set default execution device for this grapth.
   string default_device;
+
+  // If true, propagates a node's assigned device. By default the runtime
+  // will recompute the assigned device every time.
+  bool propagate_device_spec;
 };
 
 // Optional results that may be returned by ImportGraphDef.

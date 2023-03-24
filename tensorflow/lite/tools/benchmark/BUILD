@@ -3,6 +3,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -113,8 +114,8 @@ cc_test(
         ":benchmark_tflite_model_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
@@ -157,13 +158,15 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools:model_loader",
         "//tensorflow/lite/tools:utils",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/delegates:tflite_execution_providers",
@@ -171,6 +174,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@ruy//ruy/profiler",
     ],
+)
+
+cc_library(
+    name = "benchmark_multirun_stats_recorder",
+    hdrs = ["benchmark_multirun_stats_recorder.h"],
+    copts = common_copts,
+    deps = [":benchmark_model_lib"],
 )
 
 cc_library(
@@ -182,17 +192,18 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_multirun_stats_recorder",
         ":benchmark_params",
         ":benchmark_utils",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -220,7 +231,7 @@ cc_library(
         ":benchmark_utils",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/profiling:memory_usage_monitor",
         "//tensorflow/lite/profiling:time",

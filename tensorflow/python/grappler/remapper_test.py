@@ -27,8 +27,10 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -36,7 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -90,13 +92,30 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
-      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version_str = sysconfig_lib.get_build_info().get(
+          'cuda_version', '0.0')
       cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
       if cuda_version < (11, 4):
         self.skipTest('This test requires CUDA >= 11.4.')
 
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled.')
+
+  def _VerifyNoFusion(self, model_fn):
+    ops.add_to_collection('train_op', model_fn)
+    mg = meta_graph.create_meta_graph_def(graph=model_fn.graph)
+
+    # Compute referene
+    config = _get_config(remapping_on=False)
+    gdef_ref = tf_optimizer.OptimizeGraph(config, mg)
+
+    # Compute with remapping ON
+    config = _get_config(remapping_on=True)
+    gdef = tf_optimizer.OptimizeGraph(config, mg)
+
+    self.assertEqual(len(gdef_ref.node), len(gdef.node))
+    self.assertAllEqual([n.op for n in gdef_ref.node],
+                        [n.op for n in gdef.node])
 
   def _VerifyValues(self, model_fn, use_low_precision, fused_op, epilog_ops):
     run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -153,12 +172,9 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     if mode == 'mkl':
       config.append((dtypes.float32, gelu_exact, b'GeluExact'))
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      # Gelu exact (approximate=False) is not supported with bfloat16 precision
-      # since no support for Erf with bfloat16 data type.
-      # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
-      # supported with bfloat16.
       if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
         config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
+        config.append((dtypes.bfloat16, gelu_exact, b'GeluExact'))
     elif mode == 'cuda':
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
       config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
@@ -189,7 +205,17 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
           z = nn.bias_add(y, b)
           out = act_fn(z)
 
-        epilog_ops = [b'BiasAdd', act_name]
+        if transpose and (device == '/device:CPU:0') and \
+            act_name in (b'GeluApproximate', b'GeluExact'):
+          if precision == dtypes.bfloat16:
+            # No fusion should happen on CPU.
+            self._VerifyNoFusion(out)
+            continue
+          else:
+            # Gelu should not get fused, only BiasAdd.
+            epilog_ops = [b'BiasAdd']
+        else:
+          epilog_ops = [b'BiasAdd', act_name]
         graph = self._VerifyValues(out, precision != dtypes.float32, fused_op,
                                    epilog_ops)
 

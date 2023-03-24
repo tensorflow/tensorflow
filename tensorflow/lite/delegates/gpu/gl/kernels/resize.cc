@@ -42,7 +42,8 @@ class Resize : public NodeShader {
 
     if (ctx.input_shapes[0][2] > ctx.output_shapes[0][2] ||
         ctx.input_shapes[0][1] > ctx.output_shapes[0][1]) {
-      return absl::InvalidArgumentError("Output size is less than input size.");
+      return absl::UnimplementedError(
+          "Downsampling is currently not supported by the resize op on GPU.");
     }
     if (ctx.output_shapes[0][2] != attr.new_shape.w ||
         ctx.output_shapes[0][1] != attr.new_shape.h) {

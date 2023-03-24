@@ -29,13 +29,12 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/SmallVectorMemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/AlwaysInliner.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "llvm/Transforms/Instrumentation.h"
+#include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/llvm_ir_runtime.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -46,136 +45,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-/* Create filtered versions of the LLVM Pass Managers to filter out some
-of the expensive passes.
-Profiling:
-   learning/brain/google/xla/benchmarks:inception_cpu_benchmark
-   learning/brain/google/xla/benchmarks:cifarnet
-pointed to LICM and IndVarSimplify as the hottest passes.
-LICM is known to exhibit O(n^2) time in the number of instructions.
-IndVarSimplify is slow due to SCEV. If loops are emitted in canonical form,
-this pass is not necessary.
-Disabling these as a starting point.
-*/
-// TODO(b/64227304) Creating a custom pass pipeline will replace this.
-
-namespace {
-class FilteredPassManager : public llvm::legacy::PassManager {
- public:
-  explicit FilteredPassManager(bool disable_expensive_passes)
-      : disable_expensive_passes_(disable_expensive_passes) {}
-  void add(llvm::Pass* p) override {
-    // Disable all the loop unroll passes in the pipeline if
-    // `disable_expensive_passes_` is true (TODO: Maybe we should use
-    // `builder.DisableUnrollLoops` for this legacy feature?). Disable only the
-    // early loop full unroll pass, otherwise. The early loop full unroll pass
-    // applies excesive unrolling in statically bounded low trip-count loops,
-    // which are very common in XLA. It also creates a strong dependency on the
-    // SLP vectorizer to produce all the vector code, since the loops are fully
-    // unrolled. By disabling it, the Loop Vectorizer would have an opportunity
-    // to vectorize the code. A later loop unroll pass will still unroll the
-    // loops before SLP for those cases missed by the Loop Vectorizer.
-    constexpr unsigned loop_full_unroll_pos = 0;
-    if (p->getPassName().contains("Unroll loops") &&
-        (disable_expensive_passes_ ||
-         num_unroll_passes_ == loop_full_unroll_pos)) {
-      ++num_unroll_passes_;
-      delete p;
-      return;
-    }
-
-    llvm::legacy::PassManager::add(p);
-  }
-
- private:
-  unsigned num_unroll_passes_ = 0;
-  bool disable_expensive_passes_;
-};
-}  // anonymous namespace
-
-llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
-    llvm::Module& module) {
-  FilteredPassManager module_passes(disable_expensive_passes_);
-  llvm::legacy::FunctionPassManager function_passes(&module);
-
-  VLOG(2) << "IR before optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
-
-  if (pre_optimization_hook_) {
-    pre_optimization_hook_(module);
-  }
-
-  if (dfsan_enabled_) {
-    module_passes.add(
-        llvm::createDataFlowSanitizerLegacyPassPass(dfsan_abi_list_files_));
-  }
-
-  // Add the appropriate TargetLibraryInfo and TargetTransformInfo.
-  AddTargetInfoPasses(&module_passes);
-
-  // Build up optimization pipeline.
-  if (optimize_for_size_) {
-    // Optimizing for size turns on -O2 level optimizations.
-    //
-    // TODO(b/64153864): Although the code generator supports size_level = 2 to
-    // turn on more aggressive code size optimizations than size_level = 1, we
-    // pass size_level = 1 because in many cases a size_level of 2 does
-    // worse. Investigate why.
-    AddOptimizationPasses(&module_passes, &function_passes, /*opt_level=*/2,
-                          /*size_level=*/1);
-  } else {
-    AddOptimizationPasses(&module_passes, &function_passes,
-                          /*opt_level=*/opt_level_, /*size_level=*/0);
-  }
-
-  // Run optimization passes on module.
-  function_passes.doInitialization();
-
-  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
-
-  for (auto func = module.begin(); func != module.end(); ++func) {
-    function_passes.run(*func);
-  }
-  function_passes.doFinalization();
-  module_passes.run(module);
-
-  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
-
-  runtime::RewriteIRRuntimeFunctions(&module, fast_math_flags_);
-
-  // Buffer for holding machine code prior to constructing the ObjectFile.
-  llvm::SmallVector<char, 0> stream_buffer;
-  llvm::raw_svector_ostream ostream(stream_buffer);
-
-  VLOG(2) << "IR after optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
-
-  if (post_optimization_hook_) {
-    post_optimization_hook_(module);
-  }
-
-  // Generate code.
-  llvm::MCContext* mc_context;
-  llvm::legacy::PassManager codegen_passes;
-  target_machine_->addPassesToEmitMC(codegen_passes, mc_context, ostream);
-  codegen_passes.run(module);
-
-  std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
-      new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
-
-  if (post_codegen_hook_) {
-    llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
-        llvm::object::ObjectFile::createObjectFile(*memory_buffer);
-    if (obj_file) {
-      post_codegen_hook_(*obj_file.get());
-    } else {
-      LOG(WARNING) << "Could convert memory buffer to object file!";
-    }
-  }
-
-  return std::move(memory_buffer);
-}
 
 static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
   std::vector<llvm::VecDesc> result = {
@@ -219,41 +88,117 @@ static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
   return result;
 }
 
-void CompilerFunctor::AddTargetInfoPasses(
-    llvm::legacy::PassManagerBase* passes) const {
+llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
+    llvm::Module& module) {
+  VLOG(2) << "IR before optimizations";
+  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
+
+  if (pre_optimization_hook_) {
+    pre_optimization_hook_(module);
+  }
+
+  llvm::OptimizationLevel opt_level;
+  if (optimize_for_size_) {
+    opt_level = llvm::OptimizationLevel::Os;
+  } else {
+    switch (opt_level_) {
+      case 0:
+        opt_level = llvm::OptimizationLevel::O0;
+        break;
+      case 1:
+        opt_level = llvm::OptimizationLevel::O1;
+        break;
+      case 2:
+        opt_level = llvm::OptimizationLevel::O2;
+        break;
+      case 3:
+        opt_level = llvm::OptimizationLevel::O3;
+        break;
+    }
+  }
+
+  llvm::PipelineTuningOptions pto;
+  pto.LoopVectorization = !optimize_for_size_;
+  pto.SLPVectorization = !optimize_for_size_;
+  pto.LoopUnrolling = false;
+
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
+
+  llvm::PassInstrumentationCallbacks pic;
+  llvm::StandardInstrumentations si(module.getContext(), false);
+  si.registerCallbacks(pic, &mam);
+
+  llvm::PassBuilder pb(target_machine_, pto, {}, &pic);
+
+  // Add the appropriate TargetLibraryInfo.
   llvm::Triple target_triple(target_machine_->getTargetTriple());
   auto target_library_info_impl =
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       VectorFunctionsForTargetLibraryInfoImpl());
 
-  passes->add(
-      new llvm::TargetLibraryInfoWrapperPass(*target_library_info_impl));
-  passes->add(createTargetTransformInfoWrapperPass(
-      target_machine_->getTargetIRAnalysis()));
-}
+  fam.registerPass(
+      [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
 
-void CompilerFunctor::AddOptimizationPasses(
-    llvm::legacy::PassManagerBase* module_passes,
-    llvm::legacy::FunctionPassManager* function_passes, unsigned opt_level,
-    unsigned size_level) const {
-  llvm::PassManagerBuilder builder;
-  builder.OptLevel = opt_level;
-  builder.SizeLevel = size_level;
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-  if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass();
-  } else {
-    // Only inline functions marked with "alwaysinline".
-    builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
+  llvm::ModulePassManager pm;
+
+  if (dfsan_enabled_) {
+    pm.addPass(llvm::DataFlowSanitizerPass(dfsan_abi_list_files_));
   }
 
-  builder.DisableUnrollLoops = opt_level == 0;
-  builder.LoopVectorize = opt_level > 0 && size_level == 0;
-  builder.SLPVectorize = opt_level > 1 && size_level == 0;
+  if (opt_level == llvm::OptimizationLevel::O0) {
+    pm.addPass(pb.buildO0DefaultPipeline(opt_level));
+  } else {
+    pm.addPass(pb.buildPerModuleDefaultPipeline(opt_level));
+  }
 
-  builder.populateFunctionPassManager(*function_passes);
-  builder.populateModulePassManager(*module_passes);
+  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+
+  pm.run(module, mam);
+
+  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+
+  runtime::RewriteIRRuntimeFunctions(&module, fast_math_flags_);
+
+  // Buffer for holding machine code prior to constructing the ObjectFile.
+  llvm::SmallVector<char, 0> stream_buffer;
+  llvm::raw_svector_ostream ostream(stream_buffer);
+
+  VLOG(2) << "IR after optimizations";
+
+  if (post_optimization_hook_) {
+    post_optimization_hook_(module);
+  }
+
+  // Generate code.
+  llvm::MCContext* mc_context;
+  llvm::legacy::PassManager codegen_passes;
+  target_machine_->addPassesToEmitMC(codegen_passes, mc_context, ostream);
+  codegen_passes.run(module);
+
+  std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
+      new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
+
+  if (post_codegen_hook_) {
+    llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
+        llvm::object::ObjectFile::createObjectFile(*memory_buffer);
+    if (obj_file) {
+      post_codegen_hook_(*obj_file.get());
+    } else {
+      LOG(WARNING) << "Could convert memory buffer to object file!";
+    }
+  }
+
+  return std::move(memory_buffer);
 }
 
 }  // namespace cpu

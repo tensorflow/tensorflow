@@ -21,11 +21,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/jit_compiler.h"
-#include "tensorflow/compiler/xla/runtime/async_values_cache.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/jit_compiler.h"
+#include "tensorflow/compiler/xla/runtime/async_values_cache.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/runtime/constraints.h"
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -84,18 +88,31 @@ class JitExecutable {
       absl::Span<const ArgumentConstraint> constraints, ArgumentsRef arguments,
       CompilationTask task, UserData user_data);
 
+  // TODO(ezhulenev): Currently exported functions must be defined explicitly by
+  // the user. It should be possible to define exported functions implicitly by
+  // having `rt.export` operations in the compiled module, and export new
+  // functions while running compilation pipeline. Also `Executable` potentially
+  // might have more exported functions than the `JitExecutable` that
+  // instantiated it. Consider adding "private" exported functions, that are not
+  // visible through the `Executable` API (e.g. function references might be
+  // passed to custom calls, but they should not be visible to the client).
   static absl::StatusOr<JitExecutable> Instantiate(
-      std::string_view mlir_module, std::string_view entrypoint, Options opts,
+      std::string_view mlir_module, Options opts,
+      absl::Span<const std::string_view> exported,
       std::string_view memory_region_name = "",
       CompilationTaskRunner runner = InlineCompilationTaskRunner);
 
-  // Returns entrypoint operands constraints after resolving them using the
-  // statically known information in the entrypoint function signature.
-  absl::Span<const ArgumentConstraint> constraints() const;
+  static absl::StatusOr<JitExecutable> Instantiate(
+      std::string_view mlir_module, std::string_view exported, Options opts,
+      std::string_view memory_region_name = "",
+      CompilationTaskRunner runner = InlineCompilationTaskRunner) {
+    return Instantiate(mlir_module, opts, {exported}, memory_region_name,
+                       std::move(runner));
+  }
 
   // Returns default executable that accepts all compatible operands
   // (operands rank and all static dimensions should match the operands).
-  tfrt::AsyncValuePtr<Executable> DefaultExecutable() const;
+  tsl::AsyncValuePtr<Executable> DefaultExecutable() const;
 
   // Returns an executable that may be specialized for the arguments. Can return
   // default executable if no specialization is required, or if the specialized
@@ -120,68 +137,94 @@ class JitExecutable {
   //
   // Note: This function never falls back on the default executable if
   // specialization compilation fails.
-  absl::StatusOr<tfrt::AsyncValuePtr<Executable>> GetExecutable(
+  //
+  // TODO(ezhulenev): Add support for specifying exported function ordinal,
+  // currently this will always specialize exported function with ordinal 0.
+  absl::StatusOr<tsl::AsyncValuePtr<Executable>> GetExecutable(
       ArgumentsRef arguments, UserData user_data = {},
       const SpecializationListener* listener = nullptr);
 
   // Returns an async value that becomes ready when all executables owned by
   // this JitExecutable are compiled (no pending compilation tasks).
-  tfrt::AsyncValueRef<tfrt::Chain> AllExecutablesCompiled() const;
+  tsl::AsyncValueRef<tsl::Chain> AllExecutablesCompiled() const;
 
   // JitExecutable is move-only type.
   JitExecutable(const JitExecutable&) = delete;
   JitExecutable(JitExecutable&&) = default;
 
-  std::string mlir_module() { return mlir_module_; }
+  std::string_view mlir_module() { return mlir_module_; }
+
+  unsigned num_functions() const { return functions_.size(); }
 
  private:
-  JitExecutable(std::string_view mlir_module, std::string_view entrypoint,
-                std::string_view memory_region_name, Options opts,
-                absl::Span<const ArgumentConstraint> constraints,
-                FunctionType signature,
+  // JitExecutable defines multiple exported functions that could be compiled
+  // into the executable. At run time they are referenced by their ordinal, so
+  // that we don't depend on expensive by-name lookup on the hot path. Function
+  // ordinal is defined by its index in the `functions_` vector.
+  //
+  // TODO(ezhulenev): Today when JitExecutable instantiates specialized
+  // executable via call to `GetExecutable` it can only specialize the function
+  // with ordinal 0. It should be possible to specialize multiple functions, and
+  // select which functions should be compiled at all.
+  struct Function {
+    Function(std::string_view name, FunctionType signature,
+             absl::Span<const ArgumentConstraint> constraints);
+
+    Function(const Function&) = delete;
+    Function(Function&&) = default;
+
+    // Exported function name.
+    std::string name;
+
+    // Signature of the exported function.
+    //
+    // This function signature is allowed to have operands and results types
+    // without a well-defined ABI (e.g. it can have tensors when compiled module
+    // defined in Tensorflow dialect), and it corresponds to the executable
+    // definition in one of the high level dialects (e.g. Tensorflow or mHLO).
+    //
+    // When compiled module prepared for execution, function operands and
+    // results are mapped to the types with well-defined ABI (e.g. tensors
+    // mapped to memrefs). See `runtime_signature` documentation in the
+    // `Executable::Function` type.
+    FunctionType signature;
+
+    // Exported function arguments constraints after resolving them using the
+    // statically known information in the function signature. If constraint
+    // specified by the argument attribute known to be statically satisfied by
+    // the argument type (e.g. rank constraint with an operand of statically
+    // known rank), then the constraint value for that operand will be updated
+    // to `kResolved`.
+    llvm::SmallVector<ArgumentConstraint> constraints;
+
+    // True if any of the arguments has `ArgumentConstraint::kValue` constraint.
+    bool has_value_constraints;
+
+    // Symbolic shape resolver assigns symbolic dimensions to runtime operands
+    // based on the exported function signature.
+    SymbolicShapesResolver symbolic_shapes_resolver;
+  };
+
+  JitExecutable(std::string_view mlir_module, Options opts,
+                std::vector<Function> functions,
                 std::optional<Executable> default_executable,
+                std::string_view memory_region_name,
                 CompilationTaskRunner runner);
 
   std::string mlir_module_;
-  std::string entrypoint_;
+  Options opts_;
+
+  // Functions exported by this jit executable, indexed by function ordinal.
+  std::vector<Function> functions_;
+
+  // Default executable that was not specialized to any of the arguments.
+  AsyncValueRef<Executable> default_executable_;
+  bool has_default_executable_;
 
   // Name of the memory region where JIT'ed code is compiled to.
   // This allows profilers to correctly label JIT-executed code.
   // Note: this feature might only be available on some platforms, e.g. Linux.
   std::string memory_region_name_;
-
-  Options opts_;
-
-  // Entrypoint operands constraints after resolving them using the statically
-  // known information in the entrypoint function signature. If constraint
-  // specified by the argument attribute known to be statically satisfied by the
-  // operand type (e.g. rank constraint with an operand of statically known
-  // rank), then the constraint value for that operand will be updated to
-  // `kResolved`.
-  llvm::SmallVector<ArgumentConstraint> constraints_;
-
-  // True if any of the operands has `ArgumentConstraint::kValue` constraint.
-  bool has_value_constraints_;
-
-  // Signature of the compiled module entrypoint function.
-  //
-  // This function signature is allowed to have operands and results types
-  // without a well-defined ABI (e.g. it can have tensors when compiled module
-  // defined in Tensorflow dialect), and it corresponds to the executable
-  // definition in one of the high level dialects (e.g. Tensorflow or mHLO).
-  //
-  // When compiled module prepared for execution, function operands and results
-  // are mapped to the types with well-defined ABI (e.g. tensors mapped to
-  // memrefs). See `signature_` documentation in the `Executable` type.
-  FunctionType signature_;
-
-  // Symbolic shape resolver assigns symbolic dimensions to runtime operands
-  // based on the entrypoint function signature.
-  SymbolicShapesResolver symbolic_shapes_resolver_;
-
-  // Default executable that was not specialized to any of the arguments.
-  AsyncValueRef<Executable> default_executable_;
-  bool has_default_executable_;
 
   // A custom runner for compiling specializations.
   CompilationTaskRunner runner_;

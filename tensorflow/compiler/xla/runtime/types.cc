@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "llvm/ADT/StringExtras.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
@@ -48,6 +49,12 @@ std::string AsyncValueType::ToString() const {
 
 std::string ScalarType::ToString() const {
   return LowercasePrimitiveTypeName(type_);
+}
+
+std::string TupleType::ToString() const {
+  auto to_string = [](const auto& elem) { return elem->ToString(); };
+  return StrCat("tuple<", llvm::join(llvm::map_range(elems_, to_string), ", "),
+                ">");
 }
 
 std::string RankedTensorType::ToString() const {
@@ -81,12 +88,22 @@ std::string OpaqueOperandType::ToString() const { return "!rt.opaque"; }
 using ArgumentAbi = Type::ArgumentAbi;
 using ResultAbi = Type::ResultAbi;
 
+// Async token passed as a pointer to the runtime async token.
+absl::StatusOr<ArgumentAbi> AsyncTokenType::AsArgument() const {
+  return ArgumentAbi{1};
+}
+
 // Async token returned as a pointer to the runtime async token.
 absl::StatusOr<ResultAbi> AsyncTokenType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }
 
-// Async value returned as a pointer to the runtime async token.
+// Async value passed as a pointer to the runtime async value.
+absl::StatusOr<ArgumentAbi> AsyncValueType::AsArgument() const {
+  return ArgumentAbi{1};
+}
+
+// Async value returned as a pointer to the runtime async value.
 absl::StatusOr<ResultAbi> AsyncValueType::AsResult() const {
   return ResultAbi{sizeof(void*)};
 }

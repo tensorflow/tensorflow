@@ -114,7 +114,7 @@ tf_module {
   }
   member_method {
     name: "deserialize"
-    argspec: "args=[\'name\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "get"
@@ -186,7 +186,7 @@ tf_module {
   }
   member_method {
     name: "serialize"
-    argspec: "args=[\'loss\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'loss\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sparse_categorical_crossentropy"

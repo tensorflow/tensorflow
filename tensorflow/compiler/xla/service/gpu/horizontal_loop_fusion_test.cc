@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/horizontal_loop_fusion.h"
 
+#include <vector>
+
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -37,7 +38,12 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HorizontalLoopFusionTest : public HloTestBase {};
+class HorizontalLoopFusionTest : public HloTestBase {
+ public:
+  static bool IsFusion(const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kFusion;
+  }
+};
 
 TEST_F(HorizontalLoopFusionTest, BasicTest) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -71,6 +77,7 @@ TEST_F(HorizontalLoopFusionTest, BasicTest) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   const HloInstruction* entry_root =
@@ -159,6 +166,106 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForIncompatibleTypes) {
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).value());
 }
 
+TEST_F(HorizontalLoopFusionTest, FusingIntoKLoopAndKInputTogether) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule FusingIntoKLoopAndKInputTogether
+
+ fused_computation.1 {
+   arg.1 = f16[129, 2048]{1, 0} parameter(0)
+   arg.2 = f16[129, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[129,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[129, 2048]{1, 0} parameter(0)
+   arg.2 = f16[129, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[129,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.3 {
+   arg.1 = f16[130, 2048]{1, 0} parameter(0)
+   arg.2 = f16[130, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[130,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.4 {
+   arg.1 = f16[130, 2048]{1, 0} parameter(0)
+   arg.2 = f16[130, 2048]{1, 0} parameter(1)
+   ROOT mul.1 = f16[130,2048]{1, 0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.5 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT add.1 = f16[123]{0} add(arg.1, arg.2)
+ }
+
+ fused_computation.6 {
+   arg.1 = f16[128]{0} parameter(0)
+   arg.2 = f16[128]{0} parameter(1)
+   ROOT add.1 = f16[128]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[129, 2048]{1, 0} parameter(0)
+   arg.2 = f16[129, 2048]{1, 0} parameter(1)
+   arg.3 = f16[129, 2048]{1, 0} parameter(2)
+   arg.4 = f16[129, 2048]{1, 0} parameter(3)
+   arg.5 = f16[130, 2048]{1, 0} parameter(4)
+   arg.6 = f16[130, 2048]{1, 0} parameter(5)
+   arg.7 = f16[130, 2048]{1, 0} parameter(6)
+   arg.8 = f16[130, 2048]{1, 0} parameter(7)
+   arg.9 = f16[123]{0} parameter(8)
+   arg.10 = f16[123]{0} parameter(9)
+   arg.11 = f16[128]{0} parameter(10)
+   arg.12 = f16[128]{0} parameter(11)
+
+   // fusion.1 and fusion.2 will be fused into kLoop fusion
+   // fusion.3 and fusion.4 will be fused into another kLoop fusion
+   // fusion.5 and fusion.6 will be fused into kInput fusion
+
+   fusion.1 = f16[129,2048]{1, 0}
+      fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+
+   fusion.2 = f16[129,2048]{1, 0}
+      fusion(arg.3, arg.4), kind=kLoop, calls=fused_computation.2
+
+   fusion.3 = f16[130,2048]{1, 0}
+      fusion(arg.5, arg.6), kind=kLoop, calls=fused_computation.3
+
+   fusion.4 = f16[130,2048]{1, 0}
+      fusion(arg.7, arg.8), kind=kLoop, calls=fused_computation.4
+
+   fusion.5 = f16[123]{0}
+      fusion(arg.9, arg.10), kind=kLoop, calls=fused_computation.5
+
+   fusion.6 = f16[128]{0}
+      fusion(arg.11, arg.12), kind=kLoop, calls=fused_computation.6
+
+   ROOT tuple.1 = (f16[129,2048]{1, 0}, f16[129,2048]{1, 0},
+                   f16[130,2048]{1, 0}, f16[130,2048]{1, 0},
+                   f16[123]{0}, f16[128]{0})
+      tuple(fusion.1, fusion.2, fusion.3, fusion.4, fusion.5, fusion.6)
+ }
+)")
+                    .value();
+
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+
+  int input_fusion_count = 0;
+  int loop_fusion_count = 0;
+  for (auto inst : module->entry_computation()->MakeInstructionPostOrder()) {
+    if (inst->opcode() == HloOpcode::kFusion) {
+      input_fusion_count +=
+          (inst->fusion_kind() == HloInstruction::FusionKind::kInput) ? 1 : 0;
+      loop_fusion_count +=
+          (inst->fusion_kind() == HloInstruction::FusionKind::kLoop) ? 1 : 0;
+    }
+  }
+  EXPECT_EQ(input_fusion_count, 1);
+  EXPECT_EQ(loop_fusion_count, 2);
+}
+
 TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule MergeSharedFusionInstruction
@@ -185,10 +292,14 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
                     .value();
 
   HloPassPipeline fusion("fusion");
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false);
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
+  const GpuDeviceInfo device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false,
+                                                 device_info);
+  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true,
+                                                 device_info);
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -296,7 +407,8 @@ TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
-  EXPECT_TRUE(HloDCE().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -425,6 +537,7 @@ TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   VLOG(2) << "Dump after horizontal fusion:";
@@ -519,14 +632,9 @@ TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
 
   // Verify that the total number of fusion instructions is 2 so that we
   // know sqrt.0 and sqrt.1 are fused.
-  size_t total_fusion_instrs = 0;
-  for (const HloInstruction* instr :
-       module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      ++total_fusion_instrs;
-    }
-  }
-  EXPECT_EQ(total_fusion_instrs, 2);
+  EXPECT_EQ(
+      absl::c_count_if(module->entry_computation()->instructions(), IsFusion),
+      2);
 }
 
 TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
@@ -588,14 +696,9 @@ TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
   // know all the sqrt instructions are fused into a kernel. Note that if we
   // traverse from def-to-use (i.e., top-to-down) instead of use-to-def, we
   // will end up having 3 fusions instead of 2.
-  size_t total_fusion_instrs = 0;
-  for (const HloInstruction* instr :
-       module->entry_computation()->instructions()) {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      ++total_fusion_instrs;
-    }
-  }
-  EXPECT_EQ(total_fusion_instrs, 2);
+  EXPECT_EQ(
+      absl::c_count_if(module->entry_computation()->instructions(), IsFusion),
+      2);
 }
 
 // Simplified reproducer for Google bug b/242287055.
@@ -643,6 +746,94 @@ ENTRY e {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+TEST_F(HorizontalLoopFusionTest, CopyInsertionFusionControlFlow) {
+  const char* hlo_text = R"(
+HloModule cluster
+
+ENTRY main {
+  cst = f32[1]{0} constant({0})
+  cp1 = f32[1]{0} copy(cst)
+  cp2 = f32[1]{0} copy(cst)
+  cp3 = f32[1]{0} copy(cst)
+  cp4 = f32[1]{0} copy(cst), control-predecessors={cp1}
+  ROOT tuple_out = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}) tuple(cp1, cp2, cp3, cp4)
+}
+)";
+
+  auto module = ParseAndReturnUnverifiedModule(hlo_text).value();
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+
+  VLOG(2) << module->ToString();
+
+  // Verify that the total number of fusion instructions is 1.
+  EXPECT_EQ(
+      absl::c_count_if(module->entry_computation()->instructions(), IsFusion),
+      1);
+
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  // Check that we fuse when supported.
+  EXPECT_THAT(entry_root,
+              op::Tuple(op::Copy(), op::GetTupleElement(op::Fusion()),
+                        op::GetTupleElement(op::Fusion()), op::Copy()));
+}
+
+TEST_F(HorizontalLoopFusionTest, DoNotMergeVariadicReductions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule m
+
+  fused_computation.94 {
+    tmp_0 = f32[] parameter(0)
+    tmp_1 = f32[] parameter(1)
+    tmp_2 = pred[] compare(tmp_0, tmp_1), direction=GE
+    tmp_3 = f32[] select(tmp_2, tmp_0, tmp_1)
+    tmp_4 = pred[] compare(tmp_0, tmp_1), direction=EQ
+    tmp_5 = s32[] parameter(2)
+    tmp_6 = s32[] parameter(3)
+    tmp_7 = s32[] minimum(tmp_5, tmp_6)
+    tmp_8 = s32[] select(tmp_2, tmp_5, tmp_6)
+    tmp_9 = s32[] select(tmp_4, tmp_7, tmp_8)
+    ROOT tmp_10 = (f32[], s32[]) tuple(tmp_3, tmp_9)
+  }
+
+  minmax_func.1536 {
+    tmp_0 = f32[] parameter(0)
+    tmp_1 = f32[] parameter(2)
+    tmp_2 = s32[] parameter(1)
+    tmp_3 = s32[] parameter(3)
+    ROOT tmp_4 = (f32[], s32[]) fusion(tmp_0, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=fused_computation.94
+  }
+
+  fused_computation {
+    tmp_0 = f32[554112,10]{1,0} parameter(0)
+    tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+    tmp_2 = f32[] constant(-inf)
+    tmp_3 = s32[] constant(0)
+    ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax_func.1536
+  }
+
+  fused_computation2 {
+    tmp_0 = f32[554112,10]{1,0} parameter(0)
+    tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+    tmp_2 = f32[] constant(inf)
+    tmp_3 = s32[] constant(1)
+    ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax_func.1536
+  }
+
+  ENTRY e {
+    tmp_0 = f32[554112,10]{1,0} parameter(0)
+    tmp_1 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_0), kind=kLoop, calls=fused_computation
+    tmp_2 = s32[554112]{0} get-tuple-element(tmp_1), index=1
+    tmp_3 = f32[554112,10]{1,0} parameter(1)
+    tmp_4 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_3), kind=kLoop, calls=fused_computation2
+    tmp_5 = s32[554112]{0} get-tuple-element(tmp_4), index=1
+    ROOT tmp_6 = s32[554112]{0} add(tmp_2, tmp_5)
+  })")
+                    .value();
+
+  EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).value());
 }
 
 }  // namespace

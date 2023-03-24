@@ -443,13 +443,14 @@ void operator()(
         using VectT = int32;
         auto pad_data_format = FORMAT_NCHW;
 
-        OP_REQUIRES_OK(
-            ctx,
-            ctx->allocate_temp(
-                DataTypeToEnum<T>::value,
-                ShapeFromFormat(data_format, batch_size, new_conv_input_rows,
-                                new_conv_input_cols, conv_input_depth),
-                &maybe_padded_conv_input));
+        TensorShape maybe_padded_conv_input_shape;
+        OP_REQUIRES_OK(ctx, ShapeFromFormatWithStatus(
+                                data_format, batch_size, new_conv_input_rows,
+                                new_conv_input_cols, conv_input_depth,
+                                &maybe_padded_conv_input_shape));
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                               maybe_padded_conv_input_shape,
+                                               &maybe_padded_conv_input));
 
         auto conv_input_eigen_tensor =
             To32Bit(input_param.reinterpret_last_dimension<VectT, 4>());
@@ -547,8 +548,8 @@ void operator()(
   const float side_input_scale = side_input_scale_param.scalar<float>()();
 
   constexpr double leakyrelu_alpha = 0;  // This op doesn't support leaky relu
-  int device_id = stream->parent()->device_ordinal();
   ConvParameters fused_conv_parameters = {
+      stream->parent(),
       batch_size,
       conv_input_depth,
       {{conv_input_rows, conv_input_cols}},
@@ -560,7 +561,6 @@ void operator()(
       {{row_stride, col_stride}},
       {{padding_rows, padding_cols}},
       conv_input->dtype(),
-      device_id,
       /*group_count=*/1,  // This op doesn't support grouped convolutions.
       ConvParameters::FusionInfo{conv_scale, side_input_scale, leakyrelu_alpha,
                                  dnn_activation_mode,

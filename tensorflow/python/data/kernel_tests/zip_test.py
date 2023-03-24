@@ -22,6 +22,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
@@ -133,11 +134,49 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.zip((x, y), name="zip")
     self.assertDatasetProduces(dataset, [(4, 2)])
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations())
+  )
+  def testZipWithArgsAndDataset(self):
+    with self.assertRaisesRegex(
+        TypeError, r"Both `\*args` and `datasets` cannot be set."
+    ):
+      dataset_ops.Dataset.zip(
+          dataset_ops.Dataset.range(1, 4),
+          dataset_ops.Dataset.range(4, 7),
+          datasets=(
+              dataset_ops.Dataset.range(1, 4),
+              dataset_ops.Dataset.range(4, 7),
+          ),
+      )
 
-class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                        parameterized.TestCase):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations())
+  )
+  def testZipBasicWithNoInput(self):
+    with self.assertRaisesRegex(
+        TypeError, r"Must pass at least one dataset to `zip`."
+    ):
+      dataset_ops.Dataset.zip()
 
-  def _build_dataset(self, arr):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations())
+  )
+  def InvalidZipInputList(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        r"Invalid input to `zip`. Inputs are expected to be (nested)"
+        r" structures of `tf.data.Dataset` objects. Python `list` is"
+        r" not supported and you should use `tuple` instead.",
+    ):
+      dataset_ops.Dataset.zip([1, 2, 3], [4, 5, 6])
+
+
+class ZipCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+
+  def _build_dataset(self, arr, options=None):
     components = [
         np.tile(np.array([[1], [2], [3], [4]]), 20),
         np.tile(np.array([[12], [13], [14], [15]]), 22),
@@ -147,16 +186,22 @@ class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         dataset_ops.Dataset.from_tensor_slices(component)
         for component in components
     ]
-    return dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+    dataset = dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(elements=[[37.0, 38.0, 39.0, 40.0], [1.0, 2.0]]))
-  )
-  def test(self, verify_fn, elements):
-    verify_fn(self, lambda: self._build_dataset(elements), len(elements))
+          combinations.combine(elements=[[37.0, 38.0, 39.0, 40.0], [1.0, 2.0]]),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, elements, symbolic_checkpoint):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(self, lambda: self._build_dataset(elements, options),
+              len(elements))
 
 
 class ZipRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -193,6 +238,19 @@ class ZipRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
+  def testZipBasicWithoutTuple(self):
+    dataset = dataset_ops.Dataset.zip(
+        dataset_ops.Dataset.range(1, 4), dataset_ops.Dataset.range(4, 7)
+    )
+    expected_dataset = [(1, 4), (2, 5), (3, 6)]
+    for i in range(3):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)), expected_dataset[i]
+      )
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations())
+  )
   def testZipEqual(self):
     components = [
         np.tile(np.array([[1], [2], [3], [4]]), 20),
@@ -233,6 +291,28 @@ class ZipRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(4):
       result1, (result2,
                 result3) = self.evaluate(random_access.at(dataset, index=i))
+      self.assertAllEqual(components[0][i], result1)
+      self.assertAllEqual(components[1][i], result2)
+      self.assertAllEqual(components[2][i], result3)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=4))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedWithoutTuple(self):
+    components = [
+        np.tile(np.array([[1], [2], [3], [4]]), 20),
+        np.tile(np.array([[12], [13], [14], [15]]), 22),
+        np.array([37.0, 38.0, 39.0, 40.0]),
+    ]
+    datasets = [
+        dataset_ops.Dataset.from_tensor_slices(component)
+        for component in components
+    ]
+    dataset = dataset_ops.Dataset.zip(datasets[0], (datasets[1], datasets[2]))
+    for i in range(4):
+      result1, (result2, result3) = self.evaluate(
+          random_access.at(dataset, index=i)
+      )
       self.assertAllEqual(components[0][i], result1)
       self.assertAllEqual(components[1][i], result2)
       self.assertAllEqual(components[2][i], result3)

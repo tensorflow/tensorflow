@@ -18,6 +18,9 @@ import copy
 import os
 
 from absl.testing import parameterized
+# The following import helps load the keras injection function we use in
+# parameter_server_strategy_v2 -- keras_deps.get_load_context_function.
+from tensorflow import keras  # pylint: disable=unused-import
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops

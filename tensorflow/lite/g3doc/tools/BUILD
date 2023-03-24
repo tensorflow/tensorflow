@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 

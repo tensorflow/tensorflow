@@ -18,18 +18,15 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
-load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_default_visibility_allowlist")
-
-default_visibility_group = [
-    "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-] + minibenchmark_default_visibility_allowlist()
-
-minibenchmark_visibility_group = default_visibility_group + [
-    "//tensorflow_lite_support/cc:__subpackages__",
-]
+load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
 
 package(
-    default_visibility = default_visibility_group,
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     licenses = ["notice"],
 )
 
@@ -42,7 +39,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "@flatbuffers",
@@ -58,8 +55,9 @@ cc_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -81,9 +79,9 @@ cc_library(
     deps = [
         ":status_codes",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
@@ -97,8 +95,8 @@ cc_test(
     deps = [
         ":fb_storage",
         ":status_codes",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -128,7 +126,7 @@ cc_library(
         "decode_jpeg_status.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
     ],
 )
 
@@ -143,7 +141,7 @@ cc_library(
         ":decode_jpeg_status",
         ":jpeg_common",
         ":libjpeg_hdrs",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
     ],
 )
 
@@ -156,7 +154,7 @@ cc_test(
     deps = [
         ":decode_jpeg_status",
         ":libjpeg_handle",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -189,7 +187,7 @@ cc_test(
     deps = [
         ":decode_jpeg_status",
         ":libc_handle",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -226,7 +224,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -265,7 +263,7 @@ cc_test(
         ":libjpeg_decoder_test_helper",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -281,8 +279,8 @@ cc_library(
         ":libjpeg_decoder",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "@flatbuffers",
@@ -338,8 +336,8 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -350,7 +348,7 @@ cc_test(
     deps = [
         ":embedded_chessboard_jpeg",
         ":jpeg_header_parser",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -405,25 +403,52 @@ cc_library(
 )
 
 cc_library(
+    name = "benchmark_result_evaluator",
+    srcs = ["benchmark_result_evaluator.cc"],
+    hdrs = ["benchmark_result_evaluator.h"],
+    deps = ["//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs"],
+)
+
+cc_library(
     name = "validator",
     srcs = ["validator.cc"],
     hdrs = ["validator.h"],
     deps = [
         ":call",
         ":decode_jpeg",
-        ":model_loader",
+        # Link in the GpuModulePlugin statically. It is created by name.
+        ":gpu_module_plugin",  # buildcleaner: keep
         ":status_codes",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:constants",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/lite/tools:model_loader",
+    ],
+)
+
+cc_library(
+    name = "validator_runner_options",
+    srcs = ["validator_runner_options.cc"],
+    hdrs = ["validator_runner_options.h"],
+    deps = [
+        ":benchmark_result_evaluator",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -432,13 +457,16 @@ cc_library(
     srcs = ["validator_runner_impl.cc"],
     hdrs = ["validator_runner_impl.h"],
     deps = [
+        ":benchmark_result_evaluator",
         ":fb_storage",
         ":file_lock",
-        ":model_loader",
         ":runner",
         ":status_codes",
         ":validator",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -448,6 +476,24 @@ cc_library(
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite/tools:model_loader",
+    ],
+)
+
+cc_library(
+    name = "blocking_validator_runner",
+    srcs = ["blocking_validator_runner.cc"],
+    hdrs = ["blocking_validator_runner.h"],
+    deps = [
+        ":status_codes",
+        ":validator",
+        ":validator_runner_impl",
+        ":validator_runner_options",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@flatbuffers",
     ],
 )
 
@@ -457,11 +503,10 @@ cc_library(
     hdrs = ["validator_runner.h"],
     deps = [
         ":fb_storage",
-        ":model_loader",
-        ":runner",
         ":status_codes",
         ":validator",
         ":validator_runner_impl",
+        ":validator_runner_options",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite:minimal_logging",
@@ -471,27 +516,26 @@ cc_library(
         # as two separate targets. We need to include both targets for NNAPI to
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
-        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
 )
 
 # Version of validator_runner_entrypoint without definition of the
 # SetBigCoresAffinity function.
 # This allow us to override the SetBigCoresAffinity definition during test.
-# We cannot simply alter the SetBigCoresAffinity behaviour to make it controllabe
-# by tests because the validation code will run in a separate process.
+# We cannot simply alter the SetBigCoresAffinity behaviour to make it
+# controllable by tests because the validation code will run in a separate
+# process.
 cc_library(
     name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
+    hdrs = ["validator_runner_entrypoint.h"],
     deps = [
         ":constants",
         ":fb_storage",
         ":file_lock",
-        ":model_loader",
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
-        ":validator_runner",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -500,7 +544,7 @@ cc_library(
         # be invoked.
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
-        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/tools:model_loader",
     ],
 )
 
@@ -585,8 +629,11 @@ cc_library(
         ":status_codes",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -622,7 +669,11 @@ cc_library(
         "mini_benchmark.cc",
     ],
     hdrs = ["mini_benchmark.h"],
-    visibility = minibenchmark_visibility_group,
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_absl//absl/status:statusor",
@@ -636,13 +687,18 @@ cc_library(
     srcs = [
         "mini_benchmark_implementation.cc",
     ],
-    visibility = minibenchmark_visibility_group,
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
+    ] + minibenchmark_visibility_allowlist(),
     deps = [
         ":fb_storage",
         ":mini_benchmark",
         ":status_codes",
         ":validator_runner",
         ":validator_runner_entrypoint",
+        ":validator_runner_options",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
@@ -668,7 +724,6 @@ cc_library(
         clean_dep("//tensorflow:android"): ["-ldl"],
         "//conditions:default": [],
     }),
-    visibility = minibenchmark_visibility_group,
     deps = [
         "@com_google_googletest//:gtest",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
@@ -714,34 +769,6 @@ cc_test(
 )
 
 cc_library(
-    name = "model_loader",
-    srcs = ["model_loader.cc"],
-    hdrs = ["model_loader.h"],
-    deps = [
-        ":status_codes",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite:model_builder",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "model_loader_test",
-    srcs = ["model_loader_test.cc"],
-    deps = [
-        ":embedded_mobilenet_model",
-        ":mini_benchmark_test_helper",
-        ":model_loader",
-        ":status_codes",
-        "//tensorflow/lite:model_builder",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
-    ],
-)
-
-cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -771,11 +798,10 @@ cc_binary(
     linkshared = True,
     deps = [
         ":constants",
-        ":model_loader",
         ":status_codes",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -784,11 +810,10 @@ cc_library(
     srcs = ["runner_test_entry_points.cc"],
     deps = [
         ":constants",
-        ":model_loader",
         ":status_codes",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite/tools:model_loader",
         "@com_google_absl//absl/strings",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -819,6 +844,8 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -834,12 +861,14 @@ cc_test(
 cc_binary(
     name = "validator_runner_so_for_tests",
     testonly = 1,
-    srcs = ["validator_runner_entrypoint.cc"],
+    srcs = [
+        "validator_runner_entrypoint.cc",
+        "validator_runner_entrypoint.h",
+    ],
     linkshared = True,
     deps = [
         ":constants",
         ":fb_storage",
-        ":model_loader",
         ":runner",
         ":status_codes",
         ":set_big_core_affinity",
@@ -851,6 +880,7 @@ cc_binary(
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/lite/tools:model_loader",
         "//tensorflow/lite:minimal_logging",
     ] + select({
         # On Android, as the validation runs in a separate process as a
@@ -882,6 +912,22 @@ cc_binary(
     deps = [
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
+)
+
+cc_library(
+    name = "gpu_module_plugin",
+    srcs = ["gpu_module_plugin.cc"],
+    hdrs = ["gpu_module_plugin.h"],
+    deps = [
+        ":status_codes",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
+    ],
+    alwayslink = 1,
 )
 
 embedded_binary(
@@ -917,12 +963,12 @@ cc_test(
         ":embedded_mobilenet_validation_model",
         ":embedded_mobilenet_model",
         ":mini_benchmark_test_helper",
-        ":model_loader",
         ":status_codes",
         ":validator",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
         "@flatbuffers",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",
@@ -930,6 +976,8 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/configuration:flatbuffer_to_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
+        "//tensorflow/lite/tools:model_loader",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
@@ -942,6 +990,7 @@ cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
     deps = [
+        ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
@@ -952,6 +1001,7 @@ cc_test(
         ":status_codes",
         ":validator_runner_entrypoint",
         ":validator_runner_impl",
+        ":validator_runner_options",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
@@ -960,7 +1010,29 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "blocking_validator_runner_test",
+    timeout = "moderate",
+    srcs = ["blocking_validator_runner_test.cc"],
+    deps = [
+        ":benchmark_result_evaluator",
+        ":blocking_validator_runner",
+        ":embedded_mobilenet_model",
+        ":embedded_mobilenet_validation_model",
+        ":mini_benchmark_test_helper",
+        ":status_codes",
+        ":validator_runner_entrypoint",
+        ":validator_runner_options",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 
@@ -1008,13 +1080,14 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":fb_storage",
         ":status_codes",
-        ":validator_runner",
-        ":validator_runner_entrypoint_without_affinity_deps",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        ":validator",
+        # This target is used with dlsym() in the test.
+        ":validator_runner_entrypoint_without_affinity_deps",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
 

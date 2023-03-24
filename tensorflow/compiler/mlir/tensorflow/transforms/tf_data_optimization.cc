@@ -29,7 +29,7 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
 
   LogicalResult matchAndRewrite(BatchDatasetV2Op op,
                                 PatternRewriter &rewriter) const override {
-    auto batchInputDataset = op.input_dataset();
+    auto batchInputDataset = op.getInputDataset();
 
     ParallelMapDatasetOp batchInputOp = dyn_cast_or_null<ParallelMapDatasetOp>(
         batchInputDataset.getDefiningOp());
@@ -39,19 +39,19 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
     // and MapAndBatchDataset is different (int32 and int64 respectively)
     auto num_parallel_calls_op = rewriter.create<CastOp>(
         op.getLoc(), UnrankedTensorType::get(rewriter.getIntegerType(64)),
-        batchInputOp.num_parallel_calls(), rewriter.getBoolAttr(false));
+        batchInputOp.getNumParallelCalls(), rewriter.getBoolAttr(false));
 
-    if (op.metadata() != batchInputOp.metadata()) {
+    if (op.getMetadata() != batchInputOp.getMetadata()) {
       return failure();
     }
 
     auto fused_op = rewriter.create<MapAndBatchDatasetOp>(
-        op.getLoc(), op.getType(), batchInputOp.input_dataset(),
-        batchInputOp.other_arguments(), op.batch_size(),
-        num_parallel_calls_op.y(), op.drop_remainder(), batchInputOp.f(),
-        op.output_types(), op.output_shapes(),
-        batchInputOp.preserve_cardinality(), op.metadata());
-    rewriter.replaceOp(op, {fused_op.handle()});
+        op.getLoc(), op.getType(), batchInputOp.getInputDataset(),
+        batchInputOp.getOtherArguments(), op.getBatchSize(),
+        num_parallel_calls_op.getY(), op.getDropRemainder(),
+        batchInputOp.getF(), op.getOutputTypes(), op.getOutputShapes(),
+        batchInputOp.getPreserveCardinality(), op.getMetadata());
+    rewriter.replaceOp(op, {fused_op.getHandle()});
     return failure();
   }
 };

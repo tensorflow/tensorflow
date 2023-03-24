@@ -15,35 +15,24 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/dtensor_op_spmd_expander.h"
 
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
-#include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -63,14 +52,14 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
   if (!dtensor_send || !dtensor_recv) return OkStatus();
 
   TF_ASSIGN_OR_RETURN(const absl::optional<Layout> send_layout_or_null,
-                      ExtractLayoutFromOperand(dtensor_send.input()));
+                      ExtractLayoutFromOperand(dtensor_send.getInput()));
 
   if (!send_layout_or_null.has_value())
     return errors::InvalidArgument(
         "Input to DTensorSend must have specified layout.");
 
   const Layout& send_layout = send_layout_or_null.value();
-  const Layout recv_layout = dtensor_recv.layout();
+  const Layout recv_layout = dtensor_recv.getLayout();
 
   const Mesh& send_mesh = send_layout.mesh();
   const Mesh& recv_mesh = recv_layout.mesh();
@@ -117,12 +106,47 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
   return OkStatus();
 }
 
-// Returns whether to lower DTensorSend/DTensorRecv op to xla backend ops.
-// Xla backend ops are used when either sending/receiving device uses XLA
-// compiler.
-bool SendRecvOpUsesXla(const Mesh& send_mesh, const Mesh& recv_mesh) {
-  assert(!(send_mesh.is_tpu_mesh() && recv_mesh.is_tpu_mesh()));
-  return (send_mesh.is_tpu_mesh() || recv_mesh.is_tpu_mesh());
+template <typename RelayoutOp>
+StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
+                                            Layout target_layout,
+                                            Layout input_layout,
+                                            Layout output_layout) {
+  bool match_present = false;
+  for (const std::string& sharding_spec : target_layout.sharding_spec_strs())
+    if (sharding_spec == Layout::kMatch) match_present = true;
+
+  if (!match_present && output_layout != target_layout)
+    return errors::Internal(
+        "output layout of Relayout op after layout propagation does not match "
+        "layout specified by Relayout op.");
+
+  if (input_layout == output_layout) {
+    // Input of RelayoutOp must be output value from DTensorLayout operation
+    // as layout propagation adds DTensorLayout op for each tensor values.
+    // Replace with identity op.
+    mlir::OpBuilder builder(relayout);
+    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
+        relayout.getLoc(), relayout.getInput().getType(), relayout.getInput());
+    relayout.getOutput().replaceAllUsesWith(op.getOutput());
+    relayout.erase();
+    return op.getOperation();
+  }
+
+  auto value_or_status =
+      EmitRelayout(relayout.getInput(), input_layout, output_layout);
+  if (!value_or_status.ok())
+    return errors::InvalidArgument(
+        llvm::formatv("Unsupported layout received for {0} op. Trying "
+                      "to set tensor "
+                      "to layout : {1}. Found error {2}",
+                      relayout->getName().getStringRef(),
+                      target_layout.ToString(),
+                      value_or_status.status().error_message())
+            .str());
+  mlir::Value output = value_or_status.value();
+  relayout.getOutput().replaceAllUsesWith(output);
+  relayout.erase();
+  return output.getDefiningOp();
 }
 
 // Takes relayout which may have kMatch dimensions and uses it to mask input.
@@ -139,16 +163,13 @@ StatusOr<Layout> MergeLayouts(
   return Layout::GetLayout(sharding_specs, target_layout.mesh());
 }
 
-// Given one side of layouts, compute the other side of the layouts.
+// Computes the layout of Relayout's (or RelayoutGrad's) input or output, based
+// on the layout from the corresponding output or input (as `incoming_layout`).
 // Note that this implies that we compute the same layout for the
 // operand and output.
+// `mask_layout` is set to the user-supplied layout attribute on the op.
 StatusOr<llvm::DenseMap<int, Layout>> ComputeRelayoutLayout(
-    mlir::Operation* op, const llvm::DenseMap<int, Layout>& layouts) {
-  mlir::TF::RelayoutOp relayout = llvm::cast<mlir::TF::RelayoutOp>(op);
-  mlir::StringRef layout_attr = relayout.layout();
-  TF_ASSIGN_OR_RETURN(const Layout mask_layout,
-                      Layout::FromString(layout_attr.str()));
-
+    const Layout& mask_layout, std::optional<const Layout> incoming_layout) {
   absl::flat_hash_set<std::string> used_dimensions;
   bool match_present = false;
   for (const std::string& sharding_spec : mask_layout.sharding_spec_strs()) {
@@ -161,106 +182,98 @@ StatusOr<llvm::DenseMap<int, Layout>> ComputeRelayoutLayout(
     return llvm::DenseMap<int, Layout>({{0, mask_layout}});
   }
 
-  if (layouts.find(0) != layouts.end()) {
+  if (incoming_layout) {
     TF_ASSIGN_OR_RETURN(
         Layout new_layout,
-        MergeLayouts(used_dimensions, mask_layout, layouts.lookup(0)));
+        MergeLayouts(used_dimensions, mask_layout, *incoming_layout));
     return llvm::DenseMap<int, Layout>({{0, new_layout}});
   }
   return llvm::DenseMap<int, Layout>();
 }
+
 }  // namespace
 
 StatusOr<mlir::Operation*> RelayoutSPMDExpander::ExpandOp(mlir::Operation* op) {
-  mlir::TF::RelayoutOp relayout = mlir::cast<mlir::TF::RelayoutOp>(op);
-  mlir::StringRef layout_attr = relayout.layout();
+  auto relayout = mlir::cast<mlir::TF::RelayoutOp>(op);
   TF_ASSIGN_OR_RETURN(const Layout target_layout,
-                      Layout::FromString(layout_attr.str()));
+                      Layout::FromString(relayout.getLayout().str()));
   TF_ASSIGN_OR_RETURN(const Layout output_layout,
                       ExtractRequiredSingleLayoutFromOp(op));
   TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(relayout.input()));
-  bool match_present = false;
-  for (const std::string& sharding_spec : target_layout.sharding_spec_strs())
-    if (sharding_spec == Layout::kMatch) match_present = true;
+                      ExtractRequiredLayoutFromOperand(relayout.getInput()));
 
-  if (!match_present && output_layout != target_layout)
-    return errors::Internal(
-        "output layout of Relayout op after layout propagation does not match "
-        "layout specified by Relayout op.");
-
-  if (input_layout == output_layout) {
-    // Input of RelayoutOp must be output value from DTensorLayout operation
-    // as layout propagation adds DTensorLayout op for each tensor values.
-    // Replace with identity op.
-    mlir::OpBuilder builder(relayout);
-    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
-        relayout.getLoc(), relayout.input().getType(), relayout.input());
-    relayout.output().replaceAllUsesWith(op.output());
-    relayout.erase();
-    return op.getOperation();
-  }
-
-  auto value_or_status =
-      EmitRelayout(relayout.input(), input_layout, output_layout);
-  if (!value_or_status.ok())
-    return errors::InvalidArgument(
-        llvm::formatv("Unsupported layout received for tf.Relayout op. Trying "
-                      "to set tensor "
-                      "to layout : {0}. Found error {1}",
-                      layout_attr.str(),
-                      value_or_status.status().error_message())
-            .str());
-  mlir::Value output = value_or_status.value();
-  relayout.output().replaceAllUsesWith(output);
-  relayout.erase();
-  return output.getDefiningOp();
+  return ExpandRelayoutOp<mlir::TF::RelayoutOp>(relayout, target_layout,
+                                                input_layout, output_layout);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 RelayoutSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  return ComputeRelayoutLayout(op, input_layouts);
+  auto relayout = llvm::cast<mlir::TF::RelayoutOp>(op);
+  TF_ASSIGN_OR_RETURN(const Layout mask_layout,
+                      Layout::FromString(relayout.getLayout().str()));
+  std::optional<const Layout> incoming_layout;
+  if (input_layouts.find(0) != input_layouts.end())
+    incoming_layout.emplace(input_layouts.lookup(0));
+
+  return ComputeRelayoutLayout(mask_layout, incoming_layout);
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
 RelayoutSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  return ComputeRelayoutLayout(op, output_layouts);
+  auto relayout = llvm::cast<mlir::TF::RelayoutOp>(op);
+  TF_ASSIGN_OR_RETURN(const Layout mask_layout,
+                      Layout::FromString(relayout.getLayout().str()));
+  std::optional<const Layout> incoming_layout;
+  if (output_layouts.find(0) != output_layouts.end())
+    incoming_layout.emplace(output_layouts.lookup(0));
+
+  return ComputeRelayoutLayout(mask_layout, incoming_layout);
 }
 
-namespace {
+StatusOr<mlir::Operation*> RelayoutGradSPMDExpander::ExpandOp(
+    mlir::Operation* op) {
+  auto relayout_grad = mlir::cast<mlir::TF::RelayoutGradOp>(op);
+  TF_ASSIGN_OR_RETURN(
+      const Layout target_layout,
+      ExtractRequiredLayoutFromOperand(relayout_grad.getForwardInput()));
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
+  TF_ASSIGN_OR_RETURN(
+      const Layout input_layout,
+      ExtractRequiredLayoutFromOperand(relayout_grad.getInput()));
 
-// Returns whether send/recv layout represents send/recv of tensor between
-// i-th TPU device and i-th device of the host mesh. Host mesh represents the
-// CPU devices that are 1-to-1 mapped with the TPU mesh devices, having the same
-// global and local device IDs.
-bool IsOneToOneHostMeshTransfer(const Layout& send_layout,
-                                const Layout& recv_layout) {
-  const Mesh& send_mesh = send_layout.mesh();
-  const Mesh& recv_mesh = recv_layout.mesh();
-
-  // Check tensor is being transferred between CPU <-> TPU.
-  if (!(send_mesh.is_tpu_mesh() && recv_mesh.is_cpu_mesh()) &&
-      !(recv_mesh.is_tpu_mesh() && send_mesh.is_cpu_mesh()))
-    return false;
-
-  // Check tensor transfer is happening between TPU and its host mesh.
-  if (!((send_mesh.is_tpu_mesh() &&
-         send_mesh.tpu_host_mesh() == recv_mesh.ToString()) ||
-        (recv_mesh.is_tpu_mesh() &&
-         recv_mesh.tpu_host_mesh() == send_mesh.ToString())))
-    return false;
-
-  // Check local device IDs are fully matching so that there is no cross-host
-  // transfer.
-  if (send_mesh.local_device_ids() != recv_mesh.local_device_ids())
-    return false;
-
-  return send_layout.GetShardVector() == recv_layout.GetShardVector();
+  return ExpandRelayoutOp<mlir::TF::RelayoutGradOp>(
+      relayout_grad, target_layout, input_layout, output_layout);
 }
 
-}  // namespace
+StatusOr<llvm::DenseMap<int, Layout>>
+RelayoutGradSPMDExpander::ComputeLayoutForward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
+  // RelayoutGrad's output has the same layout as the corresponding Relayout's
+  // input operand.
+  if (input_layouts.find(1) == input_layouts.end())
+    return llvm::DenseMap<int, Layout>();
+  return llvm::DenseMap<int, Layout>({{0, input_layouts.lookup(1)}});
+}
+
+StatusOr<llvm::DenseMap<int, Layout>>
+RelayoutGradSPMDExpander::ComputeLayoutBackward(
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
+  if (output_layouts.find(0) == output_layouts.end())
+    return llvm::DenseMap<int, Layout>();
+
+  const Layout output_layout = output_layouts.lookup(0);
+  return llvm::DenseMap<int, Layout>({
+      // Return replicated layout for the input operand since we do not want to
+      // enforce any particular layout on it.
+      {0, Layout::ReplicatedLike(output_layout)},
+      // Set layout for the forward pass's input operand to match the output of
+      // the RelayoutGrad op.
+      {1, output_layout},
+  });
+}
 
 StatusOr<mlir::Operation*> DTensorSendSPMDExpander::ExpandOp(
     mlir::Operation* op) {
@@ -275,97 +288,7 @@ StatusOr<mlir::Operation*> DTensorSendSPMDExpander::ExpandOp(
   TF_RETURN_IF_ERROR(
       ValidateSendRecvLayoutConfiguration(dtensor_send, dtensor_recv));
 
-  TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(dtensor_send.input()));
-
-  // Is tensor transfer is from TPU mesh to host mesh and send layout and recv
-  // layout is identical, then tensor from each source device is sent to
-  // target device asynchronously.
-  if (IsOneToOneHostMeshTransfer(input_layout, dtensor_send.target_layout())) {
-    return LowerDTensorSendToXlaOp(input_layout, dtensor_send.input(),
-                                   dtensor_send,
-                                   /*send_from_device_zero=*/false);
-  }
-
-  // Calculate input tensor layout of data to send and target fully replicated
-  // layout. For now, we ensure that all data transfer happen with fully
-  // replicated tensors.
-  const int rank = ValueRank(dtensor_send.input());
-  const Layout target_layout =
-      Layout::ReplicatedOnMesh(input_layout.mesh(), rank);
-
-  // Convert tensor to send to replicated layout.
-  mlir::OpBuilder builder(dtensor_send);
-  TF_ASSIGN_OR_RETURN(mlir::Value send_input,
-                      EmitAllGather(builder, dtensor_send.input(), input_layout,
-                                    target_layout));
-
-  // Insert control flow such that only device with device ordinal == 0 sends
-  // the tensor data across mesh.
-  auto send_cluster =
-      dtensor_send->getParentOfType<mlir::tf_device::ClusterOp>();
-  TF_ASSIGN_OR_RETURN(absl::optional<Mesh> mesh,
-                      ExtractDeviceMeshFromOp(send_cluster));
-  if (!mesh.has_value())
-    return errors::InvalidArgument(
-        "failed to lower DTensor CopyToMesh op as sending side mesh is not "
-        "specified.");
-
-  mlir::Location loc = dtensor_send.getLoc();
-  TF_ASSIGN_OR_RETURN(
-      mlir::Value device_ordinal,
-      GetDeviceOrdinal(*mesh, loc,
-                       send_cluster->getParentOfType<mlir::func::FuncOp>(),
-                       &builder));
-  mlir::Value predicate = builder.create<mlir::TF::EqualOp>(
-      loc, device_ordinal, CreateIntScalarConst(0, builder, loc),
-      /*incompatible_shape_error=*/builder.getBoolAttr(true));
-
-  auto send_if = builder.create<mlir::TF::IfRegionOp>(
-      loc, llvm::SmallVector<mlir::Type, 4>{}, predicate,
-      /*is_stateless=*/builder.getBoolAttr(true),
-      GetUniqueControlflowFnName("copy_to_mesh_send_if_then", builder),
-      GetUniqueControlflowFnName("copy_to_mesh_send_if_else", builder));
-
-  // Create empty else branch region.
-  auto& else_branch = send_if.else_branch();
-  else_branch.push_back(new mlir::Block);
-  builder.setInsertionPointToEnd(&else_branch.front());
-  builder.create<mlir::TF::YieldOp>(loc,
-                                    /*operands=*/llvm::ArrayRef<mlir::Value>{});
-
-  // Create then branch region with DTensorSend op.
-  auto& then_branch = send_if.then_branch();
-  then_branch.push_back(new mlir::Block);
-  builder.setInsertionPointToEnd(&then_branch.front());
-  auto yield = builder.create<mlir::TF::YieldOp>(
-      loc, /*operands=*/llvm::ArrayRef<mlir::Value>{});
-  dtensor_send->moveBefore(yield);
-
-  // Lower DTensorSend op to actual TF op.
-  TF_ASSIGN_OR_RETURN(const Mesh recv_mesh,
-                      ExtractDeviceMeshEnclosingCluster(recv_op));
-  mlir::Operation* lowered_send;
-  if (SendRecvOpUsesXla(input_layout.mesh(), recv_mesh)) {
-    // Lower DTensorSend op to Xla Send ops.
-    TF_ASSIGN_OR_RETURN(
-        lowered_send,
-        LowerDTensorSendToXlaOp(input_layout, send_input, dtensor_send,
-                                /*send_from_device_zero=*/true));
-  } else if (input_layout.mesh().is_cpu_mesh() &&
-             target_layout.mesh().is_cpu_mesh()) {
-    // Lower DTensorSend op to TF Host Send op.
-    TF_ASSIGN_OR_RETURN(
-        lowered_send,
-        LowerDTensorSendFromCPUToTFOp(input_layout, send_input, dtensor_send));
-  } else {
-    // TODO(hongjunchoi): Implement SPMD transformation lowering that lowers
-    // DTensorSend to vanilla TF Send op.
-    return errors::Unimplemented(
-        "CopyToMesh between CPU/GPU not implemented yet.");
-  }
-
-  return lowered_send;
+  return LowerDTensorSend(op, recv_op);
 }
 
 // DTensorSend op respects input layout from input operations and does not
@@ -397,131 +320,7 @@ StatusOr<mlir::Operation*> DTensorRecvSPMDExpander::ExpandOp(
   TF_RETURN_IF_ERROR(
       ValidateSendRecvLayoutConfiguration(dtensor_send, dtensor_recv));
 
-  TF_ASSIGN_OR_RETURN(const Layout send_layout,
-                      ExtractRequiredLayoutFromOperand(send_op->getOperand(0)));
-
-  TF_ASSIGN_OR_RETURN(const Mesh send_mesh,
-                      ExtractDeviceMeshEnclosingCluster(send_op));
-
-  TF_ASSIGN_OR_RETURN(const Layout output_layout,
-                      ExtractRequiredSingleLayoutFromOp(op));
-
-  mlir::Operation* lowered_recv;
-  const Layout recv_layout = dtensor_recv.layout();
-  const Mesh& recv_mesh = recv_layout.mesh();
-  mlir::OpBuilder builder(dtensor_recv);
-
-  if (SendRecvOpUsesXla(send_mesh, recv_mesh)) {
-    if (recv_mesh.is_cpu_mesh() ||
-        IsOneToOneHostMeshTransfer(send_layout, recv_layout)) {
-      // Recv can be lowered directly for a 1-to-1 transfer between host and
-      // device.
-      TF_ASSIGN_OR_RETURN(mlir::TensorType local_output_type,
-                          LocalTypeFromGlobalType(
-                              dtensor_recv.layout(),
-                              dtensor_recv.getType().cast<mlir::TensorType>()));
-      TF_ASSIGN_OR_RETURN(lowered_recv, LowerDTensorRecvToXlaOp(
-                                            dtensor_recv, local_output_type));
-      dtensor_recv->replaceAllUsesWith(lowered_recv);
-      dtensor_recv.erase();
-    } else {
-      // For other send/recv layouts, the tensor needs to be replicated.
-      if (!dtensor_recv.layout().IsFullyReplicated()) {
-        return errors::InvalidArgument(
-            "CopyToMesh where target mesh is TPU requires target layout to be "
-            "replicated.");
-      }
-
-      // For Receiving at TPU, only receive for device with device ordinal 0.
-      auto recv_cluster =
-          dtensor_recv->getParentOfType<mlir::tf_device::ClusterOp>();
-      mlir::Location loc = dtensor_recv.getLoc();
-      TF_ASSIGN_OR_RETURN(
-          mlir::Value device_ordinal,
-          GetDeviceOrdinal(recv_mesh, loc,
-                           recv_cluster->getParentOfType<mlir::func::FuncOp>(),
-                           &builder));
-      mlir::Value predicate = builder.create<mlir::TF::EqualOp>(
-          loc, device_ordinal, CreateIntScalarConst(0, builder, loc),
-          /*incompatible_shape_error=*/builder.getBoolAttr(true));
-
-      auto recv_if = builder.create<mlir::TF::IfRegionOp>(
-          loc, llvm::SmallVector<mlir::Type, 4>{dtensor_recv.getType()},
-          predicate,
-          /*is_stateless=*/builder.getBoolAttr(true),
-          GetUniqueControlflowFnName("copy_to_mesh_recv_if_then", builder),
-          GetUniqueControlflowFnName("copy_to_mesh_recv_if_else", builder));
-
-      // Create empty else branch region that outputs zeros.
-      auto& else_branch = recv_if.else_branch();
-      else_branch.push_back(new mlir::Block);
-      builder.setInsertionPointToEnd(&else_branch.front());
-
-      // Create a zero constant.
-      mlir::Attribute const_attr;
-      if (dtensor_recv.getType().getElementType().isIntOrIndex()) {
-        const_attr = mlir::DenseIntElementsAttr::get(
-            dtensor_recv.getType(), llvm::SmallVector<int32_t>{0});
-      } else {
-        const_attr = mlir::DenseFPElementsAttr::get(
-            dtensor_recv.getType(), llvm::SmallVector<float>{0.0});
-      }
-
-      mlir::Value zeros = builder.create<mlir::TF::ConstOp>(loc, const_attr);
-      builder.create<mlir::TF::YieldOp>(
-          loc, /*operands=*/llvm::ArrayRef<mlir::Value>{zeros});
-
-      // Create then branch region with DTensorRecv op.
-      auto& then_branch = recv_if.then_branch();
-      then_branch.push_back(new mlir::Block);
-      builder.setInsertionPointToEnd(&then_branch.front());
-      dtensor_recv->moveBefore(&then_branch.front(), then_branch.front().end());
-
-      TF_ASSIGN_OR_RETURN(mlir::Operation * xla_recv,
-                          LowerDTensorRecvToXlaOp(dtensor_recv));
-      builder.create<mlir::TF::YieldOp>(
-          loc,
-          /*operands=*/llvm::ArrayRef<mlir::Value>{xla_recv->getResult(0)});
-
-      // Broadcast the received output to all TPU cores.
-      mlir::Value if_output = recv_if->getResult(0);
-      builder.setInsertionPointAfterValue(if_output);
-      absl::flat_hash_set<std::string> reduced_dims;
-      for (const auto& mesh_dim : recv_mesh.dims())
-        reduced_dims.insert(mesh_dim.name);
-
-      TF_ASSIGN_OR_RETURN(lowered_recv,
-                          EmitAllReduce(builder, recv_layout, reduced_dims,
-                                        recv_if, kReduceOpAdd));
-
-      // Replaces usages of DTensorRecv op with the broadcasted value.
-      dtensor_recv.output().replaceUsesWithIf(
-          lowered_recv->getResult(0), [&](mlir::OpOperand& operand) {
-            return !recv_if->isProperAncestor(operand.getOwner());
-          });
-      dtensor_recv.erase();
-    }
-  } else if (dtensor_recv.layout().mesh().is_cpu_mesh() &&
-             send_mesh.is_cpu_mesh()) {
-    // Lower DTensorRecv op to TF Host Recv op.
-    TF_ASSIGN_OR_RETURN(lowered_recv,
-                        LowerDTensorRecvFromCPUToTFOp(send_mesh, dtensor_recv));
-  } else {
-    // TODO(hongjunchoi): Implement SPMD transformation lowering that lowers
-    // DTensorRecv to vanilla TF Recv op.
-    return errors::Unimplemented(
-        "CopyToMesh between CPU/GPU not implemented yet.");
-  }
-
-  llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
-  builder.setInsertionPointAfter(lowered_recv);
-  TF_ASSIGN_OR_RETURN(
-      mlir::Value recv_output,
-      EmitAllScatter(builder, lowered_recv->getResult(0), recv_layout,
-                     output_layout, &newly_created_ops));
-  lowered_recv->getResult(0).replaceAllUsesExcept(recv_output,
-                                                  newly_created_ops);
-  return recv_output.getDefiningOp();
+  return LowerDTensorRecv(send_op, op);
 }
 
 // DTensorRecv always returns tensors with fully replicated layout.
@@ -534,7 +333,7 @@ DTensorRecvSPMDExpander::ComputeLayoutForward(
     return errors::InvalidArgument(
         llvm::formatv("Expecting DTensorRecvOp but got {0}", OpName(op)).str());
   }
-  return llvm::DenseMap<int, Layout>({{0, dtensor_recv.layout()}});
+  return llvm::DenseMap<int, Layout>({{0, dtensor_recv.getLayout()}});
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>

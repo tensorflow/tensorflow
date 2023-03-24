@@ -60,6 +60,9 @@ extern llvm::cl::opt<bool> import_hlo;
 extern llvm::cl::opt<HloImportType> hlo_import_type;
 extern llvm::cl::opt<bool> enable_hlo_to_tf_conversion;
 
+// quantization related flags
+extern llvm::cl::opt<bool> post_training_quantization;
+
 // TF to stablehlo pass flags
 extern llvm::cl::opt<bool> enable_stablehlo_conversion;
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_TRANSLATE_CL_H_

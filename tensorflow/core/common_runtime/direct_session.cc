@@ -1847,7 +1847,7 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
     const bool notified =
         WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
-      return Status(error::DEADLINE_EXCEEDED,
+      return Status(absl::StatusCode::kDeadlineExceeded,
                     "Timed out waiting for notification");
     }
   } else {

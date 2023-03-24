@@ -39,7 +39,7 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
 
 LogicalResult RemoveSingletonParallelExecuteOp(
     tf_device::ParallelExecuteOp parallel_execute, OpBuilder* builder) {
-  if (parallel_execute.regions().size() == 1) {
+  if (parallel_execute.getRegions().size() == 1) {
     builder->setInsertionPoint(parallel_execute);
     auto& block = parallel_execute.GetRegionBlockWithIndex(0);
     llvm::SmallVector<Operation*, 2> ops_move;

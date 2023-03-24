@@ -16,16 +16,13 @@
 
 import contextlib
 import threading
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
-from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
-from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _dtensor_singleton = None
@@ -56,26 +53,14 @@ def call_with_layout(fn: Callable[...,
     The return value of `fn` transformed to a DTensor if requested.
   """
   if layout is not None:
-    if not context.executing_eagerly():
-      # This is a workaround for b/199324097, where functions such as tf.ones
-      # could attach an incorrect layout to the tf.const generated under the
-      # hood. The op runs successfully in eager mode, but in graph mode, MLIR
-      # passes sometimes attach the default layout to a scalar constant.
-      # %cst = tf.Const([1])  -- With the given layout
-      # %0 = "tf.DTensorLayout"(%cst). -- Fails in MLIR pass since shape for
-      #                                -- layout could be different than
-      #                                -- shape[0] for %cst.
-      # %1 = tf.Fill(%0, 1)
-      result = fn(*args, **kwargs)
-      return relayout(result, layout)
-    else:
-      with run_on(layout.mesh):
-        with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
-          return fn(*args, **kwargs)
+    with default_mesh(layout.mesh):
+      with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
+        return fn(*args, **kwargs)
   return fn(*args, **kwargs)
 
 
 @tf_export("experimental.dtensor.run_on", v1=[])
+@deprecation.deprecated(None, "Use `dtensor.default_mesh` scope instead.")
 @contextlib.contextmanager
 def run_on(mesh: layout_lib.Mesh):
   """Runs enclosed functions in the DTensor device scope.
@@ -91,6 +76,28 @@ def run_on(mesh: layout_lib.Mesh):
 
   Yields:
     A context in which all ops and tf.functions will run on the DTensor device.
+  """
+  with default_mesh(mesh):
+    yield
+
+
+@tf_export("experimental.dtensor.default_mesh", v1=[])
+@contextlib.contextmanager
+def default_mesh(mesh: layout_lib.Mesh):
+  """Sets the default DTensor device mesh to use for enclosed functions.
+
+  This function returns a scope. All the ops and tf.functions in this scope will
+  default to this DTensor mesh if a mesh cannot be inferred from any of the
+  inputs
+  This is useful for wrapping any tf.function that doesn't take a DTensor as
+  input but would like to produce DTensor as result. The scope will also make
+  sure all small constants are replicated as DTensors.
+
+  Args:
+    mesh: A Mesh instance to extract a default mesh from.
+
+  Yields:
+    A context in which all ops and tf.functions will run on the given mesh.
   """
   if not isinstance(mesh, layout_lib.Mesh):
     raise ValueError(f"Expect `mesh` to be `Mesh`, got {type(mesh)}")
@@ -116,6 +123,22 @@ def device_name() -> str:
   return _dtensor_device().name
 
 
+@tf_export("experimental.dtensor.is_dtensor", v1=[])
+def is_dtensor(tensor) -> bool:
+  """Check whether the input tensor is a DTensor.
+
+  In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+  let you check and handle the tensor differently if a tf.Tensor is a DTensor.
+
+  Args:
+    tensor: an object to be checked.
+
+  Returns:
+    bool, True if the given tensor is a DTensor.
+  """
+  return _dtensor_device().is_dtensor(tensor)
+
+
 # -----------------------------------------------------------------------------
 # Data transfer methods.
 
@@ -129,18 +152,20 @@ def copy_to_mesh(
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
   `layout` as target mesh. This method currently only supports replicated
-  layouts. To get a DTensor with a sharded layout, use the `pack` method.
+  layouts, or one-to-one copies for sharded layouts.
 
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
     layout: Target layout (and mesh) for the result DTensor.
-    source_layout: Source layout of the tensor before copy, used for backward
-      passes.
+    source_layout: Source layout of the tensor before copy. This argument
+      is deprecated.
 
   Returns:
     A DTensor on the DTensor device with the given layout.
   """
-  return _dtensor_device().copy_to_mesh(tensor, layout, source_layout)
+  del source_layout
+  with default_mesh(layout.mesh):
+    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -395,88 +420,8 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
-  return gen_dtensor_ops.relayout(tensor, layout_str)
-
-
-# -----------------------------------------------------------------------------
-# Distributed training-related methods.
-#
-# Most users should use DTensor utility methods to create a mesh. The methods
-# here are only for advanced users who want to fully customize their meshes.
-# Note that local_devices and num_local_devices return the actual number of
-# locally attached devices. The others are set through environment variables.
-
-
-@tf_export("experimental.dtensor.local_devices", v1=[])
-def local_devices(
-    device_type: str,
-    for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
-  """Returns a list of device specs configured on this client."""
-  if device_type.upper() not in ["CPU", "GPU", "TPU"]:
-    raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
-
-  if for_client_id is None:
-    for_client_id = config.client_id()
-
-  # Directly generate a list of local devices to avoid
-  # triggering TensorFlow context initialization.
-  logical_devices = [
-      tf_device.DeviceSpec.from_string(f"/device:{device_type}:{i}")
-      for i in range(num_local_devices(device_type))
-  ]
-
-  # Get the number of local devices.
-  device_count = 0
-  for d in logical_devices:
-    # d might have a partial name, e.g. /device:TPU:0.
-    if (d.job is None or d.job
-        == config.job_name()) and (d.task is None or d.task == for_client_id):
-      device_count = device_count + 1
-
-  # Return fully qualified device specs, sorted by increasing device index.
-  return [
-      tf_device.DeviceSpec(  # pylint: disable=g-complex-comprehension
-          job=config.job_name(),
-          replica=0,  # replica is deprecated and mostly hard-coded now.
-          task=for_client_id,
-          device_type=device_type,
-          device_index=i) for i in range(device_count)
-  ]
-
-
-@tf_export("experimental.dtensor.num_local_devices", v1=[])
-def num_local_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type configured on this client."""
-
-  # Reads from config because CPU and GPU can use logical devices.
-  if device_type.upper() in ["CPU", "GPU"]:
-    context_config = context.get_config()
-    return context_config.device_count[device_type.upper()]
-
-  return len(tf_config.list_physical_devices(device_type))
-
-
-@tf_export("experimental.dtensor.num_global_devices", v1=[])
-def num_global_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type in this DTensor cluster."""
-  return num_local_devices(device_type) * config.num_clients()
-
-
-# -----------------------------------------------------------------------------
-# Private methods.
-
-
-def is_tpu_present() -> bool:
-  """Returns true if TPU devices are present."""
-  # Check if TPU is present from initialized context.
-  # TPU_SYSTEM is a logical device that indicates TPUs are present.
-  tpu_system_devices = tf_config.list_physical_devices("TPU_SYSTEM")
-  return len(tpu_system_devices) > 0  # pylint: disable=g-explicit-length-test
-
-
-def is_gpu_present() -> bool:
-  """Returns true if TPU devices are present."""
-  return len(tf_config.list_physical_devices("GPU")) > 0  # pylint: disable=g-explicit-length-test
+  with default_mesh(layout.mesh):
+    return gen_dtensor_ops.relayout(tensor, layout_str)
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
@@ -487,7 +432,8 @@ def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
 def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
+      _set_dtensor_device(
+          dtensor_device.DTensorDevice(meshes=[], is_async=True))
   return _dtensor_singleton
 
 
@@ -505,14 +451,34 @@ def _reset() -> None:
 
 @ops.RegisterGradient("Relayout")
 def _relayout_gradient(op, grad):
-  del op
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
   return grad
+
+
+@ops.RegisterGradient("RelayoutGrad")
+def _relayout_grad_gradient(op, grad):
+  # Gradient of RelayoutGrad is relayout to the original Relayout's output.
+  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
+  # Return None for forward_input's partial gradient since it is not connected
+  # to the target's gradient.
+  return grad, None
 
 
 @ops.RegisterGradient("CopyToMesh")
 def _copy_to_mesh_gradient(op, grad):
-  grad = gen_dtensor_ops.copy_to_mesh(
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
-      layout=op.get_attr("source_layout"),
-      source_layout=op.get_attr("layout"))
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("layout"),
+  )
   return grad
+
+
+@ops.RegisterGradient("CopyToMeshGrad")
+def _copy_to_mesh_grad_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
+      grad,
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("reference_layout"),
+  )
+  return grad, None

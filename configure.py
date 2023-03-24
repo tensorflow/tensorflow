@@ -36,7 +36,7 @@ _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _SUPPORTED_ANDROID_NDK_VERSIONS = [
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21
+    19, 20, 21
 ]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
@@ -619,7 +619,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
-  if resolve_symlinks and os.path.islink(val):
+  if resolve_symlinks:
     val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
@@ -718,7 +718,8 @@ def create_android_sdk_rule(environ_cp):
 
 
 def get_ndk_api_level(environ_cp, android_ndk_home_path):
-  """Gets the appropriate NDK API level to use for the provided Android NDK path."""
+  """Gets the appropriate NDK API level to use for the provided Android NDK path.
+  """
 
   # First check to see if we're using a blessed version of the NDK.
   properties_path = '%s/source.properties' % android_ndk_home_path
@@ -756,7 +757,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
       var_name='ANDROID_NDK_API_LEVEL',
-      var_default='21',  # 21 is required for ARM64 support.
+      var_default='26',  # 26 is required to support AHardwareBuffer.
       ask_for_var=('Please specify the (min) Android NDK API level to use. '
                    '[Available levels: %s]') % api_levels,
       check_success=valid_api_level,
@@ -971,19 +972,19 @@ def system_specific_test_config(environ_cp):
   # single list of filters for the .bazelrc file.
 
   # Filters to use with both --test_tag_filters and --build_tag_filters
-  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  test_and_build_filters = ['-benchmark-test', '-no_oss', '-oss_excluded']
   # Additional filters for --test_tag_filters beyond those in
   # test_and_build_filters
   test_only_filters = ['-oss_serial']
   if is_windows():
-    test_and_build_filters.append('-no_windows')
+    test_and_build_filters += ['-no_windows', '-windows_excluded']
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
-    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac', '-mac_excluded']
   elif is_linux():
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
@@ -1188,6 +1189,9 @@ def main():
     gcc_env = get_gcc_compiler(environ_cp)
     if gcc_env is not None:
 
+      # Use gold linker if 'gcc' and if 'ppc64le'
+      write_to_bazelrc('build --linkopt="-fuse-ld=gold"')
+
       # Get the linker version
       ld_version = run_shell([gcc_env, '-Wl,-version']).split()
 
@@ -1215,14 +1219,19 @@ def main():
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
-    write_action_env_to_bazelrc('ROCBLAS_TENSILE_LIBPATH',
-                                environ_cp.get('ROCM_PATH') + '/lib/library')
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('HIP_PLATFORM')):
     write_action_env_to_bazelrc('HIP_PLATFORM', environ_cp.get('HIP_PLATFORM'))
 
-  environ_cp['TF_NEED_CUDA'] = str(
-      int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
+  if is_windows():
+    print('\nWARNING: Cannot build with CUDA support on Windows.\n'
+          'Starting in TF 2.11, CUDA build is not supported for Windows. '
+          'For using TensorFlow GPU on Windows, you will need to build/install '
+          'TensorFlow in WSL2.\n')
+    environ_cp['TF_NEED_CUDA'] = '0'
+  else:
+    environ_cp['TF_NEED_CUDA'] = str(
+        int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
 

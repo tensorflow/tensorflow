@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 
+#include <algorithm>
+#include <map>
 #include <set>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -293,9 +298,22 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
   bool is_one_dnn_enabled = IsMKLEnabled();
 
   if (is_one_dnn_enabled) {
+    // Currently, oneDNN based fused-kernel does not support transpose_a on
+    // MatMul. Since bfloat16 precision fused-kernel is only enabled through
+    // oneDNN, the fusion is disabled here. Float32 precision, however, will use
+    // the eigen library based kernel in case of transpose_a since the
+    // mkl_layout_pass will not rewrite for transpose_a. So for float32
+    // precision, the fusion is enabled for transpose_a.
+    bool is_supported_matmul = false;
+    if (IsMatMul(*contraction)) {
+      is_supported_matmul = (dtype == DT_BFLOAT16)
+                                ? contraction->attr().contains("transpose_a") &&
+                                      !contraction->attr().at("transpose_a").b()
+                                : true;
+    }
     return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-            IsMatMul(*contraction) || IsConv3D(*contraction) ||
-            IsAnyBatchMatMul(*contraction)) &&
+            IsConv3D(*contraction) || IsAnyBatchMatMul(*contraction) ||
+            is_supported_matmul) &&
            (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
   }
   if (IsConv2D(*contraction)) {
@@ -1108,36 +1126,227 @@ bool FindContractionWithBiasAndAddActivation(
   return true;
 }
 
+bool FindConv2DSwish(RemapperContext* ctx, int node_index,
+                     std::map<string, int>* matched_nodes_map,
+                     std::set<int>* remove_node_indices) {
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+
+  //    Fuse Conv2D + BiasAdd/FusedBatchNorm + Sigmoid + Mul to _FuesdConv2D
+  //   From Graph                                To Graph
+  //   -----------                              ---------
+  //    Conv2D
+  //      !
+  //      V
+  //  BiasAdd / FusedBatchNorm/V2/V3
+  //      !
+  //      V
+  //  ---- ----
+  //  !       !                    ----->       _FusedConv2D
+  //  !       V
+  //  !    Sigmoid
+  //  !       !
+  //  ---   ---
+  //     !  !
+  //     V  V
+  //      Mul
+  //      !
+  //      V
+
+  utils::OpTypePattern conv2dbiasaddswish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "BiasAdd", "biasadd", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "bias", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "BiasAdd", "biasadd", NodeStatus::kRemove}
+    }
+  };
+
+  utils::OpTypePattern conv2dbatchnormswish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "FusedBatchNorm", "fusebatchnorm", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "scale", NodeStatus::kRemain},
+              { "*", "offset", NodeStatus::kRemain},
+              { "*", "mean", NodeStatus::kRemain},
+              { "*", "var", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "FusedBatchNorm", "fusebatchnorm", NodeStatus::kRemove}
+    }
+  };
+
+  utils::OpTypePattern conv2dbatchnormv2swish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "FusedBatchNormV2", "fusebatchnorm", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "scale", NodeStatus::kRemain},
+              { "*", "offset", NodeStatus::kRemain},
+              { "*", "mean", NodeStatus::kRemain},
+              { "*", "var", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "FusedBatchNormV2", "fusebatchnorm", NodeStatus::kRemove}
+    }
+  };
+
+  utils::OpTypePattern conv2dbatchnormv3swish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "FusedBatchNormV3", "fusebatchnorm", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "scale", NodeStatus::kRemain},
+              { "*", "offset", NodeStatus::kRemain},
+              { "*", "mean", NodeStatus::kRemain},
+              { "*", "var", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "FusedBatchNormV3", "fusebatchnorm", NodeStatus::kRemove}
+    }
+  };
+  // clang-format on
+  // check for data types
+  auto* mul_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(mul_node_def, DT_FLOAT) &&
+      !HasDataType(mul_node_def, DT_BFLOAT16))
+    return false;
+
+  if (!NodeIsOnCpu(mul_node_def)) return false;
+  // Check first if the swish pattern is present
+  bool found_op_type_match = false;
+  bool is_biasadd_pattern = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      conv2dbiasaddswish_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+  is_biasadd_pattern = found_op_type_match;
+
+  // If Conv2D + BiasAdd + Sigmoid + Mul Not found , check for FusedBatchNorm
+  // pattern
+  if (!found_op_type_match) {
+    utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+        &(ctx->graph_view));
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = graph_matcher.GetMatchedNodes(
+        conv2dbatchnormswish_pattern, {}, ctx->graph_view.GetNode(node_index),
+        matched_nodes_map, remove_node_indices);
+  }
+
+  // if above fails check for FusedBatchNormV2 pattern
+  if (!found_op_type_match) {
+    utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+        &(ctx->graph_view));
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = graph_matcher.GetMatchedNodes(
+        conv2dbatchnormv2swish_pattern, {}, ctx->graph_view.GetNode(node_index),
+        matched_nodes_map, remove_node_indices);
+  }
+
+  // if above fails check for FusedBatchNormV3 pattern
+  if (!found_op_type_match) {
+    utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+        &(ctx->graph_view));
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = graph_matcher.GetMatchedNodes(
+        conv2dbatchnormv3swish_pattern, {}, ctx->graph_view.GetNode(node_index),
+        matched_nodes_map, remove_node_indices);
+  }
+
+  // Check if the Conv2d to be fused is CPU compatible
+  if (found_op_type_match) {
+    NodeDef* conv2d_node =
+        ctx->graph_view.GetNode(matched_nodes_map->at("conv"))->node();
+    if (!IsCpuCompatibleConv2D(*ctx, conv2d_node)) return false;
+    if (!is_biasadd_pattern) {
+      NodeDef* fusedbatchnorm_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("fusebatchnorm"))
+              ->node();
+      // Check if FusedBatchNorm node is in inference mode
+      bool is_training = true;
+      if (!TryGetNodeAttr(*fusedbatchnorm_node, kIsTraining, &is_training) ||
+          is_training)
+        return false;
+
+      if (fusedbatchnorm_node->op() != "FusedBatchNorm" &&
+          (!HasDataType(fusedbatchnorm_node, DT_FLOAT, "U") ||
+           (HasDataType(fusedbatchnorm_node, DT_FLOAT, "U") &&
+            !HasDataType(fusedbatchnorm_node, DT_FLOAT, "T")))) {
+        return false;
+      }
+    }
+  }
+
+  return found_op_type_match;
+}
+
 inline bool VerifyConstants(RemapperContext* ctx,
                             std::map<string, int>* nodes_map,
                             std::map<string, float>* values_map) {
   using utils::MutableNodeView;
+
   for (auto it = values_map->begin(); it != values_map->end(); ++it) {
     int node_idx = nodes_map->at(it->first);
     MutableNodeView* node_view = ctx->graph_view.GetNode(node_idx);
     NodeDef* node_def = node_view->node();
     Tensor const_tensor;
-    if (node_def != nullptr && node_def->op() == "Const" &&
-        const_tensor.FromProto(node_def->attr().at("value").tensor())) {
-      if (const_tensor.NumElements() == 1) {
-        DataType dtype = const_tensor.dtype();
-        float const_value;
-        if (dtype == DT_FLOAT) {
-          const_value = const_tensor.flat<float>()(0);
-        } else if (dtype == DT_BFLOAT16) {
-          const_value = const_tensor.flat<bfloat16>()(0);
-        } else if (dtype == DT_HALF) {
-          const_value = const_tensor.flat<Eigen::half>()(0);
-        } else {
-          return false;
-        }
-        if (std::abs(const_value - it->second) > 1e-2) return false;
-      } else {
-        return false;
-      }
+
+    // If node is a Cast, look for Const in fan-ins.
+    if (node_def != nullptr && node_def->op() == "Cast") {
+      const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+      const auto* regular_node_view = regular_fanin_0.node_view();
+      node_def = regular_node_view->node();
+    }
+
+    // Verify if the node is a constant.
+    if (node_def == nullptr || node_def->op() != "Const" ||
+        !const_tensor.FromProto(node_def->attr().at("value").tensor()) ||
+        const_tensor.NumElements() != 1) {
+      return false;
+    }
+    DataType dtype = const_tensor.dtype();
+    float const_value;
+    if (dtype == DT_FLOAT) {
+      const_value = const_tensor.flat<float>()(0);
+    } else if (dtype == DT_BFLOAT16) {
+      const_value = static_cast<float>(const_tensor.flat<bfloat16>()(0));
+    } else if (dtype == DT_HALF) {
+      const_value = static_cast<float>(const_tensor.flat<Eigen::half>()(0));
     } else {
       return false;
     }
+    if (std::abs(const_value - it->second) > 1e-2) return false;
   }
   return true;
 }
@@ -1150,38 +1359,84 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   using utils::MatchingDirection;
   using utils::NodeStatus;
   // clang-format off
+  // Pattern 1:
+  //    Const: 1/sqrt(2)        Const: 1    Const: 1/2
+  //                  \               \         \
+  //  * --> BiasAdd --> Mul --> Erf --> AddV2 --> Mul --> Mul
+  //        /       \____________________________________/
+  //  MatMul
   static utils::OpTypePattern* gelu_exact_pattern = new utils::OpTypePattern
     {"Mul", "output", NodeStatus::kReplace,
       {
         {"Mul", "erf_plus_one_times_one_half", NodeStatus::kRemove,
           {
-            {"AddV2", "erf_plus_one", NodeStatus::kRemove,
+            {"Add|AddV2", "erf_plus_one", NodeStatus::kRemove,
               {
                 {"Erf", "erf", NodeStatus::kRemove,
                   {
-                    {"Mul", "bias_add_times_square_root_one_half",
+                    {"Mul", "bias_add_x_sqrt_one_half",
                      NodeStatus::kRemove,
                       {
                         {"BiasAdd", "bias_add", NodeStatus::kRemove},
-                        {"Const", "square_root_one_half", NodeStatus::kRemain}
+                        {"Cast|Const", "sqrt_one_half", NodeStatus::kRemain}
                       }
-                    }
+                    }  // Mul: "bias_add_x_sqrt_one_half"
                   }
-                },
-                {"Const", "one", NodeStatus::kRemain}
-              }
+                },  // Erf: "erf"
+                {"Cast|Const", "one", NodeStatus::kRemain}
+              }  // Add|AddV2: "erf_plus_one"
             },
-            {"Const", "one_half", NodeStatus::kRemain}
+            {"Cast|Const", "one_half", NodeStatus::kRemain}
           }
-        },
+        },  // Mul: "erf_plus_one_times_one_half"
         {"BiasAdd", "bias_add", NodeStatus::kRemove,
           {
             {"MatMul", "matmul", NodeStatus::kRemove},
             {"*", "bias", NodeStatus::kRemain}
           }
-        }
-      }
+        }  // BiasAdd: "bias_add"
+      }  // Mul: "output"
     };
+
+  // Pattern 2:
+  //  Cast|Const: 1/sqrt(2)    Cast|Const: 1
+  //                  \               \
+  //  * --> BiasAdd --> Mul --> Erf --> Add|AddV2 --> Mul
+  //      /         \                                 /
+  // MatMul           ----------------------------> Mul
+  //                                                /
+  //                                  Cast|Const: 1/2
+  static utils::OpTypePattern* gelu_exact_pattern2 = new utils::OpTypePattern
+    {"Mul", "output", NodeStatus::kReplace,
+      {
+        {"Add|AddV2", "erf_plus_one", NodeStatus::kRemove,
+          {
+            {"Erf", "erf", NodeStatus::kRemove,
+              {
+                {"Mul", "bias_add_x_sqrt_one_half", NodeStatus::kRemove,
+                  {
+                    {"BiasAdd", "bias_add", NodeStatus::kRemove},
+                    {"Cast|Const", "sqrt_one_half", NodeStatus::kRemain}
+                  }
+                }  // Mul: "bias_add_x_sqrt_one_half"
+              }
+            },  // Erf: "erf"
+            {"Cast|Const", "one", NodeStatus::kRemain}
+          }
+        },  // Add|AddV2: "erf_plus_one"
+        {"Mul", "erf_plus_one_times_one_half", NodeStatus::kRemove,
+          {
+            {"BiasAdd", "bias_add", NodeStatus::kRemove,
+              {
+                {"MatMul", "matmul", NodeStatus::kRemove},
+                {"*", "bias", NodeStatus::kRemain}
+              }
+            },  // BiasAdd: "bias_add"
+            {"Cast|Const", "one_half", NodeStatus::kRemain}
+          }
+        }  // Mul: "erf_plus_one_times_one_half"
+      }
+    };  // Mul: "output"
   // clang-format on
 
   utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
@@ -1189,10 +1444,19 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   // Find GeluExact
   std::map<string, int> dummy_matched_nodes_map;
   std::set<int> dummy_remove_node_indices;
-  return graph_matcher.GetMatchedNodes(
-      *gelu_exact_pattern, ctx.nodes_to_preserve, node_view,
-      matched_nodes_map ? matched_nodes_map : &dummy_matched_nodes_map,
-      remove_node_indices ? remove_node_indices : &dummy_remove_node_indices);
+  if (!matched_nodes_map) matched_nodes_map = &dummy_matched_nodes_map;
+  if (!remove_node_indices) remove_node_indices = &dummy_remove_node_indices;
+  if (graph_matcher.GetMatchedNodes(*gelu_exact_pattern, ctx.nodes_to_preserve,
+                                    node_view, matched_nodes_map,
+                                    remove_node_indices)) {
+    return true;
+  }
+  // Pattern 1 not matched, check for pattern 2
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  return graph_matcher.GetMatchedNodes(*gelu_exact_pattern2,
+                                       ctx.nodes_to_preserve, node_view,
+                                       matched_nodes_map, remove_node_indices);
 }
 
 // Gelu in python api generates a number of nodes in the graph. Depending on the
@@ -1301,6 +1565,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
         &(ctx->graph_view));
 
+    // Find GeluApproximate
     matched_nodes_map->clear();
     remove_node_indices->clear();
     found_gelu_approximate = graph_matcher.GetMatchedNodes(
@@ -1323,6 +1588,11 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     DataType matmul_dtype = GetDataTypeFromAttr(*matmul_node, "T");
 
     bool cpu_ok = IsMKLEnabled() && IsCpuCompatibleMatMul(*ctx, matmul_node);
+    // Currently, the fusion is not supported on CPU for transpose_a in the
+    // MatMul op.
+    cpu_ok = cpu_ok && matmul_node->attr().contains("transpose_a") &&
+             !matmul_node->attr().at("transpose_a").b();
+
     bool gpu_ok = NodeIsOnGpu(matmul_node) && RuntimeFusionEnabled(cluster) &&
                   matmul_dtype == DT_HALF;
     if (!cpu_ok && !gpu_ok) return false;
@@ -1346,7 +1616,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
 
     // Check if the matched constants have desired values.
     std::map<string, float> values_map = {
-        {"square_root_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
+        {"sqrt_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
     if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
   } else if (found_gelu_approximate) {
     NodeDef* matmul_node =
@@ -1355,6 +1625,14 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     // matmul_node is already the _FusedMatMul and we don't need to check its
     // data type again.
     if (!IsMKLEnabled() && !NodeIsOnGpu(matmul_node)) return false;
+
+    // Currently, the fusion is not supported on CPU for transpose_a in the
+    // MatMul op.
+    if (NodeIsOnCpu(matmul_node) &&
+        matmul_node->attr().contains("transpose_a") &&
+        matmul_node->attr().at("transpose_a").b()) {
+      return false;
+    }
 
     // Check if _FusedMatMul contains only BiasAdd
     auto fused_ops = matmul_node->attr().at("fused_ops").list().s();
@@ -1516,7 +1794,7 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
 // LayerNormalization api.
 bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
                       std::map<string, int>* matched_nodes_map,
-                      std::set<int>* remove_node_indices) {
+                      std::set<int>* remove_node_indices, float* epsilon) {
   if (!IsMKLEnabled()) return false;
 
   // The following pattern will be searched in the graph with additional
@@ -1603,6 +1881,11 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
     NodeDef* fused_batch_norm_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("fused_batch_norm"))
             ->node();
+    if (fused_batch_norm_node->attr().count("epsilon")) {
+      *epsilon = fused_batch_norm_node->attr().at("epsilon").f();
+    } else {
+      *epsilon = 0.001;  // default value.
+    }
     bool is_training = false;
     if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
         !is_training)
@@ -2664,6 +2947,58 @@ Status AddFusedContractionNode(
   return OkStatus();
 }
 
+Status FuseConv2DSwish(RemapperContext* ctx,
+                       const std::map<string, int>& matched_nodes_map,
+                       const std::set<int>& remove_node_indices,
+                       std::vector<bool>* invalidated_nodes,
+                       std::vector<bool>* nodes_to_delete) {
+  const NodeDef* mul =
+      ctx->graph_view.GetNode(matched_nodes_map.at("mulToswish"))->node();
+  const NodeDef* conv2d =
+      ctx->graph_view.GetNode(matched_nodes_map.at("conv"))->node();
+
+  NodeDef fused_op;
+  fused_op.set_name(mul->name());
+  fused_op.set_op(kFusedConv2D);
+  fused_op.set_device(mul->device());
+  fused_op.add_input(conv2d->input(0));
+  fused_op.add_input(conv2d->input(1));
+  // Check if the pattern has Conv2d + BiasAdd
+  if (matched_nodes_map.find("biasadd") != matched_nodes_map.end()) {
+    auto* bias_add_node =
+        ctx->graph_view.GetNode(matched_nodes_map.at("biasadd"))->node();
+    fused_op.add_input(bias_add_node->input(1));
+    SetFusedOpAttributes(&fused_op, {"BiasAdd", "_MklSwish"});
+  } else {
+    // pattern is conv2D + FuseBatchNorm/v2/v3
+    auto* fusebatchnorm_node =
+        ctx->graph_view.GetNode(matched_nodes_map.at("fusebatchnorm"))->node();
+    fused_op.add_input(fusebatchnorm_node->input(1));
+    fused_op.add_input(fusebatchnorm_node->input(2));
+    fused_op.add_input(fusebatchnorm_node->input(3));
+    fused_op.add_input(fusebatchnorm_node->input(4));
+    float epsilon;
+    TF_CHECK_OK(GetNodeAttr(*fusebatchnorm_node, "epsilon", &epsilon));
+    SetFusedOpAttributes(&fused_op, {"FusedBatchNorm", "_MklSwish"},
+                         /*num_args=*/4, /*epsilon=*/epsilon);
+  }
+  CopyConv2DAttributes(*conv2d, &fused_op);
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched_nodes_map.at("mulToswish")] = true;
+
+  for (const auto& node_index : remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+
+  return OkStatus();
+}
+
 Status AddFusedMatMulBiasAddAndGelu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -2711,7 +3046,8 @@ Status AddMklLayerNorm(RemapperContext* ctx,
                        const std::map<string, int>& matched_nodes_map,
                        const std::set<int>& remove_node_indices,
                        std::vector<bool>* invalidated_nodes,
-                       std::vector<bool>* nodes_to_delete) {
+                       std::vector<bool>* nodes_to_delete,
+                       const float epsilon) {
   auto* pre_reshape_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("pre_reshape"))->node();
   auto* scale_node =
@@ -2729,6 +3065,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   auto* attr = fused_node.mutable_attr();
   auto& src_attr = output_node->attr();
   (*attr)["T"] = src_attr.at("T");
+  SetAttrValue(epsilon, &(*attr)["epsilon"]);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -3658,6 +3995,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
+      // Fuse Conv2d + BiasAdd/FusedBatchNorm + Swish.
+      std::map<string, int> fusedconv2dSwish_matched_nodes_map;
+      std::set<int> fusedconv2dSwish_remove_node_indices;
+      if (FindConv2DSwish(&ctx, i, &fusedconv2dSwish_matched_nodes_map,
+                          &fusedconv2dSwish_remove_node_indices)) {
+        TF_RETURN_IF_ERROR(
+            FuseConv2DSwish(&ctx, fusedconv2dSwish_matched_nodes_map,
+                            fusedconv2dSwish_remove_node_indices,
+                            &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
       // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
       std::map<string, int> mulmax_matched_nodes_map;
       std::set<int> mulmax_remove_node_indices;
@@ -3683,10 +4031,12 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remap smaller ops from layernorm python api into _MklLayerNorm
       matched_nodes_map.clear();
       remove_node_indices.clear();
-      if (FindMklLayerNorm(&ctx, i, &matched_nodes_map, &remove_node_indices)) {
+      float epsilon = 0.001;
+      if (FindMklLayerNorm(&ctx, i, &matched_nodes_map, &remove_node_indices,
+                           &epsilon)) {
         TF_RETURN_IF_ERROR(
             AddMklLayerNorm(&ctx, matched_nodes_map, remove_node_indices,
-                            &invalidated_nodes, &nodes_to_delete));
+                            &invalidated_nodes, &nodes_to_delete, epsilon));
         continue;
       }
     }

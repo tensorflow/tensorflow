@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
@@ -44,10 +44,18 @@ class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
+// Checks if the value has rank at most 'n'.
+class HasRankAtLeast<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
+
 // Checks if the value has rank 'n'.
 class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+
+// Flattens a constant tensor to 1D.
+def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
@@ -111,7 +119,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_Conv2DOp $input, $filter,
       (binaryOp (Arith_ConstantOp $bias),
-         (Arith_ConstantOp $value), TFL_AF_None),
+                (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
      (HasOneUse $output)]>;
@@ -122,32 +130,32 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
                 $stride_w, $multiplier),
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_DepthwiseConv2DOp $input, $filter,
-      (binaryOp (Arith_ConstantOp $bias), (Arith_ConstantOp $value), TFL_AF_None),
+      (binaryOp (Arith_ConstantOp $bias),
+                (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
-     (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
-    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
                 (Arith_ConstantOp FloatElementsAttr:$bias), $padding,
-                $stride_h, $stride_w),
-              (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
-    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+                $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_TransposeConvOp $output_shape, $weights, $input,
       (binaryOp (Arith_ConstantOp $bias),
          (Arith_ConstantOp $value), TFL_AF_None),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
   // Fuse for TransposeConv with no bias
   def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
-    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
                 $bias, $padding,
-                $stride_h, $stride_w),
-              (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
-    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+                $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_TransposeConvOp $output_shape, $weights, $input,
       (Arith_ConstantOp $value),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
      (HasOneUse $output)]>;
@@ -181,12 +189,11 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         TFL_AF_None),
       (BinaryOp
         (Arith_ConstantOp $bias),
-        (Arith_ConstantOp $value),
+        (Arith_ConstantOp (FlattenTo1D $value)),
         TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h,
       $stride_w, $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
-     (HasRank<1> $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithConv#BinaryOp : Pat<
     (BinaryOp (TFL_Conv2DOp:$conv_output $input,
@@ -200,7 +207,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       (BinaryOp (Arith_ConstantOp $bias),
-        (Arith_ConstantOp $value),
+        (Arith_ConstantOp (FlattenTo1D $value)),
         TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
@@ -209,8 +216,8 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
                 (Arith_ConstantOp FloatElementsAttr:$bias),
-                $padding, $stride_h, $stride_w),
-              (Arith_ConstantOp $value), TFL_AF_None),
+                $padding, $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp $value), $act_fn),
     (TFL_TransposeConvOp $output_shape,
       (BinaryOp (Arith_ConstantOp $weights),
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
@@ -219,22 +226,22 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
       (BinaryOp (Arith_ConstantOp $bias),
         (Arith_ConstantOp $value),
         TFL_AF_None),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
                 $bias,
-                $padding, $stride_h, $stride_w),
-              (Arith_ConstantOp $value), TFL_AF_None),
+                $padding, $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp $value), $act_fn),
     (TFL_TransposeConvOp $output_shape,
       (BinaryOp (Arith_ConstantOp $weights),
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       $input,
       $bias,
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
      (HasOneUse $output)]>;
@@ -914,38 +921,33 @@ def OptimizeSliceOp : Pat<
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
 
-def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
+def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0.getType())">;
 
 def ReshapeValueDroppingLastDim : NativeCodeCall<
-  "ReshapeValueDroppingLastDim($_builder, $0, $1)">;
-
-def HasExactlyTwoElements : Constraint<CPred<
-  "TFL::HasExactlyTwoElements($0)">>;
-
-def IsLastElementEqualsOne : Constraint<CPred<
-  "TFL::IsLastElementEqualsOne($0)">>;
+  "ReshapeValueDroppingLastDim($_builder, $0)">;
 
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
+// Checks if the shape has shape with last dimension equals 1.
+def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
 // Replace
-//   Equal(Reshape(X, shape), indices)
+//   Equal(X, indices)
 // With
-//   OneHot(Reshape(X, shape[:-1]), N, true, false, -1)
+//   OneHot(Reshape(X), N, true, false, -1)
 // where
-//  - shape has length 2 (unnecessary, just to be conservative)
-//  - last value in shape is 1
+//  - last dimension of the LHS of the equal is 1, and the rank is at least 2.
 //  - indices is a incrementing series from 0 to N-1. (N elements total.)
 def ReshapeEqualOpToOneHotOp : Pat<
-  (TFL_EqualOp (TFL_ReshapeOp $x, (Arith_ConstantOp $shape)),
-               (Arith_ConstantOp $series)),
-  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x, $shape),
+  (TFL_EqualOp $x, (Arith_ConstantOp $series)),
+  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x),
                 (Arith_ConstantOp (GetNumElementsOrOne $series)),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(HasExactlyTwoElements $shape),
-   (IsLastElementEqualsOne $shape),
+  [(IsLastDimensionEqualOne $x),
+   (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 
 def F32ElementsVal : Constraint<CPred<
@@ -975,6 +977,12 @@ def FuseOneHotAndCastToFloat : Pat<
                 $axis),
   [(F32ElementsVal $output)]>;
 
+def Get1DShapeValue: NativeCodeCall<"Get1DShapeValue($_builder, $0)">;
+
+class GetIthValue<int index> : NativeCodeCall<"$0[" # index # "]">;
+
+def GetEmbeddingLookupShape: NativeCodeCall<"GetEmbeddingLookupShape($0, $1)">;
+
 // Replace
 //   OneHot(index, depth, on=1.0f, off=0.0f, axis=-1) * filter
 // With
@@ -996,26 +1004,29 @@ def FuseOneHotAndCastToFloat : Pat<
 // This is exactly what the EmbeddedLookup operator is doing, on the transposed
 // matrix, without doing any arithmetic but only memcpy.
 def ReplaceOneHotFullyConnectedWithLookup : Pat<
-  (TFL_FullyConnectedOp
+  (TFL_FullyConnectedOp:$outputs
     (TFL_OneHotOp
-      $indices,
+      AnyStaticShapeTensor:$indices,
       (Arith_ConstantOp $depth),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
       ConstantAttr<I32Attr, "-1">),
-    $filter,
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
-    ConstBoolAttrFalse,
+    $keep_num_dims,
     $asymmetric_quantize_inputs),
+  (TFL_ReshapeOp
   (TFL_EmbeddingLookupOp
-    $indices,
+      (TFL_ReshapeOp $indices, (Get1DShapeValue $indices)),
     (TFL_TransposeOp
       $filter,
-      (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}"> ))),
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
+      (returnType (GetEmbeddingLookupShape $indices, $filter))
+    ),
+    (Arith_ConstantOp (GetShape (GetIthValue<0> $outputs)))),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
-   (HasRank<1> $indices),  // lookup isn't implemented for any other rank
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
 
 def AreInputDimensionsOneInAxes : Constraint<CPred<
@@ -1112,10 +1123,6 @@ def MatchGelu : Pat<
    (HasOneUse $erf_out),
    (HasOneUse $mul_out1),
   ]>;
-
-
-// Checks if the shape has shape with last dimension equals 1.
-def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
 
 // Fetches the output of FC op, from the provided arguments.
 def GetFcOutput : NativeCodeCall<

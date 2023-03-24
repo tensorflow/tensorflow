@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -29,12 +29,12 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
 class GPUBFCAllocator;
 class PoolAllocator;
-class SharedCounter;
 
 // Singleton that manages per-process state when GPUs are present.
 class GPUProcessState {
@@ -78,13 +78,16 @@ class GPUProcessState {
   // underlying allocator.  REQUIRES: Must be a valid type (see
   // config.proto for the list of supported strings.).
   //
+  // `options` is read on the very first call to this function in the process.
+  // After that if you pass in a set of options, they will be ignored.
+  //
   // REQUIRES: tf_device_id must be a valid id for a BaseGPUDevice available in
   // the current system environment.  Otherwise returns nullptr.
   virtual Allocator* GetGPUAllocator(
-      const GPUOptions& options, TfDeviceId tf_device_id, size_t total_bytes,
-      const std::vector<TfDeviceId>& peer_gpu_ids);
+      const GPUOptions& options, tsl::TfDeviceId tf_device_id,
+      size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids);
 
-  Allocator* GetGPUAllocator(TfDeviceId tf_device_id) {
+  Allocator* GetGPUAllocator(tsl::TfDeviceId tf_device_id) {
     return GetGPUAllocator(/*options=*/{}, tf_device_id, /*total_bytes=*/0,
                            /*peer_gpu_ids=*/{});
   }
@@ -94,7 +97,11 @@ class GPUProcessState {
     return gpu_allocators_.size();
   }
 
-  virtual Allocator* GetGpuHostAllocator(int numa_node);
+  // `options` is read on the very first call to this function in the process,
+  // e.g. to set the memory limit on this allocator.  After that if you pass in
+  // a different set of options, they will be ignored.
+  virtual Allocator* GetGpuHostAllocator(const GPUOptions& options,
+                                         int numa_node);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by the
   // SubAllocator of every GPU proximate to the specified bus.  The AllocVisitor
@@ -119,9 +126,9 @@ class GPUProcessState {
                                      const SubAllocator::Visitor& visitor);
 
   // Returns bus_id for the given GPU id.
-  virtual int BusIdForGPU(TfDeviceId tf_device_id);
+  virtual int BusIdForGPU(tsl::TfDeviceId tf_device_id);
 
-  SharedCounter* GPUAllocatorCounter(TfDeviceId tf_device_id);
+  SharedCounter* GPUAllocatorCounter(tsl::TfDeviceId tf_device_id);
 
  protected:
   // GPUProcessState is a singleton that should not normally be deleted except

@@ -21,7 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.util import dispatch
@@ -239,7 +239,7 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
 
     if window_length_const is not None:
       return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(window_length, 1),
         lambda: array_ops.ones([window_length], dtype=dtype),
         lambda: math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype))

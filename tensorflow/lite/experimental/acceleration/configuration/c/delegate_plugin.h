@@ -15,46 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_
 
-// C API types for TF Lite delegate plugins.
-
-#include "tensorflow/lite/c/common.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Type of function to allocate and construct a delegate.
-// The tflite_settings parameter should be a pointer to a FlatBuffer table
-// object of type tflite::TFLiteSettings.  (We use 'void *' here since this
-// is a C API so we don't want to directly reference C++ types such
-// as tflite::TFLiteSettings.)
-typedef TfLiteDelegate *TfLiteDelegatePluginCreateFunc(
-    const void *tflite_settings);
-
-// Type of function to destroy and deallocate a delegate.
-// The delegate argument must have been created with the corresponding
-// create function from the same delegate plugin.
-typedef void TfLiteDelegatePluginDestroyFunc(TfLiteDelegate *);
-
-// Type of function to return an error code for the last delegate operation.
-// The delegate argument must have been created with the corresponding
-// create function from the same delegate plugin.
-typedef int TfLiteDelegatePluginGetDelegateErrnoFunc(TfLiteDelegate *);
-
-// Struct to hold all the methods for a delegate plugin.
-typedef struct TfLiteDelegatePlugin {
-  // Function to allocate and construct a delegate.
-  TfLiteDelegatePluginCreateFunc *create;
-
-  // Function to deallocate a delegate.
-  TfLiteDelegatePluginDestroyFunc *destroy;
-
-  // Function to return an error code for the last delegate operation.
-  TfLiteDelegatePluginGetDelegateErrnoFunc *get_delegate_errno;
-} TfLiteDelegatePlugin;
-
-#ifdef __cplusplus
-};  // extern "C"
-#endif
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_

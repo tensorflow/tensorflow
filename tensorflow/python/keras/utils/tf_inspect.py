@@ -20,7 +20,10 @@ import inspect as _inspect
 
 from tensorflow.python.util import tf_decorator
 
-ArgSpec = _inspect.ArgSpec
+try:
+  ArgSpec = _inspect.ArgSpec
+except:
+  pass
 
 
 if hasattr(_inspect, 'FullArgSpec'):
@@ -64,11 +67,21 @@ if hasattr(_inspect, 'getfullargspec'):
       from FullArgSpec.
     """
     fullargspecs = getfullargspec(target)
-    argspecs = ArgSpec(
-        args=fullargspecs.args,
-        varargs=fullargspecs.varargs,
-        keywords=fullargspecs.varkw,
-        defaults=fullargspecs.defaults)
+    if hasattr(_inspect, 'ArgSpec'):
+      argspecs = ArgSpec(
+          args=fullargspecs.args,
+          varargs=fullargspecs.varargs,
+          keywords=fullargspecs.varkw,
+          defaults=fullargspecs.defaults)
+    else:
+      argspecs = FullArgSpec(
+          args=fullargspecs.args,
+          varargs=fullargspecs.varargs,
+          varkw=fullargspecs.varkw,
+          defaults=fullargspecs.defaults,
+          kwonlyargs=[],
+          kwonlydefaults=None,
+          annotations={})
     return argspecs
 else:
   _getargspec = _inspect.getargspec

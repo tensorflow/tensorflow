@@ -1,0 +1,17 @@
+path: "tensorflow.distribute.experimental.PreemptionWatcher"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.failure_handling.preemption_watcher.PreemptionWatcher\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "preemption_message"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "block_until_worker_exit"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

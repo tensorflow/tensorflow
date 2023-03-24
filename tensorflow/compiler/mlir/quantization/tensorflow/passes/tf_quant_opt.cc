@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::func::FuncDialect, mlir::shape::ShapeDialect,
-                  mlir::arith::ArithmeticDialect, mlir::tf_type::TFTypeDialect,
+                  mlir::arith::ArithDialect, mlir::tf_type::TFTypeDialect,
                   mlir::quant::QuantizationDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect>();

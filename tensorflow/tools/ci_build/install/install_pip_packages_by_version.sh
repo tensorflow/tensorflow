@@ -26,6 +26,25 @@ rm "get-pip.py"
 
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
+JAX_PACKAGES=(
+  # https://github.com/numpy/numpy/issues/22623
+  "setuptools<=65.5.1"
+  "wheel"
+  "cloudpickle"
+  "colorama>=0.4.4"
+  "matplotlib"
+  "pillow>=9.1.0"
+  "rich"
+  "absl-py"
+  "portpicker"
+  "six"
+  "opt-einsum"
+  "auditwheel"
+  "msgpack"
+  "typing_extensions"
+  "ml_dtypes>=0.0.3"
+)
+
 PACKAGES=(
   "absl-py"
   "argparse"
@@ -44,7 +63,7 @@ PACKAGES=(
   "pandas"
   "packaging"
   "portpicker"
-  "protobuf"
+  "protobuf==3.20.3"
   "psutil"
   "py-cpuinfo"
   "pybind11"
@@ -65,13 +84,29 @@ PACKAGES=(
 "${PIP}" "install" "--upgrade" "pip"
 "${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
-"${PIP_INSTALL[@]}" "${PACKAGES[@]}"
-
-# Special casing by version of Python
-# E.g., numpy supports py3.10 only from 1.21.3
-if [[ ${PYTHON_VERSION} -eq 10 ]]; then
-  "${PIP_INSTALL[@]}" "numpy==1.21.3"
+if [[ "$2" == "jax" ]]; then
+  "${PIP_INSTALL[@]}" "${JAX_PACKAGES[@]}"
 else
-  "${PIP_INSTALL[@]}" "numpy==1.19"
+  "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+fi
+
+if [[ "$2" == "jax" ]]; then
+  # Special casing by version of Python
+  # E.g., numpy supports py3.11 only from 1.23.4
+  if [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.2"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.21.3" "scipy==1.7.2"
+  fi
+else
+  # Special casing by version of Python
+  # E.g., numpy supports py3.10 only from 1.21.3
+  if [[ ${PYTHON_VERSION} -eq 10 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.21.3"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.19"
+  fi
 fi
 

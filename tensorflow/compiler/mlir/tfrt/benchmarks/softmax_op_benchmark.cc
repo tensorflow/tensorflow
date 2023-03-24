@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -51,8 +52,8 @@ static void ComputeSoftmax(const Eigen::DefaultDevice& d, InT logits,
   const int batch_size = logits.dimension(kBatchDim);
   const int num_classes = logits.dimension(kClassDim);
 
-// These arrays are used to reduce along the class dimension, and broadcast
-// the resulting value to all classes.
+  // These arrays are used to reduce along the class dimension, and broadcast
+  // the resulting value to all classes.
   Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
   Eigen::IndexList<int, Eigen::type2index<1> > batch_by_one;
   batch_by_one.set(0, batch_size);
@@ -73,7 +74,7 @@ static void ComputeSoftmax(const Eigen::DefaultDevice& d, InT logits,
 
 auto EigenSoftmax() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice>) {
+            std::optional<Eigen::ThreadPoolDevice>) {
     Tensor output(DT_FLOAT, {inputs[0].dim_size(0), inputs[0].dim_size(1)});
 
     auto in = inputs[0].tensor<float, 2>();
@@ -109,8 +110,9 @@ BM_DYNAMIC_ALL(81, 61);
 BM_DYNAMIC_ALL(800, 600);
 BM_DYNAMIC_ALL(802, 602);
 
-#define BM_STATIC_ROW(ROWS, COLS) \
-  BM_SUITE(SoftmaxStaticRow##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, COLS)
+#define BM_STATIC_ROW(ROWS, COLS)                                           \
+  BM_SUITE(SoftmaxStaticRow_##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, \
+           COLS)
 BM_STATIC_ROW(2, 80);
 BM_STATIC_ROW(8, 6);
 BM_STATIC_ROW(80, 1);

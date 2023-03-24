@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_module_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_metadata.h"
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 
@@ -79,13 +78,11 @@ TEST(HloModuleMetadata, RecordsPassEndInNestedMetadata) {
 
 TEST(HloModuleMetadata, RecordPassEndReturnsNotFound) {
   HloModuleMetadata module_metadata(tsl::Env::Default());
-  EXPECT_EQ(module_metadata.RecordPassEnd().code(),
-            tensorflow::error::NOT_FOUND);
+  EXPECT_EQ(module_metadata.RecordPassEnd().code(), tsl::error::NOT_FOUND);
 
   module_metadata.RecordPassStart();
   EXPECT_IS_OK(module_metadata.RecordPassEnd());
-  EXPECT_EQ(module_metadata.RecordPassEnd().code(),
-            tensorflow::error::NOT_FOUND);
+  EXPECT_EQ(module_metadata.RecordPassEnd().code(), tsl::error::NOT_FOUND);
 }
 
 TEST(HloModuleMetadata, SetsHloPassMetadataFields) {
@@ -111,7 +108,7 @@ TEST(HloModuleMetadata, SetsHloPassMetadataFieldsInNestedMetadata) {
 TEST(HloModuleMetadata, SetterReturnsNotFound) {
   HloModuleMetadata module_metadata(tsl::Env::Default());
   EXPECT_EQ(module_metadata.set_current_pass_name("fake name").code(),
-            tensorflow::error::NOT_FOUND);
+            tsl::error::NOT_FOUND);
 }
 
 TEST(HloModuleMetadata, CopiesRunningPrepartitioningPasses) {

@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -65,6 +65,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                  llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                 llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type, llvm::Value* value,

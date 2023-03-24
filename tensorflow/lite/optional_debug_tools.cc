@@ -26,8 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -341,6 +341,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteResource";
     case kTfLiteVariant:
       return "kTfLiteVariant";
+    case kTfLiteInt4:
+      return "kTfLiteInt4";
   }
   return "(invalid)";
 }
@@ -497,19 +499,23 @@ void PrintInterpreterState(const Interpreter* interpreter) {
       }
       printf("  %d Input Tensors:",
              node.inputs != nullptr ? node.inputs->size : 0);
-      PrintTfLiteIntVector(
-          node.inputs,
-          /*collapse_consecutives=*/(node.delegate != nullptr));
-      PrintTotalBytesOfTensors(
-          subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
-                                      : TfLiteIntArrayView(node.inputs));
+      if (node.inputs) {
+        PrintTfLiteIntVector(
+            node.inputs,
+            /*collapse_consecutives=*/(node.delegate != nullptr));
+        PrintTotalBytesOfTensors(
+            subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
+                                        : TfLiteIntArrayView(node.inputs));
+      }
 
       printf("  %d Output Tensors:",
              node.outputs != nullptr ? node.outputs->size : 0);
-      PrintTfLiteIntVector(node.outputs);
-      PrintTotalBytesOfTensors(
-          subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
-                                      : TfLiteIntArrayView(node.outputs));
+      if (node.outputs) {
+        PrintTfLiteIntVector(node.outputs);
+        PrintTotalBytesOfTensors(
+            subgraph, is_node_delegated ? TfLiteIntArrayView(&empty_int_array)
+                                        : TfLiteIntArrayView(node.outputs));
+      }
 
       if (node.intermediates && node.intermediates->size) {
         printf("  %d Intermediate Tensors:", node.intermediates->size);

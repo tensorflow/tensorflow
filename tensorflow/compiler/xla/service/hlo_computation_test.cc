@@ -13,25 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
 #include <memory>
 #include <set>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -634,8 +636,9 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 
-std::unique_ptr<HloComputation> MakeAddNComputation(int n) {
-  auto builder = HloComputation::Builder("add_n");
+std::unique_ptr<HloComputation> MakeAddNComputation(
+    int n, std::string name = "add_n") {
+  auto builder = HloComputation::Builder(name);
   auto result = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "x_value"));
   auto one = builder.AddInstruction(
@@ -685,6 +688,69 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
               ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
                           op::Add(), op::Tuple()));
+}
+
+TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
+  std::string_view mod_txt = R"(
+  HloModule Module
+  region_X {
+    Arg_0.5 = s32[] parameter(0)
+    Arg_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Arg_1.6)
+  }
+  region_Y {
+    Arg_0.5 = s32[] parameter(0)
+    Ar_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Ar_1.6)
+  }
+  region_A {
+    Arg_0.5 = s32[] parameter(0)
+    Arg_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] multiply(Arg_0.5, Arg_1.6)
+  }
+  region_B {
+    Arg_0.5 = s32[] parameter(0)
+    Ar_1.6 = s32[] parameter(1)
+    ROOT add.7 = s32[] add(Arg_0.5, Ar_1.6)
+  }
+  main.15 {
+    Arg_0.1 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=region_X
+    Arg_1.2 = s32[15]{0} parameter(1)
+    rd2 = s32[] reduce(Arg_1.2, constant.3), dimensions={0}, to_apply=region_Y
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  ENTRY main.16 {
+    Arg_0.1 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=region_A
+    Arg_1.2 = s32[15]{0} parameter(1)
+    rd2 = s32[] reduce(Arg_1.2, constant.3), dimensions={0}, to_apply=region_B
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_txt));
+
+  absl::flat_hash_map<std::string_view, std::string_view> replace_map;
+  replace_map["region_X"] = "region_A";
+  replace_map["region_Y"] = "region_B";
+  auto compare_func = [&replace_map](const HloComputation* a,
+                                     const HloComputation* b) {
+    return (a->name() == b->name() || replace_map[a->name()] == b->name());
+  };
+  HloComputation *comp_a = nullptr, *comp_b = nullptr;
+  for (auto comp : module->computations()) {
+    if (comp->name() == "main.15") {
+      comp_a = comp;
+    }
+    if (comp->name() == "main.16") {
+      comp_b = comp;
+    }
+  }
+  EXPECT_FALSE(comp_a->Equal(*comp_b, false));
+  // Different regions but we are accepting based on the compare_func
+  EXPECT_TRUE(comp_a->Equal(*comp_b, false, compare_func));
 }
 
 }  // namespace

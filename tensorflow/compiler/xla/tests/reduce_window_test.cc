@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -113,7 +113,7 @@ XLA_TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
                CreateScalarAddComputation(FloatType(), &builder_),
                /*window_dimensions=*/{1, 2},
                /*window_strides=*/{1}, Padding::kValid);
-  ASSERT_EQ(builder_.first_error().code(), tensorflow::error::INVALID_ARGUMENT)
+  ASSERT_EQ(builder_.first_error().code(), tsl::error::INVALID_ARGUMENT)
       << builder_.first_error();
   ASSERT_THAT(builder_.first_error().error_message(),
               ::testing::HasSubstr("Want input dimensions size"));
@@ -391,7 +391,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64_t> output_layout = {1, 5, 3, 2, 0, 4};
   std::vector<int64_t> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
-      ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
+      ShapeUtil::MakeShapeWithDenseLayout(F32, output_dims, output_layout);
   Literal expected(result_shape);
   expected.PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, expected, {}, DefaultErrorSpec());
@@ -672,9 +672,10 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
             /*stride=*/param.strides,
             /*padding=*/padding);
     Literal expected_literal = LiteralUtil::CreateFromArray(*expected);
-    const Shape& expected_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        input_literal.shape().element_type(),
-        expected_literal.shape().dimensions(), param.layout);
+    const Shape& expected_shape_with_layout =
+        ShapeUtil::MakeShapeWithDenseLayout(
+            input_literal.shape().element_type(),
+            expected_literal.shape().dimensions(), param.layout);
     ComputeAndCompareLiteral(&b, expected_literal, {input_arg.get()},
                              DefaultErrorSpec(), &expected_shape_with_layout);
   }
@@ -1783,7 +1784,7 @@ HloModule module
 
 sum {
   a0 = f32[] parameter(0)
-  a1 = f32[] parameter(1) 
+  a1 = f32[] parameter(1)
   b0 = f32[] parameter(2)
   b1 = f32[] parameter(3)
   add0 = f32[] add(a0, b0)
@@ -1796,7 +1797,7 @@ ENTRY entry {
   constant.1 = f32[] constant(0)
   constant.2 = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
   constant.3 = f32[] constant(0)
-  reduce-window = (f32[2,2]{1,0}, f32[2,2]{1,0}) 
+  reduce-window = (f32[2,2]{1,0}, f32[2,2]{1,0})
     reduce-window(constant, constant.2, constant.1, constant.3),
     window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
   ROOT copy = (f32[2,2]{1,0}, f32[2,2]{1,0}) copy(reduce-window)
@@ -1810,7 +1811,7 @@ HloModule module
 
 sum {
   a0 = f32[] parameter(0)
-  a1 = s32[] parameter(1) 
+  a1 = s32[] parameter(1)
   b0 = f32[] parameter(2)
   b1 = s32[] parameter(3)
   add0 = f32[] add(a0, b0)
@@ -1823,7 +1824,7 @@ ENTRY entry {
   constant.1 = f32[] constant(0)
   constant.2 = s32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
   constant.3 = s32[] constant(0)
-  ROOT reduce-window = (f32[2,2]{1,0}, s32[2,2]{1,0}) 
+  ROOT reduce-window = (f32[2,2]{1,0}, s32[2,2]{1,0})
     reduce-window(constant, constant.2, constant.1, constant.3),
     window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
 })";
@@ -1836,7 +1837,7 @@ HloModule module
 
 sum {
   a0 = f32[] parameter(0)
-  a1 = bf16[] parameter(1) 
+  a1 = bf16[] parameter(1)
   b0 = f32[] parameter(2)
   b1 = bf16[] parameter(3)
   add0 = f32[] add(a0, b0)
@@ -1849,7 +1850,7 @@ ENTRY entry {
   constant.1 = f32[] constant(0)
   constant.2 = bf16[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
   constant.3 = bf16[] constant(0)
-  ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0}) 
+  ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0})
     reduce-window(constant, constant.2, constant.1, constant.3),
     window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
 })";
@@ -1862,7 +1863,7 @@ HloModule module
 
 sum {
   a0 = f32[] parameter(0)
-  a1 = bf16[] parameter(1) 
+  a1 = bf16[] parameter(1)
   b0 = f32[] parameter(2)
   b1 = bf16[] parameter(3)
   add0 = f32[] add(a0, b0)
@@ -1875,7 +1876,7 @@ ENTRY entry {
   constant.1 = f32[] constant(0)
   constant.2 = bf16[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}})
   constant.3 = bf16[] constant(1)
-  ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0}) 
+  ROOT reduce-window = (f32[2,2]{1,0}, bf16[2,2]{1,0})
     reduce-window(constant, constant.2, constant.1, constant.3),
     window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum
 })";
@@ -1956,6 +1957,30 @@ ENTRY %SyncTensorsGraph.43 (p0.1: f32[], p1.7: pred[3,3]) -> (pred[]) {
   %compare.41 = pred[] compare(f32[] %convert.40, f32[] %p0.1), direction=LE
   ROOT %tuple.42 = (pred[]) tuple(pred[] %compare.41)
 })";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(VariadicWithNonTrivialWindows)) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    add {
+      lhs.0 = f32[] parameter(0)
+      lhs.1 = f32[] parameter(1)
+      rhs.0 = f32[] parameter(2)
+      rhs.1 = f32[] parameter(3)
+      add.0 = f32[] add(lhs.0, rhs.0)
+      add.1 = f32[] add(lhs.1, rhs.1)
+      ROOT tuple = (f32[], f32[]) tuple(add.0, add.0)
+    }
+
+    ENTRY e {
+      parameter.0 = f32[8,11,11,4,4]{0,1,2,3,4} parameter(0)
+      parameter.1 = f32[8,11,11,4,4]{0,1,2,3,4} parameter(1)
+      constant = f32[] constant(0)
+      ROOT reduce-window = (f32[7,15,9,12,11]{0,1,2,3,4}, f32[7,15,9,12,11]{0,1,2,3,4}) reduce-window(parameter.0, parameter.1, constant, constant), window={size=3x15x6x1x2 stride=2x1x1x1x1 pad=7_5x2_6x7_1x1_7x3_4 lhs_dilate=1x2x2x1x2 rhs_dilate=3x1x4x2x3}, to_apply=add
+    }
+  )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
 }
 

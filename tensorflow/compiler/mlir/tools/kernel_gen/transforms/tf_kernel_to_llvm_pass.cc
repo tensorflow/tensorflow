@@ -16,7 +16,7 @@ limitations under the License.
 #include <stdexcept>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -153,7 +153,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
 LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
     gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
-  if (!launch_op.asyncDependencies().empty() || launch_op.asyncToken()) {
+  if (!launch_op.getAsyncDependencies().empty() || launch_op.getAsyncToken()) {
     return rewriter.notifyMatchFailure(
         launch_op, "Cannot convert with async dependency or result.");
   }
@@ -177,9 +177,9 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   // Create a global for the module blob.
   SmallString<128> name_buffer(kernel_module.getName());
   name_buffer.append("_blob");
-  Value module_blob =
-      LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
-                               binary_attr.getValue(), LLVM::Linkage::Internal);
+  Value module_blob = LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
+                                               binary_attr.getValue(),
+                                               LLVM::Linkage::Internal, false);
 
   // Make sure the trailing zero is included in the constant.
   auto kernel_name = launch_op.getKernelName().getValue();
@@ -191,9 +191,9 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   auto kernel_name_global_name =
       (kernel_module.getName() + "_" + kernel_name + "_kernel_name")
           .toStringRef(kernel_name_global_name_buffer);
-  auto kernel_name_global =
-      LLVM::createGlobalString(loc, rewriter, kernel_name_global_name,
-                               kernel_name_buffer, LLVM::Linkage::Internal);
+  auto kernel_name_global = LLVM::createGlobalString(
+      loc, rewriter, kernel_name_global_name, kernel_name_buffer,
+      LLVM::Linkage::Internal, false);
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
@@ -229,10 +229,11 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   rewriter.create<LLVM::CallOp>(
       loc, TypeRange(), mlir::SymbolRefAttr::get(function),
 
-      ArrayRef<Value>{
-          context_arg, module_blob, kernel_name_global, adaptor.gridSizeX(),
-          adaptor.gridSizeY(), adaptor.gridSizeZ(), adaptor.blockSizeX(),
-          adaptor.blockSizeY(), adaptor.blockSizeZ(), kernel_params});
+      ArrayRef<Value>{context_arg, module_blob, kernel_name_global,
+                      adaptor.getGridSizeX(), adaptor.getGridSizeY(),
+                      adaptor.getGridSizeZ(), adaptor.getBlockSizeX(),
+                      adaptor.getBlockSizeY(), adaptor.getBlockSizeZ(),
+                      kernel_params});
 
   rewriter.eraseOp(launch_op);
   return success();
@@ -256,7 +257,10 @@ class TFKernelToLLVMPass
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    LLVMTypeConverter type_converter(ctx);
+    // TODO(b/267828330): Migrate to opaque pointers.
+    LowerToLLVMOptions options(&getContext());
+    options.useOpaquePointers = false;
+    LLVMTypeConverter type_converter(ctx, options);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
@@ -266,16 +270,16 @@ class TFKernelToLLVMPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    arith::populateArithmeticExpandOpsPatterns(patterns);
+    arith::populateArithExpandOpsPatterns(patterns);
     memref::populateExpandOpsPatterns(patterns);
-    arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
-    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
+    arith::populateArithToLLVMConversionPatterns(type_converter, patterns);
+    populateFinalizeMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateFuncToLLVMConversionPatterns(type_converter, patterns);
     cf::populateControlFlowToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     populateVectorToLLVMConversionPatterns(type_converter, patterns);
-    populateMathToLibmConversionPatterns(patterns, 0);
+    populateMathToLibmConversionPatterns(patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.add<ConvertLaunchFuncOpToTfRuntimeCallPattern>(type_converter,
@@ -284,7 +288,7 @@ class TFKernelToLLVMPass
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalDialect<
-        arith::ArithmeticDialect, func::FuncDialect, complex::ComplexDialect,
+        arith::ArithDialect, func::FuncDialect, complex::ComplexDialect,
         gpu::GPUDialect, tf_framework::TFFrameworkDialect, math::MathDialect>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();

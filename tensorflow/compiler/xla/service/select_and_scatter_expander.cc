@@ -18,11 +18,11 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 namespace xla {
 
@@ -64,12 +64,27 @@ StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
     auto first_iota_index = 1;
     auto* neg_one = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(-1)));
-    auto* first_iota = builder.AddInstruction(HloInstruction::CreateParameter(
-        first_iota_index, scalar_iota, "iota_lhs"));
-    auto* first_in_window =
+    auto* first_lhs_iota =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            first_iota_index, scalar_iota, "iota_lhs"));
+    auto* first_rhs_iota =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            first_iota_index + rhs_begin, scalar_iota, "iota_lhs"));
+    auto* lhs_first_in_window =
         builder.AddInstruction(HloInstruction::CreateCompare(
-            sas->select()->root_instruction()->shape(), first_iota, neg_one,
+            sas->select()->root_instruction()->shape(), first_lhs_iota, neg_one,
             Comparison::Direction::kNe, {}));
+    // Current implementations of ReduceWindow do not need the following line in
+    // their implementations, but it is actually required in the documented
+    // behavior of the implementation which allows the seed value to occur on
+    // both lhs and rhs sides when padding occurs.
+    auto* rhs_first_in_window =
+        builder.AddInstruction(HloInstruction::CreateCompare(
+            sas->select()->root_instruction()->shape(), first_rhs_iota, neg_one,
+            Comparison::Direction::kNe, {}));
+    auto rhs_not_first_in_window = builder.AddInstruction(
+        HloInstruction::CreateUnary(sas->select()->root_instruction()->shape(),
+                                    HloOpcode::kNot, rhs_first_in_window));
 
     auto* operand_lhs = builder.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_operand, "operand_lhs"));
@@ -80,7 +95,9 @@ StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
                                    {operand_lhs, operand_rhs}, sas->select()));
 
     auto* pred = builder.AddInstruction(HloInstruction::CreateBinary(
-        call->shape(), HloOpcode::kAnd, call, first_in_window));
+        call->shape(), HloOpcode::kAnd, call, lhs_first_in_window));
+    pred = builder.AddInstruction(HloInstruction::CreateBinary(
+        call->shape(), HloOpcode::kOr, pred, rhs_not_first_in_window));
 
     std::vector<HloInstruction*> result_tuple;
     result_tuple.push_back(builder.AddInstruction(HloInstruction::CreateTernary(
@@ -88,15 +105,16 @@ StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
     for (auto i = first_iota_index; i < rhs_begin; ++i) {
       // Special case the first iota because the same parameter instruction
       // cannot occur multiple times.
-      xla::HloInstruction* iota_lhs;
+      xla::HloInstruction *iota_lhs, *iota_rhs;
       if (i == first_iota_index) {
-        iota_lhs = first_iota;
+        iota_lhs = first_lhs_iota;
+        iota_rhs = first_rhs_iota;
       } else {
         iota_lhs = builder.AddInstruction(
             HloInstruction::CreateParameter(i, scalar_iota, "iota_lhs"));
+        iota_rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+            i + rhs_begin, scalar_iota, "iota_rhs"));
       }
-      auto* iota_rhs = builder.AddInstruction(HloInstruction::CreateParameter(
-          i + rhs_begin, scalar_iota, "iota_rhs"));
       result_tuple.push_back(
           builder.AddInstruction(HloInstruction::CreateTernary(
               scalar_iota, HloOpcode::kSelect, pred, iota_lhs, iota_rhs)));

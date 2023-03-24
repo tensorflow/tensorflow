@@ -133,7 +133,5 @@ TEST(UnsortedSegmentMaxModelTest, ConstParamenterTest) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2}));
 }
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(UnsortedSegmentTest);
-
 }  // namespace
 }  // namespace tflite

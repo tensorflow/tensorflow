@@ -21,13 +21,13 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/io/buffered_inputstream.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
+#include "tensorflow/tsl/lib/io/random_inputstream.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 using std::string;
 
@@ -35,12 +35,12 @@ int main(int argc, char** argv) {
   // Flags
   std::string input_file = "";
   std::string output_file = "";
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("input_file", &input_file, "file to convert"),
-      tensorflow::Flag("output_file", &output_file, "converted file"),
+  const std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("input_file", &input_file, "file to convert"),
+      tsl::Flag("output_file", &output_file, "converted file"),
   };
-  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok) {
     LOG(QFATAL) << usage;
@@ -58,8 +58,8 @@ int main(int argc, char** argv) {
 
   std::vector<float> floats;
   std::string line;
-  tensorflow::io::RandomAccessInputStream stream(file.get());
-  tensorflow::io::BufferedInputStream buf(&stream, 1048576);
+  tsl::io::RandomAccessInputStream stream(file.get());
+  tsl::io::BufferedInputStream buf(&stream, 1048576);
   while (buf.ReadLine(&line).ok()) {
     float value;
     QCHECK(sscanf(line.c_str(), "%f", &value) != 1)

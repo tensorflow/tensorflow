@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #ifdef DNNL_AARCH64_USE_ACL
-#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -67,9 +66,6 @@ struct MklConvFwdParams {
   MklTensorFormat tf_fmt;
   bool native_format;
   string dtypes = string("");
-#ifdef DNNL_AARCH64_USE_ACL
-  uint64 filter_hash;
-#endif
   struct PostOpParam {
     string name;
     dnnl::algorithm alg;
@@ -500,9 +496,6 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convFwdDims.src_dims);
     key_creator.AddAsKey(convFwdDims.filter_dims);
-#ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(convFwdDims.filter_hash);
-#endif
     key_creator.AddAsKey(convFwdDims.bias_dims);
     key_creator.AddAsKey(convFwdDims.dst_dims);
     key_creator.AddAsKey(convFwdDims.strides);
@@ -518,6 +511,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     for (auto const& post_op_param : convFwdDims.post_op_params) {
       key_creator.AddAsKey(post_op_param.name);
       if (post_op_param.name == "activation") {
+        key_creator.AddAsKey(post_op_param.alg);
         DCHECK_EQ(post_op_param.param.size(), 3);
         for (auto& param : post_op_param.param) {
           key_creator.AddAsKey(param);
@@ -823,15 +817,6 @@ class MklConvOp : public OpKernel {
 
       // TODO(intel-tf): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
-#ifdef DNNL_AARCH64_USE_ACL
-      // TODO(milpuz01): Remove once Arm Compute Library provides support for
-      // in-place updates
-      convFwdDims.filter_hash = Hash64(
-          filter_tensor.tensor_data().data(),
-          std::min(kFilterTensorHashLength,
-                   static_cast<int>(filter_tensor.tensor_data().size())));
-#endif
-
       conv_fwd =
           MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
               convFwdDims, do_not_cache);
@@ -1232,9 +1217,6 @@ class MklConvOp : public OpKernel {
   // Input indices for FusedBatchNorm
   const int kInputIndex_BN_Scale = 2, kInputIndex_BN_Offset = 3;
   const int kInputIndex_BN_Mean = 4, kInputIndex_BN_Variance = 5;
-#ifdef DNNL_AARCH64_USE_ACL
-  const int kFilterTensorHashLength = 1024;
-#endif
 
   MklTensorFormat GetFilterTfDataFormat(const MklDnnShape* filter_mkl_shape,
                                         const ConvFwdPd& conv_prim_desc) const {
@@ -1506,6 +1488,16 @@ class MklFusedConvOp
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
+    } else if (fused_ops ==
+               std::vector<string>{"FusedBatchNorm", "_MklSwish"}) {
+      float epsilon;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
@@ -1544,6 +1536,12 @@ class MklFusedConvOp
           context, num_args == 2,
           errors::InvalidArgument(
               "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "_MklSwish"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, dnnl::algorithm::eltwise_swish, 1.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
@@ -1794,8 +1792,6 @@ class MklQuantizedConvOp
                   !(bias_dt == DT_FLOAT || bias_dt == DT_QINT32)
               ? 2
               : 0;
-      int summand_min_max_idx_offset =
-          this->get_fuse_add() && summand_dt != DT_FLOAT ? 2 : 0;
       min_input_idx_ =
           non_minmax_arg_idx_base + bias_idx_offset + summand_idx_offset;
       max_input_idx_ = min_input_idx_ + 1;
@@ -1849,11 +1845,10 @@ class MklQuantizedConvOp
               /*native_format*/ true>::Compute(context);
 
     // Compute additional outputs: min/max scalars.
-
     const float min_input =
-        context->input(min_input_idx_).template flat<float>()(0);
+        context->input(min_input_idx_).template scalar<float>()();
     const float max_input =
-        context->input(max_input_idx_).template flat<float>()(0);
+        context->input(max_input_idx_).template scalar<float>()();
 
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
@@ -1863,9 +1858,9 @@ class MklQuantizedConvOp
       OP_REQUIRES_OK(context, context->allocate_output(2, {}, &output_max));
       // This is the case the convolution and requantization are fused.
       output_min->flat<float>()(0) =
-          context->input(min_freezed_output_idx_).template flat<float>()(0);
+          context->input(min_freezed_output_idx_).template scalar<float>()();
       output_max->flat<float>()(0) =
-          context->input(max_freezed_output_idx_).template flat<float>()(0);
+          context->input(max_freezed_output_idx_).template scalar<float>()();
     } else {
       const Tensor& min_filter = context->input(min_filter_idx_);
       const Tensor& max_filter = context->input(max_filter_idx_);
@@ -1873,8 +1868,8 @@ class MklQuantizedConvOp
         float min_output_value;
         float max_output_value;
         MklQuantizationRangeForMultiplication<Tinput, qint8, qint32>(
-            min_input, max_input, min_filter.flat<float>()(0),
-            max_filter.flat<float>()(0), &min_output_value, &max_output_value);
+            min_input, max_input, min_filter.scalar<float>()(),
+            max_filter.scalar<float>()(), &min_output_value, &max_output_value);
         OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));
         OP_REQUIRES_OK(context, context->allocate_output(2, {}, &output_max));
         output_min->flat<float>()(0) = min_output_value;
@@ -1907,18 +1902,25 @@ class MklQuantizedConvOp
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       const float min_input =
-          context->input(min_input_idx_).template flat<float>()(0);
+          context->input(min_input_idx_).template scalar<float>()();
       const float max_input =
-          context->input(max_input_idx_).template flat<float>()(0);
+          context->input(max_input_idx_).template scalar<float>()();
       const Tensor& min_filter_vector = context->input(min_filter_idx_);
       const Tensor& max_filter_vector = context->input(max_filter_idx_);
+      OP_REQUIRES(
+          context,
+          ((min_filter_vector.NumElements() > 0) &&
+           (max_filter_vector.NumElements() > 0) &&
+           (min_filter_vector.shape() == max_filter_vector.shape())),
+          errors::InvalidArgument("`min_ and max_filter` must have same"
+                                  "shape and contain at least one element."));
 
       // min_freezed_output and max_freezed_output are the actual range
       // for the output.
       const float min_freezed_output =
-          context->input(min_freezed_output_idx_).template flat<float>()(0);
+          context->input(min_freezed_output_idx_).template scalar<float>()();
       const float max_freezed_output =
-          context->input(max_freezed_output_idx_).template flat<float>()(0);
+          context->input(max_freezed_output_idx_).template scalar<float>()();
 
       float int_output_limit =
           std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
@@ -1958,20 +1960,52 @@ class MklQuantizedConvOp
 
     if (this->get_fuse_add()) {
       // Calculate the scale (beta in oneDNN api term) for sum
-      auto iter = params.post_op_params.begin() + post_op_to_idx_["sum"];
       if (std::is_same<Toutput, quint8>::value) {
         DataType summand_dt = this->input_type(this->get_input_add_idx());
         bool summand_condition =
             (summand_dt == DT_QINT8) || (summand_dt == DT_QUINT8);
         DCHECK((summand_condition));
+
+        const Tensor& min_freezed_output_tensor =
+            context->input(min_freezed_output_idx_);
+        const Tensor& max_freezed_output_tensor =
+            context->input(max_freezed_output_idx_);
+        OP_REQUIRES(
+            context,
+            TensorShapeUtils::IsScalar(min_freezed_output_tensor.shape()),
+            errors::InvalidArgument(
+                "`min_freezed_output` must be rank 0 but is rank ",
+                min_freezed_output_tensor.dims()));
+        OP_REQUIRES(
+            context,
+            TensorShapeUtils::IsScalar(max_freezed_output_tensor.shape()),
+            errors::InvalidArgument(
+                "`max_freezed_output` must be rank 0 but is rank ",
+                max_freezed_output_tensor.dims()));
+        const Tensor& min_freezed_summand_tensor =
+            context->input(min_summand_idx_);
+        const Tensor& max_freezed_summand_tensor =
+            context->input(max_summand_idx_);
+        OP_REQUIRES(
+            context,
+            TensorShapeUtils::IsScalar(min_freezed_summand_tensor.shape()),
+            errors::InvalidArgument(
+                "`min_freezed_summand` must be rank 0 but is rank ",
+                min_freezed_summand_tensor.dims()));
+        OP_REQUIRES(
+            context,
+            TensorShapeUtils::IsScalar(max_freezed_summand_tensor.shape()),
+            errors::InvalidArgument(
+                "`max_freezed_summand` must be rank 0 but is rank ",
+                max_freezed_summand_tensor.dims()));
         const float min_freezed_output =
-            context->input(min_freezed_output_idx_).template flat<float>()(0);
+            min_freezed_output_tensor.template scalar<float>()();
         const float max_freezed_output =
-            context->input(max_freezed_output_idx_).template flat<float>()(0);
+            max_freezed_output_tensor.template scalar<float>()();
         const float min_freezed_summand =
-            context->input(min_summand_idx_).template flat<float>()(0);
+            min_freezed_summand_tensor.template scalar<float>()();
         const float max_freezed_summand =
-            context->input(max_summand_idx_).template flat<float>()(0);
+            max_freezed_summand_tensor.template scalar<float>()();
 
         float output_range = std::max(std::abs(min_freezed_output),
                                       std::abs(max_freezed_output));
@@ -2057,9 +2091,9 @@ class MklQuantizedConvOp
                            "Current fusion requires summand to be float"));
       // We need to compute scale for the summand
       const float min_input =
-          context->input(min_input_idx_).template flat<float>()(0);
+          context->input(min_input_idx_).template scalar<float>()();
       const float max_input =
-          context->input(max_input_idx_).template flat<float>()(0);
+          context->input(max_input_idx_).template scalar<float>()();
       const Tensor& min_filter_vector = context->input(min_filter_idx_);
       const Tensor& max_filter_vector = context->input(max_filter_idx_);
       const float* min_filter = min_filter_vector.flat<float>().data();
@@ -2110,9 +2144,9 @@ class MklQuantizedConvOp
     }
 
     const float min_input =
-        context->input(min_input_idx_).template flat<float>()(0);
+        context->input(min_input_idx_).template scalar<float>()();
     const float max_input =
-        context->input(max_input_idx_).template flat<float>()(0);
+        context->input(max_input_idx_).template scalar<float>()();
     const Tensor& min_filter_vector = context->input(min_filter_idx_);
     const Tensor& max_filter_vector = context->input(max_filter_idx_);
     const float* min_filter = min_filter_vector.flat<float>().data();
@@ -2218,12 +2252,11 @@ class MklQuantizedConvOp
   }
 
   inline oneDNNFusedOps StrToEnum(const string op) {
-    if (str_to_enum_.count(op) != 0) {
-      return str_to_enum_[op];
-    } else {
-      TF_CHECK_OK(
-          Status(error::Code::UNKNOWN, "Error: Unknown post op: " + op));
-    }
+    // It was not doing template substitution for the second parameter of
+    // CHECK_EQ and thus I had to do this to make it work.
+    CHECK_EQ(str_to_enum_.find(op) != str_to_enum_.end(), true)  // Crash OK
+        << "Error: Unknown post op: " << op;
+    return str_to_enum_[op];
   }
   // Allocate tensors for cached bias data and
   // cached bias memory descriptor (data format)

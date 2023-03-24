@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
@@ -50,7 +51,7 @@ template <int32_t INPUT_RANK, size_t N_DIMS_TO_REDUCE>
 auto GetEigenSumF32Function(
     std::array<int32_t, N_DIMS_TO_REDUCE> dims_to_reduce) {
   return [dims_to_reduce](llvm::ArrayRef<Tensor> inputs,
-                          llvm::Optional<Eigen::ThreadPoolDevice> device) {
+                          std::optional<Eigen::ThreadPoolDevice> device) {
     Tensor output(DT_FLOAT,
                   ReducedTensorShape(inputs[0].shape(), dims_to_reduce));
     auto in = inputs[0].tensor<float, INPUT_RANK>();
@@ -68,7 +69,7 @@ template <int32_t INPUT_RANK, size_t N_DIMS_TO_REDUCE>
 auto GetEigenMeanF32Function(
     std::array<int32_t, N_DIMS_TO_REDUCE> dims_to_reduce) {
   return [dims_to_reduce](llvm::ArrayRef<Tensor> inputs,
-                          llvm::Optional<Eigen::ThreadPoolDevice> device) {
+                          std::optional<Eigen::ThreadPoolDevice> device) {
     Tensor output(DT_FLOAT,
                   ReducedTensorShape(inputs[0].shape(), dims_to_reduce));
     auto in = inputs[0].tensor<float, INPUT_RANK>();

@@ -40,7 +40,7 @@ limitations under the License.
 // translation unit boundaries.
 //
 // For more info see https://sourceforge.net/p/numpy/mailman/message/5700519
-// See also tensorflow/python/lib/core/numpy.h for a similar approach.
+// See also tensorflow/tsl/python/lib/core/numpy.h for a similar approach.
 #define PY_ARRAY_UNIQUE_SYMBOL _tflite_numpy_api
 #ifndef TFLITE_IMPORT_NUMPY
 #define NO_IMPORT_ARRAY
@@ -50,7 +50,7 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {

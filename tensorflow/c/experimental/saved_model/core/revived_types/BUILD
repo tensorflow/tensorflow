@@ -3,11 +3,11 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 # This package contains classes corresponding to Revived SavedObjectGraph types
 # used by SavedModel. See https://cs.opensource.google/tensorflow/tensorflow/+/c575e2ba93c442121d98d3f125d83fed1339924d:tensorflow/core/protobuf/saved_object_graph.proto;l=56-62
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # Restricting visibility for now
         "//tensorflow/c/experimental/saved_model/core:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__subpackages__",
+        # copybara:uncomment "//learning/brain/tfrt/aot:__pkg__",
     ],
     licenses = ["notice"],
 )

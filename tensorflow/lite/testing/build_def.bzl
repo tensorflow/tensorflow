@@ -21,6 +21,7 @@ def generated_test_models():
         "avg_pool3d",
         "batch_to_space_nd",
         "batchmatmul",
+        "bitcast",
         "broadcast_args",
         "broadcast_gradient_args",
         "broadcast_to",
@@ -90,6 +91,7 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_band_part",
         "matrix_diag",
         "matrix_set_diag",
         "max_pool",
@@ -143,6 +145,7 @@ def generated_test_models():
         "shape",
         "shape_to_strided_slice",
         "sigmoid",
+        "sigmoid_grad",
         "sign",
         "sin",
         "slice",
@@ -201,12 +204,6 @@ def mlir_generated_test_denylisted_models():
         "unidirectional_sequence_rnn",
     ]
 
-# Test cases which only work internally now.
-def no_oss_generated_test_models():
-    return [
-        "sparse_to_dense",
-    ]
-
 # List of models that fail generated tests for the conversion mode.
 # If you have to disable a test, please add here with a link to the appropriate
 # bug or issue.
@@ -234,6 +231,7 @@ def generated_test_models_failing(conversion_mode, delegate):
             "gather_nd",
             "global_batch_norm",
             "leaky_relu",
+            "matrix_band_part",
             "mean",
             "mirror_pad",
             "multinomial",
@@ -449,7 +447,6 @@ def generated_test_models_all():
             (conversion mode, delegate to use, name of test, test tags, test args).
     """
     conversion_modes = generated_test_conversion_modes()
-    no_oss_tests = no_oss_generated_test_models()
     options = []
     for conversion_mode in conversion_modes:
         for delegate in generated_test_delegates():
@@ -457,10 +454,6 @@ def generated_test_models_all():
             for test in mlir_generated_test_models():
                 tags = []
                 args = []
-
-                # TODO(b/187992093): Exclude tests that are failing in OSS for now.
-                if test in no_oss_tests:
-                    tags.append("no_oss")
 
                 # Forward-compat coverage testing is largely redundant, and
                 # contributes to coverage test bloat.

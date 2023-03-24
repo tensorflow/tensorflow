@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -417,30 +418,66 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   return OkStatus();
 }
 
+Status GetCompressedElementFromVariantTensor(
+    const Tensor& tensor, const CompressedElement** out_compressed_element) {
+  if (!(tensor.dtype() == DT_VARIANT &&
+        TensorShapeUtils::IsScalar(tensor.shape()))) {
+    return errors::InvalidArgument(
+        "`CompressedElement` tensor must be a scalar of dtype `DT_VARIANT`.");
+  }
+  const Variant& variant = tensor.scalar<Variant>()();
+  const CompressedElement* compressed_element =
+      variant.get<CompressedElement>();
+  if (compressed_element == nullptr) {
+    return errors::InvalidArgument(
+        "Tensor must be a `CompressedElement` object.");
+  }
+  *out_compressed_element = compressed_element;
+  return OkStatus();
+}
+
 int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64_t allocated_bytes = 0;
-  DatasetBase* dataset;
   for (auto& tensor : element) {
-    if (tensor.dtype() == DT_VARIANT &&
-        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
-      allocated_bytes += dataset->AllocatedBytes();
-    } else {
-      allocated_bytes += tensor.AllocatedBytes();
+    if (tensor.dtype() == DT_VARIANT) {
+      // Special case certain variants where AllocatedBytes() doesn't give an
+      // accurate byte count.
+      DatasetBase* dataset;
+      if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+        allocated_bytes += dataset->AllocatedBytes();
+        continue;
+      }
+      const CompressedElement* compressed_element;
+      if (GetCompressedElementFromVariantTensor(tensor, &compressed_element)
+              .ok()) {
+        allocated_bytes += compressed_element->ByteSizeLong();
+        continue;
+      }
     }
+    allocated_bytes += tensor.AllocatedBytes();
   }
   return allocated_bytes;
 }
 
 int64_t GetTotalBytes(const std::vector<Tensor>& element) {
   int64_t total_bytes = 0;
-  DatasetBase* dataset;
   for (auto& tensor : element) {
-    if (tensor.dtype() == DT_VARIANT &&
-        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
-      total_bytes += dataset->TotalBytes();
-    } else {
-      total_bytes += tensor.TotalBytes();
+    if (tensor.dtype() == DT_VARIANT) {
+      // Special case certain variants where TotalBytes() doesn't give an
+      // accurate byte count.
+      DatasetBase* dataset;
+      if (GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+        total_bytes += dataset->TotalBytes();
+        continue;
+      }
+      const CompressedElement* compressed_element;
+      if (GetCompressedElementFromVariantTensor(tensor, &compressed_element)
+              .ok()) {
+        total_bytes += compressed_element->ByteSizeLong();
+        continue;
+      }
     }
+    total_bytes += tensor.TotalBytes();
   }
   return total_bytes;
 }
@@ -698,6 +735,7 @@ Status DatasetBase::MakeIterator(
   Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
     s.Update((*iterator)->Initialize(ctx));
+    ctx->SaveCheckpoint(iterator->get());
   }
   if (!s.ok()) {
     // Reset the iterator to avoid returning an uninitialized iterator.
@@ -729,7 +767,8 @@ Status DatasetBase::MakeSplitProviders(
 int64_t DatasetBase::Cardinality() const {
   mutex_lock l(cardinality_mu_);
   if (cardinality_ == kUnknownCardinality) {
-    cardinality_ = CardinalityInternal();
+    CardinalityOptions options;
+    cardinality_ = CardinalityInternal(options);
   }
   return cardinality_;
 }
@@ -836,6 +875,9 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.NumElements() == 0) {
+    return errors::InvalidArgument("Empty resouce handle");
+  }
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
   if (ctx->device_name() != handle.device()) {
     return errors::InvalidArgument("Trying to access resource ", handle.name(),
@@ -886,6 +928,17 @@ string DatasetBaseIterator::BuildTraceMeName() {
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);
   }
+  if (model_node() != nullptr) {
+    if (model_node()->buffered_elements() > 0) {
+      strings::StrAppend(
+          &result, ",buffered_elements=",
+          static_cast<long long>(model_node()->buffered_elements()));
+      strings::StrAppend(
+          &result, ",buffered_bytes_MB=",
+          static_cast<long long>(
+              static_cast<double>(model_node()->buffered_bytes()) * 1e-6));
+    }
+  }
   strings::StrAppend(&result, "#");
   return result;
 }
@@ -897,16 +950,24 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
-    auto output = node_->output();
-    if (output) {
-      output->record_stop(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
   }
   out_tensors->clear();
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  ctx->SaveCheckpoint(this);
+  if (!SymbolicCheckpointCompatible()) {
+    ctx->UpdateCheckpointStatus([this]() {
+      return errors::Unimplemented(dataset()->type_string(),
+                                   " does not support symbolic checkpointing.");
+    });
+  }
   if (TF_PREDICT_TRUE(s.ok())) {
     if (TF_PREDICT_TRUE(!*end_of_sequence)) {
       DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
@@ -918,9 +979,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
-    auto output = node_->output();
-    if (output) {
-      output->record_start(now_nanos);
+    if (output_was_recording) {
+      node_->output()->record_start(now_nanos);
     }
   }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
@@ -941,10 +1001,12 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
+  bool output_was_recording =
+      node_ && node_->output() && node_->output()->is_recording();
   if (collect_resource_usage(ctx)) {
     int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_stop(now_nanos);
     }
     node_->record_start(now_nanos);
@@ -954,7 +1016,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
     int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
-    if (output) {
+    if (output_was_recording) {
       output->record_start(now_nanos);
     }
   }
@@ -1000,6 +1062,15 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
+    if (ctx->stack_trace().has_value() && VLOG_IS_ON(4)) {
+      VLOG(4) << "Dataset " << dataset->type_string()
+              << " created using the following stack trace:";
+      for (const auto& stack_frame :
+           ctx->stack_trace()->ToStackFrames({}, {})) {
+        VLOG(4) << stack_frame.file_name << ":" << stack_frame.line_number
+                << " in " << stack_frame.function_name << "()";
+      }
+    }
     dataset->Initialize(metadata_);
   }
 }

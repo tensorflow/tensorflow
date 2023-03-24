@@ -136,9 +136,9 @@ TfrtGraphExecutionState::Create(const TfrtGraphExecutionState::Options& options,
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).
-  TF_ASSIGN_OR_RETURN(
-      auto graph_execution_state,
-      fallback_state.CreateGraphExecutionState(std::move(graph_def)));
+  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
+                      fallback_state.CreateGraphExecutionState(
+                          std::move(graph_def), options.run_placer_on_graph));
 
   return std::make_unique<TfrtGraphExecutionState>(
       options, std::move(graph_execution_state), fallback_state,
@@ -463,7 +463,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
 
   result.grappler_duration = absl::Now() - grappler_start_time;
 
-  if (options_.enable_tfrt_gpu) {
+  if (options_.enable_tfrt_gpu && !options_.use_bridge_for_gpu) {
     TF_ASSIGN_OR_RETURN(
         result.graph,
         BuildXlaOpsAndMaybeInsertTransferOps(

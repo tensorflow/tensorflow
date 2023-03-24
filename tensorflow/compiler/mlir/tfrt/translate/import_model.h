@@ -16,13 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 
+#include <vector>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/function/function.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -41,8 +47,19 @@ Status ConvertFunctionToBef(
     tfrt::BefBuffer* bef_buffer);
 
 // Converts an MLIR `module` in TF dialect to TFRT's Binary Executable Format.
+// If `fallback_state` is not null, the MLIR functions for XLA clusters in
+// the form of XlaLaunch will be exported and added to the function library when
+// needed. The nested functions will also be exported.
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer);
+                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::FallbackState* fallback_state = nullptr);
+
+Status ConvertTfMlirToRuntimeExecutable(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
+                             const tensorflow::TfrtPipelineOptions& options)>
+        emit_executable,
+    tfrt_stub::FallbackState* fallback_state = nullptr);
 
 }  // namespace tensorflow
 

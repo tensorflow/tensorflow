@@ -112,7 +112,7 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
   });
 }
 
-StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
+StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
   switch (kind()) {
     case Kind::kConstant: {
       // Constant values are considered static.
@@ -132,9 +132,6 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
           "ResolveDynamism called on unsupported XlaExpression: ",
           HumanString());
   }
-
-  if (!client)
-    return errors::InvalidArgument("client is required to resolve constant");
 
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
 

@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -97,8 +97,29 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindTiledLogicalTranspose(*tr),
+  Vector3 permutation;
+  EXPECT_EQ(FindTiledLogicalTranspose(*tr, permutation),
             std::make_optional(Vector3{1, 64, 1536}));
+  Vector3 expected_permutation{0, 2, 1};
+  EXPECT_EQ(permutation, expected_permutation);
+}
+
+TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+  EXPECT_EQ(FindAnyTiledTranspose(*tr),
+            std::make_optional(
+                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
 }
 
 }  // namespace gpu

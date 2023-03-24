@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -20,13 +21,13 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -36,13 +37,19 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
+#define GEN_PASS_DEF_CLUSTEROUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ClusterOutliningPass
-    : public TF::ClusterOutliningPassBase<ClusterOutliningPass> {
+    : public impl::ClusterOutliningPassBase<ClusterOutliningPass> {
   void runOnOperation() override;
 };
 
+#define GEN_PASS_DEF_LAUNCHOUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct LaunchOutliningPass
-    : public TF::LaunchOutliningPassBase<LaunchOutliningPass> {
+    : public impl::LaunchOutliningPassBase<LaunchOutliningPass> {
   void runOnOperation() override;
 };
 
@@ -64,10 +71,15 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 
   auto func_type = builder->getFunctionType(operand_types, op.getResultTypes());
 
-  // TODO(lyandy): Define better name for outlined function. Potentially some
-  // name can be added during cluster formation.
-  func::FuncOp outlined_func =
-      func::FuncOp::create(op.getLoc(), "_func", func_type);
+  // While processing XLA launch ops, signatures are created for each function
+  // to decide if a function has been compiled. Function signatures are decided
+  // by function name and input types. By giving each function a unique name, we
+  // make sure the same signature is not incorrectly given to functions of
+  // different graphs with same name and input type.
+  func::FuncOp outlined_func = func::FuncOp::create(
+      op.getLoc(),
+      absl::StrCat("_func_", size_t(OperationEquivalence::computeHash(op))),
+      func_type);
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.

@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -147,18 +148,18 @@ class ApproxTopkTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def test_l2ann(self, dtype, k, db_size, qy_size, feature_dim):
     qy = self._rng.random([qy_size, feature_dim])
     db = self._rng.random([db_size, feature_dim])
-    db_half_norm = np.linalg.norm(db, axis=1) / 2
+    db_half_norm_sq = np.linalg.norm(db, axis=1)**2 / 2
     qy_op = constant_op.constant(qy, dtype=dtype)
     db_op = constant_op.constant(db, dtype=dtype)
-    db_half_norm_op = constant_op.constant(db_half_norm, dtype=dtype)
+    db_half_norm_sq_op = constant_op.constant(db_half_norm_sq, dtype=dtype)
     # Must jit-compile to access the xla kernel.
     @function(jit_compile=True)
-    def ann(qy, db, db_half_norm, k):
-      scores = db_half_norm - math_ops.matmul(qy, db, transpose_b=True)
+    def ann(qy, db, db_half_norm_sq, k):
+      scores = db_half_norm_sq - math_ops.matmul(qy, db, transpose_b=True)
       return nn_ops.approx_min_k(scores, k)
 
-    _, idx = self.evaluate(ann(qy_op, db_op, db_half_norm_op, k))
-    scores = self.evaluate(db_half_norm_op -
+    _, idx = self.evaluate(ann(qy_op, db_op, db_half_norm_sq_op, k))
+    scores = self.evaluate(db_half_norm_sq_op -
                            math_ops.matmul(qy_op, db_op, transpose_b=True))
     gt = np.argsort(scores)[:, :k]
     ann_recall = self.compute_recall(idx, gt)
@@ -214,6 +215,40 @@ class ApproxTopkTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected_in_grads, result_in_grads = self.evaluate(
         ann_with_grads(db_op, out_grads_op))
     self.assertAllClose(expected_in_grads, result_in_grads)
+
+  def test_invalid_input(self):
+    @function(jit_compile=True)
+    def fuzz_jit():
+      return nn_ops.approx_max_k(
+          [
+              183.39395141601562,
+              62.6842041015625,
+              83.8385238647461,
+              204.36642456054688,
+          ],
+          4774,
+          reduction_dimension=0x8282828,
+          recall_target=135.9822179933652,
+          reduction_input_size_override=6154,
+          aggregate_to_topk=True,
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      fuzz_jit()
+
+  def test_b272094281(self):
+    @function(jit_compile=True)
+    def fuzz_jit():
+      return nn_ops.approx_max_k(
+          [],
+          9223372036854775807,
+          reduction_dimension=-4294967297 + 0x41,
+          reduction_input_size_override=-9223372036854775807,
+          aggregate_to_topk=False,
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      fuzz_jit()
 
 
 if __name__ == '__main__':

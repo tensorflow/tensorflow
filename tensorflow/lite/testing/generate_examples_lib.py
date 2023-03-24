@@ -30,7 +30,7 @@ import os
 import re
 import zipfile
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -45,6 +45,7 @@ from tensorflow.lite.testing.op_tests.atan2 import make_atan2_tests
 from tensorflow.lite.testing.op_tests.batch_to_space_nd import make_batch_to_space_nd_tests
 from tensorflow.lite.testing.op_tests.batchmatmul import make_batchmatmul_tests
 from tensorflow.lite.testing.op_tests.binary_op import make_add_tests, make_div_tests, make_sub_tests, make_mul_tests, make_pow_tests, make_floor_div_tests, make_floor_mod_tests, make_squared_difference_tests
+from tensorflow.lite.testing.op_tests.bitcast import make_bitcast_tests
 from tensorflow.lite.testing.op_tests.broadcast_args import make_broadcast_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_to import make_broadcast_to_tests
@@ -79,7 +80,7 @@ from tensorflow.lite.testing.op_tests.exp import make_exp_tests
 from tensorflow.lite.testing.op_tests.expand_dims import make_expand_dims_tests
 from tensorflow.lite.testing.op_tests.expm1 import make_expm1_tests
 from tensorflow.lite.testing.op_tests.eye import make_eye_tests
-from tensorflow.lite.testing.op_tests.fill import make_fill_tests
+from tensorflow.lite.testing.op_tests.fill import make_fill_tests, make_fill_16_tests
 from tensorflow.lite.testing.op_tests.floor import make_floor_tests
 from tensorflow.lite.testing.op_tests.fully_connected import make_fully_connected_tests
 from tensorflow.lite.testing.op_tests.fused_batch_norm import make_fused_batch_norm_tests
@@ -108,6 +109,7 @@ from tensorflow.lite.testing.op_tests.local_response_norm import make_local_resp
 from tensorflow.lite.testing.op_tests.log_softmax import make_log_softmax_tests
 from tensorflow.lite.testing.op_tests.logic import make_logical_or_tests, make_logical_and_tests, make_logical_xor_tests
 from tensorflow.lite.testing.op_tests.lstm import make_lstm_tests
+from tensorflow.lite.testing.op_tests.matrix_band_part import make_matrix_band_part_tests
 from tensorflow.lite.testing.op_tests.matrix_diag import make_matrix_diag_tests
 from tensorflow.lite.testing.op_tests.matrix_set_diag import make_matrix_set_diag_tests
 from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_with_argmax_tests
@@ -155,6 +157,7 @@ from tensorflow.lite.testing.op_tests.segment_sum import make_segment_sum_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
 from tensorflow.lite.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
 from tensorflow.lite.testing.op_tests.sigmoid import make_sigmoid_tests
+from tensorflow.lite.testing.op_tests.sigmoid_grad import make_sigmoid_grad_tests
 from tensorflow.lite.testing.op_tests.sign import make_sign_tests
 from tensorflow.lite.testing.op_tests.slice import make_slice_tests
 from tensorflow.lite.testing.op_tests.softmax import make_softmax_tests

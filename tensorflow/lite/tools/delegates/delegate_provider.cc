@@ -17,12 +17,13 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace tflite {
 namespace tools {
 
 TfLiteDelegatePtr CreateNullDelegate() {
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return TfLiteDelegatePtr(nullptr, [](TfLiteOpaqueDelegate*) {});
 }
 
 void ProvidedDelegateList::AddAllDelegateParams() const {

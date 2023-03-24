@@ -17,15 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_
 
 #include <complex>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-// Disable clang-format to prevent 'FixedPoint' header from being included
-// before 'Tensor' header on which it depends.
-// clang-format off
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
-// clang-format on
 
-#include "tensorflow/core/platform/types.h"
+// clang-format off
+// This include order is required to avoid instantiating templates
+// quantized types in the Eigen namespace before their specialization.
 #include "tensorflow/tsl/framework/numeric_types.h"
+#include "tensorflow/core/platform/types.h"
+// clang-format on
 
 namespace tensorflow {
 

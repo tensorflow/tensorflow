@@ -15,23 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -175,8 +176,8 @@ StatusOr<bool> HloConstantFolding::Run(
             ShapeUtil::ElementsIn(instruction->shape());
 
         static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
-        if (elements_in_constant > elements_in_removed_operands &&
-            elements_in_constant > kMaximumConstantSizeElements) {
+        if (std::max(elements_in_constant, elements_in_removed_operands) >
+            kMaximumConstantSizeElements) {
           continue;
         }
       }
@@ -212,14 +213,14 @@ StatusOr<bool> HloConstantFolding::Run(
             ndebug
                 ? "This isn't necessarily a bug; constant-folding is "
                   "inherently a trade-off between compilation time and speed "
-                  "at runtime.  XLA has some guards that attempt to keep "
+                  "at runtime. XLA has some guards that attempt to keep "
                   "constant folding from taking too long, but fundamentally "
                   "you'll always be able to come up with an input program that "
                   "takes a long time.\n\n"
                   "If you'd like to file a bug, run with envvar "
                   "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results."
                 : "XLA was built without compiler optimizations, which can be "
-                  "slow.  Try rebuilding with -c opt.";
+                  "slow. Try rebuilding with -c opt.";
         return absl::StrFormat(
             "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->name() or instruction->ToString()

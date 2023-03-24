@@ -161,7 +161,7 @@ class InferenceContext {
   absl::Status UpdateParams(const GpuInfo& gpu_info);
   void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
-  TensorMemoryType GetTensorMemoryType(ValueId id);
+  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;

@@ -24,8 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace tensorflow {
 
@@ -35,6 +36,12 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   // Remove unused global tensors, or make then immutable if possible.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
 
+  pm.addPass(
+      mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  pm.addPass(mlir::TF::CreateNameAnonymousIteratorsPass());
+
   // This will add regions to IfOp/WhileOp (turning them into IfRegionOp
   // and WhileRegionOp), but be aware that those regions will still contain
   // calls.
@@ -42,25 +49,35 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
 
   pm.addPass(mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass());
   pm.addPass(mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass());
+  pm.addPass(mlir::TF::CreateLocalizeVarHandlesPass());
+  pm.addPass(mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass());
+  pm.addPass(mlir::tf_saved_model::CreateStripSavedModuleMetadataPass());
+
   pm.addPass(mlir::TF::CreateRemoveUnusedArgumentsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateRemoveUnusedWhileResultsPass());
 
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createSymbolDCEPass());
 
-  // Has to be a non-empty string, so tf2xla fallbacks kick in.
-  llvm::StringRef tf2xla_fallback_device_type = "cpu/gpu/tpu";
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
+  llvm::StringRef tf2xla_fallback_device_type = "XLA_CPU_JIT";
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       tf2xla_fallback_device_type, /*prefer_tf2xla=*/false));
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
+
+  pm.addPass(mlir::TF::CreateStripTfAttributesPass());
 
   pm.addPass(mlir::createCanonicalizerPass());
-
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  pm.addPass(mlir::TF::CreateOrderByDialectPass());
+
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 }
 
 }  // namespace tensorflow

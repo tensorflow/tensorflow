@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
@@ -41,19 +41,18 @@ class Sharding {
 
   virtual ~Sharding() = default;
 
-  int num_devices() const {
-    if (num_devices_.has_value()) {
-      return *num_devices_;
-    }
-
-    auto self = pybind11::cast(this);
-    pybind11::set device_set = self.attr("device_set");
-    return device_set.size();
-  }
+  static int SafeNumDevices(pybind11::handle sharding);
 
  private:
   std::optional<int> num_devices_;
 };
+
+// Returns a hash that may sometimes return different hashes for equal values.
+// It is not a correct implementation of `__hash__` in python, but it's fine
+// for jit/pjit dispatch since it only causes spurious cache misses.
+size_t ShardingHash(const pybind11::object& obj);
+
+bool ShardingEqual(const pybind11::object& a, const pybind11::object& b);
 
 class XLACompatibleSharding : public Sharding {
  public:
@@ -62,16 +61,21 @@ class XLACompatibleSharding : public Sharding {
   ~XLACompatibleSharding() override = default;
 };
 
-class MeshPspecSharding : public XLACompatibleSharding {
+class NamedSharding : public XLACompatibleSharding {
  public:
-  MeshPspecSharding(pybind11::object mesh, pybind11::object spec,
-                    pybind11::object parsed_pspec);
+  NamedSharding(pybind11::object mesh, pybind11::object spec,
+                pybind11::object parsed_pspec);
 
   const pybind11::object& mesh() const { return mesh_; }
   const pybind11::object& spec() const { return spec_; }
   const pybind11::object& parsed_pspec() const { return parsed_pspec_; }
   void set_parsed_pspec(pybind11::object parsed_pspec) {
     parsed_pspec_ = std::move(parsed_pspec);
+  }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<NamedSharding>();
+    return type;
   }
 
  private:
@@ -86,6 +90,11 @@ class SingleDeviceSharding : public XLACompatibleSharding {
       : XLACompatibleSharding(/*num_devices=*/1), device_(std::move(device)) {}
 
   const pybind11::object& device() const { return device_; }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<SingleDeviceSharding>();
+    return type;
+  }
 
  private:
   pybind11::object device_;
@@ -116,19 +125,81 @@ class PmapSharding : public XLACompatibleSharding {
   ShardingSpec sharding_spec_;
 };
 
-class OpShardingSharding : public XLACompatibleSharding {
+class GSPMDSharding : public XLACompatibleSharding {
  public:
-  OpShardingSharding(pybind11::list devices, xla::OpSharding op_sharding)
+  GSPMDSharding(pybind11::list devices, xla::OpSharding op_sharding)
       : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
+        op_sharding_(std::move(op_sharding)) {}
+
+  GSPMDSharding(pybind11::tuple devices, xla::OpSharding op_sharding)
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+        devices_(std::move(devices)),
         op_sharding_(std::move(op_sharding)) {}
 
   const pybind11::tuple& devices() const { return devices_; }
   const xla::OpSharding& op_sharding() const { return op_sharding_; }
 
+  size_t Hash() {
+    if (!hash_.has_value()) {
+      hash_ = CalculateHash();
+    }
+    return *hash_;
+  }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<GSPMDSharding>();
+    return type;
+  }
+
+  xla::HloSharding hlo_sharding() const {
+    auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
+    if (!hlo_sharding.ok()) {
+      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+    }
+    return hlo_sharding.value();
+  }
+
+  bool operator==(const GSPMDSharding& other) const {
+    return AreOpShardingsEqual(*this, other) &&
+           this->devices().equal(other.devices());
+  }
+
  private:
+  size_t CalculateHash() const {
+    // We only hash `op_sharding_` here for performance.
+    auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
+    if (!hlo_sharding.ok()) {
+      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+    }
+    return absl::Hash<xla::HloSharding>()(*hlo_sharding);
+  }
+
+  bool IsOpShardingReplicated() const {
+    if (op_sharding_.tile_assignment_devices().size() == 1) {
+      return true;
+    } else {
+      return hlo_sharding().IsReplicated();
+    }
+  }
+
+  static bool AreOpShardingsEqual(const GSPMDSharding& a,
+                                  const GSPMDSharding& b) {
+    // If the OpSharding object is the same, return true
+    if (&a.op_sharding() == &b.op_sharding()) {
+      return true;
+    }
+    // If both OpShardings are replicated, return true
+    if (a.IsOpShardingReplicated() && b.IsOpShardingReplicated()) {
+      return true;
+    }
+    return a.hlo_sharding() == b.hlo_sharding();
+  }
+
   pybind11::tuple devices_;
   xla::OpSharding op_sharding_;
+
+  std::optional<size_t> hash_;
 };
 
 void RegisterSharding(pybind11::module& m);

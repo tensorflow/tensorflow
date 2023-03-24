@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/metrics.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -26,21 +28,21 @@ TEST(MetricsTest, TestSavedModelWrite) {
   SavedModelWriteApi("foo").IncrementBy(1);
   EXPECT_EQ(SavedModelWriteApi("foo").value(), 1);
 
-  EXPECT_EQ(SavedModelWrite("1").value(), 0);
-  SavedModelWrite("1").IncrementBy(1);
-  EXPECT_EQ(SavedModelWrite("1").value(), 1);
+  EXPECT_EQ(SavedModelWriteCount("1").value(), 0);
+  SavedModelWriteCount("1").IncrementBy(1);
+  EXPECT_EQ(SavedModelWriteCount("1").value(), 1);
 }
 
 TEST(MetricsTest, TestSavedModelRead) {
   SavedModelReadApi("bar").IncrementBy(1);
   EXPECT_EQ(SavedModelReadApi("bar").value(), 1);
-  SavedModelRead("2").IncrementBy(1);
-  EXPECT_EQ(SavedModelRead("2").value(), 1);
+  SavedModelReadCount("2").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadCount("2").value(), 1);
 
   SavedModelReadApi("baz").IncrementBy(1);
   EXPECT_EQ(SavedModelReadApi("baz").value(), 1);
-  SavedModelRead("2").IncrementBy(1);
-  EXPECT_EQ(SavedModelRead("2").value(), 2);
+  SavedModelReadCount("2").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadCount("2").value(), 2);
 }
 
 TEST(MetricsTest, TestCheckpointRead) {
@@ -71,6 +73,62 @@ TEST(MetricsTest, TestCheckpointSize) {
   EXPECT_EQ(CheckpointSize("foo", 10).value(), 0);
   CheckpointSize("foo", 10).IncrementBy(1);
   EXPECT_EQ(CheckpointSize("foo", 10).value(), 1);
+}
+
+TEST(MetricsTest, TestWriteFingerprint) {
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "");
+  SavedModelWriteFingerprint().Set("foo");
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "foo");
+  SavedModelWriteFingerprint().Set("bar");
+  EXPECT_EQ(SavedModelWriteFingerprint().value(), "bar");
+}
+
+TEST(MetricsTest, TestWritePath) {
+  EXPECT_EQ(SavedModelWritePath().value(), "");
+  SavedModelWritePath().Set("foo");
+  EXPECT_EQ(SavedModelWritePath().value(), "foo");
+  SavedModelWritePath().Set("bar");
+  EXPECT_EQ(SavedModelWritePath().value(), "bar");
+}
+
+TEST(MetricsTest, TestWritePathAndSingleprint) {
+  EXPECT_EQ(SavedModelWritePathAndSingleprint().value(), "");
+  SavedModelWritePathAndSingleprint().Set("foo");
+  EXPECT_EQ(SavedModelWritePathAndSingleprint().value(), "foo");
+  SavedModelWritePathAndSingleprint().Set("bar");
+  EXPECT_EQ(SavedModelWritePathAndSingleprint().value(), "bar");
+
+  EXPECT_EQ(MakeSavedModelPathAndSingleprint("path", "singleprint"),
+            "path:singleprint");
+}
+
+TEST(MetricsTest, TestReadFingerprint) {
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "");
+  SavedModelReadFingerprint().Set("foo");
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "foo");
+  SavedModelReadFingerprint().Set("bar");
+  EXPECT_EQ(SavedModelReadFingerprint().value(), "bar");
+}
+
+TEST(MetricsTest, TestReadPath) {
+  EXPECT_EQ(SavedModelReadPath().value(), "");
+  SavedModelReadPath().Set("foo");
+  EXPECT_EQ(SavedModelReadPath().value(), "foo");
+  SavedModelReadPath().Set("bar");
+  EXPECT_EQ(SavedModelReadPath().value(), "bar");
+}
+
+TEST(MetricsTest, TestReadPathAndSingleprint) {
+  EXPECT_EQ(SavedModelReadPathAndSingleprint().value(), "");
+  SavedModelReadPathAndSingleprint().Set("foo");
+  EXPECT_EQ(SavedModelReadPathAndSingleprint().value(), "foo");
+  SavedModelReadPathAndSingleprint().Set("bar");
+  EXPECT_EQ(SavedModelReadPathAndSingleprint().value(), "bar");
+
+  auto [path, singleprint] =
+      ParseSavedModelPathAndSingleprint("path/model:name:singleprint");
+  EXPECT_EQ(path, "path/model:name");
+  EXPECT_EQ(singleprint, "singleprint");
 }
 
 }  // namespace metrics

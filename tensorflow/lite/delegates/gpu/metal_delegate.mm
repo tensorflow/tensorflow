@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -109,7 +109,6 @@ class GpuAlarmClock {
       command_queue_ = command_queue;
       device_ = [command_queue_ device];
       total_alarms_ = 1;
-      NSString* error;
       id<MTLComputePipelineState> program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
@@ -189,7 +188,6 @@ class Delegate {
             output_buffer[0] = value;
           }
         )";
-      NSString* error;
       id<MTLComputePipelineState> signal_program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(metal_device_, code, "ComputeFunction", {}, &signal_program)

@@ -110,6 +110,9 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
         result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($1)));";
       }
       break;
+    case OperationType::SIGN:
+      result = "$0 = sign($1);";
+      break;
     case OperationType::SIN:
       if (use_native_opencl_functions) {
         result = "$0 = convert_half4(native_sin(convert_float4($1)));";
@@ -219,6 +222,12 @@ std::string GetTwoInputCode(const OperationType& op_type,
       result += "$0.z = $1.z != $2.z;\n";
       result += "$0.w = $1.w != $2.w;";
       break;
+    case OperationType::LOGICAL_AND:
+      result = "$0.x = ($1.x != 0) && ($2.x != 0);\n";
+      result += "$0.y = ($1.y != 0) && ($2.y != 0);\n";
+      result += "$0.z = ($1.z != 0) && ($2.z != 0);\n";
+      result += "$0.w = ($1.w != 0) && ($2.w != 0);";
+      break;
     default:
       return "Unknown operation type;";
   }
@@ -231,10 +240,19 @@ std::string GetTwoInputCode(const OperationType& op_type,
 
 // Creates simple two input (first input is runtime tensor and second input is
 // scalar argument) operation, for example sub, div, pow, etc.
+template <typename T>
 ElementwiseDescriptor CreateElementwiseOneRuntimeOneScalar(
     const OperationDef& definition, const OperationType& op_type,
-    float scalar_parameter, bool swap_inputs) {
+    T scalar_parameter, bool swap_inputs) {
   ElementwiseDescriptor op_desc;
+  if (std::is_same<T, int32_t>::value) {
+    op_desc.args.AddInt("scalar", scalar_parameter);
+    op_desc.code =
+        "int4 second_val = CONVERT_TO_INT4(INIT_FLT4(args.scalar));\n";
+    op_desc.code += GetTwoInputCode(op_type, "out_value", "in_value",
+                                    "second_val", swap_inputs);
+    return op_desc;
+  }
   if (definition.precision == CalculationsPrecision::F32) {
     op_desc.args.AddFloat("scalar", scalar_parameter);
   } else {
@@ -248,10 +266,11 @@ ElementwiseDescriptor CreateElementwiseOneRuntimeOneScalar(
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant linear tensor) operation, for example sub, div and etc.
+template <DataType DataTypeT>
 ElementwiseDescriptor CreateElementwiseTwoInput(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
+    const tflite::gpu::Tensor<Linear, DataTypeT>& constant_tensor,
     bool swap_inputs) {
   TensorDescriptor const_tensor_desc = CreateConstantLinearTensorDescriptor(
       gpu_info, definition.src_tensors[0].GetDataType(), constant_tensor);
@@ -274,10 +293,11 @@ ElementwiseDescriptor CreateElementwiseTwoInput(
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant HWC tensor) operation, for example sub, div and etc.
+template <DataType DataTypeT>
 ElementwiseDescriptor CreateElementwiseTwoInput(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const OperationType& op_type,
-    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& constant_tensor,
+    const tflite::gpu::Tensor<HWC, DataTypeT>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
@@ -305,15 +325,16 @@ ElementwiseDescriptor CreateElementwiseTwoInput(
   return op_desc;
 }
 
-ElementwiseDescriptor CreateElementwiseDesc(const GpuInfo& gpu_info,
-                                            const OperationDef& definition,
-                                            const OperationType& op_type,
-                                            const ElementwiseAttributes& attr) {
-  const float* scalar = absl::get_if<float>(&attr.param);
+template <DataType DataTypeT, typename T>
+ElementwiseDescriptor CreateElementwiseDesc(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataTypeT, T>& attr) {
+  const T* scalar = std::get_if<T>(&attr.param);
   const auto* linear_tensor =
-      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+      std::get_if<tflite::gpu::Tensor<Linear, DataTypeT>>(&attr.param);
   const auto* hwc_tensor =
-      absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+      std::get_if<tflite::gpu::Tensor<HWC, DataTypeT>>(&attr.param);
 
   if (scalar) {
     return CreateElementwiseOneRuntimeOneScalar(definition, op_type, *scalar,
@@ -349,10 +370,11 @@ GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
       CreateElementwiseOneInput(gpu_info, definition.precision, op_type));
 }
 
-GPUOperation CreateElementwise(const GpuInfo& gpu_info,
-                               const OperationDef& definition,
-                               const OperationType& op_type,
-                               const ElementwiseAttributes& attr) {
+template <DataType DataTypeT, typename T>
+GPUOperation CreateElementwise(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataTypeT, T>& attr) {
   return CreateGpuOperation(
       definition, CreateElementwiseDesc(gpu_info, definition, op_type, attr));
 }
@@ -429,12 +451,12 @@ GPUOperation CreateElementwiseOneInputWithBroadcast(
   return op;
 }
 
-GPUOperation CreateElementwiseWithBroadcast(const GpuInfo& gpu_info,
-                                            const OperationDef& definition,
-                                            const OperationType& op_type,
-                                            const ElementwiseAttributes& attr,
-                                            const BHWC& input_shape,
-                                            const BHWC& output_shape) {
+template <DataType DataTypeT, typename T>
+GPUOperation CreateElementwiseWithBroadcast(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataTypeT, T>& attr,
+    const BHWC& input_shape, const BHWC& output_shape) {
   ElementwiseDescriptor op_desc =
       CreateElementwiseDesc(gpu_info, definition, op_type, attr);
 
@@ -481,6 +503,39 @@ GPUOperation CreateElementwiseTwoInputWithBroadcast(
   op.code_ = absl::Substitute(GetKernelBodyCode(definition.dst_tensors[0]), c);
   return op;
 }
+
+template GPUOperation CreateElementwise(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataType::BOOL, bool>& attr);
+
+template GPUOperation CreateElementwise(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataType::FLOAT32, float>& attr);
+
+template GPUOperation CreateElementwise(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataType::INT32, int32_t>& attr);
+
+template GPUOperation CreateElementwiseWithBroadcast(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataType::BOOL, bool>& attr,
+    const BHWC& input_shape, const BHWC& output_shape);
+
+template GPUOperation CreateElementwiseWithBroadcast(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataType::FLOAT32, float>& attr,
+    const BHWC& input_shape, const BHWC& output_shape);
+
+template GPUOperation CreateElementwiseWithBroadcast(
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const OperationType& op_type,
+    const ElementwiseAttributesBase<DataType::INT32, int>& attr,
+    const BHWC& input_shape, const BHWC& output_shape);
 
 }  // namespace gpu
 }  // namespace tflite
