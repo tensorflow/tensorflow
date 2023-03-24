@@ -1011,7 +1011,7 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
       ConstantAttr<I32Attr, "-1">),
-    AnyStaticShapeTensor:$filter,
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
