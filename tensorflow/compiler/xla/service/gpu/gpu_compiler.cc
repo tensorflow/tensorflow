@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
@@ -1223,7 +1224,14 @@ static Status CompileModuleToLlvmIrImpl(
   TF_RETURN_IF_ERROR(
       ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
   {
-    HloPassPipeline pipeline("opt-barrier-expander");
+    HloPassPipeline pipeline("post-scheduling-passes");
+
+    auto is_nop = [](const HloInstruction* instr) {
+      HloOpcode op = instr->opcode();
+      return op == HloOpcode::kParameter || op == HloOpcode::kConstant ||
+             op == HloOpcode::kBitcast || op == HloOpcode::kGetTupleElement;
+    };
+    pipeline.AddPass<ConvertAsyncCollectivesToSync>(is_nop);
     pipeline.AddPass<OptimizationBarrierExpander>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
