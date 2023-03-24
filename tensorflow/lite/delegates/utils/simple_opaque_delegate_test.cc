@@ -263,7 +263,7 @@ TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
   TfLiteModelDelete(model);
 }
 
-TfLiteRegistrationExternal* GetDelegateKernelRegistrationImpl(
+TfLiteRegistrationExternal* CreateDelegateKernelRegistrationImpl(
     SimpleOpaqueDelegateInterface* delegate) {
   TfLiteRegistrationExternal* kernel_registration =
       TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate, delegate->Name(),
@@ -388,7 +388,7 @@ TEST_F(TestDelegate, SetBufferHandle) {
         TF_LITE_ENSURE_STATUS(TfLiteOpaqueContextGetExecutionPlan(
             opaque_context, &execution_plan));
         TfLiteRegistrationExternal* delegate_kernel_registration =
-            GetDelegateKernelRegistrationImpl(simple_opaque_delegate);
+            CreateDelegateKernelRegistrationImpl(simple_opaque_delegate);
 
         return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
             opaque_context, delegate_kernel_registration, execution_plan,
