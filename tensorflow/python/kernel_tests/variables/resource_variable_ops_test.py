@@ -199,13 +199,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       variable = resource_variable_ops.ResourceVariable(1.0, name="eager-init")
       self.assertAllEqual(variable.numpy(), 1.0)
-      self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
+      self.assertAllEqual(variable.read_value().numpy(), 1.0)
 
   def testInitializeVariableUsingInitializedValue(self):
     var1 = resource_variable_ops.ResourceVariable(1.0, name="var1")
-    var2 = resource_variable_ops.ResourceVariable(var1.initialized_value(),
-                                                  name="var2")
-    self.assertAllEqual(var2.initialized_value(), 1.0)
+    var2 = resource_variable_ops.ResourceVariable(
+        control_flow_ops.cond(
+            variables.is_variable_initialized(var1),
+            var1.read_value,
+            lambda: var1.initial_value),
+        name="var2")
+    self.assertAllEqual(
+        control_flow_ops.cond(
+            variables.is_variable_initialized(var2),
+            var2.read_value,
+            lambda: var2.initial_value),
+        1.0)
 
   def testEagerBool(self):
     with context.eager_mode():
@@ -977,12 +986,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with ops.Graph().as_default(), self.cached_session():
       # v describes a VariableDef-based variable without an initial value.
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
-      self.assertEqual(3.0, self.evaluate(v.initialized_value()))
+      self.assertEqual(3.0, self.evaluate(v.initial_value))
 
-      # initialized_value should not rerun the initializer_op if the variable
+      # read_value should not rerun the initializer_op if the variable
       # has already been initialized elsewhere.
       self.evaluate(v.assign(1.0))
-      self.assertEqual(1.0, v.initialized_value().eval())
+      self.assertEqual(1.0, v.read_value().eval())
 
     v_def.ClearField("initial_value_name")
     with ops.Graph().as_default(), self.cached_session():
@@ -991,9 +1000,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
       # We should also be able to re-export the variable to a new meta graph.
       self.assertProtoEquals(v_def, v.to_proto())
-      # But attempts to use initialized_value will result in errors.
+      # But attempts to use read_value will result in errors.
       with self.assertRaises(ValueError):
-        self.evaluate(v.initialized_value())
+        self.evaluate(control_flow_ops.cond(
+            variables.is_variable_initialized(v),
+            v.read_value,
+            lambda: v.initial_value))
 
   def testTrainableInProto(self):
     with ops.Graph().as_default():
