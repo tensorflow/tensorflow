@@ -4130,7 +4130,7 @@ void IrEmitterUnnested::WriteReductionOutput(
     const HloReduceInstruction* reduction, int partial_result_idx,
     const absl::Span<TypedPointer const> values) {
   const HloComputation* reducer = reduction->to_apply();
-  for (auto [oidx, typed_ptr] : llvm::enumerate(values)) {
+  for (const auto& [oidx, typed_ptr] : llvm::enumerate(values)) {
     auto [output_ptr, type] = typed_ptr;
     llvm::Value* output_address = GetOutputAddressForReduction(
         partial_result_idx, index_ty, reduction_codegen_state,
