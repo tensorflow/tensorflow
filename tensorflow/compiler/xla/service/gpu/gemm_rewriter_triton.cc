@@ -517,7 +517,7 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
         DimensionOrder::FromDotOperand(*root, operand_number);
     while (parameter->opcode() != HloOpcode::kParameter) {
       CHECK_EQ(parameter->operand_count(), 1);
-      dim_order.HandleInstruction(parameter).ok();
+      dim_order.HandleInstruction(parameter).IgnoreError();
       TF_CHECK_OK(RequireTritonGemmSupportedDimOrder(dim_order));
       parameter = parameter->operand(0);
     }
