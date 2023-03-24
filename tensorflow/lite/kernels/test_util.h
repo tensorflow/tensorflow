@@ -215,7 +215,7 @@ class AccelerationValidator {
 
 class SingleOpModel {
  public:
-  SingleOpModel() {}
+  SingleOpModel() = default;
   ~SingleOpModel();
 
   // Set a delegate that is applied right after graph is prepared. This is
@@ -781,65 +781,6 @@ class SingleOpModel {
     return id;
   }
 
- private:
-  // Populates the tensor starting at offset using given data.
-  template <typename T, typename Container>
-  void PopulateTensorImpl(int index, int offset, const Container& data) {
-    T* v = interpreter_->typed_tensor<T>(index);
-    if (!v) {
-      auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK_EQ(t->type, typeToTfLiteType<T>())
-          << "Type mismatch for tensor with index " << index << ". Requested "
-          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
-          << TfLiteTypeGetName(t->type) << ".";
-      LOG(FATAL) << "Unknown tensor error.";
-    }
-    absl::c_copy(data, v + offset);
-  }
-
-  void PackInt4ValuesDenselyInPlace(uint8_t* src_buffer, int buffer_size) {
-    for (int i = 0; i < buffer_size; ++i) {
-      if (i % 2 == 0) {
-        src_buffer[i / 2] = src_buffer[i] & 0x0F;
-      } else {
-        src_buffer[i / 2] |= src_buffer[i] << 4;
-      }
-    }
-    // the rest of the buffer should be empty since half of it is packed with
-    // the values
-    memset(src_buffer + (buffer_size + 1) / 2, 0, buffer_size / 2);
-  }
-
-  int ElementCount(TfLiteIntArray& dims) {
-    int result = 1;
-    for (int i = 0; i < dims.size; ++i) {
-      result *= dims.data[i];
-    }
-    return result;
-  }
-
-  // Partially populates the tensor, starting at the given offset.
-  void PopulateTensor4bit(int index, int offset, int8_t* begin, int8_t* end) {
-    auto data = absl::Span<int8_t>(begin, end - begin);
-    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
-    uint8_t* v = nullptr;
-    if (tensor_ptr) {
-      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
-    }
-
-    if (!v) {
-      auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      LOG(FATAL) << "Unknown tensor error.";
-    }
-    absl::c_copy(data, v + offset);
-    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
-    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
-  }
-
   template <typename T>
   std::pair<float, int32_t> QuantizationParams(
       float f_min, float f_max, TfLiteType type = kTfLiteNoType) {
@@ -918,6 +859,65 @@ class SingleOpModel {
     zero_point = nudged_zero_point;
     // finally, return the values
     return {scale, zero_point};
+  }
+
+ private:
+  // Populates the tensor starting at offset using given data.
+  template <typename T, typename Container>
+  void PopulateTensorImpl(int index, int offset, const Container& data) {
+    T* v = interpreter_->typed_tensor<T>(index);
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
+    }
+    absl::c_copy(data, v + offset);
+  }
+
+  void PackInt4ValuesDenselyInPlace(uint8_t* src_buffer, int buffer_size) {
+    for (int i = 0; i < buffer_size; ++i) {
+      if (i % 2 == 0) {
+        src_buffer[i / 2] = src_buffer[i] & 0x0F;
+      } else {
+        src_buffer[i / 2] |= src_buffer[i] << 4;
+      }
+    }
+    // the rest of the buffer should be empty since half of it is packed with
+    // the values
+    memset(src_buffer + (buffer_size + 1) / 2, 0, buffer_size / 2);
+  }
+
+  int ElementCount(TfLiteIntArray& dims) {
+    int result = 1;
+    for (int i = 0; i < dims.size; ++i) {
+      result *= dims.data[i];
+    }
+    return result;
+  }
+
+  // Partially populates the tensor, starting at the given offset.
+  void PopulateTensor4bit(int index, int offset, int8_t* begin, int8_t* end) {
+    auto data = absl::Span<int8_t>(begin, end - begin);
+    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
+    uint8_t* v = nullptr;
+    if (tensor_ptr) {
+      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
+    }
+
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      LOG(FATAL) << "Unknown tensor error.";
+    }
+    absl::c_copy(data, v + offset);
+    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
+    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
   }
 
   int AddTensorPerChannelQuant(const TensorData& t) {
@@ -1175,7 +1175,7 @@ struct TypeUnion<uint8_t> {
 class MultiOpModel : public SingleOpModel {
  public:
   MultiOpModel() : SingleOpModel() {}
-  ~MultiOpModel() {}
+  ~MultiOpModel() = default;
 
   void AddBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
                     const flatbuffers::Offset<void>& builtin_options,

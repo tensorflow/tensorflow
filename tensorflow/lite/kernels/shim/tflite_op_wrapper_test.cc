@@ -35,6 +35,10 @@ namespace shim {
 namespace op_wrapper {
 namespace {
 
+#ifndef ASSERT_OK
+#define ASSERT_OK(x) ASSERT_TRUE(x.ok());
+#endif
+
 // Tests the created type of the variant is correct.
 class VariantOpTest : public ::testing::Test {
  public:
