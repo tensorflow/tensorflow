@@ -1716,8 +1716,7 @@ void DTensorDevice::ParallelExecuteRegularOperation(
     TF_Status* status) {
   ASSIGN_OR_RETURN_C_STATUS(
       ParallelExecutor::ExecutionResult execution_result,
-      parallel_executor_->Execute(context, inputs, mlir_module,
-                                  /*entry_function_name=*/"main", attributes),
+      parallel_executor_->Execute(context, inputs, mlir_module, attributes),
       status);
   RETURN_C_STATUS_IF_NOT_OK(execution_result.status.Await(), status);
 
