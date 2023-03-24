@@ -57,6 +57,7 @@ cc_library(
 # When using mlir based HloLowering, the following utils will sometimes be needed to define used symbols.
 cc_library(
     name = "runtime_mlir_utils",
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:mlir_c_runner_utils",
     ],
