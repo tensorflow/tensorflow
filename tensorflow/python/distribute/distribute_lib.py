@@ -3793,7 +3793,7 @@ class _DefaultReplicaContext(ReplicaContext):
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
-_original_from_proto = resource_variable_ops._from_proto_fn
+_original_from_proto = variable_scope._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
