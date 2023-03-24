@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
-// TODO(skyewm): remove when everything goes through C API
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -46,8 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 namespace xla {
-
-bool kPjRtCApiBypass = false;
 
 // Helper macros
 
@@ -89,10 +85,6 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = c_client_->client.get();
-  }
-
   InitDevices();
   LOG(INFO) << "PjRtCApiClient created.";
 }
@@ -332,13 +324,6 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return args.buffer_pointer;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
-    StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
-      this, new PJRT_Buffer{std::move(buffer), pjrt_c_client()}));
-}
-
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
@@ -416,9 +401,6 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client), device_(device) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = device_->device;
-  }
   InitAttributes();
 }
 
