@@ -72,7 +72,7 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
 
 }  // namespace functor
 
-#define CURRY_TYPES3_NO_HALF(FN, arg0, arg1) \
+#define CURRY_TYPES3(FN, arg0, arg1) \
   FN(arg0, arg1, bool);                      \
   FN(arg0, arg1, uint8);                     \
   FN(arg0, arg1, uint16);                    \
@@ -85,14 +85,8 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
   FN(arg0, arg1, float);                     \
   FN(arg0, arg1, double);                    \
   FN(arg0, arg1, std::complex<float>);       \
-  FN(arg0, arg1, std::complex<double>)
-
-#define CURRY_TYPES3_NO_BF16(FN, arg0, arg1) \
-  CURRY_TYPES3_NO_HALF(FN, arg0, arg1)       \
-  FN(arg0, arg1, Eigen::half);
-
-#define CURRY_TYPES3(FN, arg0, arg1)   \
-  CURRY_TYPES3_NO_BF16(FN, arg0, arg1) \
+  FN(arg0, arg1, std::complex<double>)       \
+  FN(arg0, arg1, Eigen::half);               \
   FN(arg0, arg1, bfloat16);
 
 #define CAST_CASE(DEVICE, IN, OUT)                                        \
