@@ -564,14 +564,25 @@ func.func @func(%arg0: tensor<*xi32> {tf.aliasing_output = 1 : i64},
 
 // -----
 
-// Partial tiled inputs using XlaSharding ops should fallback to MPMD mode.
+// Partial tiled inputs using XlaSharding ops identified as REPLICATED should keep the sharding configuration.
+// The following xla.OpSharding is used:
+// Proto debug string:
+//   type : OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+//   last_tile_dims: REPLICATED
+// Serialized string:
+// "\08\03\1A\03\01\01\02\22\02\00\01B\01\00"
 
 // CHECK-LABEL: func @check_partial_tile_mpmd_fallback
 func.func @check_partial_tile_mpmd_fallback(%arg0: tensor<2x7xi64>) -> tensor<2x7xi32> {
   // CHECK:      tf_device.cluster_func
-  // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
-  // CHECK-SAME: output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
-  // CHECK-SAME: use_spmd_for_xla_partitioning = false
+  // CHECK-SAME: input_sharding_configuration = ["\08\03\1A\03\01\01\02\22\02\00\01B\01\00"]
+  // CHECK-SAME: output_sharding_configuration = [""]
+  // CHECK-SAME: use_spmd_for_xla_partitioning = true
   %0 = "tf_device.cluster_func"(%arg0) {
       func = @func,
       use_spmd_for_xla_partitioning = true, num_cores_per_replica = 2 : i64
@@ -581,8 +592,7 @@ func.func @check_partial_tile_mpmd_fallback(%arg0: tensor<2x7xi64>) -> tensor<2x
 }
 
 // CHECK-LABEL: func @func
-// CHECK-SAME: %arg0: tensor<2x7xi64> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"
-// CHECK-SAME: ->{{.*}}mhlo.sharding = "\08\01\1A\01\01\22\01\00"
+// CHECK-SAME: %arg0: tensor<2x7xi64> {mhlo.sharding = "\08\03\1A\03\01\01\02\22\02\00\01B\01\00"
 func.func @func(%arg0: tensor<2x7xi64>) -> (tensor<2x7xi32>) {
   %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<2x7xi64>) -> tensor<2x7xi32>
   %1 = "tf.XlaSharding"(%0) {_XlaSharding = "\08\03\1A\03\01\01\02\22\02\00\01B\01\00", sharding = "\08\03\1A\03\01\01\02\22\02\00\01B\01\00", unspecified_dims = []} : (tensor<2x7xi32>) -> tensor<2x7xi32>

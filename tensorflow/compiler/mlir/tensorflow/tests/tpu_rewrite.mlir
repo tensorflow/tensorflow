@@ -2693,3 +2693,40 @@ func.func private @_func(%arg0: tensor<?xi32, #mhlo.type_extensions<bounds = [51
     return %0 : tensor<512xi32>
   }
 }
+
+// -----
+
+// The following xla.OpSharding is used:
+// Proto debug string:
+//   type : OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 4
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+//   tile_assignment_devices: 2
+//   tile_assignment_devices: 3
+//   last_tile_dims: REPLICATED
+// Serialized string:
+//   "\08\03\1A\03\01\01\04\22\04\00\01\02\03B\01\00"
+
+// Test that SplitOp is not generated when an input sharding has 
+// last_tile_dims REPLICATED and more tile_assignment_dimensions 
+// than tensor dimenstions, even when the SPMD sharding is enabled and
+// num_cores_per_replica is more than 1.
+// Test that ConcatV2 Op is not generated when a output sharding has 
+// last_tile_dims REPLICATED and more tile_assignment_dimensions 
+// than tensor dimenstions, even when the SPMD sharding is enabled and
+// num_cores_per_replica is more than 1.
+//CHECK-NOT: tf.Split
+// CHECK-NOT: tf.ConcatV2
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2", "/job:worker/replica:0/task:0/device:TPU:3"]} {
+  func.func @cluster_to_single_core(%arg0: tensor<4x128xf32>) -> tensor<4x128xf32> {
+    %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster1", func = @_func, num_replica = 1, num_cores_per_replica = 4, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "\0A\04\02\02\01\01\10\01\18\04\22\10\00\00\00\00\01\00\00\00\00\01\00\00\01\01\00\00", device_assignment = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\03\01\01\04\22\04\00\01\02\03B\01\00"], output_sharding_configuration = ["\08\03\1A\03\01\01\04\22\04\00\01\02\03B\01\00"], use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<4x128xf32>) -> tensor<4x128xf32>
+    func.return %0 : tensor<4x128xf32>
+  }
+  func.func @_func(%arg0: tensor<4x128xf32>) -> tensor<4x128xf32> {
+    func.return %arg0 : tensor<4x128xf32>
+  }
+}
+

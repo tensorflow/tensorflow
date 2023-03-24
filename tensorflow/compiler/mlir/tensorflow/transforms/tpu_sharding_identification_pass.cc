@@ -178,13 +178,11 @@ LogicalResult VerifySharding(mlir::Type type,
     const int64_t tensor_rank = ranked_type.getRank();
     int tile_assignment_rank = sharding->tile_assignment_dimensions_size();
 
-    if (partitioned_op) {
-      // When a tensor is partial or subgroup tiled, its tile assignment will
-      // have one or more dimension(s) than its rank; so, we subtract them to
-      // determine which rank the sharding is compatible with.
-      tile_assignment_rank -= (int)sharding->replicate_on_last_tile_dim();
-      tile_assignment_rank -= sharding->last_tile_dims_size();
-    }
+    // When a tensor is partial or subgroup tiled, its tile assignment will
+    // have one or more dimension(s) than its rank; so, we subtract them to
+    // determine which rank the sharding is compatible with.
+    tile_assignment_rank -= (int)sharding->replicate_on_last_tile_dim();
+    tile_assignment_rank -= sharding->last_tile_dims_size();
 
     if (tensor_rank < tile_assignment_rank) {
       if (partitioned_op) {
