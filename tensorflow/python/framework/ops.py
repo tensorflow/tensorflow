@@ -53,7 +53,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import stack
-from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -1357,22 +1356,6 @@ class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
 # expect it to be eventually covered by tf Tensor types and typing.
 EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
     pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
-
-
-convert_to_tensor_v1_with_dispatch = (
-    tensor_conversion.convert_to_tensor_v1_with_dispatch
-)
-
-
-convert_to_tensor_v1 = tensor_conversion.convert_to_tensor_v1
-
-
-convert_to_tensor_v2_with_dispatch = (
-    tensor_conversion.convert_to_tensor_v2_with_dispatch
-)
-
-
-convert_to_tensor_v2 = tensor_conversion.convert_to_tensor_v2
 
 
 def _add_error_prefix(msg, *, name=None):

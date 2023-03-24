@@ -1030,7 +1030,6 @@ py_library(
         ":op_def_registry",
         ":registry",
         ":stack",
-        ":tensor_conversion",
         ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
@@ -1113,8 +1112,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":tensor_conversion_registry",
-        "//tensorflow/python/util",
         "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
 )
