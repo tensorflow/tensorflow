@@ -281,7 +281,10 @@ py_strict_library(
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_estimator:__subpackages__",
+    ],
     deps = [
         ":tf_decorator",
     ],
