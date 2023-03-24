@@ -290,8 +290,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                         output_row_dims, output_col_dims));
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::For(c_shape,
-                                        output_batch_dims,
+                      MatrixLayout::For(c_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
 
   // TODO(cjfj): We should also check that the batch, contracting and
@@ -988,12 +987,6 @@ MatmulPlan::GetAlgorithms(se::Stream* stream) const {
                       se::cuda::BlasLt::MatmulPreference::Create(
                           /*max_workspace_size=*/1ll << 32));  // 4GB
   return blas_lt->GetMatmulAlgorithms(plan_, preference);
-}
-
-bool MatmulPlan::IsF8MatmulTrivialMatrixBias() const {
-  return (plan_.a_desc.type() == CUDA_R_8F_E4M3 ||
-          plan_.a_desc.type() == CUDA_R_8F_E5M2) &&
-         (beta_ == 0.0);
 }
 
 }  // namespace cublas_lt

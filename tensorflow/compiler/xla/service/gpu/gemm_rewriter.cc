@@ -1172,8 +1172,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     TF_RETURN_IF_ERROR(result->set_backend_config(config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
-    if (gemm->custom_call_target() != kCublasLtMatmulF8CallTarget &&
-        slice != nullptr) {
+    if (slice != nullptr) {
       result = slice->CloneWithNewOperands(
           slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
     }
