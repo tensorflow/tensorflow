@@ -76,19 +76,26 @@ TEST_F(PjRtStateTestFixture, GetNotExistPjRtClient) {
 }
 
 TEST_F(PjRtStateTestFixture, DeletePjRtClient) {
-  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(
-      tensorflow::DEVICE_CPU,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-          .value()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto pjrt_client,
+      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1));
+  xla::PjRtClient* pjrt_client_ptr = pjrt_client.get();
+  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
+                                          std::move(pjrt_client)));
 
-  TF_ASSERT_OK(pjrt_state_->DeletePjRtClientIfExists(tensorflow::DEVICE_CPU));
+  TF_ASSERT_OK(pjrt_state_->MovePjRtClientToUnused(tensorflow::DEVICE_CPU));
+
   EXPECT_THAT(pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU),
               StatusIs(tensorflow::error::NOT_FOUND,
                        HasSubstr("PjRt client not found for device type")));
+  // Verifies that the PJRT client is still alive.
+  EXPECT_EQ(pjrt_client_ptr->platform_name(), "cpu");
 }
 
 TEST_F(PjRtStateTestFixture, DeleteNotExistPjRtClient) {
-  TF_EXPECT_OK(pjrt_state_->DeletePjRtClientIfExists(tensorflow::DEVICE_CPU));
+  EXPECT_THAT(pjrt_state_->MovePjRtClientToUnused(tensorflow::DEVICE_CPU),
+              StatusIs(tensorflow::error::NOT_FOUND,
+                       HasSubstr("PjRt client not found for device type")));
 }
 
 }  // namespace

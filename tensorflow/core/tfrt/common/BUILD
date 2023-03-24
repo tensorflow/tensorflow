@@ -77,9 +77,8 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":global_state",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ],
