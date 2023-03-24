@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
