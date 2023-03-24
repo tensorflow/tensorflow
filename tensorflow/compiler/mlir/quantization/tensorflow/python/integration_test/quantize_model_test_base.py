@@ -530,7 +530,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         shape=array_ops.shape(input_vocabs_placeholder), dtype=dtypes.float32
     )
     # shape: (?, 2)
-    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    weight = array_ops.transpose_v2(
+        array_ops_stack.stack([weight_row, weight_row]))
     # shape: (2, 2)
     output_tensor = math_ops.matmul(matmul_input, weight)
 
@@ -784,7 +785,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         shape=array_ops.shape(input_vocabs_placeholder), dtype=dtypes.float32
     )
     # shape: (?, 2)
-    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    weight = array_ops.transpose_v2(
+        array_ops_stack.stack([weight_row, weight_row]))
     weight = array_ops.fake_quant_with_min_max_args(
         weight, min=-0.1, max=0.2, num_bits=8, narrow_range=False
     )

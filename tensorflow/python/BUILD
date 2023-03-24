@@ -1414,7 +1414,7 @@ py_library(
     srcs = ["ops/control_flow_case.py"],
     srcs_version = "PY3",
     deps = [
-        ":array_ops",
+        ":array_ops_stack",
         ":cond",
         ":control_flow_assert",
         ":math_ops",
