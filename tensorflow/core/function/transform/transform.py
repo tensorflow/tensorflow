@@ -145,7 +145,7 @@ def transform_function(
   # functions can also re-use them.
   graph = ops.get_default_graph()
   for edf in cf.graph._functions.values():  # pylint: disable=protected-access
-    edf.add_to_graph(graph, overwrite=False)
+    graph._add_function_recursive(edf)  # pylint: disable=protected-access
 
   # Initialize the `runtime_client`.
   eager_ctx = runtime_client.GlobalPythonEagerContext()
@@ -184,7 +184,7 @@ def transform_function(
         edf_mlir_pipeline = nested_mlir_transforms.get(edf_name, [])
         transformed_edf = transform_eager_defined_function(
             rt, nested_functions[edf_name], edf_transform_fn, edf_mlir_pipeline)
-        transformed_edf.add_to_graph(graph, overwrite=True)
+        graph._add_function_recursive(transformed_edf, overwrite=True)  # pylint: disable=protected-access
         transformed_edf_name = compat.as_str(transformed_edf.name)
         transformed_nested_functions[transformed_edf_name] = transformed_edf
         nested_transforms_map[edf_name] = transformed_edf_name
@@ -241,7 +241,7 @@ def transform_function(
   # Register the ConcreteFunction with the python Graph.
   if nested_fn_transforms or nested_mlir_transforms:
     for transformed_edf in transformed_nested_functions.values():
-      transformed_edf.add_to_graph(updated_cf.graph, overwrite=True)
+      updated_cf.graph._add_function_recursive(transformed_edf, overwrite=True)  # pylint: disable=protected-access
   updated_cf.add_to_graph(graph, overwrite=True)
 
   return updated_cf

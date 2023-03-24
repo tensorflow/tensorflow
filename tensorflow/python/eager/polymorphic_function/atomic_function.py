@@ -168,25 +168,6 @@ class EagerDefinedFunction(object):
       self._cached_definition = self.definition
     return self._cached_definition
 
-  def add_to_graph(self, g=None, overwrite=False):
-    """Add the function to the current context or a graph, if supplied.
-
-    Args:
-      g: the graph to add the function to. If not supplied, the function will be
-        added to the current context.
-      overwrite: A bool. If True, this function will overwrite any existing
-        function of the same signature name in the graph `g` or context.
-    """
-    if not g and self._bound_context.executing_eagerly():
-      if self._bound_context.has_function(self.name):
-        if overwrite:
-          self._bound_context.remove_function(self.name)
-          self._bound_context.add_function_def(self.definition)
-      else:
-        self._bound_context.add_function_def(self.definition)
-    else:
-      g._add_function_recursive(self, overwrite)  # pylint: disable=protected-access
-
   @property
   def name(self):
     return self._name

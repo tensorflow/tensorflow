@@ -587,7 +587,7 @@ class _DefinedFunction(object):
 
     # Ensures related sub-routines are defined in 'g', too.
     for f in self._sub_functions.values():
-      f.add_to_graph(g)
+      g._add_function_recursive(f)  # pylint: disable=protected-access
 
     # Adds its gradient function, too.
     if self._grad_func:

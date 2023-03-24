@@ -3210,13 +3210,14 @@ class Graph(pywrap_tf_session.PyGraph):
     else:
       self._add_function(function)
 
-    for f in function.graph._functions.values():  # pylint: disable=protected-access
-      if self._is_function(f.name):
-        if overwrite:
-          self._remove_function(f.name)
+    if hasattr(function, "graph"):
+      for f in function.graph._functions.values():  # pylint: disable=protected-access
+        if self._is_function(f.name):
+          if overwrite:
+            self._remove_function(f.name)
+            self._add_function(f)
+        else:
           self._add_function(f)
-      else:
-        self._add_function(f)
 
   def _add_function(self, function):
     """Adds a function to the graph.

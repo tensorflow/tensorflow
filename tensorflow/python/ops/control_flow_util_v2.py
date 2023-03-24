@@ -68,7 +68,8 @@ def create_new_tf_function(func_graph):
   """
   func = function._EagerDefinedFunction(  # pylint: disable=protected-access
       func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
-  func.add_to_graph(func_graph.outer_graph)
+
+  func_graph.outer_graph._add_function_recursive(func)  # pylint: disable=protected-access
   return func_graph.name
 
 

@@ -1204,7 +1204,7 @@ def partitioned_call(args,
   config_proto = attr_value_pb2.AttrValue(s=config)
 
   graph = ops.get_default_graph()
-  f.add_to_graph(graph)
+  graph._add_function_recursive(f)  # pylint: disable=protected-access
   op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
 
   # Propagate the attribute indicating the need to compile from function to the

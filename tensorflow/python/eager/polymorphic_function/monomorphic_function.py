@@ -239,7 +239,8 @@ class _DelayedRewriteGradientFunctions(object):
     forward_function, backwards_function = self.forward_backward(len(doutputs))
     if not backwards_function.outputs:
       return backwards_function.structured_outputs
-    forward_function.add_to_graph(op.graph)
+
+    op.graph._add_function_recursive(forward_function)  # pylint: disable=protected-access
 
     # pylint: disable=protected-access
     # Rewrite an inference call op to be a forward call op
@@ -1590,16 +1591,18 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     if not context.executing_eagerly() and not g:
       g = ops.get_default_graph()
-    self._delayed_rewrite_functions.forward().add_to_graph(g, overwrite)
+
+    if g is not None:
+      g._add_function_recursive(self._delayed_rewrite_functions.forward())  # pylint: disable=protected-access
 
   def add_gradient_functions_to_graph(self, g=None):
     """Add forward/backward functions to graph `g` or the current context."""
     if not context.executing_eagerly() and not g:
       g = ops.get_default_graph()
-    self._delayed_rewrite_functions.forward().add_to_graph(g)
+    g._add_function_recursive(self._delayed_rewrite_functions.forward())  # pylint: disable=protected-access
     forward_function, backward_function = (
         self._delayed_rewrite_functions.forward_backward())
-    forward_function.add_to_graph(g)
+    g._add_function_recursive(forward_function)  # pylint: disable=protected-access
     backward_function.add_to_graph(g)
 
   def _get_gradient_function(self):
