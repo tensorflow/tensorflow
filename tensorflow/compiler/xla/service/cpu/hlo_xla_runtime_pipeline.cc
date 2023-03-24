@@ -234,7 +234,6 @@ static Status CreateHloXlaPipeline(
   if (options.outline_with_xla_framework) {
     pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
   }
-  pm.addPass(mlir::createInlinerPass());
 
   if (options.experimental_deallocation) {
     CHECK(!options.sparse_bufferization)
