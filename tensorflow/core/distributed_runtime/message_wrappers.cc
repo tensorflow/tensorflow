@@ -710,7 +710,8 @@ CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
 }
 
 Status OwnedProtoRunGraphResponse::status() const {
-  return Status(response_.status_code(), response_.status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_.status_code()),
+                response_.status_error_message());
 }
 
 absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
@@ -785,7 +786,8 @@ CostGraphDef* NonOwnedProtoRunGraphResponse::mutable_cost_graph() {
 }
 
 Status NonOwnedProtoRunGraphResponse::status() const {
-  return Status(response_->status_code(), response_->status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_->status_code()),
+                response_->status_error_message());
 }
 
 absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
@@ -900,7 +902,8 @@ RunMetadata* OwnedProtoRunStepResponse::mutable_metadata() {
 }
 
 Status OwnedProtoRunStepResponse::status() const {
-  return Status(response_.status_code(), response_.status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_.status_code()),
+                response_.status_error_message());
 }
 
 absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
@@ -956,7 +959,8 @@ RunMetadata* NonOwnedProtoRunStepResponse::mutable_metadata() {
 }
 
 Status NonOwnedProtoRunStepResponse::status() const {
-  return Status(response_->status_code(), response_->status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_->status_code()),
+                response_->status_error_message());
 }
 
 absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
