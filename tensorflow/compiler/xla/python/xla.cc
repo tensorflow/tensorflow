@@ -753,9 +753,17 @@ PYBIND11_MODULE(xla_extension, m) {
         "representation");
 
   py::class_<PjRtDeviceTopology>(m, "DeviceTopology")
-      .def_property_readonly("platform", [](PjRtDeviceTopology& topology) {
-        return topology.platform_name();
-      });
+      .def_property_readonly(
+          "platform",
+          [](PjRtDeviceTopology& topology) { return topology.platform_name(); })
+      .def_property_readonly("platform_version",
+                             [](PjRtDeviceTopology& topology) {
+                               return topology.platform_version();
+                             })
+      .def_property_readonly("device_attributes",
+                             [](PjRtDeviceTopology& topology) {
+                               return py::cast(topology.DeviceAttributes());
+                             });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules", &PjRtExecutable::GetHloModules)
