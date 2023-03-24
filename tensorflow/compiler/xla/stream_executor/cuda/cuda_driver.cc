@@ -33,7 +33,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -1196,9 +1198,40 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult result;
-  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
-  // This happens when the size is 0.
+
+  // Check if the stream is doing graph capture.
+  cudaStreamCaptureStatus stream_capture_status;
+  cudaError_t err =
+      cudaStreamGetCaptureInfo(stream, &stream_capture_status, /*pId=*/nullptr);
+  if (err != cudaSuccess) {
+    LOG(ERROR) << "Failed to get stream capture info: "
+               << cudaGetErrorString(err);
+    return false;
+  }
+
   if (gpu_dst == 0 || gpu_src == 0) {
+    // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+    // This happens when the size is 0.
+    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  } else if (stream_capture_status == cudaStreamCaptureStatusActive) {
+    // cuMemcpyPeerAsync is not supported during graph capture, so we use
+    // cuMemcpyDtoDAsync instead. This is only valid if UVA is supported.
+
+    // Check if UVA is enabled.
+    for (int i = 0; i < GetDeviceCount(); ++i) {
+      GpuDeviceAttribute attribute = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
+      auto result = GetDeviceAttribute(attribute, i);
+      if (!result.ok()) {
+        LOG(ERROR) << "Failed to get device attribute";
+        return false;
+      }
+
+      if (result.value() == 0) {
+        LOG(ERROR) << "Unified addressing is not enabled";
+        return false;
+      }
+    }
+
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
