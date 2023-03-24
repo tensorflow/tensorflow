@@ -477,11 +477,13 @@ class Tf2XlaRewritePattern : public ConversionPattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx, TypeConverter& converter,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool is_module_pass)
+                                bool prefer_tf2xla, bool is_module_pass,
+                                bool use_tf2xla_hlo_importer)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        is_module_pass_(is_module_pass) {}
+        is_module_pass_(is_module_pass),
+        use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer) {}
 
   LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
@@ -506,13 +508,14 @@ class Tf2XlaRewritePattern : public ConversionPattern {
       return failure();
     }
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
-                                     is_module_pass_);
+                                     is_module_pass_, use_tf2xla_hlo_importer_);
   }
 
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
   bool is_module_pass_;
+  bool use_tf2xla_hlo_importer_;
 };
 
 bool ShouldRefineTypeTo(Type original_ty, Type updated_ty) {
@@ -603,10 +606,12 @@ Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
 
 void PopulateLegalizeTfWithTf2XlaPatterns(
     llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
-    Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass) {
+    Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass,
+    bool use_tf2xla_hlo_importer) {
   patterns.add<TypePropagator>(ctx);
   patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
-                                     prefer_tf2xla, is_module_pass);
+                                     prefer_tf2xla, is_module_pass,
+                                     use_tf2xla_hlo_importer);
 }
 
 }  // end namespace mhlo

@@ -37,11 +37,13 @@ class Tf2XlaRewriter {
   static mlir::LogicalResult RewriteOp(mlir::Operation* op,
                                        mlir::PatternRewriter& rewriter,
                                        const std::string& device_type,
-                                       bool is_module_pass);
+                                       bool is_module_pass,
+                                       bool use_tf2xla_hlo_importer);
 
  private:
   Tf2XlaRewriter(mlir::Operation* op, mlir::PatternRewriter& rewriter,
-                 const std::string& device_type, bool is_module_pass);
+                 const std::string& device_type, bool is_module_pass,
+                 bool use_tf2xla_hlo_importer);
 
   ~Tf2XlaRewriter();
 
@@ -76,6 +78,8 @@ class Tf2XlaRewriter {
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr_;
   tensorflow::OpKernelContext::Params params_;
+
+  bool use_tf2xla_hlo_importer_;
 };
 
 }  // namespace mhlo
