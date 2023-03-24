@@ -325,9 +325,9 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
-${PYTHON_BIN_PATH} -m pip install tb-nightly
-${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
-${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
+${PYTHON_BIN_PATH} -m pip install protobuf~=3.19.6
+${PYTHON_BIN_PATH} -m pip install numpy~=1.21.4
+${PYTHON_BIN_PATH} -m pip install tensorboard~=2.11.2
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
@@ -390,6 +390,7 @@ test_pip_virtualenv() {
     return 1
   fi
 
+  ${PIP_BIN_PATH} install numpy~=1.21.4
   # Install extra pip packages, if specified.
   for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
     echo "Installing extra pip package required by test-on-install: ${PACKAGE}"

@@ -30,9 +30,10 @@ jobs:
   build:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: [self-hosted, linux, ARM64]
+    continue-on-error: true
     strategy:
       matrix:
-        pyver: ['3.10']
+        pyver: ['3.7','3.8','3.9','3.10']
     steps:
       - name: Stop old running containers (if any)
         shell: bash
