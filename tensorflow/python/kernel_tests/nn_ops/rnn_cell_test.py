@@ -1355,7 +1355,6 @@ class LSTMTest(test.TestCase):
               cell_clip=cell_clip,
               use_peephole=use_peephole))
       
-  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testLSTMBlockCellErrorHandling2(self):
     forget_bias = 112.66590343649887
@@ -1369,7 +1368,35 @@ class LSTMTest(test.TestCase):
     wcf = constant_op.constant(0, shape=[16], dtype=dtypes.half)
     wco = constant_op.constant(0, shape=[13], dtype=dtypes.half)
     b = constant_op.constant(0, shape=[0], dtype=dtypes.half)
-    with self.assertRaises(errors_impl.InternalError):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "is empty"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+              forget_bias=forget_bias,
+              cell_clip=cell_clip,
+              use_peephole=use_peephole))
+      
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellErrorHandling3(self):
+    forget_bias = 112.66590343649887
+    cell_clip = 67.12389445926587
+    use_peephole = False
+    x = constant_op.constant(0, shape=[0, 16], dtype=dtypes.half)
+    cs_prev = constant_op.constant(0, shape=[0, 2], dtype=dtypes.half)
+    h_prev = constant_op.constant(0, shape=[0, 2], dtype=dtypes.half)
+    w = constant_op.constant(0, shape=[18, 8], dtype=dtypes.half)
+    wci = constant_op.constant(0, shape=[5], dtype=dtypes.half)
+    wcf = constant_op.constant(0, shape=[16], dtype=dtypes.half)
+    wco = constant_op.constant(0, shape=[13], dtype=dtypes.half)
+    b = constant_op.constant(0, shape=[8], dtype=dtypes.half)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "is empty"):
       self.evaluate(
           gen_rnn_ops.lstm_block_cell(
               x=x,
