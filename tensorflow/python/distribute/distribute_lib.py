@@ -218,7 +218,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
@@ -3804,7 +3803,7 @@ def _from_proto_fn(v, import_scope=None):
   else:
     return _original_from_proto(v, import_scope=import_scope)
 
-resource_variable_ops._from_proto_fn = _from_proto_fn
+variable_scope._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
 
 
