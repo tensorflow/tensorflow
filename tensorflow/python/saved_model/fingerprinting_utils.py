@@ -46,8 +46,11 @@ def write_fingerprint(export_dir, saved_model_serialized):
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
     logging.info("Writing fingerprint to %s", fingerprint_path)
-    fingerprint_serialized = fingerprinting_pywrap.CreateFingerprintDef(
-        saved_model_serialized, export_dir)
+    try:
+      fingerprint_serialized = fingerprinting_pywrap.CreateFingerprintDef(
+          saved_model_serialized, export_dir)
+    except fingerprinting_pywrap.FingerprintException as e:
+      raise ValueError(e) from None
     file_io.atomic_write_string_to_file(fingerprint_path,
                                         fingerprint_serialized)
     # We need to deserialize the fingerprint in order to send its values.
