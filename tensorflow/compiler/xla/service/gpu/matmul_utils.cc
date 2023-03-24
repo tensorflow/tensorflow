@@ -289,13 +289,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
 
-  Shape c_matrix_shape = c_shape;
-  if (c_shape.rank() <= 1) {
-    c_matrix_shape = output_shape;
-    c_matrix_shape.set_element_type(c_shape.element_type());
-  }
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::For(c_matrix_shape, output_batch_dims,
+                      MatrixLayout::For(c_shape,
+                                        output_batch_dims,
                                         output_row_dims, output_col_dims));
 
   // TODO(cjfj): We should also check that the batch, contracting and

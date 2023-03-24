@@ -4970,12 +4970,19 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[16]{0} parameter(2)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f16[] constant(0)
+; CHECK-NEXT:    [[BC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
+; CHECK-NEXT:    [[CV:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
-; CHECK:         [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK:         [[P4:%[^ ]+]] = f16[] parameter(5)
-; CHECK:       ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
+; CHECK-NEXT:    [[CV1:%[^ ]+]] = f32[] convert([[P3]])
+; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f16[] constant(1)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f16[] parameter(5)
+; CHECK-NEXT:    [[DV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
+; CHECK-NEXT:    [[CV2:%[^ ]+]] = f32[] convert([[DV]])
+; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C]], [[CV2]], [[VB]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5030,11 +5037,15 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[16]{0} parameter(2)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f16[] constant(0)
+; CHECK-NEXT:    [[BC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
+; CHECK-NEXT:    [[CV:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
-; CHECK     :    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK     :    ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    [[CV1:%[^ ]+]] = f32[] convert([[P3]])
+; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
+; CHECK     :    ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C]], [[C]], [[VB]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5056,6 +5067,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDMatrixBiasThenVectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
+#endif        
   const char* hlo_text = R"(
     HloModule test
 
@@ -5084,21 +5098,17 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
                     R"(
-; CHECK-LABEL: %fused_computation (param_0: f16[16,16], param_1.1: f16[16]) -> f16[16,16] {
-; CHECK:         [[P0:%[^ ]+]] = f16[16,16]{1,0} parameter(0)
-; CHECK:         [[P1:%[^ ]+]] = f16[16]{0} parameter(1)
-; CHECK:         [[P1_BROADCAST:%[^ ]+]] = f16[16,16]{1,0} broadcast([[P1]]), dimensions={1}
-; CHECK:         [[OUT:%[^ ]+]] = f16[16,16]{1,0} add([[P0]], [[P1_BROADCAST]])
-; CHECK:         }
-; CHECK:         ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], b2: f16[16,16], x_scale: f16[], y_scale: f16[]) -> f16[16,16] {
+; CHECK-LABEL:   ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], b2: f16[16,16], x_scale: f16[], y_scale: f16[]) -> f16[16,16] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[16,16]{1,0} parameter(3)
+; CHECK-NEXT:    [[MB:%[^ ]+]] = f16[16,16]{1,0} parameter(3)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(4)
+; CHECK-NEXT:    [[CV0:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(5)
+; CHECK-NEXT:    [[CV1:%[^ ]+]] = f32[] convert([[P3]])
 ; CHECK:         [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK:         [[GEMMOUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[DUMMY2:%[^ ]+]]),
+; CHECK:         [[GEMMOUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[MB]], [[DUMMY0:%[^ ]+]], [[DUMMY1:%[^ ]+]], /*index=5*/[[C1]], [[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5116,7 +5126,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
 ; CHECK:         [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
-; CHECK:         [[OUT:%[^ ]+]] = f16[16,16]{1,0} fusion([[GEMMOUT]], [[VB]])
+; CHECK:         [[VBC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[VB]]), dimensions={1}
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} add([[GEMMOUT]], [[VBC]])
       )");
 }
 

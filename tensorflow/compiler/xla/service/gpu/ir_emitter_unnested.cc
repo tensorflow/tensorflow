@@ -1179,29 +1179,23 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
                       GetAllocationSlice(matmul.getCScale()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_scale,
                       GetAllocationSlice(matmul.getDScale()));
-  BufferAllocation::Slice d_amax;
+  BufferAllocation::Slice d_amax, bias;
   if (matmul.getDAmax() != nullptr) {
     TF_ASSIGN_OR_RETURN(d_amax, GetAllocationSlice(matmul.getDAmax()));
   }
+  if (matmul.getBias() != nullptr) {
+    TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
+  }
 
-  BufferAllocation::Slice bias, aux;  // Not used.
+  BufferAllocation::Slice aux;  // Not used.
 
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
-  bool has_epilogue = false;
-  // TODO(shuw): Add support to bias + Gelu/(Gelu Aux)
-  if (matmul.getEpilogue() ==
-          mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu ||
-      matmul.getEpilogue() == mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias) {
-    has_epilogue = true;
-  }
-  bool trivial_matrix_bias = matmul.getBetaAttr().getValueAsDouble() == 0.0;
-  bool use_vector_bias = trivial_matrix_bias && has_epilogue;
+
   BufferAllocation::Slice c_empty;
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b,
-      use_vector_bias ? c_empty : c, d, use_vector_bias ? c : bias, aux,
-      a_scale, b_scale, c_scale, d_scale, d_amax);
+      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();

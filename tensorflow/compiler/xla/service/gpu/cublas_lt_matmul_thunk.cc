@@ -89,13 +89,9 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   se::OwningScratchAllocator<> scratch_allocator(allocs.device_ordinal(),
                                                  allocs.memory_allocator());
-  se::DeviceMemoryBase c_buffer_maybe_null;
-  if (!plan_.IsF8MatmulTrivialMatrixBias()) {
-    c_buffer_maybe_null = allocs.GetDeviceAddress(c_buffer_);
-  }
   return plan_.ExecuteOnStream(
       params.stream, allocs.GetDeviceAddress(a_buffer_),
-      allocs.GetDeviceAddress(b_buffer_), c_buffer_maybe_null,
+      allocs.GetDeviceAddress(b_buffer_), allocs.GetDeviceAddress(c_buffer_),
       allocs.GetDeviceAddress(d_buffer_), bias, aux, a_scale, b_scale, c_scale,
       d_scale, d_amax, *algorithm_, scratch_allocator);
 }

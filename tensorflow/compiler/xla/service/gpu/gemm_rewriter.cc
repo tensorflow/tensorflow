@@ -1156,20 +1156,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // Replace add(gemm, broadcast) with fused new_gemm.
-    config.set_epilogue(GemmBackendConfig::BIAS);
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
-      // Matrix and vector bias don't co-exist for FP8 matmul.
-      if (config.beta() != 0.0) {
-      // Skip non-trivial case.
-        return true;
-      }
-      operands[2] = bias;
-    } else {
-      operands.push_back(bias);
+    // When (non-trivial) matrix and vector bias co-exist for FP8 matmul, just
+    // fuse matrix bias.
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        config.beta() != 0.0) {
+      return true;
     }
+
+    // Replace add(gemm, broadcast) with fused new_gemm.
+    operands.push_back(bias);
+    config.set_epilogue(GemmBackendConfig::BIAS);
     std::unique_ptr<HloInstruction> result =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     TF_RETURN_IF_ERROR(result->set_backend_config(config));
