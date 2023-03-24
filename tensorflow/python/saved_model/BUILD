@@ -332,7 +332,6 @@ py_strict_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/logging",
     ],
 )
@@ -432,6 +431,7 @@ tf_py_test(
         "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -534,6 +534,7 @@ cuda_py_test(
         ":save",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
@@ -723,6 +724,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
     ],
 )
 
