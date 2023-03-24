@@ -1,6 +1,7 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -376,7 +377,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "convert",
     srcs = ["convert.py"],
     srcs_version = "PY3",
@@ -402,7 +403,6 @@ py_library(
 py_library(
     name = "op_hint",
     srcs = ["op_hint.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -412,20 +412,24 @@ py_library(
     ],
 )
 
-py_test(
+pytype_strict_contrib_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":convert",
         ":interpreter",
+        ":lite_constants",
         ":op_hint",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
     ],
 )
 
