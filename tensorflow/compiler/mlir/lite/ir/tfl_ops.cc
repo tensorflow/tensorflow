@@ -3334,9 +3334,12 @@ namespace {
 // The function recursively traverses the dimensions of the output tensor in
 // a row-major order and writes the value in the output tensor into
 // `new_values`.
-void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
-                        ArrayRef<int64_t> output_shape, int num_dimensions,
-                        int output_axis, std::vector<uint64_t>* input_indices,
+void ComputePermutation(mlir::detail::ElementsAttrRange<
+                            mlir::detail::ElementsAttrIterator<mlir::Attribute>>
+                            input_tensor_values,
+                        ArrayRef<int32_t> perm, ArrayRef<int64_t> output_shape,
+                        const int num_dimensions, const int output_axis,
+                        std::vector<uint64_t>* input_indices,
                         std::vector<Attribute>* new_values) {
   // Refer to the implementation of `Transpose` function in
   // tensorflow/lite/kernels/internal/reference/reference_ops.h
@@ -3349,11 +3352,11 @@ void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
     // recurse into the next axis.
     const bool is_last_axis = output_axis == num_dimensions - 1;
     if (is_last_axis) {
-      new_values->push_back(
-          input_tensor.getValues<Attribute>()[*input_indices]);
+      new_values->push_back(input_tensor_values[*input_indices]);
     } else {
-      ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
-                         output_axis + 1, input_indices, new_values);
+      ComputePermutation(input_tensor_values, perm, output_shape,
+                         num_dimensions, output_axis + 1, input_indices,
+                         new_values);
     }
   }
 }
@@ -3393,7 +3396,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   std::vector<Attribute> new_values;
   new_values.reserve(input_tensor.getType().getNumElements());
   std::vector<uint64_t> input_indices(num_dimensions);
-  ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+  auto input_tensor_values = input_tensor.getValues<Attribute>();
+  ComputePermutation(input_tensor_values, perm, output_shape, num_dimensions,
                      /*output_axis=*/0, &input_indices, &new_values);
   auto result_type = tensorflow::GetTypeFromTFTensorShape(
       output_shape, output_type.getElementType());
