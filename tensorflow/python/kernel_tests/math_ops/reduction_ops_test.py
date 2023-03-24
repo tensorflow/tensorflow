@@ -314,7 +314,7 @@ class SumReductionTest(BaseReductionTest):
   @test_util.run_deprecated_v1
   def testFloat32BFloat16(self):
     for dtype in [dtypes.float32, dtypes.bfloat16]:
-      dtype_np = np.float32 if dtype == dtypes.float32 else dtypes.bfloat16.as_numpy_dtype
+      dtype_np = np.float32 if dtype == dtypes.float32 else dtype.as_numpy_dtype
       for rank in range(1, _MAX_RANK + 1):
         np_arr = self._makeIncremental((2,) * rank, dtype)
         self._compareAllAxes(np_arr)
@@ -330,10 +330,9 @@ class SumReductionTest(BaseReductionTest):
         col_sum = np.sum(arr, axis=0, dtype=np.float32)
         row_sum = np.sum(arr, axis=1, dtype=np.float32)
 
-        with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-          tf_row_sum = self._tf_reduce(arr, 1, False)
-          tf_col_sum = self._tf_reduce(arr, 0, False)
-          tf_out_row, tf_out_col = self.evaluate([tf_row_sum, tf_col_sum])
+        tf_row_sum = self._tf_reduce(arr, 1, False)
+        tf_col_sum = self._tf_reduce(arr, 0, False)
+        tf_out_row, tf_out_col = self.evaluate([tf_row_sum, tf_col_sum])
         if dtype == dtypes.bfloat16:
           col_sum = dtype_np(col_sum)
           row_sum = dtype_np(row_sum)
@@ -347,10 +346,9 @@ class SumReductionTest(BaseReductionTest):
             sum_y = np.sum(arr, axis=1, dtype=np.float32)
             sum_xz = np.sum(arr, axis=(0, 2), dtype=np.float32)
 
-            with self.session(graph=ops.Graph(), use_gpu=True) as sess:
-              tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
-              tf_sum_y = self._tf_reduce(arr, 1, False)
-              tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
+            tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
+            tf_sum_y = self._tf_reduce(arr, 1, False)
+            tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
             if dtype == dtypes.bfloat16:
               sum_y = dtype_np(sum_y)
               sum_xz = dtype_np(sum_xz)
@@ -572,10 +570,9 @@ class MeanReductionTest(BaseReductionTest):
 
   @test_util.run_deprecated_v1
   def testBFloat16(self):
-    with ops.device("/cpu:0"):
-      for rank in range(1, _MAX_RANK + 1):
-        np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
-        self._compareAllAxes(np_arr)
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.bfloat16)
+      self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
   def testFloat64(self):
