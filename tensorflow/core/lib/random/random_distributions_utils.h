@@ -22,6 +22,11 @@ limitations under the License.
 
 #include "tensorflow/core/lib/random/philox_random.h"
 
+// Some platforms don't have M_PI
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace tensorflow {
 namespace random {
 
