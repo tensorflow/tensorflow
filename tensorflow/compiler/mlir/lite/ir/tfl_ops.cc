@@ -4158,6 +4158,25 @@ OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicUpdateSliceOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult DynamicUpdateSliceOp::fold(FoldAdaptor) {
+  // Check if update replaces the whole tensor, meaning operand and update has
+  // the same shape and all start indices are zero.
+  DenseIntElementsAttr indices_attr;
+  if (matchPattern(getStartIndices(), m_Constant(&indices_attr)) &&
+      indices_attr.isSplat() && indices_attr.getSplatValue<int>() == 0 &&
+      getOperand().getType().hasStaticShape() &&
+      getUpdate().getType().hasStaticShape() &&
+      getOperand().getType() == getUpdate().getType()) {
+    return getUpdate();
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 

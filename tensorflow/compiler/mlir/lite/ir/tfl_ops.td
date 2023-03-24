@@ -4028,6 +4028,8 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
 
   let results = (
     outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_BitcastOp : TFL_Op<"bitcast", [Pure]> {
