@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Dialect/X86Vector/Transforms.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -64,11 +65,12 @@ LogicalResult rewriteVectorContract(MLIRContext* ctx, FuncOp funcOp) {
   vector::populateVectorToVectorCanonicalizationPatterns(patterns);
 
   // Currently we always lower vector.contract into vector.outerproduct.
-  patterns.add<vector::ContractionOpToOuterProductOpLowering,
-               vector::ContractionOpLowering>(
+  vector::populateVectorContractLoweringPatterns(
+      patterns,
       vector::VectorTransformsOptions().setVectorTransformsOptions(
           vector::VectorContractLowering::OuterProduct),
-      ctx, 2);
+      /*benefit=*/2,
+      /*disableOuterProductLowering*/ true);
   vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
 
   return applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
