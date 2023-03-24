@@ -18,6 +18,7 @@
 import enum
 import re
 import sys
+import os
 
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
