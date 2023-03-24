@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/strings/match.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -25,7 +26,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -72,7 +75,22 @@ bool IsTpuRegularOp(Operation* op) {
 
 bool IsPartitionedCall(Operation* op) {
   return (isa<TF::PartitionedCallOp>(op) || isa<TF::TPUPartitionedCallOp>(op) ||
-          isa<TF::StatefulPartitionedCallOp>(op));
+          isa<TF::StatefulPartitionedCallOp>(op) || isa<TF::IdentityOp>(op));
+}
+
+bool IsIntersectionXlaNonXlaOps(Operation* op) {
+  static auto* ops = [] {
+    llvm::SmallDenseSet<mlir::TypeID, 32>* ops_set =
+        new llvm::SmallDenseSet<mlir::TypeID, 32>{
+            TypeID::get<TF::ConstOp>(),
+            TypeID::get<TF::WhileOp>(),
+            TypeID::get<TF::AssertOp>(),
+        };
+    return ops_set;
+  }();
+  auto abstractOp = op->getRegisteredInfo();
+  if (!abstractOp) return true;
+  return ops->count(abstractOp->getTypeID()) == 0;
 }
 // Gets the successors of an op wrapped in a tf_executor.island.
 llvm::SmallVector<Operation*> GetSuccessors(Operation* op) {
@@ -99,7 +117,7 @@ llvm::SmallVector<Operation*> GetPredecessors(Operation* op) {
 }
 bool CheckTpuReplicateAttr(Operation* op, StringAttr attr,
                            std::function<std::string()> errormsg) {
-  if (!op->hasAttr("_tpu_replicate")) {
+  if (!op->hasAttr(TF::kTpuReplicateAttr)) {
     op->emitOpError("TF2XLA TPU bridge input check: " + errormsg() +
                     "missing _tpu_replicate attr");
     return false;
@@ -309,7 +327,7 @@ bool CheckNonClusterPredecessors(Operation* op, Operation* parent,
 }
 
 bool CheckOpsClusterIO(Operation* op, MetadataMap& metadata_map) {
-  if (op->hasAttr("_tpu_replicate")) {
+  if (op->hasAttr(TF::kTpuReplicateAttr)) {
     std::string cluster =
         op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
     if (cluster.empty()) {
@@ -336,6 +354,60 @@ bool CheckOpsClusterIO(Operation* op, MetadataMap& metadata_map) {
   return true;
 }
 
+bool InTypeMustBeNonXLA(const Type& type) {
+  const Type elem = getElementTypeOrSelf(type);
+  return !elem.isa<TF::ResourceType>() && !tensorflow::TypeValidForXLA(type);
+}
+
+// Check if the op cannot be XLA compiled. If the op does not satisfy this
+// criteria, then it is possible for the op to be XLA and non-XLA. But this
+// function specifically checks if the op must be non-xla.
+bool IsMustNotBeXlaOp(Operation* op) {
+  for (auto& input : op->getOpOperands()) {
+    if (InTypeMustBeNonXLA(input.get().getType())) return true;
+  }
+  for (auto output_types : op->getResultTypes()) {
+    if (!tensorflow::TypeValidForXLA(output_types)) return true;
+  }
+  return false;
+}
+
+// Check if the op must be compiled with XLA. If the op does not satisfy this
+// critiria for "must be xla" then it is still possible for this op to be xla
+// and non-xla as well. But below function specifically checks for the op to be
+// only XLA op.
+bool IsMustBeXlaOp(Operation* op, MetadataMap metadata_map) {
+  if (!op->hasAttr(TF::kTpuReplicateAttr)) return false;
+  auto cluster = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
+  if (metadata_map.find(cluster) == metadata_map.end()) return false;
+  auto metadata = metadata_map[cluster];
+  if (!metadata.getAllowSoftPlacement() &&
+      !op->hasAttr(TF::kXlaOutsideCompilationAttr))
+    return true;
+  std::string device = "";
+  if (op->hasAttr(TF::kDeviceAttr))
+    device = op->getAttrOfType<StringAttr>(TF::kDeviceAttr).str();
+  else
+    return false;
+  if (absl::StrContains(device, TF::kTpuDevice)) return true;
+  return false;
+}
+bool ValidateIntersectionXlaNonXlaOps(Operation* op, MetadataMap metadata_map) {
+  if (isa<TF::TPUReplicateMetadataOp>(op) ||
+      isa<TF::TPUReplicatedInputOp>(op) || isa<TF::TPUReplicatedOutputOp>(op) ||
+      isa<TF::TPUPartitionedInputOp>(op) ||
+      isa<TF::TPUPartitionedInputV2Op>(op) ||
+      isa<TF::TPUPartitionedOutputOp>(op) ||
+      isa<TF::TPUPartitionedOutputV2Op>(op))
+    return true;
+  if (IsMustBeXlaOp(op, metadata_map) && IsMustNotBeXlaOp(op)) {
+    op->emitOpError("TF/XLA TPU bridge input check: found invalid op. ")
+        << "Can't be both xla and non-xla";
+    return false;
+  }
+  return true;
+}
+
 void TPUValidateInputsPass::runOnOperation() {
   ModuleOp module = getOperation();
   bool success = true;
@@ -358,6 +430,8 @@ void TPUValidateInputsPass::runOnOperation() {
     if (IsTpuRegularOp(op)) {
       success &= CheckOpsClusterIO(op, metadata_map);
     }
+    if (IsIntersectionXlaNonXlaOps(op))
+      success &= ValidateIntersectionXlaNonXlaOps(op, metadata_map);
   });
   if (!success) {
     signalPassFailure();

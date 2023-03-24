@@ -2352,6 +2352,7 @@ cc_library(
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
         ":tensorflow",
+        ":tensorflow_types",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
