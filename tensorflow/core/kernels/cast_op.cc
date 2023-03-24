@@ -45,6 +45,7 @@ typedef Eigen::GpuDevice GPUDevice;
   FN(arg0, int32);               \
   FN(arg0, int64_t);             \
   FN(arg0, Eigen::half);         \
+  FN(arg0, bfloat16);            \
   FN(arg0, float);               \
   FN(arg0, double);              \
   FN(arg0, std::complex<float>); \
@@ -252,15 +253,27 @@ CURRY_TYPES2(REGISTER_CAST_GPU, float);
 CURRY_TYPES2(REGISTER_CAST_GPU, double);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
-#endif
-
-REGISTER_CAST_GPU(bfloat16, int32);
+#else
+REGISTER_CAST_GPU(bool, bfloat16);
+REGISTER_CAST_GPU(int8, bfloat16);
+REGISTER_CAST_GPU(int16, bfloat16);
 REGISTER_CAST_GPU(int32, bfloat16);
+REGISTER_CAST_GPU(int64, bfloat16);
+REGISTER_CAST_GPU(uint8, bfloat16);
+REGISTER_CAST_GPU(uint16, bfloat16);
+REGISTER_CAST_GPU(uint32, bfloat16);
+REGISTER_CAST_GPU(uint64, bfloat16);
+REGISTER_CAST_GPU(Eigen::half, bfloat16);
+REGISTER_CAST_GPU(float, bfloat16);
+REGISTER_CAST_GPU(double, bfloat16);
+REGISTER_CAST_GPU(std::complex<float>, bfloat16);
+REGISTER_CAST_GPU(std::complex<double>, bfloat16);
+#endif 
+CURRY_TYPES2(REGISTER_CAST_GPU, bfloat16);
 
 REGISTER_CAST_GPU(float, float8_e5m2);
 REGISTER_CAST_GPU(float, float8_e4m3fn);
 
-REGISTER_CAST_GPU(bfloat16, float);
 REGISTER_CAST_GPU(bfloat16, float8_e5m2);
 REGISTER_CAST_GPU(bfloat16, float8_e4m3fn);
 
