@@ -91,6 +91,7 @@ dtensor_test(
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
@@ -122,6 +123,7 @@ dtensor_test(
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
