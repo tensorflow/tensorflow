@@ -540,7 +540,7 @@ TEST(PartitionTest, Nodes4PartitionNodes3_WithControlDependency) {
                                         /*type=*/NodeSubset::kTfPartition,
                                         /*nodes=*/{0, 1},
                                         /*input_tensors=*/{0},
-                                        /*output_tensors=*/{1, 2},
+                                        /*output_tensors=*/{2, 1},
                                     },
                                     {
                                         /*type=*/NodeSubset::kTfNonPartition,
@@ -586,7 +586,7 @@ TEST(PartitionTest, Nodes4PartitionNodes3_WithExternalControlDependency) {
                                         /*type=*/NodeSubset::kTfPartition,
                                         /*nodes=*/{0, 1},
                                         /*input_tensors=*/{0},
-                                        /*output_tensors=*/{1, 2},
+                                        /*output_tensors=*/{2, 1},
                                     },
                                     {
                                         /*type=*/NodeSubset::kTfNonPartition,
