@@ -232,7 +232,8 @@ primitive types. In particular, the shape of a string Tensor dictates the number
 and arrangement of strings in the Tensor, with each element itself being a
 variable length string. In this sense, the (byte) size of the Tensor cannot be
 computed from the shape and type alone, and consequently strings cannot be
-provided as a single, flat `ByteBuffer` argument.
+provided as a single, flat `ByteBuffer` argument. You can see some examples in
+this [page](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter).
 
 If other data types, including boxed types like `Integer` and `Float`, are used,
 an `IllegalArgumentException` will be thrown.
