@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
+#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
@@ -571,7 +572,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       optimized_graph_proto == nullptr
           ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
                                   lib_def_, composite_devices, cpu_device,
-                                  default_device, env_)
+                                  default_device, env_,
+                                  OptimizedFunctionGraphInfo::kJit)
           : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 

@@ -59,7 +59,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
-    Device* default_device, Env* env);
+    Device* default_device, Env* env,
+    OptimizedFunctionGraphInfo::Source source);
 
 // Pre-processes, partitions and post-optimizes the input graph; returns
 // subgraph result (maps from device name to the subgraph); returns error if any
