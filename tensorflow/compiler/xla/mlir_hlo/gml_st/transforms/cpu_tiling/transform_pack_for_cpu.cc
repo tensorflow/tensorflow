@@ -123,7 +123,6 @@ struct TransformPackForCpuPass
     // canonicalize tiled ops.
     {
       RewritePatternSet patterns(ctx);
-      linalg::populateLinalgTilingCanonicalizationPatterns(patterns);
       patterns.add<linalg::GeneralizeOuterUnitDimsPackOpPattern>(ctx);
       patterns.add<linalg::GeneralizeOuterUnitDimsUnPackOpPattern>(ctx);
       if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))

@@ -120,14 +120,7 @@ def TransformScatterForCpuPass :
 def TransformDotForCpuPass :
     Pass<"xla-cpu-transform-dot", "mlir::func::FuncOp"> {
   let summary = "Transform dot ops for running on CPU";
-
   let constructor = "createTransformDotForCpuPass()";
-}
-
-def TransformMatmulForCpuPass :
-    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
-  let summary = "Transform matmul ops for running on CPU";
-  let constructor = "createTransformMatmulForCpuPass()";
 }
 
 def TransformPackForCpuPass :

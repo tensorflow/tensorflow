@@ -1488,7 +1488,6 @@ cc_library(
         "gml_st/transforms/cpu_tiling/transform_conv_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_dot_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_elementwise_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_matmul_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_mmt4d_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_pack_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_reduce_for_cpu.cc",

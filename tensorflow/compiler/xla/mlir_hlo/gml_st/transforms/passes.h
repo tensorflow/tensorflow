@@ -32,15 +32,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-struct MatmulSizes {
-  // [m, k] x [k, n]
-  int64_t m;
-  int64_t n;
-  int64_t k;
-};
-
-using MatmulTileSizeComputationFn = std::function<MatmulSizes(MatmulSizes)>;
-
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
@@ -91,11 +82,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
 /// Pass to transform a dot operation for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
-    MatmulTileSizeComputationFn tileSizeFn = nullptr);
-
-/// Pass to transform a linalg.matmul op for CPU backend.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    MatmulTileSizeComputationFn tileSizeFn = nullptr);
+    ArrayRef<int64_t> tileSizes = {}, StringRef cpuName = "");
 
 /// Pass to transform tensor.pack/unpack ops for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformPackForCpuPass();

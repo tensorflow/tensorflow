@@ -39,7 +39,6 @@ add_mlir_library(GmlStPasses
   cpu_tiling/transform_conv_for_cpu.cc
   cpu_tiling/transform_dot_for_cpu.cc
   cpu_tiling/transform_elementwise_for_cpu.cc
-  cpu_tiling/transform_matmul_for_cpu.cc
   cpu_tiling/transform_mmt4d_for_cpu.cc
   cpu_tiling/transform_pack_for_cpu.cc
   cpu_tiling/transform_reduce_for_cpu.cc
