@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
-#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -63,10 +62,10 @@ TEST(OptimizeFunctionGraphTest,
 
   // Try to optimize a function called "FindDevice" which does not exist in
   // library.
-  const StatusOr<OptimizedFunctionGraphInfo> aot_result = OptimizeFunctionGraph(
-      "FindDevice", {}, opts, device_set, lib_def.get(),
-      /*composite_devices=*/{}, devices[0].get(), devices[0].get(),
-      Env::Default(), OptimizedFunctionGraphInfo::kAot);
+  const StatusOr<OptimizedFunctionGraphInfo> aot_result =
+      OptimizeFunctionGraph("FindDevice", {}, opts, device_set, lib_def.get(),
+                            /*composite_devices=*/{}, devices[0].get(),
+                            devices[0].get(), Env::Default());
   EXPECT_TRUE(errors::IsInvalidArgument(aot_result.status()))
       << "Actual status: " << aot_result.status();
   EXPECT_TRUE(absl::StrContains(aot_result.status().error_message(),
@@ -92,17 +91,16 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {
     device_set.AddDevice(device.get());
   }
 
-  const StatusOr<OptimizedFunctionGraphInfo> aot_result = OptimizeFunctionGraph(
-      "FindDevice", {}, opts, device_set, lib_def.get(),
-      /*composite_devices=*/{}, devices[0].get(), devices[1].get(),
-      Env::Default(), OptimizedFunctionGraphInfo::kAot);
+  const StatusOr<OptimizedFunctionGraphInfo> aot_result =
+      OptimizeFunctionGraph("FindDevice", {}, opts, device_set, lib_def.get(),
+                            /*composite_devices=*/{}, devices[0].get(),
+                            devices[1].get(), Env::Default());
   TF_EXPECT_OK(aot_result.status());
   EXPECT_EQ(aot_result->name, "FindDevice");
   // FindDevice function has one return node.
   EXPECT_EQ(aot_result->num_return_nodes, 1);
   // Return node type is string.
   EXPECT_THAT(aot_result->ret_types, ElementsAre(DT_STRING));
-  EXPECT_EQ(aot_result->source, OptimizedFunctionGraphInfo::kAot);
 }
 
 }  // namespace

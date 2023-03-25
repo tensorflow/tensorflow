@@ -31,15 +31,6 @@ namespace tensorflow {
 // converted to and from
 // third_party/tensorflow/core/framework/optimized_function_graph.proto.
 struct OptimizedFunctionGraphInfo {
-  // enum for distinguishing the origin where the proto is created.
-  //
-  // kAot: proto is created in ahead-of-time environment, which can be different
-  // from the environment where the graph is actually executed.
-  //
-  // kJit: proto is created in just-in-time execution, which has the same
-  // environment as the one the graph is actually executed.
-  enum Source { kAot, kJit };
-
   // Function name.
   string name;
   // Optimized function graph.
@@ -52,10 +43,6 @@ struct OptimizedFunctionGraphInfo {
   DataTypeVector ret_types;
   // Number of return nodes.
   size_t num_return_nodes;
-  // Time spent on running the graph optimization passes for this funciton.
-  uint64_t optimization_time_sec;
-  // Indicates the source environment where this proto is generated.
-  Source source;
 
   // Converts from the struct to OptimizedFunctionGraph proto.
   static OptimizedFunctionGraph ToProto(const OptimizedFunctionGraphInfo& info);

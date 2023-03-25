@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
@@ -343,10 +342,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
-    Device* default_device, Env* env,
-    OptimizedFunctionGraphInfo::Source optimization_source) {
-  const uint64_t graph_optimization_start_time_usesc =
-      Env::Default()->NowMicros();
+    Device* default_device, Env* env) {
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? input_lib_def : options.lib_def;
 
@@ -499,17 +495,12 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
-  const uint64_t graph_optimization_duration_secs =
-      (Env::Default()->NowMicros() - graph_optimization_start_time_usesc) /
-      1000000;
   return OptimizedFunctionGraphInfo{function_name,
                                     std::move(graph),
                                     std::move(reachable_lib_def),
                                     node_name_to_control_ret,
                                     std::move(ret_types),
-                                    ret_nodes.size(),
-                                    graph_optimization_duration_secs,
-                                    optimization_source};
+                                    ret_nodes.size()};
 }
 
 StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
