@@ -377,7 +377,6 @@ struct TransformDotForCpuPass
         [&](MatmulSizes) -> SmallVector<int64_t> { return {}; },
         [&](MatmulSizes sizes) -> SmallVector<int64_t> { return {sizes.k}; });
 
-    populateCollapseForallOpDimensionsPattern(patterns);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
 

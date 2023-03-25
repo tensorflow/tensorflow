@@ -1493,7 +1493,6 @@ cc_library(
         "gml_st/transforms/cpu_tiling/transform_reduce_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_scatter_for_cpu.cc",
         "gml_st/transforms/fusion/fusion.cc",
-        "gml_st/transforms/passes.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",
         "gml_st/transforms/rewrite_from_elements_op/rewrite_from_elements_op.cc",

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -127,10 +128,10 @@ struct TransformMmt4DForCpuPass
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
+    MLIRContext *ctx = &getContext();
 
-    RewritePatternSet patterns(&getContext());
+    RewritePatternSet patterns(ctx);
     patterns.add(tileMmt4DOp);
-
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
 
