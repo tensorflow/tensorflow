@@ -414,7 +414,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   bool IsReturnedFutureSupported() const override { return true; }
 
   // std::function version of PJRT_SendCallback
-  using SendCallbackFunction = std::function<bool(PJRT_Chunk*, size_t, bool)>;
+  using SendCallbackFunction = std::function<PJRT_Error*(
+      PJRT_Chunk*, PJRT_CallbackError*, size_t, bool)>;
   // std::function version of PJRT_RecvCallback
   using RecvCallbackFunction = std::function<void(PJRT_CopyToDeviceStream*)>;
 

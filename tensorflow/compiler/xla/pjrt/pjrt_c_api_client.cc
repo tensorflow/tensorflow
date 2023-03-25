@@ -739,9 +739,10 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
 PJRT_SendCallbackInfo CppSendCallbackToC(
     const xla::SendCallback& cpp_send_callback,
     PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback_function) {
-  *send_callback_function = [&send_callback = cpp_send_callback.callback](
-                                PJRT_Chunk* chunk, size_t total_size_in_bytes,
-                                bool done) -> bool {
+  *send_callback_function =
+      [&send_callback = cpp_send_callback.callback](
+          PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+          size_t total_size_in_bytes, bool done) -> PJRT_Error* {
     // PJRT C API doesn't support
     // use_major_to_minor_data_layout_for_callbacks = false
     xla::Shape dummy_shape;
@@ -749,16 +750,18 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
                                        ::pjrt::ConvertToCppChunk(*chunk),
                                        total_size_in_bytes, done);
     if (!status.ok()) {
-      return false;
+      return (*callback_error)(pjrt::StatusCodeToPjrtErrorCode(status.code()),
+                               status.error_message().data(),
+                               status.error_message().size());
     }
-    return true;
+    return nullptr;
   };
   return PJRT_SendCallbackInfo{
       /*channel_id=*/cpp_send_callback.channel_id,
       /*user_arg=*/send_callback_function,
       /*send_callback=*/
-      [](PJRT_Chunk* chunk, size_t total_size_in_bytes, bool done,
-         void* user_arg) -> bool {
+      [](PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+         size_t total_size_in_bytes, bool done, void* user_arg) -> PJRT_Error* {
         // PJRT_SendCallback, `send_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -767,7 +770,8 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
         PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::SendCallbackFunction*>(
                 user_arg);
-        return (*send_callback)(chunk, total_size_in_bytes, done);
+        return (*send_callback)(chunk, callback_error, total_size_in_bytes,
+                                done);
       }};
 }
 
