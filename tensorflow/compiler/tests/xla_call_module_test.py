@@ -31,14 +31,10 @@ from tensorflow.python.platform import googletest
 
 def serialize(module_str: str) -> Tuple[str, int]:
   # TODO(b/274838200): error importing xla_extension in OSS
-  try:
-    from tensorflow.compiler.xla.python import xla_extension  # pylint: disable=g-import-not-at-top
-  except ImportError:
-    return module_str, 3
-
-  target_version = '0.9.0'  # TODO(gleasonk): use APIs to get this
-  return xla_extension.mlir.serialize_portable_artifact(
-      module_str, target_version), 4
+  # target_version = '0.9.0'  # TODO(gleasonk): use APIs to get this
+  # return xla_extension.mlir.serialize_portable_artifact(
+  #     module_str, target_version), 4
+  return module_str, 3
 
 
 class XlaCallModuleOpTest(xla_test.XLATestCase):

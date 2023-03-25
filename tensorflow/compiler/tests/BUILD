@@ -2412,7 +2412,6 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
-        "//tensorflow/compiler/xla/python:xla_extension",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",

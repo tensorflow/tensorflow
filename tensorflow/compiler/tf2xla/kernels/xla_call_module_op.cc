@@ -64,7 +64,7 @@ const int VERSION_START_PLATFORMS = 3;
 // Version 4 supports StableHLO with compatibility guarantees.
 // Used from 03/2023.
 const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
-const int VERSION_MINIMUM_SUPPORTED = VERSION_START_PLATFORMS;
+const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
 const int VERSION_MAXIMUM_SUPPORTED = VERSION_START_STABLE_HLO_COMPATIBILITY;
 
 // Computes a dimension value from the dim_arg specification.
