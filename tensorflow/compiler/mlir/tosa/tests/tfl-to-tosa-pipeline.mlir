@@ -2155,7 +2155,7 @@ func.func @test_resize_nearest_align_half_qi8(%arg0: tensor<1x80x80x2x!quant.uni
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_f32_scalar_input
-// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 1, 2, 1, 2>}
+// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
 func.func @test_resize_bilinear_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> tensor<3x2x2x7xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<3x1x1x7xf32>, tensor<2xi32>) -> tensor<3x2x2x7xf32>
@@ -2165,8 +2165,8 @@ func.func @test_resize_bilinear_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> 
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_half_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 1, 2, 1, 2>}
-// CHECK: %[[VAL_2:.*]] = "tosa.rescale"(%[[VAL_1]]) {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i32: 30>}
+// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK: %[[VAL_2:.*]] = "tosa.rescale"(%[[VAL_1]]) {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i32: 32>}
 func.func @test_resize_bilinear_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>, tensor<2xi32>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>>
@@ -2176,8 +2176,8 @@ func.func @test_resize_bilinear_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!qua
 // -----
 
 // CHECK-LABEL: test_resize_bilinear_align_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 1, 2, 1, 2>}
-// CHECK: %[[VAL_2:.*]] = "tosa.rescale"(%[[VAL_1]]) {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i32: 30>}
+// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "BILINEAR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
+// CHECK: %[[VAL_2:.*]] = "tosa.rescale"(%[[VAL_1]]) {double_round = false, input_zp = 0 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i32: 32>}
 func.func @test_resize_bilinear_align_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>, tensor<2xi32>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>>
@@ -2187,7 +2187,7 @@ func.func @test_resize_bilinear_align_qi8_scalar_input(%arg0: tensor<3x1x1x7x!qu
 // -----
 
 // CHECK-LABEL: test_resize_nearest_f32_scalar_input
-// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 1, 2, 1, 2>}
+// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
 func.func @test_resize_nearest_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> tensor<3x2x2x7xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = false} : (tensor<3x1x1x7xf32>, tensor<2xi32>) -> tensor<3x2x2x7xf32>
@@ -2197,7 +2197,7 @@ func.func @test_resize_nearest_f32_scalar_input(%arg0: tensor<3x1x1x7xf32>) -> t
 // -----
 
 // CHECK-LABEL: test_resize_nearest_half_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 1, 2, 1, 2>}
+// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
 func.func @test_resize_nearest_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>, tensor<2xi32>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>>
@@ -2207,7 +2207,7 @@ func.func @test_resize_nearest_half_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quan
 // -----
 
 // CHECK-LABEL: test_resize_nearest_align_qi8_scalar_input
-// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 1, 2, 1, 2>}
+// CHECK: %[[VAL_1:.*]] = "tosa.resize"(%arg0) {border = array<i64: 1, 1>, mode = "NEAREST_NEIGHBOR", offset = array<i64: 0, 0>, scale = array<i64: 2, 1, 2, 1>}
 func.func @test_resize_nearest_align_qi8_scalar_input(%arg0: tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_nearest_neighbor"(%arg0, %0) {align_corners = true, half_pixel_centers = false} : (tensor<3x1x1x7x!quant.uniform<i8:f32, 0.1>>, tensor<2xi32>) -> tensor<3x2x2x7x!quant.uniform<i8:f32, 0.1>>
