@@ -31,8 +31,13 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/stack_frame.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/strcat.h"
@@ -125,30 +130,49 @@ static constexpr const char kStackTraceProtoUrl[] =
     "type.googleapis.com/tensorflow.StackTracePayload";
 
 void SetStackTrace(::tsl::Status& status, std::vector<StackFrame> stack_trace) {
-  status.SetStackTrace(stack_trace);
+  // Given the StackFrame fields are (a) line number (b) filename (c) function
+  // name, we can safely assume that there is no `\n` in there.
+  // Thus, we can serialize as strings using a simple new line delimiter.
+  //
+  // This has the benefit that we don't need to depend on protobuf. Note that
+  // we do this only the serialization of the StackFrame is an implementation
+  // detail and that we don't not need persistent storage or wire serialization.
+  std::vector<std::string> items;
+  items.reserve(stack_trace.size());
+  for (StackFrame& frame : stack_trace) {
+    // We are extra safe and remove any new line in the filename and function
+    // name.
+    items.push_back(
+        absl::StrCat(absl::StrReplaceAll(frame.file_name, {{"\n", ""}}), "\n",
+                     frame.line_number, "\n",
+                     absl::StrReplaceAll(frame.function_name, {{"\n", ""}})));
+  }
+  status.SetPayload(kStackTraceProtoUrl,
+                    absl::Cord(absl::StrJoin(items, "\n")));
 }
 
 std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
-  return status.GetStackTrace();
+  std::vector<StackFrame> stack_trace;
+  absl::optional<absl::Cord> maybe_serialized_payload =
+      status.GetPayload(kStackTraceProtoUrl);
+  if (maybe_serialized_payload.has_value()) {
+    std::vector<std::string> split =
+        absl::StrSplit(maybe_serialized_payload.value().Flatten(), '\n');
+    assert(split.size() % 3 == 0);
+    for (int i = 0; i < split.size() / 3; ++i) {
+      const int idx = 3 * i;
+      int line_number = -1;
+      CHECK(absl::SimpleAtoi(split[idx + 1], &line_number));  // Crash OK
+      stack_trace.emplace_back(std::move(split[idx]), line_number,
+                               std::move(split[idx + 2]));
+    }
+  }
+  return stack_trace;
 }
 
 }  // namespace errors
 
 Status::~Status() {}
-
-void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
-  if (state_ != nullptr) {
-    state_->stack_trace = stack_trace;
-  }
-}
-
-std::vector<StackFrame> Status::GetStackTrace() const {
-  if (state_ != nullptr) {
-    return state_->stack_trace;
-  } else {
-    return std::vector<StackFrame>();
-  }
-}
 
 absl::Span<const SourceLocation> Status::GetSourceLocations() const {
   return state_ != nullptr ? state_->source_locations
@@ -171,22 +195,11 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   state_->source_locations.push_back(loc);
 }
 
-Status::Status(tsl::errors::Code code, absl::string_view msg,
-               SourceLocation loc) {
-  assert(code != tsl::errors::Code::OK);
-  state_ = std::make_unique<State>();
-  state_->code = static_cast<tsl::error::Code>(code);
-  state_->msg = std::string(msg);
-  MaybeAddSourceLocation(loc);
-  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
-          << CurrentStackTrace();
-}
-
 Status::Status(absl::StatusCode code, absl::string_view msg,
                SourceLocation loc) {
   assert(code != absl::StatusCode::kOk);
   state_ = std::make_unique<State>();
-  state_->code = static_cast<tsl::error::Code>(code);
+  state_->code = code;
   state_->msg = std::string(msg);
   MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
@@ -216,57 +229,57 @@ const std::string& Status::empty_string() {
   return *empty;
 }
 
-std::string error_name(error::Code code) {
+std::string error_name(absl::StatusCode code) {
   switch (code) {
-    case tsl::error::OK:
+    case absl::StatusCode::kOk:
       return "OK";
       break;
-    case tsl::error::CANCELLED:
+    case absl::StatusCode::kCancelled:
       return "CANCELLED";
       break;
-    case tsl::error::UNKNOWN:
+    case absl::StatusCode::kUnknown:
       return "UNKNOWN";
       break;
-    case tsl::error::INVALID_ARGUMENT:
+    case absl::StatusCode::kInvalidArgument:
       return "INVALID_ARGUMENT";
       break;
-    case tsl::error::DEADLINE_EXCEEDED:
+    case absl::StatusCode::kDeadlineExceeded:
       return "DEADLINE_EXCEEDED";
       break;
-    case tsl::error::NOT_FOUND:
+    case absl::StatusCode::kNotFound:
       return "NOT_FOUND";
       break;
-    case tsl::error::ALREADY_EXISTS:
+    case absl::StatusCode::kAlreadyExists:
       return "ALREADY_EXISTS";
       break;
-    case tsl::error::PERMISSION_DENIED:
+    case absl::StatusCode::kPermissionDenied:
       return "PERMISSION_DENIED";
       break;
-    case tsl::error::UNAUTHENTICATED:
+    case absl::StatusCode::kUnauthenticated:
       return "UNAUTHENTICATED";
       break;
-    case tsl::error::RESOURCE_EXHAUSTED:
+    case absl::StatusCode::kResourceExhausted:
       return "RESOURCE_EXHAUSTED";
       break;
-    case tsl::error::FAILED_PRECONDITION:
+    case absl::StatusCode::kFailedPrecondition:
       return "FAILED_PRECONDITION";
       break;
-    case tsl::error::ABORTED:
+    case absl::StatusCode::kAborted:
       return "ABORTED";
       break;
-    case tsl::error::OUT_OF_RANGE:
+    case absl::StatusCode::kOutOfRange:
       return "OUT_OF_RANGE";
       break;
-    case tsl::error::UNIMPLEMENTED:
+    case absl::StatusCode::kUnimplemented:
       return "UNIMPLEMENTED";
       break;
-    case tsl::error::INTERNAL:
+    case absl::StatusCode::kInternal:
       return "INTERNAL";
       break;
-    case tsl::error::UNAVAILABLE:
+    case absl::StatusCode::kUnavailable:
       return "UNAVAILABLE";
       break;
-    case tsl::error::DATA_LOSS:
+    case absl::StatusCode::kDataLoss:
       return "DATA_LOSS";
       break;
     default:
@@ -342,8 +355,7 @@ Status FromAbslStatus(const absl::Status& s, SourceLocation loc) {
   }
   absl::Span<const SourceLocation> locs = internal::GetSourceLocations(s);
   const SourceLocation first_loc = locs.empty() ? loc : locs[0];
-  Status converted(static_cast<tsl::error::Code>(s.code()), s.message(),
-                   first_loc);
+  Status converted(s.code(), s.message(), first_loc);
   for (int i = 1; i < locs.size(); ++i) {
     converted.MaybeAddSourceLocation(locs[i]);
   }
@@ -446,7 +458,7 @@ std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   return payloads;
 }
 
-Status MakeStatus(tensorflow::error::Code code, absl::string_view message,
+Status MakeStatus(absl::StatusCode code, absl::string_view message,
                   const std::unordered_map<std::string, absl::Cord>& payloads) {
   Status status(code, message);
   for (const auto& payload : payloads) {
@@ -496,11 +508,12 @@ Status StatusGroup::as_summary_status() const {
         strings::Printf("%zu root error(s) found.", non_derived_.size()));
 
     int index = 0;
-    auto code = tsl::error::CANCELLED;
+    auto code = absl::StatusCode::kCancelled;
     for (const auto& s : non_derived_) {
       // NOTE: Avoid using CANCELLED as the code of summary status if the group
       // contains other error code.
-      if (code == tsl::error::CANCELLED && s.code() != tsl::error::CANCELLED) {
+      if (code == absl::StatusCode::kCancelled &&
+          s.code() != absl::StatusCode::kCancelled) {
         code = s.code();
       }
       fmt.emplace_back(strings::StrCat("  (", index, ") ", MakeString(s)));

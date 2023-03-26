@@ -179,7 +179,7 @@ absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
   SymbolTable sym_table(*module_);
 
   // Add `rt.export` operations for all explicitly exported functions.
-  for (auto& indexed : llvm::enumerate(exported)) {
+  for (const auto& indexed : llvm::enumerate(exported)) {
     if (auto func = sym_table.lookup<FunctionOpInterface>(indexed.value())) {
       OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
       continue;
@@ -255,7 +255,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts, ModuleOp mlir_module,
   std::vector<Executable::Function> functions;
   std::vector<std::string_view> exported;  // names of exported functions
 
-  for (auto& indexed : llvm::enumerate(compiler->exported())) {
+  for (const auto& indexed : llvm::enumerate(compiler->exported())) {
     auto func = indexed.value();
     std::string_view name = exported.emplace_back(func.getName());
 

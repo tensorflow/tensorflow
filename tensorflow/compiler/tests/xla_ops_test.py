@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
 
@@ -822,7 +823,8 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
       self.assertEqual(res.shape.as_list(), [1, 2, 4])
 
     # The first two dimension slice sizes are known
-    slice_sizes = array_ops.stack([1, 2, array_ops.placeholder(np.int32, [])])
+    slice_sizes = array_ops_stack.stack(
+        [1, 2, array_ops.placeholder(np.int32, [])])
     for a_shape in [(2, 3, 4), (None, 3, 4), None]:
       a = array_ops.placeholder(np.float32, shape=a_shape)
       res = xla.dynamic_slice(a, start, slice_sizes)

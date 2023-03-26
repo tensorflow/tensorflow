@@ -20,6 +20,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed as random_seed_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_clustering_ops
 from tensorflow.python.ops import math_ops
@@ -27,6 +28,7 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -429,7 +431,7 @@ class KMeans:
                   ]):
                     return array_ops.identity(update_in_steps)
 
-        return control_flow_ops.cond(
+        return cond.cond(
             update_in_steps <= 0, _f,
             lambda: state_ops.assign_sub(update_in_steps, 1))
     else:
@@ -686,7 +688,7 @@ class _InitializeClustersOpFactory:
 
       # Obtain a random point if there are no previously sampled centers.
       # Otherwise, construct a k-MC2 Markov chain.
-      new_centers = control_flow_ops.cond(
+      new_centers = cond.cond(
           math_ops.equal(self._num_selected, 0), _sample_random,
           _sample_kmc2_chain)
       # Assign new cluster centers to underlying variable.
@@ -700,7 +702,7 @@ class _InitializeClustersOpFactory:
       return i + 1, self._num_clusters - array_ops.shape(assigned_centers)[0]
 
     # Add num_to_sample new data points.
-    _, num_remaining = control_flow_ops.while_loop(_cond, _body, [0, 0])
+    _, num_remaining = while_loop.while_loop(_cond, _body, [0, 0])
     return num_remaining
 
   def _greedy_batch_sampler(self, sampler):
@@ -708,9 +710,9 @@ class _InitializeClustersOpFactory:
     # remaining, choose the entire input dataset as centers. This can happen
     # with mini-batch. Otherwise, sample the batch according to the provided
     # sampler.
-    return control_flow_ops.cond(self._num_data <= self._num_remaining,
-                                 lambda: array_ops.concat(self._inputs, 0),
-                                 sampler)
+    return cond.cond(self._num_data <= self._num_remaining,
+                     lambda: array_ops.concat(self._inputs, 0),
+                     sampler)
 
   def _single_batch_sampler(self, sampler):
     # Enforce that there are at least as many data points as centers
@@ -741,7 +743,7 @@ class _InitializeClustersOpFactory:
     if self._distance_metric == COSINE_DISTANCE:
       new_centers = nn_impl.l2_normalize(new_centers, dim=1)
     # If cluster_centers is empty, it doesn't have the right shape for concat.
-    all_centers = control_flow_ops.cond(
+    all_centers = cond.cond(
         math_ops.equal(self._num_selected, 0), lambda: new_centers,
         lambda: array_ops.concat([self._cluster_centers, new_centers], 0))
     # TODO(ccolby): De-dupe all_centers?
@@ -760,14 +762,14 @@ class _InitializeClustersOpFactory:
         num_now_remaining = self._kmc2_multiple_centers()
       else:
         num_now_remaining = self._add_new_centers()
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(num_now_remaining, 0),
           lambda: state_ops.assign(self._cluster_centers_initialized, True),
           control_flow_ops.no_op)
 
   def op(self):
     """Returns the cluster initializer op."""
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(self._num_remaining, 0),
         lambda: check_ops.assert_equal(self._cluster_centers_initialized, True),
         self._initialize)

@@ -352,29 +352,29 @@ PyObject* PyCustomFloat_RichCompare(PyObject* a, PyObject* b, int op) {
   if (!SafeCastToCustomFloat<T>(a, &x) || !SafeCastToCustomFloat<T>(b, &y)) {
     return PyGenericArrType_Type.tp_richcompare(a, b, op);
   }
+  bool less = x < y;
+  bool equal = x == y;
+  bool greater = x > y;
   bool result;
   switch (op) {
     case Py_LT:
-      result = x < y;
+      result = less;
       break;
     case Py_LE:
-      result = x <= y;
+      result = less || equal;
       break;
     case Py_EQ:
-      result = x == y;
+      result = equal;
       break;
     case Py_NE:
-      result = x != y;
+      result = !equal;
       break;
     case Py_GT:
-      result = x > y;
+      result = greater;
       break;
     case Py_GE:
-      result = x >= y;
+      result = greater || equal;
       break;
-    default:
-      LOG(ERROR) << "Invalid op type " << op;
-      result = false;
   }
   return PyBool_FromLong(result);
 }
@@ -530,20 +530,18 @@ int NPyCustomFloat_Compare(const void* a, const void* b, void* arr) {
 
   T y;
   memcpy(&y, b, sizeof(T));
-  float fy(y);
-  float fx(x);
 
-  if (fx < fy) {
+  if (x < y) {
     return -1;
   }
-  if (fy < fx) {
+  if (y < x) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!Eigen::numext::isnan(fx) && Eigen::numext::isnan(fy)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (Eigen::numext::isnan(fx) && !Eigen::numext::isnan(fy)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;
@@ -640,13 +638,14 @@ template <typename T>
 int NPyCustomFloat_ArgMaxFunc(void* data, npy_intp n, npy_intp* max_ind,
                               void* arr) {
   const T* bdata = reinterpret_cast<const T*>(data);
+  static_assert(std::numeric_limits<T>::has_quiet_NaN);
   // Start with a max_val of NaN, this results in the first iteration preferring
   // bdata[0].
-  float max_val = std::numeric_limits<float>::quiet_NaN();
+  T max_val = std::numeric_limits<T>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
     // This condition is chosen so that NaNs are always considered "max".
-    if (!(static_cast<float>(bdata[i]) <= max_val)) {
-      max_val = static_cast<float>(bdata[i]);
+    if (!(bdata[i] <= max_val)) {
+      max_val = bdata[i];
       *max_ind = i;
       // NumPy stops at the first NaN.
       if (Eigen::numext::isnan(max_val)) {
@@ -661,13 +660,14 @@ template <typename T>
 int NPyCustomFloat_ArgMinFunc(void* data, npy_intp n, npy_intp* min_ind,
                               void* arr) {
   const T* bdata = reinterpret_cast<const T*>(data);
-  float min_val = std::numeric_limits<float>::quiet_NaN();
+  static_assert(std::numeric_limits<T>::has_quiet_NaN);
   // Start with a min_val of NaN, this results in the first iteration preferring
   // bdata[0].
+  T min_val = std::numeric_limits<T>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
     // This condition is chosen so that NaNs are always considered "min".
-    if (!(static_cast<float>(bdata[i]) >= min_val)) {
-      min_val = static_cast<float>(bdata[i]);
+    if (!(bdata[i] >= min_val)) {
+      min_val = bdata[i];
       *min_ind = i;
       // NumPy stops at the first NaN.
       if (Eigen::numext::isnan(min_val)) {
@@ -1153,7 +1153,7 @@ struct Power {
 };
 template <typename T>
 struct Abs {
-  T operator()(T a) { return T(std::abs(static_cast<float>(a))); }
+  T operator()(T a) { return Eigen::numext::abs(a); }
 };
 template <typename T>
 struct Cbrt {
@@ -1164,8 +1164,13 @@ struct Ceil {
   T operator()(T a) { return T(std::ceil(static_cast<float>(a))); }
 };
 template <typename T>
-struct CopySign;
-
+struct CopySign {
+  T operator()(T a, T b) {
+    auto abs_a = Eigen::numext::abs(a);
+    bool b_sign = static_cast<bool>(Eigen::numext::signbit(b));
+    return b_sign ? -abs_a : abs_a;
+  }
+};
 template <typename T>
 struct Exp {
   T operator()(T a) { return T(std::exp(static_cast<float>(a))); }
@@ -1192,15 +1197,14 @@ struct Frexp {
 };
 template <typename T>
 struct Heaviside {
-  T operator()(T bx, T h0) {
-    float x = static_cast<float>(bx);
+  T operator()(T x, T h0) {
     if (Eigen::numext::isnan(x)) {
-      return bx;
+      return x;
     }
-    if (x < 0) {
+    if (x < T(0)) {
       return T(0.0f);
     }
-    if (x > 0) {
+    if (x > T(0)) {
       return T(1.0f);
     }
     return h0;  // x == 0
@@ -1212,15 +1216,15 @@ struct Conjugate {
 };
 template <typename T>
 struct IsFinite {
-  bool operator()(T a) { return std::isfinite(static_cast<float>(a)); }
+  bool operator()(T a) { return Eigen::numext::isfinite(a); }
 };
 template <typename T>
 struct IsInf {
-  bool operator()(T a) { return std::isinf(static_cast<float>(a)); }
+  bool operator()(T a) { return Eigen::numext::isinf(a); }
 };
 template <typename T>
 struct IsNan {
-  bool operator()(T a) { return Eigen::numext::isnan(static_cast<float>(a)); }
+  bool operator()(T a) { return Eigen::numext::isnan(a); }
 };
 template <typename T>
 struct Ldexp {
@@ -1300,11 +1304,10 @@ struct Rint {
 template <typename T>
 struct Sign {
   T operator()(T a) {
-    float f(a);
-    if (f < 0) {
+    if (a < T(0)) {
       return T(-1);
     }
-    if (f > 0) {
+    if (a > T(0)) {
       return T(1);
     }
     return a;
@@ -1312,7 +1315,7 @@ struct Sign {
 };
 template <typename T>
 struct SignBit {
-  bool operator()(T a) { return std::signbit(static_cast<float>(a)); }
+  bool operator()(T a) { return static_cast<bool>(Eigen::numext::signbit(a)); }
 };
 template <typename T>
 struct Sqrt {
@@ -1432,31 +1435,19 @@ struct Ge {
 };
 template <typename T>
 struct Maximum {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fa) || fa > fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(a) || a > b ? a : b; }
 };
 template <typename T>
 struct Minimum {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fa) || fa < fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(a) || a < b ? a : b; }
 };
 template <typename T>
 struct Fmax {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fb) || fa > fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(b) || a > b ? a : b; }
 };
 template <typename T>
 struct Fmin {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fb) || fa < fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(b) || a < b ? a : b; }
 };
 
 template <typename T>
@@ -1483,15 +1474,54 @@ struct LogicalXor {
 };
 
 template <typename T>
-struct NextAfter;
+struct NextAfter {
+  using BitsType =
+      typename Eigen::numext::get_integer_by_size<sizeof(T)>::unsigned_type;
+  T operator()(T from, T to) {
+    if (Eigen::numext::isnan(from) || Eigen::numext::isnan(to)) {
+      return std::numeric_limits<T>::quiet_NaN();
+    }
+    if (from == to) {
+      return to;
+    }
+    CopySign<T> copysign;
+    if (from == T(0)) {
+      // Smallest subnormal signed like `to`.
+      return copysign(std::numeric_limits<T>::denorm_min(), to);
+    }
+    // Some non-IEEE compatible formats may have a representation for NaN
+    // instead of -0, ensure we return a zero in such cases.
+    const bool from_is_bigger = from > to;
+    if constexpr (!std::numeric_limits<T>::is_iec559) {
+      if (from == std::numeric_limits<T>::denorm_min() && from_is_bigger) {
+        return copysign(T(0), from);
+      }
+    }
+    const bool from_sign = static_cast<bool>(Eigen::numext::signbit(from));
+    const BitsType magnitude_adjustment = from_is_bigger != from_sign
+                                              ? static_cast<BitsType>(-1)
+                                              : static_cast<BitsType>(1);
+    const BitsType from_rep = Eigen::numext::bit_cast<BitsType>(from);
+    const BitsType out_int = from_rep + magnitude_adjustment;
+    return Eigen::numext::bit_cast<T>(out_int);
+  }
+};
 
 template <typename T>
 struct Spacing {
   T operator()(T x) {
+    CopySign<T> copysign;
+    if constexpr (!std::numeric_limits<T>::has_infinity) {
+      if (Eigen::numext::abs(x) == std::numeric_limits<T>::max()) {
+        return copysign(std::numeric_limits<T>::quiet_NaN(), x);
+      }
+    }
     // Compute the distance between the input and the next number with greater
     // magnitude. The result should have the sign of the input.
-    T away(std::copysign(std::numeric_limits<float>::infinity(),
-                         static_cast<float>(x)));
+    T away = std::numeric_limits<T>::has_infinity
+                 ? std::numeric_limits<T>::infinity()
+                 : std::numeric_limits<T>::max();
+    away = copysign(away, x);
     return NextAfter<T>()(x, away) - x;
   }
 };

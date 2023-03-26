@@ -589,5 +589,21 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   }
 }
 
+bool IsHostPlane(const XPlane& plane) {
+  // NOTE: remove me after all legacy traces are gone (i.e. 2022/08/04).
+  constexpr absl::string_view kLegacyCustomPlanePrefix = "/custom:";
+  return plane.name() == kHostThreadsPlaneName ||
+         plane.name() == kHostCpusPlaneName ||
+         plane.name() == kTFStreamzPlaneName ||
+         plane.name() == kMetadataPlaneName ||
+         plane.name() == kSyscallsPlaneName ||
+         plane.name() == kPythonTracerPlaneName ||
+         plane.name() == kCuptiDriverApiPlaneName ||
+         absl::StartsWith(plane.name(), kCustomPlanePrefix) ||
+         absl::StartsWith(plane.name(), kLegacyCustomPlanePrefix);
+}
+
+bool IsDevicePlane(const XPlane& plane) { return !IsHostPlane(plane); }
+
 }  // namespace profiler
 }  // namespace tsl

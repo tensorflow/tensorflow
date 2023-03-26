@@ -69,7 +69,8 @@ namespace {
 // nor Y is adjointed). The dimension to contract along is switched when any
 // operand is adjointed.
 // See http://en.wikipedia.org/wiki/Tensor_contraction
-Eigen::IndexPair<Eigen::DenseIndex> ContractionDims(bool adj_x, bool adj_y) {
+inline Eigen::IndexPair<Eigen::DenseIndex> ContractionDims(bool adj_x,
+                                                           bool adj_y) {
   return Eigen::IndexPair<Eigen::DenseIndex>(adj_x ? 0 : 1, adj_y ? 1 : 0);
 }
 
@@ -319,7 +320,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
     if (memory_limit_ > 0 && byte_size > memory_limit_) {
       return tsl::Status{
-          tsl::error::UNAVAILABLE,
+          absl::StatusCode::kUnavailable,
           absl::StrCat("Requested memory size (", byte_size,
                        ") exceeds the memory limit (", memory_limit_, ").")};
     }
@@ -329,7 +330,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
       return tsl::Status{
-          tsl::error::UNAVAILABLE,
+          absl::StatusCode::kUnavailable,
           absl::StrCat("Failed to allocate requested memory of (", byte_size,
                        ").")};
     }
@@ -724,8 +725,8 @@ class BaseBatchMatMulOp : public OpKernel {
         errors::InvalidArgument(
             "Matrix size-incompatible: In[0]: ", in0.shape().DebugString(),
             ", In[1]: ", in1.shape().DebugString()));
-    out_shape.AddDim(d0);
-    out_shape.AddDim(d3);
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d0));
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d3));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
     if (out->NumElements() == 0) {

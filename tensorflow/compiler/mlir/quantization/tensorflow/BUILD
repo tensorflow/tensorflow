@@ -10,8 +10,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
-        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
-        "//third_party/cloud_tpu/inference_converter_v2/...",  # TPU Inference Converter V2
     ] + internal_visibility_allowlist(),
 )
 
@@ -58,7 +56,7 @@ genrule(
     ],
     cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src '$(SRCS)'",
     compatible_with = get_compatible_with_cloud(),
-    exec_tools = ["gen_quantized_function_library"],
+    tools = ["gen_quantized_function_library"],
 )
 
 cc_library(
@@ -242,6 +240,20 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "convert_tpu_model_to_cpu_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/convert_tpu_model_to_cpu.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/convert_tpu_model_to_cpu.td",
+    deps = [":quant_td_files"],
+)
+
+gentbl_cc_library(
     name = "post_quantize_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -355,6 +367,7 @@ cc_library(
         "passes/convert_fake_quant_to_qdq.cc",
         "passes/convert_tf_quant_ops_to_mhlo.cc",
         "passes/convert_tpu_model_to_cpu.cc",
+        "passes/convert_tpu_model_to_cpu.inc",
         "passes/duplicate_shape_determining_constants.cc",
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",
@@ -417,8 +430,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/utils:name_utils",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
@@ -429,8 +442,10 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",

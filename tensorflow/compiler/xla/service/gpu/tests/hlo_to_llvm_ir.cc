@@ -92,7 +92,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
             llvm_module.get(), cuda_compute_capability, hlo_module->config()));
     std::cout << ptx << std::endl;
 #else
-    return {tsl::error::UNIMPLEMENTED, "Feature not yet implemented in ROCm"};
+    return {absl::StatusCode::kUnimplemented,
+            "Feature not yet implemented in ROCm"};
 #endif
   }
   return xla::OkStatus();

@@ -81,12 +81,13 @@ class Iterator {
   // indication of whether the end of the input pipeline has been reached.
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
-  // Saves a checkpoint of the iterator. Returns a Tensor that can be called
-  // with `Restore()`.
-  StatusOr<Tensor> Save();
+  // Saves a checkpoint of the iterator. Returns Tensors that can be called with
+  // `Restore()`.
+  StatusOr<std::vector<Tensor>> Save();
 
-  // Restores the iterator from a checkpoint.
-  Status Restore(const Tensor& saved_iterator);
+  // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
+  // iterator saved by calling `Save()`.
+  Status Restore(const std::vector<Tensor>& saved_iterator);
 
  private:
   friend class Dataset;

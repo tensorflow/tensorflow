@@ -54,9 +54,11 @@ def slice_host_devices_for_multiworker(num_clients, client_id, ports):
   if num_clients == 0:
     # All GPUs are visible to the client.
     del os.environ['CUDA_VISIBLE_DEVICES']
+    del os.environ['HIP_VISIBLE_DEVICES']
   else:
     # Make the client_id-th GPU visible to the client.
     os.environ['CUDA_VISIBLE_DEVICES'] = f'{client_id}'
+    os.environ['HIP_VISIBLE_DEVICES'] = f'{client_id}'
     # Make the client_id-th (4x) TPU cores visible to the client.
     os.environ['CLOUD_TPU_TASK_ID'] = f'{client_id}'
     if 'tpu' in DTENSOR_TEST_UTIL_BACKEND.value:

@@ -159,6 +159,7 @@ cc_library(
         ":str_util",
         ":strcat",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
     ],
@@ -278,6 +279,19 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ] + tf_platform_deps("status"),
+)
+
+cc_library(
+    name = "status_to_from_proto",
+    srcs = [
+        "status_to_from_proto.cc",
+    ],
+    hdrs = ["status_to_from_proto.h"],
+    deps = [
+        ":status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
     ] + tf_platform_deps("status"),
 )
 
@@ -479,8 +493,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "abi.h",
         "abi.cc",
+        "abi.h",
         "base64.cc",
         "base64.h",
         "bfloat16.h",
@@ -526,8 +540,8 @@ filegroup(
         "protobuf_util.cc",
         "ram_file_system.h",
         "raw_coding.h",
-        "regexp.h",
         "refcount.h",
+        "regexp.h",
         "resource.h",
         "scanner.cc",
         "scanner.h",
@@ -555,9 +569,9 @@ filegroup(
     ] + select({
         "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
-            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "tracing.cc",
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -615,9 +629,9 @@ filegroup(
         ],
     ) + [
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -980,9 +994,9 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         ":bfloat16",
         ":float8",
+        ":platform",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
@@ -1330,9 +1344,14 @@ tsl_cc_test(
     srcs = ["status_test.cc"],
     deps = [
         ":errors",
+        ":stack_frame",
         ":status",
+        ":status_matchers",
+        ":status_to_from_proto",
         ":test",
         ":test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
@@ -1528,12 +1547,7 @@ tsl_cc_test(
     name = "setround_test",
     size = "small",
     srcs = ["setround_test.cc"],
-    tags = [
-        "noasan",
-        "noclang",
-        "nomsan",
-        "notsan",
-    ],
+    tags = ["noclang"],
     deps = [
         ":setround",
         ":test",

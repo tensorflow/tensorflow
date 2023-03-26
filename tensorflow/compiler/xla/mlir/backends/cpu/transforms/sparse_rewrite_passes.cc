@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -33,59 +35,144 @@ namespace xla {
 namespace cpu {
 namespace {
 
-#define GEN_PASS_DEF_SPARSECUSTOMCALLTOPACKPASS
+#define GEN_PASS_DEF_SPARSECUSTOMCALLREWRITINGPASS
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
-class SparseCustomCallToPackPass
-    : public impl::SparseCustomCallToPackPassBase<SparseCustomCallToPackPass> {
+class SparseCustomCallRewritingPass
+    : public impl::SparseCustomCallRewritingPassBase<
+          SparseCustomCallRewritingPass> {
   void runOnOperation() override;
 };
 
-class SparseCustomCallToPackRewriter
-    : public OpRewritePattern<mhlo::CustomCallOp> {
+struct SparsePackCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need two arrays (data/indices)");
+    assert(op.getResults().size() == 1 && "Must be packing into one tensor");
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1]);
+    return success();
+  }
+};
+
+struct SparseUnpackCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() == 3 &&
+           "Must be unpacking into data/indices/nnz");
+    assert(op.getInputs().size() == 1 &&
+           "Must be unpacking from one sparse tensor");
+
+    SmallVector<Type, 3> unpack_ret_tp(op.getResults().getTypes());
+    // A scalar is treated as a zero-ranked tensor type from frontend.
+    auto nnz_type = unpack_ret_tp.back().cast<RankedTensorType>();
+    assert(nnz_type.getRank() == 0 && "nnz tensor must be zero ranked");
+    unpack_ret_tp.back() = nnz_type.getElementType();
+
+    // Constructs the UnpackOp.
+    auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
+        op.getLoc(), unpack_ret_tp, op.getInputs());
+
+    // Converts the scalar nnz returned from UnpackOp back to tensor type.
+    SmallVector<Value, 3> unpack_ret_v(unpack_op.getResults());
+    auto scalar_nnz = unpack_op.getNse();
+    Value tensor_nnz = rewriter.create<tensor::EmptyOp>(
+        op.getLoc(), ArrayRef<int64_t>{}, scalar_nnz.getType());
+    tensor_nnz = rewriter.create<tensor::InsertOp>(op.getLoc(), scalar_nnz,
+                                                   tensor_nnz, ValueRange{});
+    unpack_ret_v.back() = tensor_nnz;
+    rewriter.replaceOp(op, unpack_ret_v);
+    return success();
+  }
+};
+
+struct SparseTransposeCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need argument and permutation");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // The permutation is passed in as a constant of dense int elements.
+    auto permutation_constant =
+        op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto permutation =
+        permutation_constant.getValue().cast<DenseIntElementsAttr>();
+
+    // Reconstruct the transpose operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], permutation);
+    return success();
+  }
+};
+
+struct SparseConcatenateCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // The concatenation dimension.
+    auto concat_dim = op.getInputs().back().getDefiningOp<mhlo::ConstantOp>();
+    auto concat_dim_attr = concat_dim.getValue().cast<DenseIntElementsAttr>();
+    // Reconstruct the concatenate operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    // Depending on test setup, we can get either a 32-bit integer or a 64-bit
+    // integer.
+    if (concat_dim_attr.getElementType().isInteger(32)) {
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint32_t>()[0]));
+    } else {
+      assert(concat_dim_attr.getElementType().isInteger(64));
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint64_t>()[0]));
+    }
+
+    return success();
+  }
+};
+
+struct SparseBroadcastInDimCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 &&
+           "Need argument and broadcast dimensions");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // Broadcast dimensions are passed in as a constant of dense int elements.
+    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto broadcast_dimensions =
+        dims_constant.getValue().cast<DenseIntElementsAttr>();
+
+    // Reconstruct the broadcast_in_dim operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], broadcast_dimensions);
+    return success();
+  }
+};
+
+class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
+  using SparseCustomTargetRewriter = std::function<LogicalResult(
+      mhlo::CustomCallOp op, PatternRewriter& rewriter)>;
+
+  const llvm::StringMap<SparseCustomTargetRewriter> rewriter_map_{
+      std::make_pair("sparse_tensor_sparse_pack", SparsePackCallRewriter()),
+      std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
+      std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
+      std::make_pair("sparse_tensor_broadcast_in_dim",
+                     SparseBroadcastInDimCallRewriter()),
+      std::make_pair("sparse_tensor_concatenate",
+                     SparseConcatenateCallRewriter()),
+  };
+
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
   // the corresponding sparse_tensor::PackOp and sparse_tensor::UnpackOp.
   LogicalResult matchAndRewrite(mhlo::CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
-    const StringRef sparse_pack_call_name = "sparse_tensor_pack";
-    const StringRef sparse_unpack_call_name = "sparse_tensor_unpack";
-
-    if (op.getCallTargetName().equals(sparse_pack_call_name)) {
-      assert(op.getInputs().size() == 2 && "Need two arrays (data/indices)");
-      assert(op.getResults().size() == 1 && "Must be packing into one tensor");
-      Value ret_sp_tensor = op.getResults()[0];
-      rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
-          op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1]);
-      return success();
-    } else if (op.getCallTargetName().equals(sparse_unpack_call_name)) {
-      assert(op.getResults().size() == 3 &&
-             "Must be unpacking into data/indices/nnz");
-      assert(op.getInputs().size() == 1 &&
-             "Must be unpacking from one sparse tensor");
-
-      SmallVector<Type, 3> unpack_ret_tp(op.getResults().getTypes());
-      // A scalar is treated as a zero-ranked tensor type from frontend.
-      auto nnz_type = unpack_ret_tp.back().cast<RankedTensorType>();
-      assert(nnz_type.getRank() == 0 && "nnz tensor must be zero ranked");
-      unpack_ret_tp.back() = nnz_type.getElementType();
-
-      // Constructs the UnpackOp.
-      auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
-          op.getLoc(), unpack_ret_tp, op.getInputs());
-
-      // Converts the scalar nnz returned from UnpackOp back to tensor type.
-      SmallVector<Value, 3> unpack_ret_v(unpack_op.getResults());
-      auto scalar_nnz = unpack_op.getNnz();
-      Value tensor_nnz = rewriter.create<tensor::EmptyOp>(
-          op.getLoc(), ArrayRef<int64_t>{}, scalar_nnz.getType());
-      tensor_nnz = rewriter.create<tensor::InsertOp>(op.getLoc(), scalar_nnz,
-                                                     tensor_nnz, ValueRange{});
-      unpack_ret_v.back() = tensor_nnz;
-      rewriter.replaceOp(op, unpack_ret_v);
-      return success();
+    if (auto it = rewriter_map_.find(op.getCallTargetName());
+        it != rewriter_map_.end()) {
+      return it->second(op, rewriter);
     }
     // Returns failure on unmatched call target.
     return failure();
@@ -106,12 +193,12 @@ class ReallocToAllocRewriter : public OpRewritePattern<memref::ReallocOp> {
   }
 };
 
-void SparseCustomCallToPackPass::runOnOperation() {
+void SparseCustomCallRewritingPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns.insert<SparseCustomCallToPackRewriter>(ctx);
+  patterns.insert<SparseCustomCallRewriter>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();
@@ -121,8 +208,8 @@ void SparseCustomCallToPackPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-createSparseCustomCallToPackUnpackOpPass() {
-  return std::make_unique<SparseCustomCallToPackPass>();
+createSparseCustomCallRewritingPass() {
+  return std::make_unique<SparseCustomCallRewritingPass>();
 }
 
 }  // namespace cpu

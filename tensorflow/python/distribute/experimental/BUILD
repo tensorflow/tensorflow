@@ -52,6 +52,7 @@ py_library(
 dtensor_test(
     name = "mirrored_strategy_test",
     srcs = ["mirrored_strategy_test.py"],
+    shard_count = {"tpu": 2},
     tags = ["no_pip"],
     deps = [
         ":dtensor_util",
@@ -98,6 +99,7 @@ dtensor_test(
         "//tensorflow/dtensor/python/tests:test_util",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//third_party/py/numpy",

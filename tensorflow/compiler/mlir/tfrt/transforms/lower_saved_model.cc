@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
 namespace tensorflow {
 namespace {
@@ -42,19 +43,6 @@ using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
-
-bool IsSessionInitializer(mlir::func::FuncOp op) {
-  auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
-      op->getParentOfType<mlir::ModuleOp>());
-  if (!session_initializer_op) return false;
-
-  for (auto sym_ref : session_initializer_op.getInitializers()) {
-    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
-      return true;
-  }
-
-  return false;
-}
 
 mlir::TF::ResourceHandle GetResourceHandle(mlir::Operation *op) {
   llvm::StringRef device;
@@ -287,24 +275,32 @@ void HoistInvariantOpsInFunction(
   }
 }
 
+void FindCalleesRecursiveForOp(const mlir::SymbolTable &symbol_table,
+                               mlir::Operation *op,
+                               llvm::StringSet<> &callees) {
+  for (const auto &named_attr : op->getAttrs()) {
+    if (auto symbol_attr =
+            named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+      auto symbol = symbol_attr.getValue();
+      if (!callees.contains(symbol)) {
+        callees.insert(symbol);
+
+        auto func = symbol_table.lookup<mlir::func::FuncOp>(symbol);
+        if (!func) continue;
+
+        func.walk([&](mlir::Operation *op) {
+          FindCalleesRecursiveForOp(symbol_table, op, callees);
+        });
+      }
+    }
+  }
+}
+
 void FindCalleesRecursive(const mlir::SymbolTable &symbol_table,
                           mlir::func::FuncOp func, llvm::StringSet<> &callees) {
   assert(func);
   func.walk([&](mlir::Operation *op) {
-    for (const auto &named_attr : op->getAttrs()) {
-      if (auto symbol_attr =
-              named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
-        auto symbol = symbol_attr.getValue();
-        if (!callees.contains(symbol)) {
-          callees.insert(symbol);
-
-          auto func = symbol_table.lookup<mlir::func::FuncOp>(symbol);
-          if (!func) continue;
-
-          FindCalleesRecursive(symbol_table, func, callees);
-        }
-      }
-    }
+    FindCalleesRecursiveForOp(symbol_table, op, callees);
   });
 }
 
@@ -319,6 +315,11 @@ void HoistInvariantOps(mlir::ModuleOp module) {
   // Find all callees referenced in the initialization functions.
   llvm::StringSet<> init_callees;
 
+  // Recursively find all callees referenced in the tf.XlaLaunch op.
+  // At and after the point of calling this pass, the MLIR xla function is no
+  // longer used. So there is no point to do hoisting for xla functions.
+  llvm::StringSet<> xla_launch_callees;
+
   module.walk([&](mlir::Operation *op) {
     if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op)) {
       auto func = op->getParentOfType<mlir::func::FuncOp>();
@@ -327,6 +328,11 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     } else if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
       if (!IsSessionInitializer(func)) return;
       FindCalleesRecursive(symbol_table, func, init_callees);
+    } else if (op->getName().getStringRef().str() == "tf.XlaLaunch") {
+      // TODO(b/275095412): Clean up MLIR XLA functions after they are written
+      // back to function library, so that we don't need to do special handling
+      // for those functions here.
+      FindCalleesRecursiveForOp(symbol_table, op, xla_launch_callees);
     }
   });
 
@@ -364,7 +370,8 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     // including recursive ones, of an init functions, because otherwise the
     // hoisted values won't be initialized when this function is called.
     if (IsSessionInitializer(func) ||
-        init_callees.contains(func.getSymName()) || func == init_func_op)
+        init_callees.contains(func.getSymName()) || func == init_func_op ||
+        xla_launch_callees.contains(func.getSymName()))
       continue;
 
     // Skips hoisting if this function runs on TPU. This is will happen when

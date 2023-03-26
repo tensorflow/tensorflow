@@ -28,10 +28,12 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
@@ -40,9 +42,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
-
-# The signature key of the saved model init op.
-_INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
@@ -194,7 +193,9 @@ def _convert_values_to_tf_tensors(
     if isinstance(tensorlike_value, core.Tensor):
       tensor_value = tensorlike_value
     else:
-      tensor_value = ops.convert_to_tensor_v2_with_dispatch(tensorlike_value)
+      tensor_value = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          tensorlike_value
+      )
 
     tensor_mapping[name] = tensor_value
 
@@ -513,6 +514,39 @@ def _run_graph_for_calibration(
   logging.info('Calibration step complete.')
 
 
+def _copy_assets(src_path: str, dst_path: str) -> None:
+  """Copies the assets directory of the saved model.
+
+  Clones the contents of the assets/ directory from the source saved model
+  directory to the destination saved model directory. Nothing will be copied if
+  there are no assets directory in the source directory.
+
+  Args:
+    src_path: Source saved model directory.
+    dst_path: Destination saved model directory. This directory must exist.
+  """
+  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
+  if not file_io.file_exists_v2(src_assets_path):
+    # Do nothing if the source assets path does not exist.
+    return
+
+  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
+  file_io.create_dir_v2(dst_assets_path)
+
+  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+    for asset_file_name in files:
+      src_asset_file = file_io.join(curr_dir, asset_file_name)
+
+      # Construct the destination assets file path.
+      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+
+      file_io.copy_v2(src_asset_file, dst_asset_file)
+      logging.info(
+          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+      )
+
+
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -535,11 +569,18 @@ def _run_static_range_qat(
     signature_def_map: Signature def key -> SignatureDef mapping.
   """
   logging.info('Running static-range quantization for QAT model.')
+
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
   exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
       list(signature_def_keys),
       set(tags),
       quant_opts.SerializeToString(),
+      dict(function_aliases),
   )
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -552,12 +593,13 @@ def _run_static_range_qat(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
   )
+
+  _copy_assets(src_saved_model_path, dst_saved_model_path)
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -593,37 +635,20 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
         )
 
 
-def _copy_assets(src_path: str, dst_path: str) -> None:
-  """Copies the assets directory of the saved model.
-
-  Clones the contents of the assets/ directory from the source saved model
-  directory to the destination saved model directory. Nothing will be copied if
-  there are no assets directory in the source directory.
+def _get_saver_def_or_none(
+    exported_model: exported_model_pb2.ExportedModel,
+) -> Optional[saver_pb2.SaverDef]:
+  """Returns the SaverDef from ExportedModel, None otherwise.
 
   Args:
-    src_path: Source saved model directory.
-    dst_path: Destination saved model directory. This directory must exist.
+    exported_model: ExportedModel to take the SaverDef from.
+
+  Returns:
+    SaverDef instance if the field `saver_def` is set. None otherwise.
   """
-  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
-  if not file_io.file_exists_v2(src_assets_path):
-    # Do nothing if the source assets path does not exist.
-    return
-
-  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
-  file_io.create_dir_v2(dst_assets_path)
-
-  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
-    for asset_file_name in files:
-      src_asset_file = file_io.join(curr_dir, asset_file_name)
-
-      # Construct the destination assets file path.
-      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
-      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
-
-      file_io.copy_v2(src_asset_file, dst_asset_file)
-      logging.info(
-          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
-      )
+  if exported_model.HasField('saver_def'):
+    return exported_model.saver_def
+  return None
 
 
 def _run_static_range_ptq(
@@ -691,8 +716,7 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
-      exported_model.save_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
       exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
@@ -719,8 +743,7 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       exported_model.init_node_name,
-      exported_model.restore_node_name,
-      exported_model.save_node_name,
+      _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
       asset_file_defs=exported_model.asset_file_defs,
   )
@@ -748,8 +771,7 @@ def _run_static_range_ptq(
       signature_def_map,
       tags,
       init_op_name=exported_model.init_node_name,
-      save_op_name=exported_model.save_node_name,
-      restore_op_name=exported_model.restore_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
       function_aliases=exported_model.function_aliases,
       asset_file_defs=exported_model.asset_file_defs,
@@ -901,7 +923,7 @@ def _dynamic_range_quantize(
   # please also update default value in tflite converter:
   # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
   if quantization_options.min_num_elements_for_weights == 0:
-    (quantization_options.min_num_elements_for_weights) = (
+    quantization_options.min_num_elements_for_weights = (
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
     )
     logging.warn(
@@ -931,9 +953,14 @@ def _dynamic_range_quantize(
       exported_model.graph_def,
       output_directory,
       signature_def_map,
-      tags=tags,
+      tags,
       init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
   )
+  _copy_assets(saved_model_path, output_directory)
 
   return saved_model_load(output_directory)
 

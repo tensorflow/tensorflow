@@ -32,14 +32,14 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
-#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
@@ -75,7 +75,7 @@ struct InputSpec {
   py::object array_sharding;
 };
 
-// An object containing the arguments to create ShardedDeviceArray from the
+// An object containing the arguments to create Array from the
 // output buffers.
 struct ResultSpec {
  public:
@@ -101,15 +101,15 @@ struct ShardArgResult {
 
 // Shars a single argument over devices.
 //
-// We currently only support fully in C++, C++ ShardedDeviceArray. For all
-// other usages, we call a Python function returning C++ ShardedDeviceArray
+// We currently only support fully in C++, C++ Array. For all
+// other usages, we call a Python function returning C++ Array
 // that will be casted back to the C++ objects.
 //
 // This function is not usable for JAX extensions that do not comply with the
 // PjRt interfaces.
 //
 // Arguments:
-// `arg`: The object to shard across `devices`. If a `ShardedDeviceArray`,
+// `arg`: The object to shard across `devices`. If a `Array`,
 //   a fast-path will be executed if it's already correctly sharded.
 //
 // Returns a failure Status when an unrecoverable error occurred, so we don't
@@ -157,39 +157,86 @@ xla::StatusOr<ShardArgResult> ShardArg(
     }
   }
 
-  if (ShardedDeviceArray::IsShardedDeviceArray(arg)) {
-    ShardedDeviceArray* sda =
-        ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
-    const ShardingSpec& sharding_spec = input_spec.sharding_spec;
-    if (sharding_spec == sda->GetShardingSpec()) {
-      ShardArgResult result;
-      result.owning_sda = py::reinterpret_borrow<py::object>(arg);
-      TF_ASSIGN_OR_RETURN(auto ifrt_array, sda->ifrt_array());
-      result.ifrt_array = tsl::FormRef(ifrt_array);
-      if (result.ifrt_array == nullptr) {
-        return xla::InvalidArgument("Array has been deleted.");
-      }
-      if (result.ifrt_array->sharding().devices().devices() != devices) {
-        xla::ifrt::DeviceList::Devices ifrt_devices;
-        ifrt_devices.reserve(devices.size());
-        ifrt_devices.insert(ifrt_devices.end(), devices.begin(), devices.end());
-        auto sharding = xla::ifrt::OpaqueSharding::Create(
-            xla::ifrt::DeviceList(std::move(ifrt_devices)));
-        TF_ASSIGN_OR_RETURN(auto copied_ifrt_array,
-                            result.ifrt_array->Reshard(
-                                std::move(sharding),
-                                xla::ifrt::ArrayCopySemantics::kReuseInput));
-        result.ifrt_array = std::move(copied_ifrt_array);
-      }
-      return result;
+  static auto ndarray_type = py::module::import("numpy").attr("ndarray").ptr();
+  auto ndarray = py::array::ensure(arg);
+  if (ndarray && py::type::of(arg) == ndarray_type &&
+      xla::DtypeToPrimitiveType(ndarray.dtype()).status().ok()) {
+    tsl::profiler::TraceMe traceme("ndarray pmap ShardArg");
+    py::list indices = input_spec.indices;
+    py::list py_devices_list = py::cast<py::list>(py_devices);
+    auto n_devices = py_devices_list.size();
+    if (indices.size() != n_devices) {
+      return xla::InvalidArgument("indices vs devices mismatch: %d vs %d",
+                                  indices.size(), n_devices);
     }
+
+    std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
+    per_device_arrays.reserve(n_devices);
+    xla::ifrt::DeviceList::Devices devices;
+    devices.reserve(n_devices);
+    // TODO(hyeontaek): The created array will never be disassembled. We should
+    // omit collecting shapes and make the OpaqueSharding non-disassemblable?
+    std::vector<xla::ifrt::Shape> shapes;
+    shapes.reserve(n_devices);
+
+    py::list owning_pylist(n_devices);
+    ShardArgResult result;
+    result.owning_sda = owning_pylist;
+    const bool jax_enable_x64 = GetEnableX64();
+
+    xla::DevicePutOptions options;
+    options.squash_64bit_types = !jax_enable_x64;
+    options.allow_zero_copy = true;
+    for (size_t i = 0; i < n_devices; ++i) {
+      auto to_device =
+          py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(py_devices_list[i]);
+
+      TF_ASSIGN_OR_RETURN(
+          xla::DevicePutResult on_device,
+          DevicePut(arg[indices[i]], to_device.client->ifrt_client(),
+                    to_device.contents, options));
+
+      per_device_arrays.push_back(std::move(on_device.ifrt_array));
+      devices.push_back(per_device_arrays.back()->sharding().devices().front());
+      shapes.push_back(per_device_arrays.back()->shape());
+      if (on_device.owning_pybuffer) {
+        owning_pylist.append(on_device.owning_pybuffer);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        result.ifrt_array,
+        per_device_arrays.front()
+            ->client()
+            ->AssembleArrayFromSingleDeviceArrays(
+                // TODO(hyeontaek): The logical shape here is inaccurate. We
+                // may want to avoid creating a new Array or specialize Array
+                // to disallow access to the logical shape.
+                per_device_arrays.front()->shape(),
+                xla::ifrt::OpaqueSharding::Create(
+                    xla::ifrt::DeviceList(std::move(devices)),
+                    xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+                        std::move(shapes))),
+                absl::MakeSpan(per_device_arrays),
+                xla::ifrt::ArrayCopySemantics::kReuseInput));
+    return result;
+  }
+  tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
+  auto py_array_or_bufs = python_fallback(arg, py_devices, input_spec.indices,
+                                          input_spec.array_sharding);
+
+  if (py_array_or_bufs.get_type() == xla::PyArray::type()) {
+    auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
+    ShardArgResult result;
+    result.owning_sda = py_array_or_bufs;
+    result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
+    return result;
   }
 
   // This fallback is better than nothing, but ideally we should be able to
   // convert the argument in C++. At least, we can call the C++ DevicePut from
   // Python.
-  auto per_device_pybuffers =
-      py::cast<py::list>(python_fallback(arg, py_devices, input_spec.indices));
+  auto per_device_pybuffers = py::cast<py::list>(py_array_or_bufs);
   ShardArgResult result;
   result.owning_sda = py::reinterpret_borrow<py::object>(per_device_pybuffers);
   if (!per_device_pybuffers.empty()) {
@@ -238,7 +285,7 @@ struct PmapCacheEntry {
   std::vector<xla::PjRtDevice*> devices;
   std::vector<InputSpec> input_specs;
   xla::PyTreeDef out_pytree_def;
-  // Objects necessary to build the out ShardedDeviceArray objects.
+  // Objects necessary to build the out Array objects.
   std::vector<ResultSpec> out_result_specs;
 
   std::vector<py::object> out_array_shardings;
@@ -283,7 +330,7 @@ class PmapFunction {
   // (a) flatten the inputs using pytree
   // (b) get buffer objects from the arguments
   // (c) call the executable
-  // (d) construct `ShardedDeviceArray` objects from the outputs
+  // (d) construct `Array` objects from the outputs
   // (e) reconstruct the `PyTree`.
   xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
                                  size_t nargs, PyObject* kwnames);
@@ -521,6 +568,8 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
 xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
                                              PyObject* const* args,
                                              size_t nargs, PyObject* kwnames) {
+  xla::GlobalPyRefManager()->MaybeCollectGarbage();
+
   // Calls the cache_miss_ function. This just calls the Python function; it may
   // return nullptr value if a Python exception is thrown.
   auto cache_miss = [&]() -> py::tuple {
@@ -613,8 +662,6 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
   // 1. Parse arguments.
   std::vector<xla::PjRtDevice*>& input_devices = cache_entry.devices;
-  const int num_computations =
-      cache_entry.executable->AddressableDevices().size();
   std::vector<InputSpec>& input_specs = cache_entry.input_specs;
   const int num_args = arguments.flat_dynamic_args.size();
 
@@ -645,7 +692,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   }
 
   // TODO(jblespiau): We don't need to create the PyBuffer objects.
-  // Having a C++ `ShardedDeviceArray`, keeping internally the PjRtBuffer
+  // Having a C++ `Array`, keeping internally the PjRtBuffer
   // objects is sufficient, and we can lazily create the `PyBuffer` only if
   // we access them from Python.
   auto traceback = xla::Traceback::Get();
@@ -660,41 +707,15 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
   const auto& output_specs = cache_entry.out_result_specs;
 
-  if (!cache_entry.out_array_shardings.empty()) {
-    for (int i = 0; i < num_outputs; ++i) {
-      const ResultSpec& result_spec = output_specs[i];
-      xla::PyArray py_array(
-          result_spec.out_aval, result_spec.weak_type,
-          cache_entry.out_dtypes[i], cache_entry.out_shapes[i],
-          cache_entry.out_array_shardings[i], client, traceback,
-          std::move(output_arrays[i]), cache_entry.out_committed[i]);
+  TF_RET_CHECK(cache_entry.out_array_shardings.size() == num_outputs);
+  for (int i = 0; i < num_outputs; ++i) {
+    const ResultSpec& result_spec = output_specs[i];
+    xla::PyArray py_array(
+        result_spec.out_aval, result_spec.weak_type, cache_entry.out_dtypes[i],
+        cache_entry.out_shapes[i], cache_entry.out_array_shardings[i], client,
+        traceback, std::move(output_arrays[i]), cache_entry.out_committed[i]);
 
-      flat_sharded_device_arrays.push_back(std::move(py_array));
-    }
-  } else {
-    std::vector<std::vector<xla::PyBuffer::object>> outputs;
-    outputs.resize(num_outputs);
-    for (int output_id = 0; output_id < num_outputs; ++output_id) {
-      outputs[output_id].reserve(num_computations);
-      TF_ASSIGN_OR_RETURN(
-          auto single_device_arrays,
-          output_arrays[output_id]->DisassembleIntoSingleDeviceArrays(
-              xla::ifrt::ArrayCopySemantics::kReuseInput));
-      for (auto& single_device_array : single_device_arrays) {
-        outputs[output_id].push_back(xla::PyBuffer::Make(
-            client, std::move(single_device_array), traceback));
-      }
-    }
-
-    for (int i = 0; i < num_outputs; ++i) {
-      const ResultSpec& result_spec = output_specs[i];
-      flat_sharded_device_arrays.push_back(ShardedDeviceArray::Make(
-          /*aval=*/result_spec.out_aval,
-          /*sharding_spec=*/result_spec.out_spec,
-          /*device_buffers=*/py::cast(std::move(outputs[i])),
-          /*indices=*/result_spec.out_indices,
-          /*weak_type=*/result_spec.weak_type));
-    }
+    flat_sharded_device_arrays.push_back(std::move(py_array));
   }
 
   py::object out =
@@ -1004,8 +1025,6 @@ void BuildPmapSubmodule(py::module& m) {
         const size_t hash = absl::HashOf(self);
         return py::int_(hash);
       });
-
-  TF_CHECK_OK(ShardedDeviceArray::RegisterTypes(pmap_lib));
 
   // We need to use heap-allocated type objects because we want to add
   // additional methods dynamically.

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/core/platform/status.h"
@@ -39,7 +40,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-static StatusOr<xla::Shape> TpuShapeRepresentation(
+static StatusOr<xla::Shape> DeviceShapeRepresentation(
     const TensorShape& shape, DataType type, bool use_fast_memory,
     XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
@@ -62,25 +63,41 @@ static int GetDeviceOrdinal(const DeviceBase* device) {
   return device->parsed_name().id;
 }
 
+static DeviceType GetDeviceType(OpKernelContext* ctx) {
+  auto* device =
+      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
+  return DeviceType(device->device_type());
+}
+
+// LINT.IfChange
 static XlaCompiler::Options GenerateXlaCompilerOptions(
-    const FunctionLibraryRuntime& function_library,
-    const DeviceBase* device_base) {
+    const FunctionLibraryRuntime& function_library, DeviceBase* device_base) {
   XlaCompiler::Options options;
   options.device_ordinal = GetDeviceOrdinal(device_base);
   options.flib_def = function_library.GetFunctionLibraryDefinition();
   options.graph_def_version = function_library.graph_def_version();
-  // TODO(b/260799193): currently device_type and shape_determination_fns are
-  // hardcoded for TPU. Support generating compiler options for different
-  // devices. We may introduce a plugin c API to provide options.device_type.
-  options.device_type = DEVICE_TPU_XLA_JIT;
-  options.shape_determination_fns =
-      XlaShapeLayoutHelpers::ShapeDeterminationFns{UseNoPreferenceLayoutFn(),
-                                                   TpuShapeRepresentation};
+  auto* next_pluggable_device =
+      dynamic_cast<NextPluggableDevice*>(device_base->UnderlyingDevice());
+  // TODO(b/267499840): support setting compilation device type and
+  // shape_determination_fns for non-NextPluggableDevice case.
+  // TODO(b/273348427): Set these fields in a XlaDevice::Metadata and set
+  // XlaCompiler::Options using the XlaDevice::Metadata instead.
+  // XlaDevice::Metadata should be moved out of XlaDevice and made more general
+  // so that it could be used with other devices that support XLA compilation
+  // (eg. NextPluggableDevice).
+  if (next_pluggable_device != nullptr) {
+    options.device_type =
+        DeviceType(next_pluggable_device->GetCompilationDeviceType());
+    options.shape_determination_fns =
+        XlaShapeLayoutHelpers::ShapeDeterminationFns{UseNoPreferenceLayoutFn(),
+                                                     DeviceShapeRepresentation};
+  }
   options.allow_cpu_custom_calls = false;
   options.alias_passthrough_params = false;
   options.detailed_logging = false;
   return options;
 }
+// LINT.ThenChange(//tensorflow/compiler/jit/xla_compiler_options_util.cc)
 
 static std::vector<xla::PjRtBuffer*> PrepareExecutableArguments(
     int xla_input_sizes, const std::vector<int>& input_mapping,
@@ -98,7 +115,7 @@ static std::vector<xla::PjRtBuffer*> PrepareExecutableArguments(
     }
     AsyncValueTensor* av_tensor = AsyncValueTensor::FromTensor(tensor);
     if (av_tensor->GetBuffer() == nullptr) {
-      // TODO(b/260799971): verify size 0 argument is supported (cl/387160525).
+      // TODO(b/260799971): verify size 0 argument is supported.
       CHECK_EQ(tensor->NumElements(), 0);  // Crash OK
       continue;
     }
@@ -121,8 +138,7 @@ static Status PopulateOutputs(
             << DataTypeString(type);
 
     if (compilation_result.outputs[i].is_constant) {
-      Device* device = dynamic_cast<Device*>(ctx->device());
-      bool requires_copy_to_device = device->device_type() != DEVICE_CPU;
+      bool requires_copy_to_device = GetDeviceType(ctx) != DEVICE_CPU;
       TF_RETURN_IF_ERROR(SetOutputForConstant(ctx, requires_copy_to_device,
                                               &compilation_result, i));
     } else if (type == DT_RESOURCE) {
@@ -241,7 +257,7 @@ Status PjRtCompileOnDemandOp::Run(
 
 void PjRtCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_VALUE(xla::PjRtClient * pjrt_client, ctx,
-                    GetOrCreatePjRtClient(DEVICE_TPU));
+                    GetOrCreatePjRtClient(GetDeviceType(ctx)));
   OP_REQUIRES(ctx, ctx->function_library(),
               errors::Internal("Function library missing"));
 

@@ -287,7 +287,7 @@ class ShapeUtil {
   // element type changed to type.
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
-  // Retursn a shape with same dimensions but with all dimensions set to static.
+  // Returns a shape with same dimensions but with all dimensions set to static.
   static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.

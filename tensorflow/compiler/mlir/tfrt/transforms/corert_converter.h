@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -61,9 +62,9 @@ class CoreRTConverter : public mlir::TypeConverter {
 
   // Parse the device name of `op` to TFRT's device name. For example, "/CPU:0"
   // will be parsed as "cpu". Return None if no device is assigned.
-  llvm::Optional<ParseDeviceNameResult> ParseDeviceName(
+  std::optional<ParseDeviceNameResult> ParseDeviceName(
       llvm::StringRef device_name) const;
-  llvm::Optional<ParseDeviceNameResult> ParseDeviceName(
+  std::optional<ParseDeviceNameResult> ParseDeviceName(
       mlir::Operation *op) const;
 
   // Convert the device name in a TF op to a op_handler value produced by the

@@ -906,3 +906,56 @@ ENTRY main {
     dimensions={1}
   ROOT ag = f32[10,80] all-gather-done(ags)
 }
+
+// -----
+
+HloModule AsyncReduceScatter
+
+// CHECK: func @main
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.reduce_scatter_start"(%{{.*}}, %{{.*}}) ({
+// CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+// CHECK:    mhlo.return [[ADD]] : tensor<f32>
+// CHECK:  }) {
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+// CHECK-SAME: scatter_dimension = 0
+// CHECK-SAME: use_global_device_ids = false
+// CHECK ""lmhlo_gpu.reduce_scatter_done"(%[[TOKEN]])
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+reduce_scatter {
+  p0 = f32[8] parameter(0)
+  ROOT result = f32[4] reduce-scatter(p0), replica_groups={{0,1}},
+                    dimensions={0}, to_apply=add
+}
+
+ENTRY main {
+  input = f32[8] parameter(0)
+  rs-start = ((f32[8]), f32[4]) async-start(input), calls=reduce_scatter
+  ROOT rs-done = f32[4] async-done(rs-start), calls=reduce_scatter
+}
+
+// -----
+
+HloModule AsyncAllToAll
+
+// CHECK: func @main
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_to_all_start"(%{{.*}}, %{{.*}}) {
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+// CHECK ""lmhlo_gpu.all_to_all_done"(%[[TOKEN]])
+
+all_to_all {
+  p0 = f32[128,4] parameter(0)
+  ROOT a2a = f32[128,4] all-to-all(p0), replica_groups={{0,1}}
+}
+
+ENTRY main {
+  p0 = f32[128,4] parameter(0)
+  a2a-start = ((f32[128,4]), f32[128,4]) async-start(p0), calls=all_to_all
+  ROOT a2a-done = f32[128,4] async-done(a2a-start), calls=all_to_all
+}

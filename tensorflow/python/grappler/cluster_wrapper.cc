@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/op_def.pb.h"

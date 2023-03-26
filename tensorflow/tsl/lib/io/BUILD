@@ -13,6 +13,7 @@ package(
         "//tensorflow/tsl/lib/io/snappy:__pkg__",
         "//tensorflow/compiler/xla:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core/util:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
         "//tensorflow/tsl/profiler:__subpackages__",
@@ -242,6 +243,18 @@ cc_library(
 )
 
 cc_library(
+    name = "buffered_file",
+    hdrs = ["buffered_file.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/lib/hash:crc32c",
+        "//tensorflow/tsl/platform:cord",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
     name = "zlib_compression_options",
     srcs = ["zlib_compression_options.cc"],
     hdrs = ["zlib_compression_options.h"],
@@ -295,6 +308,7 @@ filegroup(
         "block.h",
         "block_builder.cc",
         "block_builder.h",
+        "buffered_file.h",
         "buffered_inputstream.cc",
         "buffered_inputstream.h",
         "cache.cc",

@@ -7,6 +7,7 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/tsl/platform:__pkg__",
     ],
@@ -341,13 +342,13 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/base",
+        "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:byte_order",
         "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/platform:platform",
+        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies

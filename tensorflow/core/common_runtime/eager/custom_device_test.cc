@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -128,6 +129,8 @@ TEST(CustomDevice, TestTensorHandle) {
       tensor->DebugString(),
       ContainsRegex(
           R"re(TensorHandle\(TestValue, shape=\[3\], dtype=DT_FLOAT, device=.*\))re"));
+  const FullTypeDef& ft = tensor->FullType();
+  EXPECT_EQ(ft.type_id(), TFT_UNSET);
 }
 
 TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {

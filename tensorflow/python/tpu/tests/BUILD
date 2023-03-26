@@ -38,6 +38,7 @@ tpu_py_test(
     srcs_version = "PY3",
     deps = [
         ":tpu_embedding_base_test",
+        "//tensorflow/python/module",
     ],
 )
 
@@ -342,10 +343,7 @@ tpu_py_test(
     disable_v3_4chips = False,
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss",
-        "noasan",
-    ],
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python/tpu:tpu_py",
     ],

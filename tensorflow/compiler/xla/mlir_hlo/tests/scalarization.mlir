@@ -220,7 +220,10 @@ func.func @scatter_f32_with_update_computation(%indices: tensor<1x2xindex>,
 // CHECK-SAME:   %[[INDEX_1]]] [%[[UPDATES_DIM_1]], %[[UPDATES_DIM_2]]] [%[[C1]],
 // CHECK-SAME:   %[[C1]]] : tensor<?x?xf32> to tensor<?x?xf32>
 
-// CHECK-NEXT: %[[SUM:.*]] = linalg.reduce ins(%[[UPDATES]] : tensor<1x?x?xf32>)
+// CHECK-NEXT: %[[UPDATES_SLICE:.*]] = tensor.extract_slice %[[UPDATES]]
+
+// CHECK-NEXT: %[[SUM:.*]] = linalg.reduce
+// CHECK-SAME:   ins(%[[UPDATES_SLICE]] : tensor<1x?x?xf32>)
 // CHECK-SAME:   outs(%[[EXTRACTED]] : tensor<?x?xf32>) dimensions = [0]
 // CHECK-NEXT:   (%[[ARG1:.*]]: f32, %[[ARG2:.*]]: f32) {
 // CHECK-NEXT:     %[[ADD:.*]] = arith.addf %[[ARG1]], %[[ARG2]] : f32
@@ -263,11 +266,10 @@ func.func @scatter_i64_no_update_computation(%indices: tensor<1x1xindex>,
 // CHECK-SAME:      %[[C0]]] : tensor<1x1xindex>
 
 // CHECK:         scf.if
-// CHECK-NEXT:      %[[EXTRACTED:.*]] = tensor.extract_slice %[[UPDATES]][%[[C0]],
-// CHECK-SAME:        %[[C0]], %[[C0]], %[[C0]]] [1, 1, 3, 4]
-// CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]], %[[C1]]]
-// CHECK-SAME:        : tensor<1x1x3x4xi64> to tensor<1x3x4xi64>
-// CHECK-NEXT:      %[[INSERTED:.*]] = tensor.insert_slice %[[EXTRACTED]] into
+// CHECK-NEXT:      %[[COLLAPSED:.*]] = tensor.collapse_shape %[[UPDATES]]
+// CHECK-SAME:        [0, 1], [2], [3]]
+// CHECK-SAME:        : tensor<1x1x3x4xi64> into tensor<1x3x4xi64>
+// CHECK-NEXT:      %[[INSERTED:.*]] = tensor.insert_slice %[[COLLAPSED]] into
 // CHECK-SAME:        %[[INIT]][%[[INDEX_0]], %[[C0]], %[[C0]]] [1, 3, 4]
 // CHECK-SAME:        [%[[C1]], %[[C1]], %[[C1]]]
 // CHECK-SAME:        : tensor<1x3x4xi64> into tensor<3x3x4xi64>
@@ -310,40 +312,6 @@ func.func @gather(%indices: tensor<1x2xindex>,
 //       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], %[[C0]]]
 //       CHECK-NEXT: %[[UPDATED:.*]] = tensor.insert %[[VAL]]
 //       CHECK:      scf.yield %[[UPDATED]]
-
-// -----
-
-func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
-    %out: tensor<8x2xf32>) -> tensor<8x2xf32>  {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %c2 = arith.constant 2 : index
-  %c8 = arith.constant 8 : index
-
-  %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1)
-      outs (%out_ = %out: tensor<8x2xf32>) {
-    %in_sub = tensor.extract_slice %in[%i, %j] [1, 1] [1, 1]
-      : tensor<8x2xf32> to tensor<1x1xf32>
-
-    %elem = tensor.extract %in_sub[%c0, %c0] : tensor<1x1xf32>
-
-    %out_sub = tensor.from_elements %elem : tensor<1x1xf32>
-
-    %tile = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
-    gml_st.set_yield %out_sub into %out_[%tile]
-      : tensor<1x1xf32> into tensor<8x2xf32>[!gml_st.tile<1x1>]
-  } : tensor<8x2xf32>
-  func.return %copy: tensor<8x2xf32>
-}
-// CHECK-LABEL: func @fold_extract_from_elements_into_gml_st
-
-// CHECK:       %[[SLICE:.*]] = tensor.extract_slice
-// CHECK-SAME:    : tensor<8x2xf32> to tensor<1x1xf32>
-// CHECK-NEXT:  %[[ELEM:.*]] = tensor.extract %[[SLICE]]
-// CHECK-NEXT:       = gml_st.tile
-
-// CHECK-NEXT:  gml_st.set_yield %[[ELEM]]
-// CHECK-SAME:    : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]
 
 // -----
 

@@ -210,6 +210,17 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
       str_util::StringReplace(config_.data_transfer_address(), kPortPlaceholder,
                               absl::StrCat(transfer_server_->get_port()),
                               /*replace_all=*/false));
+  StatusOr<std::string> compatibility_info =
+      transfer_server_->GetCompatibilityInfo();
+  if (!compatibility_info.ok()) {
+    LOG(ERROR)
+        << "failed to populate compatibility information for worker server "
+        << config_.worker_address() << " for protocol "
+        << config_.data_transfer_protocol() << ": "
+        << compatibility_info.status();
+    return;
+  }
+  alternative_transfer_server.set_compatibility_info(*compatibility_info);
   transfer_servers.push_back(alternative_transfer_server);
 }
 

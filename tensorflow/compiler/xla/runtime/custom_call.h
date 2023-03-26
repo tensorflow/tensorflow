@@ -1395,32 +1395,33 @@ struct CustomCallRetDecoding<MemrefView, checks> {
 //===----------------------------------------------------------------------===//
 
 // Custom call AsyncValueRef result decoding
-#define XLA_RUNTIME_REGISTER_ASYNC_SCALAR_VALUE_RET_DECODING(T)               \
-  template <>                                                                 \
-  class Result<tsl::AsyncValueRef<T>> {                                       \
-   public:                                                                    \
-    explicit Result(void** storage) : storage_(storage) {}                    \
-    void Set(tsl::AsyncValueRef<T> value) {                                   \
-      auto write = [](const T* v, std::byte* store) {                         \
-        T* store_t = reinterpret_cast<T*>(store);                             \
-        *store_t = *v;                                                        \
-      };                                                                      \
-      *storage_ = runtime::AsyncRuntime::AsValue<T>(value, sizeof(T), write); \
-    }                                                                         \
-                                                                              \
-   private:                                                                   \
-    void** storage_;                                                          \
-  };                                                                          \
-                                                                              \
-  template <CustomCall::RuntimeChecks checks>                                 \
-  struct CustomCallRetDecoding<tsl::AsyncValueRef<T>, checks> {               \
-    LLVM_ATTRIBUTE_ALWAYS_INLINE                                              \
-    static FailureOr<Result<tsl::AsyncValueRef<T>>> Decode(TypeID type_id,    \
-                                                           void* value) {     \
-      if (!CustomCall::Isa<tsl::AsyncValueRef<T>>(checks, type_id))           \
-        return failure();                                                     \
-      return Result<tsl::AsyncValueRef<T>>(reinterpret_cast<void**>(value));  \
-    }                                                                         \
+#define XLA_RUNTIME_REGISTER_ASYNC_SCALAR_VALUE_RET_DECODING(T)              \
+  template <>                                                                \
+  class Result<tsl::AsyncValueRef<T>> {                                      \
+   public:                                                                   \
+    explicit Result(void** storage) : storage_(storage) {}                   \
+    void Set(tsl::AsyncValueRef<T> value) {                                  \
+      auto write = [](const T* v, std::byte* store) {                        \
+        T* store_t = reinterpret_cast<T*>(store);                            \
+        *store_t = *v;                                                       \
+      };                                                                     \
+      *storage_ = runtime::AsyncRuntime::AsValue<T>(                         \
+          value, sizeof(T), alignof(std::max_align_t), write);               \
+    }                                                                        \
+                                                                             \
+   private:                                                                  \
+    void** storage_;                                                         \
+  };                                                                         \
+                                                                             \
+  template <CustomCall::RuntimeChecks checks>                                \
+  struct CustomCallRetDecoding<tsl::AsyncValueRef<T>, checks> {              \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE                                             \
+    static FailureOr<Result<tsl::AsyncValueRef<T>>> Decode(TypeID type_id,   \
+                                                           void* value) {    \
+      if (!CustomCall::Isa<tsl::AsyncValueRef<T>>(checks, type_id))          \
+        return failure();                                                    \
+      return Result<tsl::AsyncValueRef<T>>(reinterpret_cast<void**>(value)); \
+    }                                                                        \
   };
 
 XLA_RUNTIME_REGISTER_ASYNC_SCALAR_VALUE_RET_DECODING(bool);
@@ -1485,7 +1486,7 @@ class Result<tsl::AsyncValueRef<MemrefView>> {
     };
     storage_->data = runtime::AsyncRuntime::AsValue<MemrefView>(
         value, 3 * sizeof(int64_t) + 2 * storage_->rank * sizeof(int64_t),
-        write);
+        alignof(std::max_align_t), write);
   }
 
   PrimitiveType GetDType() { return PrimitiveType{storage_->dtype}; }

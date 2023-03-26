@@ -11,9 +11,10 @@ cc_library(
     hdrs = ["c_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_headers",
         "//tensorflow/c:kernels_experimental_hdrs",
         "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c:tf_tensor_internal",

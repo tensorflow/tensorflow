@@ -7,9 +7,11 @@ func.func @unranked_null() {
   func.return
 }
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
-// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr<i8>)>
+// CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr)>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[C0]], [[DESC_0]][0]
 // CHECK: [[PTR:%.*]] = llvm.alloca {{.*}} x i8
+// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK: llvm.store [[NULL]], [[PTR]] : !llvm.ptr
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[PTR]], [[DESC_1]][1]
 
 // -----
@@ -25,9 +27,9 @@ func.func @ranked_null() {
 // CHECK-NEXT: %[[C1_:.*]] = llvm.mlir.constant(1 : index) : i64
 
 // CHECK: llvm.mlir.null
-// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr<f32>
+// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr
 // CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.undef :
-// CHECK-SAME:   !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
+// CHECK-SAME:   !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-NEXT: %[[DESC_1:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_0]][0]
 // CHECK-NEXT: %[[DESC_2:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_1]][1]
 // CHECK-NEXT: %[[DESC_3:.*]] = llvm.insertvalue %[[C0]], %[[DESC_2]][2]
@@ -46,7 +48,6 @@ func.func @unranked_get_buffer(%arg0: memref<*xf32>) -> index {
 
 // CHECK-NEXT: builtin.unrealized_conversion_cast
 // CHECK-NEXT: llvm.extractvalue
-// CHECK-NEXT: llvm.bitcast
 // CHECK-NEXT: llvm.load
 // CHECK-NEXT: llvm.ptrtoint
 

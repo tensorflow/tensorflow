@@ -35,8 +35,9 @@ from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
@@ -57,6 +58,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -278,10 +280,9 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         return (i + 1, a, ta.write(i, a))
 
       n = 4
-      i, _, ta = control_flow_ops.while_loop(
-          lambda i, *_: i < n,
-          _Step, [0, 0, tensor_array_ops.TensorArray(
-              dtypes.int32, size=n)])
+      i, _, ta = while_loop.while_loop(
+          lambda i, *_: i < n, _Step,
+          [0, 0, tensor_array_ops.TensorArray(dtypes.int32, size=n)])
       target = ta.read(i - 1)
       grad, = gradients.gradients(target, v)
       self.assertIsNone(grad)
@@ -856,8 +857,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         numpy_list.append(np_val)
         dense_list.append(c)
         sparse_list.append(c_sparse)
-      packed_dense = array_ops.stack(dense_list)
-      packed_sparse = array_ops.stack(sparse_list)
+      packed_dense = array_ops_stack.stack(dense_list)
+      packed_sparse = array_ops_stack.stack(sparse_list)
       self.assertAllClose(packed_dense, self.evaluate(packed_sparse))
 
   @test_util.run_v1_only("b/120545219")
@@ -942,7 +943,7 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
       return output
 
     training = array_ops.placeholder_with_default(True, shape=())
-    output = control_flow_ops.cond(
+    output = cond.cond(
         training, TestFn, lambda: inputs)
 
     loss = output
@@ -1441,7 +1442,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           dtype="float32")
 
       conditional = array_ops.placeholder_with_default(True, shape=())
-      output = control_flow_ops.cond(
+      output = cond.cond(
           conditional, lambda: alpha * 2, lambda: alpha * 3)
 
       g, = gradients_impl.gradients(output, alpha)

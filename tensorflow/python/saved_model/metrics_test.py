@@ -20,16 +20,18 @@ API calls.
 
 import os
 
+from google.protobuf import json_format
+
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import builder_impl
+from tensorflow.python.saved_model import fingerprinting
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
-from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import autotrackable
 
@@ -114,18 +116,20 @@ class MetricsTests(test.TestCase):
 
   def test_save_sets_write_fingerprint_metric(self):
     exported_dir = self._create_save_v2_model()
-
-    self.assertEqual(
-        metrics.GetWriteFingerprint(),
-        str(fingerprinting.MaybeReadSavedModelChecksum(exported_dir)))
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    fingerprint_metric = fingerprinting.Fingerprint.from_proto(
+        json_format.Parse(metrics.GetWriteFingerprint(),
+                          fingerprinting.fingerprint_pb2.FingerprintDef()))
+    self.assertEqual(fingerprint, fingerprint_metric)
 
   def test_load_sets_read_fingerprint_metric(self):
     exported_dir = self._create_save_v2_model()
     load.load(exported_dir)
-
-    self.assertEqual(
-        metrics.GetWriteFingerprint(),
-        str(fingerprinting.MaybeReadSavedModelChecksum(exported_dir)))
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    fingerprint_metric = fingerprinting.Fingerprint.from_proto(
+        json_format.Parse(metrics.GetReadFingerprint(),
+                          fingerprinting.fingerprint_pb2.FingerprintDef()))
+    self.assertEqual(fingerprint, fingerprint_metric)
 
   def test_save_sets_write_path_metric(self):
     exported_dir = self._create_save_v2_model()
@@ -137,6 +141,21 @@ class MetricsTests(test.TestCase):
     load.load(exported_dir)
 
     self.assertEqual(metrics.GetReadPath(), exported_dir)
+
+  def test_save_sets_write_path_and_singleprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    singleprint = fingerprint.singleprint()
+    path_and_singleprint_metric = metrics.GetWritePathAndSingleprint()
+    self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
+
+  def test_save_sets_read_path_and_singleprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    load.load(exported_dir)
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    singleprint = fingerprint.singleprint()
+    path_and_singleprint_metric = metrics.GetReadPathAndSingleprint()
+    self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
 
 
 if __name__ == "__main__":

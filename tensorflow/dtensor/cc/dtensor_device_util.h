@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -25,9 +26,13 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/safe_ptr.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -43,9 +48,12 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace dtensor {
+
+using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
 
 #define RETURN_STATUS(status, code, message)   \
   {                                            \
@@ -88,6 +96,9 @@ struct TranslatedFunction {
   // Maps i-th local output to output index of global graph.
   std::vector<int> output_index_map;
 
+  // Original function name in the graph.
+  std::string function_name;
+  // Translated function name to be called.
   std::string translated_function_name;
   // For resource ops, layouts of resource handles are inferred lazily
   // during SPMD expansion of resource assign ops. In that case,
@@ -120,10 +131,13 @@ struct ExecutionFunctions {
 };
 
 struct DTensorOperation {
-  // For both fields: not owned. lifetime covers the whole usage.
+  // For all fields: not owned. lifetime covers the whole usage.
   const char* name;
   const FunctionDef* function_def;
-
+  // Default mesh is used when Mesh Propagation does not identify a mesh
+  // otherwise.
+  const Mesh& default_mesh;
+  const StackTracesMap& stack_traces;
   inline bool is_func() const { return function_def != nullptr; }
 };
 
@@ -166,16 +180,23 @@ class TensorWithLayoutTf
     : public llvm::RTTIExtends<TensorWithLayoutTf, TensorWithLayout> {
  public:
   // Broadcast a single non-parallel tensor onto `mesh` with a fully replicated
-  // sharding spec. Does not take ownership of `tensor`.
+  // sharding spec. Does not take ownership of `tensor`. The tensor must not
+  // already be on a DTensorDevice.
   static std::unique_ptr<TensorWithLayoutTf> Broadcast(
       TFE_Context* context, TFE_TensorHandle* tensor,
-      const MeshWithParallelDevice& mesh,
-      const std::string& dtensor_device_name, TF_Status* status);
+      const MeshWithParallelDevice& mesh, TF_Status* status);
 
   // Given an already-parallel tensor, wraps it with a mesh and a layout.
   static StatusOr<std::unique_ptr<TensorWithLayoutTf>> Wrap(
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
+
+  // Given a single tensor, wraps it with a single device mesh and a single
+  // device layout.
+  static std::unique_ptr<TensorWithLayoutTf> Wrap(TensorHandlePtr single_tensor,
+                                                  const Mesh& mesh,
+                                                  const Layout& layout,
+                                                  TF_Status* status);
 
   // Creates a dummy TensorWithLayoutTf without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayoutTf> Dummy(
@@ -188,9 +209,7 @@ class TensorWithLayoutTf
 
   TensorType tensor_type() const override { return TensorType::kDense; }
 
-  TF_DataType dtype() const override {
-    return dtype_.has_value() ? dtype_.value() : tensor_->dtype();
-  }
+  TF_DataType dtype() const override;
 
   // Encodes the NodeDef via provided builder, if applicable.
   void EncodeAttributes(tensorflow::NodeDefBuilder& builder) const override {}
@@ -201,9 +220,13 @@ class TensorWithLayoutTf
     return tensor_->tensor(index);
   }
 
-  size_t num_tensors() const override { return tensor_->num_tensors(); }
+  size_t num_tensors() const override {
+    return layout_.IsSingleDevice() ? 1 : tensor_->num_tensors();
+  }
 
   parallel_device::ParallelTensor* tensor() const { return tensor_.get(); }
+
+  TFE_TensorHandle* single_tensor() const { return single_tensor_.get(); }
 
   std::string SummarizeValue() const override;
 
@@ -236,7 +259,25 @@ class TensorWithLayoutTf
     const_value_node_ = std::make_unique<ConstValueNode>(const_value);
   }
 
+  TensorWithLayoutTf(TensorHandlePtr single_tensor, const Mesh& mesh,
+                     const Layout& layout,
+                     const std::vector<int64_t>& local_shape,
+                     std::optional<TF_DataType> dtype = std::nullopt,
+                     std::optional<NodeDef> const_value = std::nullopt)
+      : single_tensor_(std::move(single_tensor)),
+        layout_(layout),
+        mesh_(mesh),
+        local_shape_(local_shape),
+        dtype_(dtype) {
+    const_value_node_ = std::make_unique<ConstValueNode>(const_value);
+  }
+
   std::unique_ptr<parallel_device::ParallelTensor> tensor_;
+
+  // Holds the tensor but not the underlying device. This is only used when the
+  // `layout_` is a single device layout and the `mesh_` is a single device
+  // mesh.
+  TensorHandlePtr single_tensor_;
 
   Layout layout_;
 
@@ -245,6 +286,7 @@ class TensorWithLayoutTf
   // The local shape of tensors placed on each of `tensor_`'s component devices.
   std::vector<int64_t> local_shape_;
 
+  // dtype of tensor_. Empty if the layout is Single Device.
   std::optional<TF_DataType> dtype_;
 
   std::unique_ptr<ConstValueNode> const_value_node_;
@@ -395,7 +437,9 @@ class SparseTensorWithLayout
 
   TensorType tensor_type() const override { return TensorType::kSparse; }
 
-  size_t num_tensors() const override { return 3 * indices_->num_tensors(); }
+  size_t num_tensors() const override {
+    return kSparseTensorNum * indices_->num_tensors();
+  }
 
   TFE_TensorHandle* get_tensor(size_t index) const override;
 
@@ -428,7 +472,8 @@ class SparseTensorWithLayout
       std::optional<TF_DataType> dtype = std::nullopt,
       std::optional<NodeDef> const_value = std::nullopt)
       : llvm::RTTIExtends<SparseTensorWithLayout, TensorWithLayoutTf>(
-            nullptr, mesh, layout, local_shape),
+            std::unique_ptr<parallel_device::ParallelTensor>(), mesh, layout,
+            local_shape),
         indices_(std::move(indices)),
         values_(std::move(values)),
         dense_shapes_(std::move(dense_shapes)) {}
@@ -483,6 +528,13 @@ class ExecutableManagerImpl {
  private:
   ExecutableManagerImpl() = default;
 };
+
+struct ExecutionManagerStats {
+  int64_t hits;    // number of hits.
+  int64_t misses;  // number of misses.
+  int64_t size;    // size of cache (number of entries).
+};
+
 // Template Class that holds information about DTensor executable ran, including
 // cached lowered executable and constant folding input information per
 // function.
@@ -496,18 +548,21 @@ class ExecutableManagerImpl {
 //   folding for the changed values, and save these new inputs.
 // TODO(b/169348205) Support cache eviction if the cache gets bloated.
 template <typename T>
-class ExecutableManager {
+class ExecutableManager : public tsl::core::WeakRefCounted {
  public:
   ExecutableManager() = default;
 
   // Caches the executable with ParallelExecutable.
   const T* AddCachedExecutable(tensorflow::Fprint128 cache_key, T executable);
 
+  // Removes the executable.
+  void Remove(tensorflow::Fprint128 cache_key);
+
   // Returns the cache key and the cached lowered executable for the function.
   // Returns a nullptr for the lowered executable if there is a cache miss.
   // Upon a cache miss, this will save some metadata about the function
   // and the small inputs to keep track of information for constant folding.
-  std::pair<tensorflow::Fprint128, const T*> GetCachedExecutable(
+  StatusOr<std::pair<tensorflow::Fprint128, const T*>> GetCachedExecutable(
       const DTensorOperation& doperation, const NameAttrList& attributes,
       const std::vector<TensorWithLayout*>& inputs,
       const std::vector<const Layout*>& output_layouts);
@@ -517,24 +572,46 @@ class ExecutableManager {
   // This Get operation has no side effect.
   const T* GetCachedExecutableSimple(tensorflow::Fprint128 cache_key);
 
-  // Returns whether the input at `input_index` is known to be constant
-  // foldable for function `doperation`. An input is not constant foldable if we
+  // Returns whether the input at `input_index` should be constant
+  // folded into function `doperation`. An input is not constant folded if we
   // have ran this function at least twice and the small input value changed
   // across separate runs.
-  bool IsConstantFoldable(const DTensorOperation& doperation,
-                          int input_index) const;
+  StatusOr<bool> ShouldFoldInput(const DTensorOperation& doperation,
+                                 const std::vector<TensorWithLayout*>& inputs,
+                                 int input_index) const;
+
+  // Returns the current Stats of the execution manager.
+  // The result is a snapshot at the moment of the call.
+  ExecutionManagerStats GetStats() const {
+    ExecutionManagerStats stats;
+    stats.hits = stats_.hits;
+    stats.misses = stats_.misses;
+    // A reader Lock is probably more suitable, but this code branch is
+    // barely executed.
+    mutex_lock lock(mu_);
+    stats.size = function_cache_.size();
+    return stats;
+  }
 
  private:
   // Generates a cache key for the graph, including its attributes,
   // inputs, and outputs.
-  tensorflow::Fprint128 CacheKeyForGraph(
+  StatusOr<tensorflow::Fprint128> CacheKeyForGraph(
       const DTensorOperation& doperation, const NameAttrList& attributes,
       const std::vector<TensorWithLayout*>& inputs,
       const std::vector<const Layout*>& output_layouts);
 
+  // Returns true for a missing entry in the small inputs cache.
+  bool UpdateDTensorOpAndSmallInputsCache(
+      const DTensorOperation& doperation,
+      const std::vector<TensorWithLayout*>& inputs);
+
+  mutable mutex mu_;
+  mutable mutex dtensor_op_and_small_inputs_mu_;
+
   // Maps the hash of a graph with the lowered graph.
   absl::flat_hash_map<tensorflow::Fprint128, T, tensorflow::Fprint128Hasher>
-      function_cache_;
+      function_cache_ TF_GUARDED_BY(mu_);
 
   // Maps the hash of dtensor_operation and its input shapes to a map
   // representing the small constant indices and values to the function. The
@@ -542,26 +619,35 @@ class ExecutableManager {
   // folding validation.
   absl::flat_hash_map<tensorflow::Fprint128, absl::flat_hash_map<int, NodeDef>,
                       tensorflow::Fprint128Hasher>
-      dtensor_op_and_small_inputs_;
+      dtensor_op_and_small_inputs_
+          TF_GUARDED_BY(dtensor_op_and_small_inputs_mu_);
 
   ExecutableManagerImpl executable_manager_impl_;
+  struct {
+    std::atomic<int64_t> hits = 0;
+    std::atomic<int64_t> misses = 0;
+  } stats_;
 };
 
 // Returns the shape of a given tensor.
 std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
                                          TF_Status* status);
 
+Status InferOutputLayouts(const DTensorOperation& doperation,
+                          const NameAttrList& attributes,
+                          const std::optional<Layout>& default_layout,
+                          tensorflow::Graph* graph,
+                          std::vector<const Layout*>* output_layouts);
 // Creates a Graph with _Arg and _Retval nodes surrounding an
 // `operation_name`-type node.
 Status PrepareGraphForMlir(
-    const ExecutableManager<ExecutionFunctions>& function_manager,
+    const ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>& module_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,
-    const NameAttrList& attributes, const std::optional<Layout>& default_layout,
-    tensorflow::Graph* graph,
-    std::vector<PartialTensorShape>* global_output_shapes,
-    std::vector<const Layout*>* output_layouts);
+    const NameAttrList& attributes,
+    const std::vector<const Layout*>& output_layouts, tensorflow::Graph* graph,
+    std::vector<PartialTensorShape>* global_output_shapes);
 
 // Returns set of functions to run to execute DTensor computation.
 StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
@@ -592,7 +678,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details for ExecutableManager<T>
 
-// Thread unsafe method. go/thread-unsafe
+// Thread safe method.
 // Generates a cache key for the graph, including its attributes,
 // inputs, and outputs.
 // Cache key computation should consider all features of an op that affects
@@ -601,9 +687,10 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
 // - op name and attr
 // - input shapes and layouts
 // - default layout of outputs.
+// - default mesh.
 // - values of constant foldable inputs.
 template <typename T>
-tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
+StatusOr<tensorflow::Fprint128> ExecutableManager<T>::CacheKeyForGraph(
     const DTensorOperation& doperation, const NameAttrList& attributes,
     const std::vector<TensorWithLayout*>& inputs,
     const std::vector<const Layout*>& output_layouts) {
@@ -612,12 +699,18 @@ tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
   SerializeToStringDeterministic(attributes, &serialized);
   cache_key =
       FingerprintCat128(cache_key, tensorflow::Fingerprint128(serialized));
+  cache_key = FingerprintCat128(
+      cache_key,
+      tensorflow::Fingerprint128(doperation.default_mesh.ToString()));
   // Higher level cache based on operation name and input shapes.
   for (int i = 0; i < inputs.size(); ++i) {
-    if (!IsConstantFoldable(doperation, i) &&
-        inputs[i]->const_value_node() != nullptr) {
+    TF_ASSIGN_OR_RETURN(bool should_fold_input,
+                        ShouldFoldInput(doperation, inputs, i));
+    if (!should_fold_input && inputs[i]->const_value_node()) {
       inputs[i]->const_value_node()->reset_const_value();
     }
+    cache_key = FingerprintCat128(
+        cache_key, tensorflow::Fingerprint128(absl::StrFormat("%x", i)));
     cache_key = FingerprintCat128(cache_key, inputs[i]->CacheKey());
   }
   for (int output_index = 0; output_index < output_layouts.size();
@@ -632,51 +725,72 @@ tensorflow::Fprint128 ExecutableManager<T>::CacheKeyForGraph(
   return cache_key;
 }
 
-// Thread-unsafe method go/thread-unsafe.
+// Thread-safe method.
 template <typename T>
-std::pair<tensorflow::Fprint128, const T*>
+StatusOr<std::pair<tensorflow::Fprint128, const T*>>
 ExecutableManager<T>::GetCachedExecutable(
     const DTensorOperation& doperation, const NameAttrList& attributes,
     const std::vector<TensorWithLayout*>& inputs,
     const std::vector<const Layout*>& output_layouts) {
-  tensorflow::Fprint128 cache_key =
-      CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
+  TF_ASSIGN_OR_RETURN(
+      tensorflow::Fprint128 cache_key,
+      CacheKeyForGraph(doperation, attributes, inputs, output_layouts));
 
-  // Early return if we have a cache hit.
-  if (auto iter = function_cache_.find(cache_key);
-      iter != function_cache_.end()) {
-    return std::pair<Fprint128, T*>(cache_key, &iter->second);
+  {
+    mutex_lock lock(mu_);
+    // Early return if we have a cache hit.
+    if (auto iter = function_cache_.find(cache_key);
+        iter != function_cache_.end()) {
+      stats_.hits++;
+      return {{cache_key, &iter->second}};
+    }
   }
 
-  // For eager ops we early return the cache miss and do not make further
-  // optimizations.
-  if (!doperation.is_func()) {
-    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
-  }
+  bool missed = UpdateDTensorOpAndSmallInputsCache(doperation, inputs);
 
+  if (missed) {
+    stats_.misses++;
+    return {{cache_key, nullptr}};
+  }
+  // Generate a new cache key since we updated small const inputs which change
+  // the cache key.
+  TF_ASSIGN_OR_RETURN(cache_key, CacheKeyForGraph(doperation, attributes,
+                                                  inputs, output_layouts));
+
+  stats_.misses++;
+  return {{cache_key, nullptr}};
+}
+
+template <typename T>
+bool ExecutableManager<T>::UpdateDTensorOpAndSmallInputsCache(
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs) {
   const tensorflow::Fprint128 doperation_hash =
       executable_manager_impl_.CacheKeyForDTensorOperation(doperation);
 
-  // Save the constant folded inputs to this doperation if we have not seen this
-  // before. This is needed so that in the next call to this operation, we
-  // can compare these inputs to confirm which one is indeed a constant.
+  mutex_lock lock(dtensor_op_and_small_inputs_mu_);
+  // Save the constant folded inputs to this doperation if we have not seen
+  // this before. This is needed so that in the next call to this operation,
+  // we can compare these inputs to confirm which one is indeed a constant.
   auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
   if (doperation_iter == dtensor_op_and_small_inputs_.end()) {
     dtensor_op_and_small_inputs_.insert(
         {doperation_hash,
          executable_manager_impl_.GetConstantFoldableTensors(inputs)});
-    return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+    return true;
   }
 
   // If we are here, then we have ran this function before but constant folded
-  // some input(s) when it was not a constant input i.e. one of the small value
-  // to this function input changed. So mark those changed values as
+  // some input(s) when it was not a constant input i.e. one of the small
+  // value to this function input changed. So mark those changed values as
   // non-constant.
   absl::flat_hash_map<int, NodeDef>& previous_small_inputs =
       doperation_iter->second;
   std::vector<int> non_constant_indices;
 
   for (auto const& [index, previous_small_input] : previous_small_inputs) {
+    // Some Ops the number of inputs can vary. We'll just skip updating them.
+    if (index >= inputs.size()) continue;
     auto* const_value_node = inputs[index]->const_value_node();
     if (const_value_node == nullptr) {
       continue;
@@ -684,7 +798,6 @@ ExecutableManager<T>::GetCachedExecutable(
     if (const_value_node->const_value().has_value()) {
       if (NodeDefsHaveDifferentTensorProto(
               previous_small_input, const_value_node->const_value().value())) {
-        const_value_node->reset_const_value();
         non_constant_indices.push_back(index);
       }
     }
@@ -692,41 +805,95 @@ ExecutableManager<T>::GetCachedExecutable(
   for (int non_constant_index : non_constant_indices) {
     previous_small_inputs.erase(non_constant_index);
   }
-  // Generate a new cache key since we updated small const inputs which change
-  // the cache key.
-  cache_key = CacheKeyForGraph(doperation, attributes, inputs, output_layouts);
-  return std::pair<Fprint128, std::nullptr_t>(cache_key, nullptr);
+  return false;
 }
 
-// Thread-unsafe method go/thread-unsafe.
+// Thread-safe method.
 template <typename T>
 const T* ExecutableManager<T>::GetCachedExecutableSimple(
     tensorflow::Fprint128 cache_key) {
+  mutex_lock lock(mu_);
   auto iter = function_cache_.find(cache_key);
-  return iter == function_cache_.end() ? nullptr : &iter->second;
+  if (iter == function_cache_.end()) {
+    stats_.misses++;
+    return nullptr;
+  }
+  stats_.hits++;
+  return &iter->second;
 }
 
 template <typename T>
 const T* ExecutableManager<T>::AddCachedExecutable(
     tensorflow::Fprint128 cache_key, T executable) {
+  mutex_lock lock(mu_);
   return &function_cache_.insert({cache_key, std::move(executable)})
               .first->second;
 }
 
 template <typename T>
-bool ExecutableManager<T>::IsConstantFoldable(
-    const DTensorOperation& doperation, const int input_index) const {
+void ExecutableManager<T>::Remove(tensorflow::Fprint128 cache_key) {
+  mutex_lock lock(mu_);
+  auto iter = function_cache_.find(cache_key);
+  if (iter != function_cache_.end()) {
+    function_cache_.erase(iter);
+  }
+}
+
+template <typename T>
+StatusOr<bool> ExecutableManager<T>::ShouldFoldInput(
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs, const int input_index) const {
+  const auto input = inputs[input_index];
+  const bool can_fold = input->const_value_node() &&
+                        input->const_value_node()->const_value().has_value();
   // For eager ops, assume the inputs are constant foldable.
-  if (!doperation.is_func()) return true;
+  if (!doperation.is_func()) {
+    // Fold if we are in a function or if a special eager op.
+    // TODO(b/270762002): Think about how to generalize this so it does not
+    // depend on operation_name. For example, we can check the max abs value of
+    // the tensor value.
+
+    if (doperation.name == absl::string_view("StatelessRandomUniform") ||
+        doperation.name == absl::string_view("StatelessRandomUniformFullInt") ||
+        doperation.name == absl::string_view("StatelessRandomNormal") ||
+        doperation.name == absl::string_view("StatelessTruncatedNormal")) {
+      // For all stateless rng ops, we avoid fold seed (input_index==1) in
+      // graph. This is an important optimization to avoid unnecessary MLIR SPMD
+      // lowering and TPU compilation during model parameters initialization
+      // process. which typically have the same shape for rng ops but different
+      // seeds.
+      return can_fold && (input_index != 1);
+    }
+    // Certain Ops we shall never fold in their inputs. Enable caching to reduce
+    // sizes of the graphs. This list is incomplete.
+    // FIXME(b/270762002): We only need constant folding for args that are
+    // matched against Constants in MLIR.
+    if (doperation.name != absl::string_view("Identity") &&
+        doperation.name != absl::string_view("DivNoNan") &&
+        doperation.name != absl::string_view("CopyToMesh") &&
+        doperation.name != absl::string_view("CopyToMeshGrad") &&
+        doperation.name != absl::string_view("Relayout") &&
+        doperation.name != absl::string_view("RelayoutGrad")) {
+      return can_fold;
+    }
+  }
   const tensorflow::Fprint128 doperation_hash =
       executable_manager_impl_.CacheKeyForDTensorOperation(doperation);
+
+  mutex_lock lock(dtensor_op_and_small_inputs_mu_);
   // If we didn't see this doperation before then optimisticly assume this is
   // foldable. The input at `input_index` is foldable only if it is one of the
   // indices we have saved as the small inputs.
   auto doperation_iter = dtensor_op_and_small_inputs_.find(doperation_hash);
-  return doperation_iter == dtensor_op_and_small_inputs_.end() ||
-         doperation_iter->second.contains(input_index);
+  return can_fold && (doperation_iter == dtensor_op_and_small_inputs_.end() ||
+                      doperation_iter->second.contains(input_index));
 }
+
+// ExecutionFunctions manager can not check if the input is foldable.
+template <>
+StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
+    const DTensorOperation& doperation,
+    const std::vector<TensorWithLayout*>& inputs, int input_index) const;
 
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -550,6 +550,10 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
         return absl::UnimplementedError(
             "FullyConnected doesn't support more than 2 runtime inputs.");
       }
+      if (op_sig.inputs[0].is_const) {
+        return absl::UnimplementedError(
+            "FullyConnected doesn't support constant input.");
+      }
       if (tf_options->keep_num_dims == true) {
         const auto& input = op_sig.inputs.at(0);
         const auto& output = op_sig.outputs.at(0);
@@ -679,7 +683,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
       return absl::OkStatus();
-
+    case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return CheckSelectV2GpuDelegateCompatibility(op_sig);
 
@@ -816,6 +820,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     }
 
     case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2:
     case kTfLiteBuiltinMirrorPad: {
       if (opcode == kTfLiteBuiltinMirrorPad) {
         const TfLiteMirrorPaddingParams* tf_options;
@@ -826,6 +831,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
               absl::StrCat("Only Reflective padding is supported for Mirror "
                            "Pad operation. But node has ",
                            tf_options->mode));
+        }
+      } else if (opcode == kTfLiteBuiltinPadv2 && op_sig.inputs.size() == 3) {
+        if (op_sig.inputs.at(2).type != kTfLiteFloat32) {
+          return absl::InvalidArgumentError(
+              "constant_values must be a scalar float");
         }
       }
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
@@ -857,6 +867,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
     case kTfLiteBuiltinRsqrt:
+    case kTfLiteBuiltinSign:
     case kTfLiteBuiltinSin:
     case kTfLiteBuiltinSqrt:
     case kTfLiteBuiltinSquare:

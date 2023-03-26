@@ -27,9 +27,9 @@ import weakref
 
 from six.moves import queue
 
-from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
+from tensorflow.python.distribute.coordinator import remote_value
 from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.distribute.coordinator import watchdog
 from tensorflow.python.eager import cancellation
@@ -64,8 +64,8 @@ _RPC_ERROR_FROM_PS = "GRPC error information from remote target /job:ps"
 _JOB_WORKER_STRING_IDENTIFIER = "/job:worker"
 
 
-RemoteValueStatus = values_lib.RemoteValueStatus
-RemoteValue = values_lib.RemoteValue
+RemoteValueStatus = remote_value.RemoteValueStatus
+RemoteValue = remote_value.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
 PerWorkerValues = values_lib.PerWorkerValues
 
@@ -136,22 +136,6 @@ def _get_error_from_remote_values(structure):
     return errors_in_structure[0]
   else:
     return None
-
-
-def _maybe_get_remote_value(val):
-  """Gets the value of `val` if it is a `RemoteValue`."""
-  if isinstance(val, RemoteValue):
-    error = val._get_error()  # pylint: disable=protected-access
-    if error:
-      raise AssertionError(
-          "RemoteValue doesn't have a value because it has error %r:%s" %
-          (error, error))
-    elif val._status is not RemoteValueStatus.READY:  # pylint: disable=protected-access
-      raise AssertionError("The input RemoteValue has not been executed.")
-    else:
-      return val._get_values()  # pylint: disable=protected-access
-  else:
-    return val
 
 
 def _maybe_as_type_spec(val):
@@ -280,8 +264,10 @@ class Closure(object):
         with coordinator_context.with_dispatch_context(worker):
           with metric_utils.monitored_timer("closure_execution"):
             output_values = self._function(
-                *nest.map_structure(_maybe_get_remote_value, replica_args),
-                **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
+                *nest.map_structure(coordinator_context.maybe_get_remote_value,
+                                    replica_args),
+                **nest.map_structure(coordinator_context.maybe_get_remote_value,
+                                     replica_kwargs))
     self.maybe_call_with_output_remote_value(
         lambda r: r._set_values(output_values))  # pylint: disable=protected-access
 
@@ -426,7 +412,7 @@ class _CoordinatedClosureQueue(object):
     if tag is not None:
       with self._queue_lock:
         self._tagged_queue[tag].put(closure, block=False)
-        self._closures_queued_condition.notifyAll()
+        self._closures_queued_condition.notify_all()
     else:
       with self._put_wait_lock, self._queue_lock:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
@@ -602,7 +588,7 @@ class WorkerPreemptionHandler(object):
     try:
       yield
     except (errors.OpError, ClosureInputError,
-            ClosureAbortedError) as e:
+            ClosureAbortedError, TypeError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -1151,8 +1137,7 @@ class ClusterCoordinator(object):
       ValueError: if the strategy being used is not supported.
     """
     if not getattr(self, "_has_initialized", False):
-      if not isinstance(strategy,
-                        parameter_server_strategy_v2.ParameterServerStrategyV2):
+      if not hasattr(strategy, "_is_parameter_server_strategy_v2"):
         raise ValueError(
             "Only `tf.distribute.experimental.ParameterServerStrategy` "
             "is supported to work with "
@@ -1239,9 +1224,10 @@ class ClusterCoordinator(object):
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():
       self.strategy.extended._being_scheduled = True  # pylint: disable=protected-access
-      remote_value = self._cluster.schedule(fn, args=args, kwargs=kwargs)
+      schedule_remote_value = self._cluster.schedule(
+          fn, args=args, kwargs=kwargs)
       self.strategy.extended._being_scheduled = False  # pylint: disable=protected-access
-      return remote_value
+      return schedule_remote_value
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -1511,6 +1497,14 @@ def _is_worker_failure(error):
   # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
   # to the failing workers.
   if isinstance(error, errors.CancelledError):
+    return True
+
+  # This can occur when preparing closures for execution when doing exact
+  # evaluation, because the iterator creation, which occurs within the
+  # tf.function, needs to access the worker device, so it fails if the worker is
+  # down.
+  if isinstance(error, TypeError) and "Binding inputs to tf.function" in str(
+      error):
     return True
 
   return False

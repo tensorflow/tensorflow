@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
@@ -402,7 +403,7 @@ def random_crop(value, size, seed=None, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
-    check = control_flow_ops.Assert(
+    check = control_flow_assert.Assert(
         math_ops.reduce_all(shape >= size),
         ["Need value.shape >= size, got ", shape, size],
         summarize=1000)
@@ -455,7 +456,7 @@ def stateless_random_crop(value, size, seed, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
-    check = control_flow_ops.Assert(
+    check = control_flow_assert.Assert(
         math_ops.reduce_all(shape >= size),
         ["Need value.shape >= size, got ", shape, size],
         summarize=1000)

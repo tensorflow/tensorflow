@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "absl/log/check.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
-#include "tensorflow/core/tfrt/mla/mla_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
@@ -608,27 +608,6 @@ tensorflow::StatusOr<std::unique_ptr<SavedModel>>
 SavedModelImpl::LoadSavedModel(Options options,
                                absl::string_view saved_model_dir,
                                const std::unordered_set<std::string>& tags) {
-  std::string saved_model_dir_str = "unused";
-  if (options.maybe_load_from_mla) {
-    const auto mla_check_start_time = absl::Now();
-    const bool is_mla = IsMlarchive(saved_model_dir);
-    const auto mla_check_duration = absl::Now() - mla_check_start_time;
-    saved_model_mla_check_time_milli_seconds
-        ->GetCell(std::string(saved_model_dir))
-        ->Set(absl::ToInt64Milliseconds(mla_check_duration));
-    LOG(INFO) << "TFRT finished checking MLA. Took "
-              << absl::ToInt64Milliseconds(mla_check_duration) << " ms.";
-    if (is_mla) {
-      LOG(INFO) << "TFRT got an MLArchive dir: " << saved_model_dir
-                << ". Continuing to find the actual saved_model_dir in it.";
-      TF_ASSIGN_OR_RETURN(saved_model_dir_str,
-                          GetSavedModelDirFromMlaDir(saved_model_dir));
-      saved_model_dir = saved_model_dir_str;
-      LOG(INFO) << "TFRT found from MLArchive a saved model: "
-                << saved_model_dir;
-    }  // Not an MLA; `saved_model_dir` is ready to use.
-  }
-
   TF_ASSIGN_OR_RETURN(auto meta_graph_def,
                       ReadSavedModel(saved_model_dir, tags));
   return LoadSavedModel(std::move(options), std::move(meta_graph_def),
@@ -722,6 +701,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
   // Register infra and standard math kernels
   tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
   tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
 
   std::optional<mlrt::LoadedExecutable> loaded_executable;

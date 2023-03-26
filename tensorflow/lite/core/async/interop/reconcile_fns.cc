@@ -20,8 +20,8 @@ limitations under the License.
 #include <iterator>
 #include <set>
 
-#include "tensorflow/lite/core/async/interop/attribute_keys.h"
 #include "tensorflow/lite/core/async/interop/attribute_map_internal.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 
 namespace tflite {
 namespace interop {
@@ -46,14 +46,14 @@ T lcm(T x, T y) {
 
 // Reconciled alignment is LCM of l and r.
 void ReconcileAlignment(size_t l, size_t r, AttributeMap::ContainerT* merged) {
-  merged->insert_or_assign(
-      static_cast<size_t>(TfLiteBufferAttributeKey::kAlignment), lcm(l, r));
+  merged->insert_or_assign(static_cast<size_t>(kTfLiteBufferAttrKeyAlignment),
+                           lcm(l, r));
 }
 
 // Reconciled padding is LCM of l and r.
 void ReconcilePadding(size_t l, size_t r, AttributeMap::ContainerT* merged) {
-  merged->insert_or_assign(
-      static_cast<size_t>(TfLiteBufferAttributeKey::kPadding), lcm(l, r));
+  merged->insert_or_assign(static_cast<size_t>(kTfLiteBufferAttrKeyPadding),
+                           lcm(l, r));
 }
 
 // For alignment and padding, if l is multiples of r, it's covering r.
@@ -61,7 +61,7 @@ bool CheckMultiples(size_t l, size_t r) { return l % r == 0; }
 
 // Reconciled size is max(l, r).
 void ReconcileSize(size_t l, size_t r, AttributeMap::ContainerT* merged) {
-  merged->insert_or_assign(static_cast<size_t>(TfLiteBufferAttributeKey::kSize),
+  merged->insert_or_assign(static_cast<size_t>(kTfLiteBufferAttrKeySize),
                            std::max(l, r));
 }
 
@@ -85,26 +85,26 @@ bool ReconcileGeneralAttributeKeys(TfLiteAttrMapType type,
   for (auto k : keys) {
     const auto l = lhs->find(k);
     const auto r = rhs->find(k);
-    if (l == lhs->end()) {
+    if (l == lhs->end() || l->second.GetPtr() == nullptr) {
       merged->insert_or_assign(k, r->second);
       continue;
     }
-    if (r == rhs->end()) {
+    if (r == rhs->end() || r->second.GetPtr() == nullptr) {
       merged->insert_or_assign(k, l->second);
       continue;
     }
-    if (type == kTfLiteBufferAttrMap) {
-      switch (static_cast<TfLiteBufferAttributeKey>(k)) {
-        case TfLiteBufferAttributeKey::kSize:
-          ReconcileSize(l->second.Get<size_t>(), r->second.Get<size_t>(),
+    if (type == kTfLiteAttrMapTypeBuffer) {
+      switch (static_cast<TfLiteBufferAttrKey>(k)) {
+        case kTfLiteBufferAttrKeySize:
+          ReconcileSize(*l->second.Get<size_t>(), *r->second.Get<size_t>(),
                         merged);
           break;
-        case TfLiteBufferAttributeKey::kAlignment:
-          ReconcileAlignment(l->second.Get<size_t>(), r->second.Get<size_t>(),
+        case kTfLiteBufferAttrKeyAlignment:
+          ReconcileAlignment(*l->second.Get<size_t>(), *r->second.Get<size_t>(),
                              merged);
           break;
-        case TfLiteBufferAttributeKey::kPadding:
-          ReconcilePadding(l->second.Get<size_t>(), r->second.Get<size_t>(),
+        case kTfLiteBufferAttrKeyPadding:
+          ReconcilePadding(*l->second.Get<size_t>(), *r->second.Get<size_t>(),
                            merged);
           break;
         default:
@@ -144,24 +144,24 @@ bool CheckGeneralAttributeKeysCoverage(TfLiteAttrMapType type,
     bool has_conflict = false;
     const auto l = lhs->find(k);
     const auto r = rhs->find(k);
-    if (r == rhs->end()) {
+    if (r == rhs->end() || r->second.GetPtr() == nullptr) {
       continue;
-    } else if (l == lhs->end()) {
+    } else if (l == lhs->end() || l->second.GetPtr() == nullptr) {
       has_conflict = true;
     } else {
-      if (type == kTfLiteBufferAttrMap) {
-        switch (static_cast<TfLiteBufferAttributeKey>(k)) {
-          case TfLiteBufferAttributeKey::kSize:
+      if (type == kTfLiteAttrMapTypeBuffer) {
+        switch (static_cast<TfLiteBufferAttrKey>(k)) {
+          case kTfLiteBufferAttrKeySize:
             has_conflict |=
-                !CheckSize(l->second.Get<size_t>(), r->second.Get<size_t>());
+                !CheckSize(*l->second.Get<size_t>(), *r->second.Get<size_t>());
             break;
-          case TfLiteBufferAttributeKey::kAlignment:
-            has_conflict |= !CheckMultiples(l->second.Get<size_t>(),
-                                            r->second.Get<size_t>());
+          case kTfLiteBufferAttrKeyAlignment:
+            has_conflict |= !CheckMultiples(*l->second.Get<size_t>(),
+                                            *r->second.Get<size_t>());
             break;
-          case TfLiteBufferAttributeKey::kPadding:
+          case kTfLiteBufferAttrKeyPadding:
             has_conflict |=
-                !CheckSize(l->second.Get<size_t>(), r->second.Get<size_t>());
+                !CheckSize(*l->second.Get<size_t>(), *r->second.Get<size_t>());
             break;
           default:
             // For other keys, check equality.

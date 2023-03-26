@@ -312,10 +312,10 @@ def _MaybeCompile(scope, op, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
-    xla_compile = func.definition.attr["_XlaCompile"].b
-    xla_separate_compiled_gradients = func.definition.attr[
+    xla_compile = func.cached_definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.cached_definition.attr[
         "_XlaSeparateCompiledGradients"].b
-    xla_scope = func.definition.attr["_XlaScope"].s.decode()
+    xla_scope = func.cached_definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")

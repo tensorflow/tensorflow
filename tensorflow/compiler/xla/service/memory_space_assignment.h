@@ -113,6 +113,7 @@ class MemorySpaceAssignmentCostAnalysis {
   // speed up the lookup.
   struct Cache {
     absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
+    absl::flat_hash_map<HloPosition, float> memory_boundedness;
   };
 
   // Function type that can be used to indicate which input/output values are in
@@ -1023,6 +1024,45 @@ class MemorySpaceAssignment {
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
 };
 
+// Config to override preferred prefetch / copy start location for a target
+// instruction, to immediately before/after a reference instruction.
+class OverridePreferredPrefetchTime {
+  // Place copy start of element indexed into operand_index_ of the (possibly
+  // tuple) operand at operand_number_ of instruction with name
+  // instruction_name_ and place it before or after (depending on placement_)
+  // the reference instruction with name reference_instruction_name_.
+ public:
+  enum class Placement { kBefore, kAfter };
+  std::string instruction_name_;
+  int64_t operand_number_;
+  ShapeIndex operand_index_;
+  Placement placement_;
+  std::string reference_instruction_name_;
+
+  OverridePreferredPrefetchTime(std::string inst_name, int64_t op_num,
+                                ShapeIndex op_idx, Placement p,
+                                std::string ref_inst_name)
+      : instruction_name_(inst_name),
+        operand_number_(op_num),
+        operand_index_(op_idx),
+        placement_(p),
+        reference_instruction_name_(ref_inst_name) {}
+
+  // For debugging use only.
+  std::string ToString() const;
+
+  static StatusOr<
+      std::vector<memory_space_assignment::OverridePreferredPrefetchTime>>
+  ParseOverridePreferredPrefetchTimesConfig(
+      std::string override_preferred_prefetch_times_config);
+
+ private:
+  static StatusOr<ShapeIndex> ParseOperandIndex(std::string config);
+
+  static StatusOr<OverridePreferredPrefetchTime>
+  ParseOverridePreferredPrefetchTimeConfig(std::string config);
+};
+
 // The different options to be passed to the Run() API.
 struct Options {
   // Backend-specific integer value that describes the alternate memory.
@@ -1155,6 +1195,10 @@ struct Options {
 
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
+
+  // Config to override preferred prefetch times for operands of specific
+  // instructions to before or after given reference instructions.
+  std::vector<OverridePreferredPrefetchTime> override_preferred_prefetch_times;
 };
 
 // A struct representing an asynchronous copy with its logical start and end

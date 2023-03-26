@@ -18,23 +18,23 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 
-#ifdef TF_OPKERNEL_C_API_PASSTHROUGH
+#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_coordination_service_agent.h"
 #else
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_coordination_service_agent.h"
-#endif  // TF_OPKERNEL_C_API_PASSTHROUGH
+#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 
 namespace tensorflow {
 
 inline PluginCoordinationServiceAgent* CreatePluginCoordinationServiceAgent(
     void* agent) {
-#ifdef TF_OPKERNEL_C_API_PASSTHROUGH
+#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
   return new DirectPluginCoordinationServiceAgent(agent);
 #else
   return new CPluginCoordinationServiceAgent(agent);
-#endif  // TF_OPKERNEL_C_API_PASSTHROUGH
+#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 }
 
 }  // namespace tensorflow

@@ -162,7 +162,7 @@ tf_module {
   }
   member_method {
     name: "embedding_lookup_sparse"
-    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'combiner\', \'max_norm\', \'name\', \'allow_fast_lookup\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "erosion2d"
@@ -270,7 +270,7 @@ tf_module {
   }
   member_method {
     name: "safe_embedding_lookup_sparse"
-    argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'max_norm\', \'name\', \'allow_fast_lookup\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "sampled_softmax_loss"

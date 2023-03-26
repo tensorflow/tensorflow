@@ -119,6 +119,8 @@ class SavedModel {
 
     // If true, we'll attempt to find MLArchive within the given loading path.
     // If not found, will use the path as a normal SavedModel directory.
+    //
+    // This field is deprecated.
     bool maybe_load_from_mla = false;
 
     // If true, the lazy loading path will use tfrt_stub::GraphExecutor.

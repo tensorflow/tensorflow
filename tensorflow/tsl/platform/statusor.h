@@ -234,7 +234,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
 // Implementation details for StatusOr<T>
 
 template <typename T>
-StatusOr<T>::StatusOr() : Base(Status(tsl::error::UNKNOWN, "")) {}
+StatusOr<T>::StatusOr() : Base(Status(absl::StatusCode::kUnknown, "")) {}
 
 template <typename T>
 StatusOr<T>::StatusOr(const T& value) : Base(value) {}

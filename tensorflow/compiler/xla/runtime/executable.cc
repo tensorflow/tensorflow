@@ -435,7 +435,7 @@ Status Executable::ReturnResults(unsigned ordinal,
   // Prepare exported functions for the executable.
   std::vector<Executable::Function> functions;
 
-  for (auto& indexed : llvm::enumerate(load_functions)) {
+  for (const auto& indexed : llvm::enumerate(load_functions)) {
     LoadFunction& fn = indexed.value();
 
     // Get the memory layout for passing function arguments.

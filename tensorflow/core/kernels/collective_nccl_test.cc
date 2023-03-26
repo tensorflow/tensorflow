@@ -219,7 +219,9 @@ class NcclTestBase : public ::testing::Test {
     }
 
     void RunAllToAll() {
-      output_ = input_;
+      // Allocate output. We can't reuse the input because NCCL does not support
+      // in-place all-to-all.
+      output_ = Tensor(DT_FLOAT, input_.shape());
       status_ = tensorflow::RunCollective(test_env_, col_params_.get(), device_,
                                           &input_, &output_);
     }

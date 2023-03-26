@@ -42,6 +42,7 @@ package_group(
     name = "friends",
     includes = [":internal"],
     packages = [
+        "//platforms/performance/automl/...",
         "//tensorflow/...",
         "//tensorflow_federated/cc/core/impl/executors/...",
         "//tensorflow_models/...",
@@ -403,10 +404,10 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/compiler/xla/stream_executor:platform",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
     ] + if_libtpu(
         if_false = [
             "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -417,14 +418,32 @@ cc_library(
     ),
 )
 
+tf_cc_test(
+    name = "graph_compiler_test",
+    srcs = ["graph_compiler_test.cc"],
+    deps = [
+        ":graph_compiler_util",
+        ":tf2xla_proto_cc",
+        ":xla_compilation_device",
+        ":xla_compiler",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "xla_compiler",
     srcs = [
         "const_analysis.cc",
         "graph_compiler.cc",
         "xla_compiler.cc",
-        "xla_op_kernel.cc",
         "xla_cpu_backend.cc",
+        "xla_op_kernel.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
     ]) + if_rocm_is_configured([
@@ -442,8 +461,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
-        ":layout_util",
         ":host_compute_metadata_proto_cc",
+        ":layout_util",
         ":rearrange_function_argument",
         ":sharding_util",
         ":side_effect_util",
@@ -466,11 +485,8 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_compile_util",
-        "//tensorflow/compiler/mlir/utils:array_container_utils",
-        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util_no_tf_dialect_passes",
-        "//tensorflow/compiler/xla/client:value_inference",
-        "//tensorflow/compiler/xla/service:computation_placer_hdr",
+        "//tensorflow/compiler/mlir/utils:array_container_utils",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -479,11 +495,12 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/core/util:overflow",
-        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/compiler/xla/service:computation_placer_hdr",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -491,6 +508,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/util:overflow",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
     ]),
@@ -1338,6 +1357,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compile_util",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/utils:array_container_utils",
+        "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
 )

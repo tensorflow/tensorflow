@@ -44,6 +44,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "status_proto",
+    srcs = ["status.proto"],
+    make_default_target_header_only = True,
+    protodeps = [":error_codes_proto_impl"],
+)
+
+tf_proto_library(
     name = "histogram_proto",
     srcs = ["histogram.proto"],
     make_default_target_header_only = True,
@@ -113,6 +120,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         ":histogram_proto",
         ":rpc_options_proto",
+        ":status_proto",
         ":test_log_proto",
     ],
     visibility = ["//visibility:public"],

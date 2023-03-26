@@ -33,12 +33,27 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+_TEST_DTYPES = (
+    dtypes.bfloat16.as_numpy_dtype,
+    np.float16,
+    np.float32,
+    np.float64,
+    np.int16,
+    np.int32,
+    np.int64,
+    np.complex64,
+    np.complex128,
+    "|S",  # byte strings in python2 + 3
+)
+_TEST_ITYPES = (np.int16, np.int32, np.int64)
+
+
 class GatherNdTest(test.TestCase):
 
-  def _testSimpleDtype(self, dtype):
+  def _testSimpleDtype(self, dtype, itype):
     with self.cached_session():
       params = constant_op.constant(np.array([8, 1, 2, 3, 7, 5], dtype=dtype))
-      indices = constant_op.constant([[4], [4], [0]])
+      indices = constant_op.constant([[4], [4], [0]], dtype=itype)
       gather_nd_t = array_ops.gather_nd(params, indices)
       gather_nd_val = self.evaluate(gather_nd_t)
 
@@ -46,15 +61,9 @@ class GatherNdTest(test.TestCase):
     self.assertEqual([3], gather_nd_t.get_shape())
 
   def testSimpleDtype(self):
-    self._testSimpleDtype(dtypes.bfloat16.as_numpy_dtype)
-    self._testSimpleDtype(np.float16)
-    self._testSimpleDtype(np.float32)
-    self._testSimpleDtype(np.float64)
-    self._testSimpleDtype(np.int32)
-    self._testSimpleDtype(np.int64)
-    self._testSimpleDtype(np.complex64)
-    self._testSimpleDtype(np.complex128)
-    self._testSimpleDtype("|S")  # byte strings in python2 + 3
+    for dtype in _TEST_DTYPES:
+      for itype in _TEST_ITYPES:
+        self._testSimpleDtype(dtype, itype)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla("b/123337890")  # Error messages differ

@@ -353,7 +353,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   ] + [None] * num_intermediates
 
   # Skip gradients with respect to the captures whenever possible.
-  if "skip_input_indices" in op.__dict__ and op.skip_input_indices is not None:
+  if getattr(op, "skip_input_indices", None) is not None:
     captures_start_index = (
         len(body_graph.inputs) - len(body_graph.internal_captures))
     for i in op.skip_input_indices:
@@ -1320,10 +1320,8 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   ]
 
   tensors = []
-  for op, ph, dtype in zip(placeholder_ops, placeholders, types):
-    tensor = ops.Tensor._create_with_tf_output(op, 0, dtype, ph)
-    op._outputs = [tensor]
-    tensors.append(tensor)
+  for op in placeholder_ops:
+    tensors.append(op.outputs[0])
 
   # Update `cond_graph._captures` and `cond_graph.inputs` to contain the
   # newly created placeholders.

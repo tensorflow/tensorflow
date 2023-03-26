@@ -11,12 +11,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/jit:__subpackages__",
-        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
-        "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
-        "//tensorflow/compiler/xla:__subpackages__",
-        "//tensorflow/compiler/xla/backends/profiler/tpu:__subpackages__",
-        "//tensorflow/compiler/xla/stream_executor/tpu:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
@@ -357,5 +351,7 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["tpu_global_init.h"],
-    visibility = ["//tensorflow_serving/model_servers:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )

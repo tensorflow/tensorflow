@@ -30,7 +30,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -779,8 +781,8 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       new_dims = [first_dimension] + [
           x.uniform_row_length() for x in self.row_partitions[-new_dimensions:]
       ]
-      return array_ops.concat([array_ops.stack(new_dims), self.inner_shape[1:]],
-                              axis=0)
+      return array_ops.concat(
+          [array_ops_stack.stack(new_dims), self.inner_shape[1:]], axis=0)
 
   def _inner_shape_dim(self, dimension):
     """Returns an int or a tensor representing _inner_shape[dimension]."""
@@ -2386,7 +2388,7 @@ def _broadcast_dynamic_shape_one_layer(a, b):
   can_broadcast_from_b = math_ops.equal(b_0, 1)
 
   def broadcast_not_from_a():
-    return control_flow_ops.cond(
+    return cond.cond(
         can_broadcast_from_b, true_fn=broadcast_from_b, false_fn=broadcast_noop)
 
   nrows_equal = math_ops.equal(a_0, b_0)
@@ -2397,7 +2399,7 @@ def _broadcast_dynamic_shape_one_layer(a, b):
   check_can_broadcast = check_ops.assert_equal(
       can_broadcast, True, message="Cannot broadcast")
 
-  results = control_flow_ops.cond(
+  results = cond.cond(
       can_broadcast_from_a,
       true_fn=broadcast_from_a,
       false_fn=broadcast_not_from_a)
@@ -2467,7 +2469,7 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
   can_broadcast_from_b = math_ops.equal(b_0, constant_op.constant(1, b_0.dtype))
 
   def broadcast_not_from_a():
-    return control_flow_ops.cond(
+    return cond.cond(
         can_broadcast_from_b, true_fn=broadcast_from_b, false_fn=broadcast_noop)
 
   # Ideally, this would only block control flow on broadcast_noop, but
@@ -2476,7 +2478,7 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
       math_ops.logical_or(can_broadcast_from_a, can_broadcast_from_b),
       math_ops.equal(a_0, b_0))
 
-  result = control_flow_ops.cond(
+  result = cond.cond(
       can_broadcast_from_a,
       true_fn=broadcast_from_a,
       false_fn=broadcast_not_from_a)
@@ -2587,7 +2589,7 @@ def _broadcast_dynamic_shape_next_layer_half_ragged(
   can_broadcast_a = math_ops.equal(a_1.uniform_row_length(), 1)
 
   [c_1_row_splits, ac_1_gather_index,
-   bc_1_gather_index] = control_flow_ops.cond(
+   bc_1_gather_index] = cond.cond(
        can_broadcast_a, true_fn=broadcast_a, false_fn=broadcast_noop)
 
   c_1 = RowPartition.from_row_splits(c_1_row_splits)
@@ -2684,7 +2686,7 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
   can_broadcast_b = math_ops.equal(b_1.uniform_row_length(), 1)
 
   def no_broadcast_a():
-    return control_flow_ops.cond(
+    return cond.cond(
         can_broadcast_b, true_fn=broadcast_b, false_fn=broadcast_noop)
 
   can_broadcast_a = math_ops.equal(a_1.uniform_row_length(), 1)
@@ -2697,7 +2699,7 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
                              b_1.uniform_row_length())), True)
   ]
 
-  result = control_flow_ops.cond(
+  result = cond.cond(
       can_broadcast_a, true_fn=broadcast_a, false_fn=no_broadcast_a)
 
   [c_1_uniform_row_length, ac_1_gather_index, bc_1_gather_index] = [
@@ -3000,7 +3002,7 @@ def _first_layer_gather_index(nrows_source, nrows_target):
       True,
       message="Cannot broadcast")
 
-  gather_index = control_flow_ops.cond(
+  gather_index = cond.cond(
       do_broadcast, true_fn=gi_broadcast_first, false_fn=gi_no_broadcast_first)
 
   return control_flow_ops.with_dependencies([can_broadcast], gather_index)
@@ -3057,7 +3059,7 @@ def _next_layer_gather_index(bc, original_rp, broadcast_rp):
 
   do_broadcast = math_ops.equal(original_rp.uniform_row_length(),
                                 constant_op.constant(1, original_rp.dtype))
-  gather_index = control_flow_ops.cond(
+  gather_index = cond.cond(
       do_broadcast, true_fn=gi_broadcast, false_fn=gi_no_broadcast)
 
   return gather_index

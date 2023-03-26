@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 
 namespace xla {
@@ -100,7 +101,36 @@ using CloneOp = OpCapture<kClone, T, Ts...>;
 
 // Capture gpu operations by moving them into graph capture function.
 struct LaunchFuncOpCapture : public MoveOp<LaunchFuncOp> {};
-struct ConvOpCapture : public MoveOp<lmhlo_gpu::ConvForwardFusedOp> {};
+
+template <typename T>
+struct ConvOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto conv = llvm::dyn_cast<T>(op)) {
+      // Convolution that does runtime autotuning should not be captured, since
+      // CUDA graphs do not support operations that allocate memory.
+      lmhlo_gpu::ConvolutionBackendConfigAttr backend_config =
+          conv.getBackendConfig();
+      if (backend_config.getAlgorithm() != -1) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
+
+// TODO(b/270426911): Right now GEMM/Convolution with runtime autotuning can't
+// be captured by a cuda graph. However, longer term the proper fix is to make
+// autotuning "cuda-graph-aware", and run autotuning on a separate stream that
+// is not in capture mode.
+struct ConvForwardOpCapture : public ConvOpCapture<lmhlo_gpu::ConvForwardOp> {};
+struct ConvBackwardInputOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvBackwardInputOp> {};
+struct ConvBackwardFilterOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvBackwardFilterOp> {};
+struct ConvForwardFusedOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvForwardFusedOp> {};
+struct ConvForwardFusedSideInputOpCapture
+    : public ConvOpCapture<lmhlo_gpu::ConvForwardFusedSideInputOp> {};
 
 struct GemmOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
@@ -110,6 +140,30 @@ struct GemmOpCapture : public OpCapturePattern {
       if (!gemm.getAlgorithm().has_value() ||
           gemm.getAlgorithm().value() !=
               stream_executor::blas::kRuntimeAutotuning) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
+
+struct MemrefOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
+      // We use a heuristic to identify the direction of the memcpy operation,
+      // if the operand was allocated by alloca op or is a global memref, then
+      // it must be a memref on the host.
+      auto IsHostMemRef = [](Value value) {
+        auto* op = value.getDefiningOp();
+        return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
+      };
+
+      auto IsDeviceToDevice = [&](mlir::gpu::MemcpyOp op) {
+        return !IsHostMemRef(op.getDst()) && !IsHostMemRef(op.getSrc());
+      };
+
+      // Device-to-host Memcpy cannot be captured by CUDA graphs.
+      if (IsDeviceToDevice(memcpy)) {
         return kMove;
       }
     }
@@ -351,10 +405,15 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
   OpCapturePatternSet patterns;
   patterns.emplace_back(new LaunchFuncOpCapture());
-  patterns.emplace_back(new ConvOpCapture());
+  patterns.emplace_back(new ConvForwardOpCapture());
+  patterns.emplace_back(new ConvBackwardInputOpCapture());
+  patterns.emplace_back(new ConvBackwardFilterOpCapture());
+  patterns.emplace_back(new ConvForwardFusedOpCapture());
+  patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
   patterns.emplace_back(new ConstantOpCapture());
   patterns.emplace_back(new GemmOpCapture());
   patterns.emplace_back(new ViewOpCapture());
+  patterns.emplace_back(new MemrefOpCapture());
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),

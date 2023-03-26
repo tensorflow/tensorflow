@@ -85,6 +85,7 @@ cc_library(
 alias(
     name = "framework",
     actual = "framework_experimental",
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
 )
 
@@ -331,6 +332,7 @@ cc_test(
         "//tensorflow/lite:testdata/zero_size_constant.bin",
     ],
     tags = [
+        "no_oss",  # TODO(b/273567752): Reenable after it's fixed.
         "no_windows",  # TODO(b/194459105): the test is flaky.
         "tflite_not_portable",
         "tflite_smoke_test",

@@ -433,7 +433,7 @@ TEST(TensorShapeTest, AddDimWithStatus) {
   ASSERT_EQ(4, s.dims());
 
   status = s.AddDimWithStatus(-1);
-  EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
+  EXPECT_EQ(absl::StatusCode::kInvalidArgument, status.code());
 
   TensorShape s2({std::numeric_limits<int64_t>::max()});
   EXPECT_THAT(s2.AddDimWithStatus(2),
@@ -464,7 +464,7 @@ TEST(TensorShapeTest, Factory) {
   ASSERT_EQ(3, s.dims());
 
   status = TensorShape::BuildTensorShapeBase({-10, 5, 20}, &s);
-  EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
+  EXPECT_EQ(absl::StatusCode::kInvalidArgument, status.code());
 }
 
 TEST(TensorShapeTest, AsEigenDSizess) {
@@ -911,10 +911,10 @@ TEST(TensorShapeTest, Overflow) {
     for (auto dim : overflow) {
       proto.add_dim()->set_size(dim);
     }
-    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+    EXPECT_EQ(absl::StatusCode::kInvalidArgument,
               TensorShape::IsValidShape(proto).code());
     TensorShape shape;
-    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+    EXPECT_EQ(absl::StatusCode::kInvalidArgument,
               TensorShapeUtils::MakeShape(overflow, &shape).code());
   }
 }

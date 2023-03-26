@@ -23,11 +23,11 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import while_loop
 # pylint: disable=unused-import
 from tensorflow.python.ops.gen_functional_ops import remote_call
 # pylint: enable=unused-import
@@ -144,7 +144,7 @@ def foldl(fn,
       a = fn(a, elem_i)
       return [i + 1, a]
 
-    _, r_a = control_flow_ops.while_loop(
+    _, r_a = while_loop.while_loop(
         lambda i, a: i < n,
         compute, [i, a],
         parallel_iterations=parallel_iterations,
@@ -341,7 +341,7 @@ def foldr(fn,
       a_out = fn(a, elem)
       return [i, a_out]
 
-    _, r_a = control_flow_ops.while_loop(
+    _, r_a = while_loop.while_loop(
         lambda i, a: i > 0,
         compute, [i, a],
         parallel_iterations=parallel_iterations,
@@ -660,7 +660,7 @@ def scan(fn,
     else:
       initial_i = i
       condition = lambda i, _1, _2: i < n
-    _, _, r_a = control_flow_ops.while_loop(
+    _, _, r_a = while_loop.while_loop(
         condition,
         compute, (initial_i, a_flat, accs_ta),
         parallel_iterations=parallel_iterations,
@@ -1204,7 +1204,7 @@ def partitioned_call(args,
   config_proto = attr_value_pb2.AttrValue(s=config)
 
   graph = ops.get_default_graph()
-  f.add_to_graph(graph)
+  graph._add_function_recursive(f)  # pylint: disable=protected-access
   op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
 
   # Propagate the attribute indicating the need to compile from function to the
@@ -1217,8 +1217,8 @@ def partitioned_call(args,
       "config_proto": config_proto,
       "executor_type": executor_type_attr,
   }
-  if xla_compile_attr in f.definition.attr:
-    op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
+  if xla_compile_attr in f.cached_definition.attr:
+    op_attrs[xla_compile_attr] = f.cached_definition.attr[xla_compile_attr]
   op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
   outputs = op.outputs
   if hasattr(f, "graph"):

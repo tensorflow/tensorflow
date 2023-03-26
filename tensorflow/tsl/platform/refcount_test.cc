@@ -107,7 +107,17 @@ TEST_F(RefTest, ScopedUnref_Nullptr) {
   EXPECT_EQ(destroyed_, 0);
 }
 
-class ObjType : public WeakRefCounted {};
+class ObjType : public WeakRefCounted {
+ public:
+  ObjType() : ObjType(unused_dtor_called_) {}
+  explicit ObjType(int& dtor_called) : dtor_called_(dtor_called) {}
+  ~ObjType() override { dtor_called_++; }
+
+  int& dtor_called_;
+  static int unused_dtor_called_;
+};
+
+int ObjType::unused_dtor_called_ = 0;
 
 TEST(WeakPtr, SingleThread) {
   auto obj = new ObjType();
@@ -188,6 +198,56 @@ TEST(WeakPtr, NotifyCalled) {
   EXPECT_EQ(weakptr2.GetNewRef(), nullptr);
   EXPECT_EQ(num_calls1, 1);
   EXPECT_EQ(num_calls2, 1);
+}
+
+TEST(WeakPtr, NotifyCalledBeforeDestructor) {
+  int dtor_called = 0;
+  auto obj = new ObjType(dtor_called);
+  int num_calls1 = 0;
+
+  auto notify_fn1 = [&num_calls1, &dtor_called]() {
+    num_calls1++;
+    EXPECT_EQ(dtor_called, 0);
+  };
+  WeakPtr<ObjType> weakptr1(obj, notify_fn1);
+
+  ASSERT_TRUE(obj->RefCountIsOne());
+  EXPECT_EQ(obj->WeakRefCount(), 1);
+  EXPECT_NE(weakptr1.GetNewRef(), nullptr);
+
+  EXPECT_EQ(num_calls1, 0);
+  obj->Unref();
+  EXPECT_EQ(weakptr1.GetNewRef(), nullptr);
+  EXPECT_EQ(num_calls1, 1);
+  EXPECT_EQ(dtor_called, 1);
+}
+
+TEST(WeakPtr, CopyTargetCalled) {
+  auto obj = new ObjType();
+  int num_calls1 = 0;
+  int num_calls2 = 0;
+
+  auto notify_fn1 = [&num_calls1]() { num_calls1++; };
+  auto notify_fn2 = [&num_calls2]() { num_calls2++; };
+
+  WeakPtr<ObjType> weakptr1(obj, notify_fn1);
+  WeakPtr<ObjType> weakptr2(obj, notify_fn2);
+  WeakPtr<ObjType> weakptr3(weakptr1);
+
+  weakptr2 = weakptr1;
+
+  ASSERT_TRUE(obj->RefCountIsOne());
+  EXPECT_EQ(obj->WeakRefCount(), 3);
+  EXPECT_NE(weakptr2.GetNewRef(), nullptr);
+  EXPECT_NE(weakptr3.GetNewRef(), nullptr);
+
+  EXPECT_EQ(num_calls1, 0);
+  EXPECT_EQ(num_calls2, 0);
+  obj->Unref();
+  EXPECT_EQ(weakptr2.GetNewRef(), nullptr);
+  EXPECT_EQ(weakptr3.GetNewRef(), nullptr);
+  EXPECT_EQ(num_calls1, 3);
+  EXPECT_EQ(num_calls2, 0);
 }
 
 TEST(WeakPtr, MoveTargetNotCalled) {

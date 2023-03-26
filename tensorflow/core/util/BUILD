@@ -79,6 +79,8 @@ filegroup(
         "bcast.cc",
         "bcast.h",
         "command_line_flags.h",
+        "debug_data_dumper.cc",
+        "debug_data_dumper.h",
         "determinism.h",
         "device_name_utils.h",
         "dump_graph.cc",
@@ -103,7 +105,6 @@ filegroup(
         "port.cc",
         "port.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
         "ragged_to_dense_util_common.h",
@@ -141,6 +142,7 @@ filegroup(
         "batch_util.h",
         "bcast.h",
         "command_line_flags.h",
+        "debug_data_dumper.h",
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
@@ -167,7 +169,6 @@ filegroup(
         "permutation_input_iterator.h",
         "permutation_output_iterator.h",
         "presized_cuckoo_map.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -210,6 +211,7 @@ filegroup(
         "activation_mode.cc",
         "batch_util.cc",
         "bcast.cc",
+        "debug_data_dumper.cc",
         "debug_events_writer.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
@@ -334,6 +336,7 @@ filegroup(
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
+        "debug_data_dumper.h",
         "debug_events_writer.h",
         "device_name_utils.h",
         "dump_graph.h",
@@ -349,7 +352,6 @@ filegroup(
         "mirror_pad_mode.h",
         "padding.h",
         "port.h",
-        "ptr_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.h",
         "stat_summarizer.h",
@@ -584,14 +586,6 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
-    ],
-)
-
-cc_library(
-    name = "ptr_util",
-    hdrs = ["ptr_util.h"],
-    deps = [
-        "//tensorflow/tsl/util:ptr_util",
     ],
 )
 
@@ -868,6 +862,7 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
+        "debug_data_dumper_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",

@@ -29,15 +29,24 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
+
+
+def initialized_value(var):
+  return control_flow_ops.cond(
+      variables.is_variable_initialized(var),
+      var.read_value,
+      lambda: var.initial_value)
 
 
 class VariablesTestCase(test.TestCase, parameterized.TestCase):
@@ -84,14 +93,14 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       self.assertEqual([3, 6], rnd.get_shape())
       self.assertEqual([3, 6], rnd.shape)
 
-      dep = variables.Variable(rnd.initialized_value(), name="dep")
+      dep = variables.Variable(initialized_value(rnd), name="dep")
       self.assertEqual("dep:0", dep.name)
       self.assertEqual([3, 6], dep.get_shape())
       self.assertEqual([3, 6], dep.get_shape())
       self.assertEqual([3, 6], dep.shape)
 
       # Currently have to set the shape manually for Add.
-      added_val = rnd.initialized_value() + dep.initialized_value() + 2.0
+      added_val = initialized_value(rnd) + initialized_value(dep) + 2.0
       added_val.set_shape(rnd.get_shape())
 
       depdep = variables.Variable(added_val, name="depdep")
@@ -109,7 +118,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testCyclicInitializer(self):
     with self.cached_session():
-      cyclic = control_flow_ops.while_loop(
+      cyclic = while_loop.while_loop(
           cond=lambda i: i < 10,
           body=lambda i: i + 1,
           loop_vars=(constant_op.constant(0),))
@@ -266,7 +275,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
         var_dict["v2"] = v2
         return v2 + v0
 
-      add = control_flow_ops.cond(
+      add = tf_cond.cond(
           math_ops.less(v0, 10), var_in_then_clause, var_in_else_clause)
       v1 = var_dict["v1"]
       v2 = var_dict["v2"]
@@ -298,7 +307,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       return (i + 1, v.read_value())
 
     with self.assertRaisesRegex(ValueError, "inside a control-flow"):
-      control_flow_ops.while_loop(cond, body, [0, 0])
+      while_loop.while_loop(cond, body, [0, 0])
 
   @test_util.run_deprecated_v1
   def testUseVariableAsTensor(self):
@@ -327,7 +336,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   def testCachingDevice(self):
     with self.cached_session():
       var = variables.Variable(2.0)
-      self.assertEqual(var.device, var.initialized_value().device)
+      self.assertEqual(var.device, initialized_value(var).device)
 
       var_cached = variables.Variable(2.0, caching_device="/job:foo")
       self.assertFalse(var_cached.device.startswith("/job:foo"))
@@ -476,7 +485,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
         self.evaluate(v1)
 
       v2 = variables.Variable(
-          math_ops.negative(v1.initialized_value()), dtype=dtypes.float32)
+          math_ops.negative(initialized_value(v1)), dtype=dtypes.float32)
       self.assertEqual(v1.get_shape(), v2.get_shape())
       self.assertEqual(v1.shape, v2.shape)
       self.assertAllClose(np.negative(value), self.evaluate(v2.initial_value))
@@ -503,8 +512,8 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   def testNoRefDataRace(self):
     with self.cached_session():
       a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
-      b = variables.Variable(a.initialized_value() + 2)
-      c = variables.Variable(b.initialized_value() + 2)
+      b = variables.Variable(initialized_value(a) + 2)
+      c = variables.Variable(initialized_value(b) + 2)
       self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(self.evaluate(a), [1, 2, 3])
       self.assertAllEqual(self.evaluate(b), [3, 4, 5])
@@ -538,12 +547,12 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default(), self.cached_session() as sess:
       # v describes a VariableDef-based variable without an initial value.
       v = variables.Variable(variable_def=v_def)
-      self.assertEqual(3.0, self.evaluate(v.initialized_value()))
+      self.assertEqual(3.0, self.evaluate(initialized_value(v)))
 
       # initialized_value should not rerun the initializer_op if the variable
       # has already been initialized elsewhere.
       self.evaluate(v.assign(1.0))
-      self.assertEqual(1.0, self.evaluate(v.initialized_value()))
+      self.assertEqual(1.0, self.evaluate(initialized_value(v)))
 
     v_def.ClearField("initial_value_name")
     with ops.Graph().as_default(), self.cached_session() as sess:
@@ -554,7 +563,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
       self.assertProtoEquals(v_def, v.to_proto())
       # But attempts to use initialized_value will result in errors.
       with self.assertRaises(ValueError):
-        self.evaluate(v.initialized_value())
+        self.evaluate(initialized_value(v))
 
   def testTrainableInProto(self):
     with ops.Graph().as_default():

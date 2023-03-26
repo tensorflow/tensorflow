@@ -159,9 +159,13 @@ func.func @simplify_loop_dealloc() {
 }
 
 // CHECK-LABEL: @simplify_loop_dealloc
-// CHECK: alloca
-// CHECK: alloca
-// CHECK: alloca
+// CHECK: memref.alloca
+// CHECK: memref.alloca
+// CHECK: memref.alloca
+// CHECK-NOT: memref.alloc
+// CHECK-NOT: memref.dealloc
+
+// -----
 
 func.func @hoist_always_reallocated() {
   %a = memref.alloc() : memref<f32>
@@ -189,7 +193,6 @@ func.func @hoist_always_reallocated() {
 // CHECK-NEXT: memref.alloca
 // CHECK-NEXT: scf.while
 // CHECK-NOT: memref.alloc
-// CHECK-NOT: memref.alloca
 
 // -----
 
@@ -216,4 +219,288 @@ func.func @hoist_passthrough() {
 // CHECK-NEXT: memref.alloca
 // CHECK-NEXT: scf.while
 // CHECK-NOT: memref.alloc
-// CHECK-NOT: memref.alloca
+
+// -----
+
+func.func @allocs_in_different_scopes_with_no_overlap() {
+  %alloc0 = memref.alloc() : memref<4xi32>
+  "test.use"(%alloc0) : (memref<4xi32>) -> ()
+  memref.dealloc %alloc0 : memref<4xi32>
+  scf.while() : () -> () {
+    %cond = "test.make_condition"() : () -> i1
+    scf.condition(%cond)
+  } do {
+    %alloc1 = memref.alloc() : memref<4xi32>
+    "test.use"(%alloc1) : (memref<4xi32>) -> ()
+    memref.dealloc %alloc1 : memref<4xi32>
+    scf.yield
+  }
+  %alloc2 = memref.alloc() : memref<4xi32>
+  "test.use"(%alloc2) : (memref<4xi32>) -> ()
+  memref.dealloc %alloc2 : memref<4xi32>
+  return
+}
+
+// CHECK-LABEL: @allocs_in_different_scopes_with_no_overlap
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: test.use
+// CHECK-NEXT: while
+// CHECK-NOT: memref.alloc
+
+// -----
+
+func.func @allocs_in_different_scopes_with_no_overlap_2() {
+  %alloc0 = memref.alloc() : memref<4xi32>
+  %first0 = "first_op"(%alloc0) : (memref<4xi32>) -> (i32)
+  memref.dealloc %alloc0 : memref<4xi32>
+  scf.while() : () -> () {
+    %cond = "test.make_condition"() : () -> i1
+    scf.condition(%cond)
+  } do {
+    %alloc1 = memref.alloc() : memref<4xi32>
+    %first1 = "first_op"(%alloc1) : (memref<4xi32>) -> (i32)
+    memref.dealloc %alloc1 : memref<4xi32>
+    %alloc2 = memref.alloc() : memref<4xi32>
+    %first2 = "first_op"(%alloc2) : (memref<4xi32>) -> (i32)
+    memref.dealloc %alloc2 : memref<4xi32>
+    scf.yield
+  }
+  %alloc3 = memref.alloc() : memref<4xi32>
+  %first3 = "first_op"(%alloc3) : (memref<4xi32>) -> (i32)
+  memref.dealloc %alloc3 : memref<4xi32>
+  return
+}
+
+// CHECK-LABEL: allocs_in_different_scopes_with_no_overlap_2
+// CHECK: memref.alloca
+// CHECK-NOT: memref.alloc
+// CHECK-NOT: memref.dealloc
+
+// -----
+
+func.func @elide_for_ownership() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %alloc_0 = memref.alloc() : memref<1xi64>
+  %cast_0 = memref.cast %alloc_0 : memref<1xi64> to memref<*xi64>
+  %0:2 = scf.for %arg4 = %c0 to %c1 step %c1 iter_args(%arg0 = %alloc_0, %arg1 = %cast_0) -> (memref<1xi64>, memref<*xi64>) {
+    memref.dealloc %arg1 : memref<*xi64>
+    %alloc_1 = memref.alloc() : memref<1xi64>
+    %cast_1 = memref.cast %alloc_1 : memref<1xi64> to memref<*xi64>
+    scf.yield %alloc_1, %cast_1 : memref<1xi64>, memref<*xi64>
+  }
+  memref.dealloc %0#1 : memref<*xi64>
+  return
+}
+
+// CHECK-LABEL: @elide_for_ownership
+// CHECK-NEXT: return
+
+// -----
+
+func.func @elide_while_ownership() {
+  %alloc_1 = memref.alloc() : memref<5xi32>
+  %alloc_2 = memref.alloc() : memref<5xi32>
+  %alloc_3 = memref.alloc() : memref<5xi32>
+  %cast_1 = memref.cast %alloc_2 : memref<5xi32> to memref<*xi32>
+  %cast_2 = memref.cast %alloc_3 : memref<5xi32> to memref<*xi32>
+  %6:4 = scf.while (%arg0 = %alloc_2, %arg1 = %alloc_3, %arg2 = %cast_1, %arg3 = %cast_2)
+      : (memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>) ->
+        (memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>) {
+    %alloc_4 = memref.alloc() : memref<5xi32>
+    memref.dealloc %arg2 : memref<*xi32>
+    %alloc_5 = memref.alloc() : memref<5xi32>
+    deallocation.retain() of(%arg3) : (memref<*xi32>) -> ()
+    %cast_3 = memref.cast %alloc_4 : memref<5xi32> to memref<*xi32>
+    %cast_4 = memref.cast %alloc_5 : memref<5xi32> to memref<*xi32>
+    %cond = "test.make_condition"() : () -> (i1)
+    scf.condition(%cond) %alloc_4, %alloc_5, %cast_3, %cast_4
+      : memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>
+  } do {
+  ^bb0(%arg0: memref<5xi32>, %arg1: memref<5xi32>, %arg2: memref<*xi32>, %arg3: memref<*xi32>):
+    memref.dealloc %arg2 : memref<*xi32>
+    %alloc_55 = memref.alloc() : memref<5xi32>
+    memref.dealloc %arg3 : memref<*xi32>
+    %null = deallocation.null : memref<*xi32>
+    %cast_3 = memref.cast %alloc_55 : memref<5xi32> to memref<*xi32>
+    scf.yield %alloc_55, %alloc_1, %cast_3, %null
+      : memref<5xi32>, memref<5xi32>, memref<*xi32>, memref<*xi32>
+  }
+  memref.dealloc %alloc_1 : memref<5xi32>
+  memref.dealloc %6#2 : memref<*xi32>
+  memref.dealloc %6#3 : memref<*xi32>
+  return
+}
+
+// CHECK-LABEL: @elide_while_ownership
+// CHECK-NEXT: %[[ALLOCA:.*]] = memref.alloca()
+// CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
+// CHECK-NEXT: %[[ALLOC1:.*]] = memref.alloc()
+// CHECK-NEXT: %[[CAST:.*]] = memref.cast %[[ALLOC1]]
+// CHECK-NEXT: %[[WHILE:.*]]:2 = scf.while
+// CHECK-SAME:     %[[ARG0:.*]] = %[[ALLOC0]],
+// CHECK-SAME:     %[[ARG1:.*]] = %[[ALLOC1]],
+// CHECK-SAME:     %[[ARG2:.*]] = %[[CAST]]
+// TODO(jreiffers): There's no double buffering for the before region yet.
+// CHECK-NEXT:   %[[ALLOC2:.*]] = memref.alloc()
+// CHECK-NEXT:   deallocation.retain() of(%[[ARG2]])
+// CHECK-NEXT:   test.make_condition
+// CHECK-NEXT:   scf.condition
+// CHECK-SAME:     %[[ALLOC2]], %[[ARG0]]
+// CHECK-NEXT: } do {
+// CHECK-NEXT:   %[[ARG0:.*]]: memref<5xi32>, %[[ARG1:.*]]: memref<5xi32>
+// CHECK-NEXT:   dealloc %[[ARG1]]
+// CHECK-NEXT:   %[[NULL:.*]] = deallocation.null
+// CHECK-NEXT:   scf.yield %[[ARG0]], %[[ALLOCA]], %[[NULL]]
+// CHECK-NEXT: }
+// CHECK-NEXT: dealloc %[[WHILE]]#0
+// CHECK-NEXT: dealloc %[[WHILE]]#1
+// CHECK-NEXT: return
+
+// -----
+
+func.func @empty_region() {
+  %cond = "test.make_condition"() : () -> i1
+  scf.if %cond {
+    "test.dummy"() : () -> ()
+  }
+  return
+}
+
+// Regression test. Just make sure this doesn't crash.
+// CHECK-LABEL: @empty_region
+
+// -----
+
+func.func @copy_to_out_param(
+    %arg0: memref<i32> { deallocation.restrict = true }) {
+  %foo = memref.alloc() : memref<i32>
+  "some.op"(%foo) : (memref<i32>) -> ()
+  memref.copy %foo, %arg0 : memref<i32> to memref<i32>
+  memref.dealloc %foo : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param(
+// CHECK-SAME: %[[ARG:.*]]: memref<i32>
+// CHECK-NEXT: "some.op"(%[[ARG]])
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_no_restrict(
+    %arg0: memref<i32> { deallocation.restrict = false }) {
+  %foo = memref.alloc() : memref<i32>
+  "some.op"(%foo) : (memref<i32>) -> ()
+  memref.copy %foo, %arg0 : memref<i32> to memref<i32>
+  memref.dealloc %foo : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_no_restrict(
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: some.op
+// CHECK-NEXT: memref.copy
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_and_change_param(
+    %arg0: memref<2xindex> { deallocation.restrict = true }) {
+  %foo = memref.alloc() : memref<2xindex>
+  "some.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg0 : memref<2xindex> to memref<2xindex>
+  memref.dealloc %foo : memref<2xindex>
+  %c1 = arith.constant 1 : index
+  memref.store %c1, %arg0[%c1] : memref<2xindex>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_and_change_param(
+// CHECK-SAME: %[[ARG:.*]]: memref<2xindex>
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1
+// CHECK: "some.op"(%[[ARG]])
+// CHECK: memref.store %[[C1]], %[[ARG]]
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_and_change_src(
+    %arg0: memref<2xindex> { deallocation.restrict = true }) {
+  %c1 = arith.constant 1 : index
+  %foo = memref.alloc() : memref<2xindex>
+  "some.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg0 : memref<2xindex> to memref<2xindex>
+  memref.store %c1, %foo[%c1] : memref<2xindex>
+  "other.op"(%foo) : (memref<2xindex>) -> ()
+  memref.dealloc %foo : memref<2xindex>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_and_change_src(
+// CHECK-NEXT: arith.constant
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: some.op
+// CHECK-NEXT: memref.copy
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: other.op
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_out_param_and_change_src_and_copy(
+    %arg0: memref<2xindex> { deallocation.restrict = true },
+    %arg1: memref<2xindex> { deallocation.restrict = true }) {
+  %c1 = arith.constant 1 : index
+  %foo = memref.alloc() : memref<2xindex>
+  "some.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg0 : memref<2xindex> to memref<2xindex>
+  memref.store %c1, %foo[%c1] : memref<2xindex>
+  "other.op"(%foo) : (memref<2xindex>) -> ()
+  memref.copy %foo, %arg1 : memref<2xindex> to memref<2xindex>
+  memref.dealloc %foo : memref<2xindex>
+  return
+}
+
+// CHECK-LABEL: @copy_to_out_param_and_change_src_and_copy
+// CHECK-SAME:    %[[ARG0:.*]]: memref<2xindex> {{{.*}}},
+// CHECK-SAME:    %[[ARG1:.*]]: memref<2xindex>
+// CHECK-NEXT: arith.constant
+// CHECK-NEXT: "some.op"(%[[ARG1]])
+// CHECK-NEXT: memref.copy %[[ARG1]], %[[ARG0]]
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: "other.op"(%[[ARG1]])
+// CHECK-NEXT: return
+
+// -----
+
+func.func @copy_from_param_to_param(
+    %arg0: memref<i32>, %arg1: memref<i32> { deallocation.restrict = true }) {
+  memref.copy %arg0, %arg1 : memref<i32> to memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_from_param_to_param(
+// CHECK-NEXT: memref.copy
+// CHECK-NEXT: return
+
+// -----
+
+func.func @elide_non_trailing(%lb: index, %ub: index, %step: index, %dummy: index) -> index {
+  %alloc = memref.alloc() : memref<i32>
+  %cast = memref.cast %alloc : memref<i32> to memref<*xi32>
+  %ret:3 = scf.for %i = %lb to %ub step %step iter_args(%arg0 = %alloc, %arg1 = %cast, %arg2 = %dummy)
+     -> (memref<i32>, memref<*xi32>, index) {
+    "test.dummy"(%arg0) : (memref<i32>) -> ()
+    memref.dealloc %arg1: memref<*xi32>
+    %alloc0 = memref.alloc() : memref<i32>
+    %cast0 = memref.cast %alloc0 : memref<i32> to memref<*xi32>
+    scf.yield %alloc0, %cast0, %arg2 : memref<i32>, memref<*xi32>, index
+  }
+  memref.dealloc %ret#1 : memref<*xi32>
+  return %ret#2 : index
+}
+
+// CHECK-LABEL: @elide_non_trailing
+// CHECK: %[[RET:.*]]:2 = scf.for
+// CHECK: return %[[RET]]#1

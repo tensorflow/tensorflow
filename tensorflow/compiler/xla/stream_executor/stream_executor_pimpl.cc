@@ -405,7 +405,7 @@ StreamExecutor::createRnnDescriptor(
     bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
@@ -420,7 +420,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -434,7 +434,7 @@ StreamExecutor::createRnnSequenceTensorDescriptor(
     dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
@@ -448,7 +448,7 @@ StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return tsl::Status(tsl::error::UNKNOWN,
+    return tsl::Status(absl::StatusCode::kUnknown,
                        "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
@@ -546,7 +546,7 @@ tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   }
 
   return tsl::Status(
-      tsl::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       absl::StrCat("Check if module containing symbol ", symbol_name,
                    " is loaded (module_handle = ",
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
@@ -691,7 +691,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyD2H(
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to synchronously memcpy device-to-host: device "
                         "%p to host %p size %d: %s",
                         device_src.opaque(), host_dst, size,
@@ -715,7 +715,7 @@ tsl::Status StreamExecutor::SynchronousMemcpyH2D(const void* host_src,
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
     result = tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to synchronously memcpy host-to-device: host "
                         "%p to device %p size %d: %s",
                         host_src, device_dst->opaque(), size,

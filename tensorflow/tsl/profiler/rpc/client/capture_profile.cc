@@ -159,7 +159,7 @@ Status Profile(const std::string& repository_root,
   }
 
   if (!has_trace_data) {
-    return Status(error::Code::UNAVAILABLE,
+    return Status(absl::StatusCode::kUnavailable,
                   "No trace event was collected because there were no responses"
                   " from clients or the responses did not have trace data.");
   }

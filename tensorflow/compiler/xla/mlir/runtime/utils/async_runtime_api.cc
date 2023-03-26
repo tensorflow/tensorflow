@@ -22,7 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <string_view>
 #include <thread>  // NOLINT TODO(ezhulenev): Remove this header.
-#include <type_traits>
+#include <utility>
 
 #include "absl/base/dynamic_annotations.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"  // from @llvm-project
@@ -50,19 +50,20 @@ AsyncValueRef<Chain> ConvertAsyncTokenToChain(AsyncRuntime::Token *token) {
 
 void ExtractAsyncValue(
     AsyncRuntime::Value *value, AsyncValue *dst,
-    llvm::function_ref<void(void *storage, AsyncValue *dst)> emplace_fn) {
+    absl::AnyInvocable<void(void *storage, AsyncValue *dst)> emplace_fn) {
   auto *async_value = AsyncRuntime::GetAsyncValue(value);
 
   // Fast path if async value is already available.
   if (async_value->IsAvailable()) {
     auto *storage = AsyncRuntime::GetStorage(value);
-    emplace_fn(storage, dst);
+    std::move(emplace_fn)(storage, dst);
     AsyncRuntime::DropRef(AsyncRuntime::ToAsyncRuntimeObject(value));
     return;
   }
 
   // Wait for the async value completion, and emplace the `dst`.
-  async_value->AndThen([value, emplace_fn, dst = FormRef(dst)]() {
+  async_value->AndThen([value, emplace_fn = std::move(emplace_fn),
+                        dst = FormRef(dst)]() mutable {
     auto *storage = AsyncRuntime::GetStorage(value);
     emplace_fn(storage, dst.get());
     AsyncRuntime::DropRef(AsyncRuntime::ToAsyncRuntimeObject(value));

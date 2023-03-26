@@ -24,6 +24,7 @@ REGISTER4(UnaryOp, CPU, "IsFinite", functor::isfinite, float, Eigen::half,
 REGISTER3(UnaryOp, GPU, "IsFinite", functor::isfinite, float, Eigen::half,
           double);
 #endif
+REGISTER(UnaryOp, GPU, "IsFinite", functor::isfinite, bfloat16);
 #endif
 
 }  // namespace tensorflow

@@ -15,6 +15,19 @@ exports_files(
     visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
 )
 
+cc_test(
+    name = "builtin_ops_test",
+    srcs = ["register_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "builtin_ops",
     srcs = ["register.cc"],

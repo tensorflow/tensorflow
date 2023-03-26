@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -115,7 +116,7 @@ bool PartitionedTopologicalSort(
     // This round, we will only schedule operations that belong
     // to this_partition. this_partition is the partition to
     // which the next schedulable operations belongs.
-    llvm::Optional<bool> this_partition;
+    std::optional<bool> this_partition;
 
     for (Operation &unscheduled_op : llvm::make_early_inc_range(
              llvm::make_range(next_unscheduled_op, end))) {

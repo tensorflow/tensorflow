@@ -22,6 +22,7 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/transforms/vectorization/vectorization.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -58,19 +59,12 @@ using mlir::thlo::ReverseOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
-struct VectorizeIfOpPattern : public OpRewritePattern<scf::IfOp> {
+struct PassVectorizedValuesThroughIfOpPattern
+    : public OpRewritePattern<scf::IfOp> {
   using OpRewritePattern<scf::IfOp>::OpRewritePattern;
-
-  VectorizeIfOpPattern(MLIRContext *ctx,
-                       llvm::function_ref<bool(scf::IfOp)> matchFn,
-                       PatternBenefit benefit = 1)
-      : OpRewritePattern<scf::IfOp>(ctx, benefit), filterFn(matchFn) {}
 
   LogicalResult matchAndRewrite(scf::IfOp op,
                                 PatternRewriter &rewriter) const override {
-    if (!filterFn(op))
-      return rewriter.notifyMatchFailure(op, "did not match filter");
-
     int64_t numResults = op.getNumResults();
     if (numResults == 0) {
       return rewriter.notifyMatchFailure(op,
@@ -78,16 +72,39 @@ struct VectorizeIfOpPattern : public OpRewritePattern<scf::IfOp> {
     }
 
     // Derive vectorized types.
-    SmallVector<Type> vectorizedTypes;
-    vectorizedTypes.reserve(numResults);
-    for (Type ty : op.getResultTypes()) {
-      auto rankedTy = ty.dyn_cast<RankedTensorType>();
-      if (rankedTy && rankedTy.hasStaticShape()) {
-        vectorizedTypes.push_back(
-            VectorType::get(rankedTy.getShape(), rankedTy.getElementType()));
-      } else {
-        vectorizedTypes.push_back(ty);
-      }
+    SmallVector<Type> vectorizedTypes(op.getResultTypes());
+    int64_t numActuallyVectorizedTypes = 0;
+    scf::YieldOp thenYieldOp = op.thenYield();
+    scf::YieldOp elseYieldOp = op.elseYield();
+    for (int64_t i = 0; i < numResults; ++i) {
+      Value result = op.getResult(i);
+
+      // Can only vectorized statically shaped results.
+      auto rankedTy = result.getType().dyn_cast<RankedTensorType>();
+      if (!rankedTy || !rankedTy.hasStaticShape()) continue;
+
+      // Vectorize only results that are either always used as a vector or
+      // always produced as a vector.
+      bool allVectorConsumers =
+          llvm::all_of(result.getUsers(), [](Operation *user) {
+            return llvm::isa_and_nonnull<vector::TransferReadOp>(user);
+          });
+      bool allVectorProducers =
+          llvm::isa_and_nonnull<vector::TransferWriteOp>(
+              thenYieldOp.getOperand(i).getDefiningOp()) &&
+          llvm::isa_and_nonnull<vector::TransferWriteOp>(
+              elseYieldOp.getOperand(i).getDefiningOp());
+      if (!allVectorProducers && !allVectorConsumers) continue;
+
+      // Derive vectorized type.
+      vectorizedTypes[i] =
+          VectorType::get(rankedTy.getShape(), rankedTy.getElementType());
+      numActuallyVectorizedTypes++;
+    }
+
+    // Fail if there isn't anything to vectorize.
+    if (numActuallyVectorizedTypes == 0) {
+      return rewriter.notifyMatchFailure(op, "nothing to vectorize");
     }
 
     // Create vectorized if op and steal bodies.
@@ -135,9 +152,6 @@ struct VectorizeIfOpPattern : public OpRewritePattern<scf::IfOp> {
     rewriter.replaceOp(op, replacements);
     return success();
   }
-
- private:
-  llvm::function_ref<bool(scf::IfOp)> filterFn;
 };
 
 // TODO(b/269643522): Upstream this as a canonicalization for `scf.if`.
@@ -193,48 +207,6 @@ struct InlineCastInIfOpPattern : public OpRewritePattern<tensor::CastOp> {
   }
 };
 
-// Rewrite `vector.transfer_read(linalg.expand_shape)` as
-// `vector.shape_cast(vector.transfer_read)`.
-struct TransferReadOfOneDimExpandShape
-    : public mlir::OpRewritePattern<vector::TransferReadOp> {
-  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      vector::TransferReadOp vectorRead,
-      mlir::PatternRewriter &rewriter) const override {
-    auto expand = vectorRead.getSource().getDefiningOp<tensor::ExpandShapeOp>();
-    if (!expand) return failure();
-
-    auto expandSrc = expand.getSrc();
-    auto expandSrcType = expand.getSrcType();
-    auto expandDstType = expand.getResultType();
-    if (expandSrcType.getRank() != 1 || expandDstType.getRank() != 2)
-      return failure();
-
-    auto resultType = vectorRead.getType().dyn_cast<mlir::ShapedType>();
-    if (!resultType || resultType.getShape() != expandDstType.getShape())
-      return failure();
-
-    auto zero = rewriter.create<arith::ConstantIndexOp>(vectorRead.getLoc(), 0);
-    auto map = mlir::AffineMap::get(1, 0, {rewriter.getAffineDimExpr(0)},
-                                    vectorRead.getContext());
-    // TODO(pifon): Also support canonicalization in case the map is not an
-    // identity.
-    if (!map.isIdentity()) return failure();
-
-    auto newRead = rewriter.create<vector::TransferReadOp>(
-        vectorRead.getLoc(),
-        mlir::VectorType::get(expandSrcType.getShape(),
-                              expandSrcType.getElementType()),
-        expandSrc, mlir::ValueRange{zero}, mlir::AffineMapAttr::get(map),
-        vectorRead.getPadding(),
-        /*mask=*/mlir::Value(), rewriter.getBoolArrayAttr({true}));
-    rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
-        vectorRead, vectorRead.getType(), newRead);
-    return success();
-  }
-};
-
 // This currently matches for all thlo.reverse of the form 1x1x..x1xVectorSize.
 // DimSize < kNumElementsVectorization will be handled by Scalarization.
 bool isPerfectlyTiledReverse(thlo::ReverseOp reverseOp) {
@@ -268,17 +240,17 @@ struct ThloReverseVectorizationPattern
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
     auto inputType = op.getInput().getType();
+    if (!VectorType::isValidElementType(inputType.getElementType())) {
+      return rewriter.notifyMatchFailure(op, "cannot be vectorized");
+    }
     auto vecTargetType =
-        RankedTensorType::get(inputType.getShape()[inputType.getRank() - 1],
-                              inputType.getElementType());
+        VectorType::get(inputType.getShape()[inputType.getRank() - 1],
+                        inputType.getElementType());
     Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
     SmallVector<Value> indices(op.getInit().getType().getRank(), zero);
 
     auto readInput = rewriter.create<vector::TransferReadOp>(
-        op.getLoc(),
-        VectorType::get(vecTargetType.getShape(),
-                        vecTargetType.getElementType()),
-        op.getInput(), indices);
+        op.getLoc(), vecTargetType, op.getInput(), indices);
 
     SmallVector<int64_t> mask;
     int64_t maskSize = inputType.getShape()[inputType.getRank() - 1];
@@ -315,12 +287,15 @@ struct IdentityTransposeOpFoldingPattern
   }
 };
 
-bool isSmallTensorOrScalar(Type ty) {
-  auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>();
-  bool isSmallTensor = rankedTy && rankedTy.hasStaticShape() &&
-                       rankedTy.getNumElements() < kNumElementsThreshold;
-  bool isScalar = !isa<ShapedType>(ty);
-  return isSmallTensor || isScalar;
+bool isNonComplexSmallTensorOrScalar(Type ty) {
+  if (auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>()) {
+    if (rankedTy.getElementType().isa<ComplexType>()) return false;
+    return rankedTy.hasStaticShape() &&
+           rankedTy.getNumElements() < kNumElementsThreshold;
+  }
+
+  if (ty.isa<ComplexType>()) return false;
+  return !isa<ShapedType>(ty);
 }
 
 struct VectorizeForCPUPass
@@ -329,41 +304,41 @@ struct VectorizeForCPUPass
     auto func = getOperation();
     auto *ctx = func.getContext();
 
-    auto hasSmallStaticallyShapedTensorResults = [&](Operation *op) {
-      return llvm::all_of(op->getOperandTypes(), isSmallTensorOrScalar) &&
-             llvm::all_of(op->getResultTypes(), isSmallTensorOrScalar);
+    auto isOpOnNonComplexSmallTensorOrScalar = [&](Operation *op) {
+      return llvm::all_of(op->getOperandTypes(),
+                          isNonComplexSmallTensorOrScalar) &&
+             llvm::all_of(op->getResultTypes(),
+                          isNonComplexSmallTensorOrScalar);
     };
     auto isInsidePerfectlyTiledLoop = [&](Operation *op) {
       Operation *parent = op->getParentOp();
-      return (isa<ParallelOp, scf::ForOp>(parent)) &&
+      return (isa<scf::ForallOp, scf::ForOp>(parent)) &&
              hasLabel(parent, kPerfectlyTiledLoopLabel);
     };
     auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {
       return !hasSingleElementOperandsAndResults(op) &&
              (isInsidePerfectlyTiledLoop(op) ||
-              hasSmallStaticallyShapedTensorResults(op));
+              isOpOnNonComplexSmallTensorOrScalar(op));
     };
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       // clang-format off
       patterns.add<
-        // TODO(b/270330204): Re-enable the pattern.
-        /*VectorizeIfOpPattern,*/
-        VectorizationPattern<BroadcastOp>,
-        VectorizationPattern<FillOp>,
-        VectorizationPattern<GenericOp>,
-        VectorizationPattern<DotOp>,
-        VectorizationPattern<MapOp>,
-        VectorizationPattern<MatmulOp>,
-        VectorizationPattern<MatvecOp>,
-        VectorizationPattern<Mmt4DOp>,
-        VectorizationPattern<ReduceOp>,
-        VectorizationPattern<TransposeOp>,
-        VectorizationPattern<VecmatOp>
-      >(ctx, isInsidePerfectlyTiledLoopOrSmall);
+          VectorizationPattern<BroadcastOp>,
+          VectorizationPattern<FillOp>,
+          VectorizationPattern<GenericOp>,
+          VectorizationPattern<DotOp>,
+          VectorizationPattern<MapOp>,
+          VectorizationPattern<MatmulOp>,
+          VectorizationPattern<MatvecOp>,
+          VectorizationPattern<Mmt4DOp>,
+          VectorizationPattern<ReduceOp>,
+          VectorizationPattern<TransposeOp>,
+          VectorizationPattern<VecmatOp>
+          >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
-      populateTransferReadOfOneDimExpandShapePattern(patterns);
+      patterns.add<PassVectorizedValuesThroughIfOpPattern>(ctx);
       patterns.add<InlineCastInIfOpPattern, ThloReverseVectorizationPattern>(
           ctx);
       tensor::CastOp::getCanonicalizationPatterns(patterns, ctx);

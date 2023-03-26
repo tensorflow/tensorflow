@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -806,6 +807,9 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       return errors::NotFound("Function ", function_name, " is not defined.");
     }
     TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, lib_def, &fbody));
+    Int32FulltypePass int32_fulltype("FunctionLibraryRuntime::Instantiate");
+    TF_RETURN_IF_ERROR(
+        int32_fulltype.ProcessGraph(fbody->graph, /*ints_on_device=*/false));
   }
 
   LocalHandle local_handle;

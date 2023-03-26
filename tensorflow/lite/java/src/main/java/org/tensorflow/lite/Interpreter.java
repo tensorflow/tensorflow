@@ -32,14 +32,15 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>For example, if a model takes only one input and returns only one output:
  *
- * <pre> {@code
+ * <pre>{@code
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
- * }}</pre>
+ * }
+ * }</pre>
  *
  * <p>If a model takes multiple inputs or outputs:
  *
- * <pre> {@code
+ * <pre>{@code
  * Object[] inputs = {input0, input1, ...};
  * Map<Integer, Object> map_of_indices_to_outputs = new HashMap<>();
  * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
@@ -47,16 +48,33 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * map_of_indices_to_outputs.put(i, ith_output);
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
- * }}</pre>
+ * }
+ * }</pre>
  *
  * <p>If a model takes or produces string tensors:
  *
- * <pre> {@code
+ * <pre>{@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
- * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
+ * String[][] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
- * }}</pre>
+ * }
+ * }</pre>
+ *
+ * <p>Note that there's a distinction between shape [] and shape[1]. For scalar string tensor
+ * outputs:
+ *
+ * <pre>{@code
+ * String[] input = {"foo"};  // Input tensor shape is [1].
+ * ByteBuffer outputBuffer = ByteBuffer.allocate(OUTPUT_BYTES_SIZE);  // Output tensor shape is [].
+ * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ *   interpreter.runForMultipleInputsOutputs(input, outputBuffer);
+ * }
+ * byte[] outputBytes = new byte[outputBuffer.remaining()];
+ * outputBuffer.get(outputBytes);
+ * // Below, the `charset` can be StandardCharsets.UTF_8.
+ * String output = new String(outputBytes, charset);
+ * }</pre>
  *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
  * model with Toco, as are the default shapes of the inputs.

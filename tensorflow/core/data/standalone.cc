@@ -47,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/refcount.h"
@@ -80,33 +79,33 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-StatusOr<Tensor> Iterator::Save() {
+StatusOr<std::vector<Tensor>> Iterator::Save() {
   VariantTensorDataWriter writer;
   TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
   std::vector<std::unique_ptr<VariantTensorData>> data;
   writer.ReleaseData(&data);
 
-  int64_t num_tensors = data.size();
-  Tensor serialized(DT_VARIANT, TensorShape({num_tensors}));
+  std::vector<Tensor> serialized;
   for (size_t i = 0; i < data.size(); ++i) {
+    Tensor tensor(DT_VARIANT, TensorShape({1}));
     IteratorStateVariant variant;
     TF_RETURN_IF_ERROR(variant.InitializeFromVariantData(std::move(data[i])));
-    serialized.vec<Variant>()(i) = std::move(variant);
+    tensor.vec<Variant>()(0) = std::move(variant);
+    serialized.push_back(std::move(tensor));
   }
   return serialized;
 }
 
-Status Iterator::Restore(const Tensor& saved_iterator) {
-  int64_t num_tensors = saved_iterator.dim_size(0);
-  auto saved_vec = saved_iterator.vec<Variant>();
+Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   std::vector<const VariantTensorData*> data;
-  data.reserve(num_tensors);
-  for (int i = 0; i < num_tensors; ++i) {
-    auto* variant = saved_vec(i).get<IteratorStateVariant>();
+  data.reserve(saved_iterator.size());
+  for (int i = 0; i < saved_iterator.size(); ++i) {
+    auto saved_vec = saved_iterator[i].vec<Variant>();
+    auto* variant = saved_vec(0).get<IteratorStateVariant>();
     if (!variant) {
       return errors::Internal(
           "Cannot initialize an iterator from tensor ",
-          saved_vec(i).DebugString(),
+          saved_vec(0).DebugString(),
           ". Expected a variant tensor of type IteratorStateVariant.");
     }
     data.push_back(variant->GetData());
@@ -168,7 +167,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   OpKernelContext ctx(&op_params, /*num_outputs=*/0);
   TF_RETURN_IF_ERROR(data::FinalizeDataset(&ctx, dataset, &finalized_dataset));
   core::ScopedUnref unref(finalized_dataset);
-  *result = WrapUnique(new Dataset(
+  *result = absl::WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
   return OkStatus();
@@ -203,8 +202,8 @@ Status Dataset::MakeIterator(
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(finalized_dataset_->MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
-  *result = WrapUnique(new Iterator(iterator.release(), ctx.release(),
-                                    serialization_ctx.release()));
+  *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
+                                          serialization_ctx.release()));
   return OkStatus();
 }
 

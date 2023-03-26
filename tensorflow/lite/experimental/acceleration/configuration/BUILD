@@ -165,6 +165,15 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "proto_to_flatbuffer_test",
+    srcs = ["proto_to_flatbuffer_test.cc"],
+    deps = [
+        ":proto_to_flatbuffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "flatbuffer_to_proto",
     srcs = [
@@ -193,6 +202,7 @@ cc_test(
 cc_library_with_tflite(
     name = "delegate_registry",
     hdrs = ["delegate_registry.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
         ":configuration_fbs",
@@ -216,6 +226,7 @@ cc_library_with_tflite(
 
 cc_library(
     name = "nnapi_plugin",
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":nnapi_plugin_impl",
     ],
@@ -225,6 +236,7 @@ cc_library(
     name = "nnapi_plugin_impl",
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = nnapi_plugin_impl_visibility_allowlist() + [
         "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",

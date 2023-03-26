@@ -2628,7 +2628,7 @@ class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
     for (int i = 0; i < output_shape.dim_size(); ++i) {
       int64_t size = output_shape.dim(i).size() / input_shape.dim(i).size();
       if (TF_PREDICT_FALSE(size >= INT_MAX)) {
-        return Status(error::OUT_OF_RANGE, "int32 overflow");
+        return Status(absl::StatusCode::kOutOfRange, "int32 overflow");
       }
       multiples.flat<int32>()(i) = static_cast<int32>(size);
     }
@@ -3038,12 +3038,13 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
       if (axis >= dims.size()) {
         // We don't handle the case where Pack is performed on the last axis,
         // e.g. Pack([x, x], axis=3) where rank(x) == 3
-        return Status(error::OUT_OF_RANGE, "axis value out of range of dims");
+        return Status(absl::StatusCode::kOutOfRange,
+                      "axis value out of range of dims");
       }
 
       int64_t m = multiples->flat<int32>()(dims[axis]) * n;
       if (TF_PREDICT_FALSE(m > INT_MAX)) {
-        return Status(error::OUT_OF_RANGE, "int32 overflow");
+        return Status(absl::StatusCode::kOutOfRange, "int32 overflow");
       }
       multiples->flat<int32>()(dims[axis]) = static_cast<int32>(m);
 
