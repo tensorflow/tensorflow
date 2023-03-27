@@ -4411,11 +4411,8 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
   auto concat = CreateOpAndInfer<tosa::ConcatOp>(rewriter, loc, fp32_ty, values,
                                                  rewriter.getI64IntegerAttr(3));
 
-  Value cast = rewriter
-                   .create<mlir::UnrealizedConversionCastOp>(loc, output_type,
-                                                             concat.getResult())
-                   ->getResult(0);
-  rewriter.replaceOp(op, cast);
+  CreateReplaceOpAndInfer<mlir::UnrealizedConversionCastOp>(
+      rewriter, op, output_type, concat.getResult());
 
   return success();
 }
