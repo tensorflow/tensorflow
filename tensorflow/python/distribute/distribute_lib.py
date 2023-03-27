@@ -208,6 +208,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -3807,7 +3808,20 @@ variable_scope._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
 
 
-#-------------------------------------------------------------------------------
+def get_local_results_or_value_container(variable):
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context()
+  )
+  if context:
+    return [strategy.extended.value_container(variable)]
+  else:
+    return strategy.experimental_local_results(variable)
+
+
+tape.register_watched_variable_resolver(get_local_results_or_value_container)
+
+
+# -------------------------------------------------------------------------------
 # Shorthand for some methods from distribution_strategy_context.
 _push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
 _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access
