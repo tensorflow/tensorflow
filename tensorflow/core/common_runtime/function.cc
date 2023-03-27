@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -647,18 +648,19 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
 
-  // TODO(zhifengc): For now, we assume int32 and resources are always on host
-  // memory and other types are always on device memory. We should do type
+  // Originally, int32 and resources were always on host memory and other types
+  // are always on device memory. Now, having TFT_SHAPE_TENSOR full type
+  // information specifies host memory and unspecified or other full type
+  // information specifies device memory. Full type information can be set to
+  // match the orginal behavior, manually for manual placement or by using type
   // inference over function body to derive the correct input/output memory
   // types.
   MemoryTypeVector input_memory_types;
-  for (const auto& t : fbody->arg_types) {
-    input_memory_types.push_back(MTypeFromDType(t));
-  }
+  TF_RETURN_IF_ERROR(full_type::WeakSetMemoryTypeForArgs(
+      fbody->arg_nodes, fbody->arg_types, input_memory_types));
   MemoryTypeVector output_memory_types;
-  for (const auto& t : fbody->ret_types) {
-    output_memory_types.push_back(MTypeFromDType(t));
-  }
+  TF_RETURN_IF_ERROR(full_type::WeakSetMemoryTypeForRets(
+      fbody->ret_nodes, fbody->ret_types, output_memory_types));
 
   // Constructs a CallOp kernel for running the instantiated function.
   auto device_type = DeviceType(device_->attributes().device_type());
@@ -1062,22 +1064,17 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   ExecutorArgsFromOptions(opts, frame, exec_args);
 
   std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
-  args_alloc_attrs.reserve(fbody->arg_types.size());
-  rets_alloc_attrs.reserve(fbody->ret_types.size());
-  // Note: Functions assume that int32's are always on host memory.
-  for (const auto& arg_type : fbody->arg_types) {
-    AllocatorAttributes arg_alloc_attrs;
-    if (MTypeFromDType(arg_type) == HOST_MEMORY) {
-      arg_alloc_attrs.set_on_host(true);
-    }
-    args_alloc_attrs.push_back(arg_alloc_attrs);
+  s = full_type::WeakSetAllocAttrsForArgs(fbody->arg_nodes, fbody->arg_types,
+                                          args_alloc_attrs);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
-  for (const auto& ret_type : fbody->ret_types) {
-    AllocatorAttributes ret_alloc_attrs;
-    if (MTypeFromDType(ret_type) == HOST_MEMORY) {
-      ret_alloc_attrs.set_on_host(true);
-    }
-    rets_alloc_attrs.push_back(ret_alloc_attrs);
+  s = full_type::WeakSetAllocAttrsForRets(fbody->ret_nodes, fbody->ret_types,
+                                          rets_alloc_attrs);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
 
   bool allow_dead_tensors = opts.allow_dead_tensors;

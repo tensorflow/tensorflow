@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -366,6 +367,7 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
           << "Full type information with TFT_SHAPE_TENSOR for int32 for eager '"
           << tensor_handle->DebugString();
     }
+    tensorflow::full_type::LogMemoryTypeMismatch(use_host_memory, ft);
     if (use_host_memory) {
       *result = cpu_device;
     } else {
