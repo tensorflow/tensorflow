@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
@@ -96,7 +97,9 @@ TEST(BasicFlatBufferModel, TestBufferAlignment) {
 
   // Use real model data so that we can be sure error is only from the
   // alignment requirement and not from bad data.
-  std::ifstream fp("third_party/tensorflow/lite/testdata/empty_model.bin");
+  std::ifstream fp(tensorflow::GetDataDependencyFilepath(
+                       "tensorflow/lite/testdata/empty_model.bin")
+                       .c_str());
   ASSERT_TRUE(fp.good());
   std::string empty_model_data((std::istreambuf_iterator<char>(fp)),
                                std::istreambuf_iterator<char>());
@@ -129,7 +132,9 @@ TEST(BasicFlatBufferModel, TestBufferAlignment) {
 // Make sure a model with nothing in it loads properly.
 TEST(BasicFlatBufferModel, TestEmptyModels) {
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/empty_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/empty_model.bin")
+          .c_str());
   ASSERT_TRUE(model);
   // Now try to build it into a model.
   std::unique_ptr<Interpreter> interpreter;
@@ -140,7 +145,9 @@ TEST(BasicFlatBufferModel, TestEmptyModels) {
 
 TEST(BasicFlatBufferModel, TestNullDestination) {
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/empty_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/empty_model.bin")
+          .c_str());
   ASSERT_TRUE(model);
   // Test that building with null destination fails.
   ASSERT_NE(InterpreterBuilder(*model, TrivialResolver())(nullptr), kTfLiteOk);
@@ -150,7 +157,9 @@ TEST(BasicFlatBufferModel, TestNullDestination) {
 // TODO(aselle): Replace this test when multiple subgraphs are supported.
 TEST(BasicFlatBufferModel, TestZeroSubgraphs) {
   auto m = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/0_subgraphs.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/0_subgraphs.bin")
+          .c_str());
   ASSERT_TRUE(m);
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_NE(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
@@ -158,7 +167,9 @@ TEST(BasicFlatBufferModel, TestZeroSubgraphs) {
 
 TEST(BasicFlatBufferModel, TestMultipleSubgraphs) {
   auto m = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/2_subgraphs.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/2_subgraphs.bin")
+          .c_str());
   ASSERT_TRUE(m);
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
@@ -167,8 +178,9 @@ TEST(BasicFlatBufferModel, TestMultipleSubgraphs) {
 
 TEST(BasicFlatBufferModel, TestSubgraphName) {
   auto m = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/"
-      "2_subgraphs_dont_delegate_name.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/2_subgraphs_dont_delegate_name.bin")
+          .c_str());
   ASSERT_TRUE(m);
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
@@ -180,7 +192,9 @@ TEST(BasicFlatBufferModel, TestSubgraphName) {
 // Test what happens if we cannot bind any of the ops.
 TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str());
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
   std::unique_ptr<Interpreter> interpreter(new Interpreter);
@@ -192,7 +206,9 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
 // Make sure model is read to interpreter properly
 TEST(BasicFlatBufferModel, TestModelInInterpreter) {
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str());
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
   std::unique_ptr<Interpreter> interpreter(new Interpreter);
@@ -271,7 +287,10 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
 TEST(BasicFlatBufferModel, TestWithNumThreads) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin", &reporter);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str(),
+      &reporter);
   ASSERT_TRUE(model);
   TrivialResolver resolver(&dummy_reg);
   InterpreterBuilder builder(*model, resolver);
@@ -304,7 +323,10 @@ TEST(BasicFlatBufferModel, TestWithNumThreads) {
 TEST(BasicFlatBufferModel, TestSetNumThreads) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin", &reporter);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str(),
+      &reporter);
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   TrivialResolver resolver(&dummy_reg);
@@ -339,7 +361,10 @@ TEST(BasicFlatBufferModel, TestSetNumThreads) {
 TEST(BasicFlatBufferModel, TestSetNumThreadsWithMultipleSubgraphs) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/2_subgraphs.bin", &reporter);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/2_subgraphs.bin")
+          .c_str(),
+      &reporter);
   ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
   TrivialResolver resolver(&dummy_reg);
@@ -360,7 +385,9 @@ TEST(BasicFlatBufferModel, TestSetNumThreadsWithMultipleSubgraphs) {
 // not linked into the target.
 TEST(FlexModel, FailureWithoutFlexDelegate) {
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/multi_add_flex.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/multi_add_flex.bin")
+          .c_str());
   ASSERT_TRUE(model);
 
   // Note that creation will succeed when using the BuiltinOpResolver, but
@@ -381,7 +408,9 @@ TEST(FlexModel, FailureWithoutFlexDelegate) {
 // buffer. But the buffer is provided to be only 1 element.
 TEST(BasicFlatBufferModel, TestBrokenMmap) {
   ASSERT_FALSE(FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model_broken.bin"));
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model_broken.bin")
+          .c_str()));
 }
 
 TEST(BasicFlatBufferModel, TestNullModel) {
@@ -409,18 +438,27 @@ class FakeVerifier : public tflite::TfLiteVerifier {
 TEST(BasicFlatBufferModel, TestWithTrueVerifier) {
   FakeVerifier verifier(true);
   ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin", &verifier));
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str(),
+      &verifier));
 }
 
 TEST(BasicFlatBufferModel, TestWithFalseVerifier) {
   FakeVerifier verifier(false);
   ASSERT_FALSE(FlatBufferModel::VerifyAndBuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin", &verifier));
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str(),
+      &verifier));
 }
 
 TEST(BasicFlatBufferModel, TestWithNullVerifier) {
   ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin", nullptr));
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str(),
+      nullptr));
 }
 
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to
@@ -428,7 +466,10 @@ TEST(BasicFlatBufferModel, TestWithNullVerifier) {
 TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/empty_model.bin", &reporter);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/empty_model.bin")
+          .c_str(),
+      &reporter);
   ASSERT_TRUE(model);
 
   std::unique_ptr<Interpreter> interpreter;
@@ -442,7 +483,10 @@ TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
 // the Interpreter.
 TEST(BasicFlatBufferModel, TestNullErrorReporter) {
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/empty_model.bin", nullptr);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/empty_model.bin")
+          .c_str(),
+      nullptr);
   ASSERT_TRUE(model);
 
   std::unique_ptr<Interpreter> interpreter;
@@ -455,7 +499,10 @@ TEST(BasicFlatBufferModel, TestNullErrorReporter) {
 TEST(BasicFlatBufferModel, TestBuildFromModel) {
   TestErrorReporter reporter;
   FileCopyAllocation model_allocation(
-      "third_party/tensorflow/lite/testdata/test_model.bin", &reporter);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str(),
+      &reporter);
   ASSERT_TRUE(model_allocation.valid());
   ::flatbuffers::Verifier verifier(
       reinterpret_cast<const uint8_t*>(model_allocation.base()),
@@ -476,8 +523,11 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
 // Test that loading model directly from an Allocation works.
 TEST(BasicFlatBufferModel, TestBuildFromAllocation) {
   TestErrorReporter reporter;
-  std::unique_ptr<Allocation> model_allocation(new FileCopyAllocation(
-      "third_party/tensorflow/lite/testdata/test_model.bin", &reporter));
+  std::unique_ptr<Allocation> model_allocation(
+      new FileCopyAllocation(tensorflow::GetDataDependencyFilepath(
+                                 "tensorflow/lite/testdata/test_model.bin")
+                                 .c_str(),
+                             &reporter));
   ASSERT_TRUE(model_allocation->valid());
 
   auto model =
@@ -514,7 +564,9 @@ TEST(BasicFlatBufferModel, TestBuildFromInvalidAllocation) {
 TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
   // First read a model that doesn't have the runtime string.
   auto model1 = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str());
   ASSERT_TRUE(model1);
   ASSERT_EQ(model1->GetMinimumRuntime(), "");
 
@@ -530,14 +582,18 @@ TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
 TEST(BasicFlatBufferModel, TestReadMetadataFromModel) {
   // First read a model that doesn't have the runtime string.
   auto model1 = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str());
   ASSERT_TRUE(model1);
   std::map<std::string, std::string> metadata = model1->ReadAllMetadata();
   ASSERT_EQ(metadata.size(), 0);
 
   // Read a model that has reduced precision support mask populated
   auto model2 = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model_redux_precision.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model_redux_precision.bin")
+          .c_str());
   ASSERT_TRUE(model2);
   // Check that we have read the runtime string correctly.
   metadata = model2->ReadAllMetadata();
@@ -548,7 +604,9 @@ TEST(BasicFlatBufferModel, TestReadMetadataFromContext) {
   const std::string reduced_precision_meta_key = "reduced_precision_support";
   // First read a model that doesn't have any metadata.
   auto model1 = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model.bin")
+          .c_str());
   ASSERT_TRUE(model1);
   std::unique_ptr<Interpreter> interpreter;
   TrivialResolver resolver(&dummy_reg);
@@ -566,7 +624,9 @@ TEST(BasicFlatBufferModel, TestReadMetadataFromContext) {
 
   // This model has metadata mapped to kTfLiteReducedPrecisionKey.
   auto model2 = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_model_redux_precision.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_model_redux_precision.bin")
+          .c_str());
   ASSERT_TRUE(model2);
   InterpreterBuilder builder2(*model2, resolver);
   interpreter.reset();
@@ -592,7 +652,9 @@ TEST(BasicFlatBufferModel, TestReadMetadataFromContext) {
 TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
   // The model only has 1 sparse constant tensor.
   auto model = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/sparse_tensor.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/sparse_tensor.bin")
+          .c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<Interpreter> interpreter(new Interpreter);
@@ -662,11 +724,11 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
 // `AllocateTensors`, hence the test checks that `interpreter->AllocateTensors`
 // detects these bad models.
 TEST(BasicFlatBufferModel, TestHandleMalformedModelReuseTensor) {
-  const auto model_path =
-      "third_party/tensorflow/lite/testdata/add_shared_tensors.bin";
+  const auto model_path = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/lite/testdata/add_shared_tensors.bin");
 
   std::unique_ptr<tflite::FlatBufferModel> model =
-      FlatBufferModel::BuildFromFile(model_path);
+      FlatBufferModel::BuildFromFile(model_path.c_str());
   ASSERT_NE(model, nullptr);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -683,11 +745,11 @@ TEST(BasicFlatBufferModel, TestHandleMalformedModelReuseTensor) {
 // segfault if no precondition check is added. The test checks that the
 // precondition check exists.
 TEST(BasicFlatBufferModel, TestHandleMalformedModelInvalidBuffer) {
-  const auto model_path =
-      "third_party/tensorflow/lite/testdata/segment_sum_invalid_buffer.bin";
+  const auto model_path = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/lite/testdata/segment_sum_invalid_buffer.bin");
 
   std::unique_ptr<tflite::FlatBufferModel> model =
-      FlatBufferModel::BuildFromFile(model_path);
+      FlatBufferModel::BuildFromFile(model_path.c_str());
   ASSERT_NE(model, nullptr);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -728,7 +790,9 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
     {
       // Load a model.
       auto model = FlatBufferModel::BuildFromFile(
-          "third_party/tensorflow/lite/testdata/empty_model.bin");
+          tensorflow::GetDataDependencyFilepath(
+              "tensorflow/lite/testdata/empty_model.bin")
+              .c_str());
       ASSERT_TRUE(model);
       // Now try to build it into an interpreter.
       std::unique_ptr<Interpreter> interpreter;
@@ -765,11 +829,11 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
 // is detected. If not, the while loop will be failed at handling the dynamic
 // tensor handling as a static tensor.
 TEST(BasicFlatBufferModel, TestHandleModelWithWhileOpContainsForwardingInput) {
-  const auto model_path =
-      "third_party/tensorflow/lite/testdata/while_op_with_forwarding_input.bin";
+  const auto model_path = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/lite/testdata/while_op_with_forwarding_input.bin");
 
   std::unique_ptr<tflite::FlatBufferModel> model =
-      FlatBufferModel::BuildFromFile(model_path);
+      FlatBufferModel::BuildFromFile(model_path.c_str());
   ASSERT_NE(model, nullptr);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -793,7 +857,10 @@ TEST(BasicFlatBufferModel, TestHandleModelWithWhileOpContainsForwardingInput) {
 TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
   TestErrorReporter reporter;
   FileCopyAllocation model_allocation(
-      "third_party/tensorflow/lite/testdata/zero_size_constant.bin", &reporter);
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/zero_size_constant.bin")
+          .c_str(),
+      &reporter);
   EXPECT_TRUE(model_allocation.valid());
   ::flatbuffers::Verifier verifier(
       reinterpret_cast<const uint8_t*>(model_allocation.base()),
