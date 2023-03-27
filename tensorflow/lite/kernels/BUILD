@@ -896,9 +896,11 @@ cc_library(
     name = "builtin_ops_list",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["builtin_ops_list.inc"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+)
+
+exports_files(
+    srcs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 # For internal usage by shared libraries only.
