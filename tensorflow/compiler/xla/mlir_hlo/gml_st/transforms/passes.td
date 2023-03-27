@@ -192,6 +192,11 @@ def CollectStatsPass :
   let constructor = "::mlir::gml_st::createCollectStatsPass()";
 }
 
+def RemoveLabelPass : Pass<"remove-label", "mlir::func::FuncOp"> {
+  let summary = "Remove transformed labels from tiled ops";
+  let constructor = "::mlir::gml_st::createRemoveLabelPass()";
+}
+
 def FusionPlanningForCpuPass :
     Pass<"gml-st-cpu-fusion-planning", "mlir::func::FuncOp"> {
   let summary = "Create fusion clusters.";

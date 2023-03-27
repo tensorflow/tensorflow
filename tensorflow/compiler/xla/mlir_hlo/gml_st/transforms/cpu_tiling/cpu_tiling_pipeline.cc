@@ -72,10 +72,16 @@ void addCPUTilingPipeline(OpPassManager& pm,
       options.reduction2DTileSizes));
   pm.addNestedPass<FuncOp>(
       createTransformDotForCpuPass(options.matmulTileSizes));
-  pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
+  // Upstream generalization of tensor.pack/unpack (i.e. tensor.pack/unpack ->
+  // tensor.pad + linalg.transpose + tensor.insert_slice) does not transfer
+  // transformed labels from tensor.pack/unpack to linalg.transpose and thus
+  // makes the latter being tiled again.
+  // Hence, elementwise ops transformation needs to be run before pack/unpack
+  // transformation.
   pm.addNestedPass<FuncOp>(createTransformElementwiseForCpuPass(
       options.vectorSize, options.fuseDegenerateReshapes));
+  pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
 
   pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
@@ -92,6 +98,9 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 
   pm.addPass(createCanonicalizerPass());
+
+  // Remove transformed labels after tiling all ops.
+  pm.addNestedPass<FuncOp>(createRemoveLabelPass());
 }
 
 void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName,

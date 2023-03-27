@@ -97,11 +97,6 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                          "has already been transformed.");
     }
 
-    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          reduceOp, "has already been tiled by another pass.");
-    }
-
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
       return failure();
 
@@ -450,11 +445,6 @@ struct TransformReduceForCpuPass
     patterns.add<Reduce2DTransformPattern>(ctx, tileSizes2D[0], tileSizes2D[1]);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-
-    // Ensure we drop the marker in the end.
-    f.walk([](linalg::ReduceOp reduceOp) {
-      removeLabel(reduceOp, kTransformedLabel);
-    });
   }
 };
 

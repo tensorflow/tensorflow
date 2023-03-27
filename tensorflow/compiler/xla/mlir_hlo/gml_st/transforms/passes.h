@@ -134,6 +134,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> createCollectStatsPass(
     int64_t level = 0);
 
+/// Pass to remove all transformed labels from tiled ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRemoveLabelPass();
+
 /// Populate pattern to remove single/zero iteration scf.forall dimensions.
 void populateCollapseForallOpDimensionsPattern(RewritePatternSet &patterns);
 
