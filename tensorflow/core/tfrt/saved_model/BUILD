@@ -116,6 +116,8 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        # TODO(chky): Remove kernel fallback tensor deps.
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor_conversion_alwayslink",
         "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:fallback_state",
@@ -136,7 +138,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         ":saved_model",
-        "//tensorflow/cc/saved_model:loader_lite",
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",
