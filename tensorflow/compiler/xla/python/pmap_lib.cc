@@ -707,7 +707,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
   const auto& output_specs = cache_entry.out_result_specs;
 
-  TF_RET_CHECK(!cache_entry.out_array_shardings.empty());
+  TF_RET_CHECK(cache_entry.out_array_shardings.size() == num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     const ResultSpec& result_spec = output_specs[i];
     xla::PyArray py_array(

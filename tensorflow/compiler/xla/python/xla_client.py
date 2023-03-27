@@ -24,6 +24,7 @@ import os
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
+import ml_dtypes
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -43,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 141
+_version = 144
 
 # Version number for MLIR:Python components.
-mlir_api_version = 46
+mlir_api_version = 47
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -194,9 +195,9 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
-bfloat16 = _xla.bfloat16_dtype()
-float8_e4m3fn = _xla.float8_e4m3fn_dtype()
-float8_e5m2 = _xla.float8_e5m2_dtype()
+bfloat16 = ml_dtypes.bfloat16
+float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -465,6 +466,25 @@ NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
+
+
+def LoadedExecutable_execute(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments)
+  return [x[0] for x in results.disassemble_into_single_device_arrays()]
+
+
+def LoadedExecutable_execute_with_token(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments, with_tokens=True)
+  return (
+      [x[0] for x in results.disassemble_into_single_device_arrays()],
+      results.consume_token().get_token(0),
+  )
+
+
+LoadedExecutable.execute = LoadedExecutable_execute
+LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
 
 
 def register_custom_call_target(

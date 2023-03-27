@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
-
+from typing import Tuple
 import unittest
+
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -26,6 +28,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
+
+
+def serialize(module_str: str) -> Tuple[str, int]:
+  # TODO(b/274838200): error importing xla_extension in OSS
+  # target_version = '0.9.0'  # TODO(gleasonk): use APIs to get this
+  # return xla_extension.mlir.serialize_portable_artifact(
+  #     module_str, target_version), 4
+  return module_str, 3
 
 
 class XlaCallModuleOpTest(xla_test.XLATestCase):
@@ -68,7 +78,7 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
 
     def f(x):
       # sin(cos(x))
-      module = """
+      module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %0 = stablehlo.cosine %arg0 : tensor<3xf32>
@@ -76,8 +86,8 @@ module @jit_f.0 {
     return %1 : tensor<3xf32>
   }
 }
-"""
-      return xla.call_module([x], version=2,
+""")
+      return xla.call_module([x], version=version,
                              module=module, Tout=[x.dtype], Sout=[x.shape])
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
@@ -88,7 +98,7 @@ module @jit_f.0 {
 
     def f(x):
       # return x >= 1
-      module = """
+      module, version = serialize("""
 module @jit_f_jax.0 {
   func.func public @main(%arg0: tensor<ui32>) -> tensor<i1> {
     %0 = stablehlo.constant dense<1> : tensor<ui32>
@@ -96,8 +106,8 @@ module @jit_f_jax.0 {
     return %1 : tensor<i1>
   }
 }
-"""
-      return xla.call_module([x], version=2,
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[res.shape])
@@ -110,7 +120,7 @@ module @jit_f_jax.0 {
 
     def f(x, y):
       # (sin(x), cos(y))
-      module = """
+      module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<3xf32>, %arg1: tensor<4xf64>) -> (tensor<3xf32>, tensor<4xf64>) {
     %0 = stablehlo.sine %arg0 : tensor<3xf32>
@@ -118,8 +128,8 @@ module @jit_f.0 {
     return %0, %1 : tensor<3xf32>, tensor<4xf64>
   }
 }
-"""
-      return xla.call_module([x, y], version=2,
+""")
+      return xla.call_module([x, y], version=version,
                              module=module,
                              Tout=[x.dtype, y.dtype],
                              Sout=[x.shape, y.shape])
@@ -132,16 +142,15 @@ module @jit_f.0 {
     def f(x):  # x: f32[2, b]
       # Module takes another argument which is the value of b
       # (sin(x), x.shape[1])
-      module = """
+      module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
     return %0, %arg0 : tensor<2x?xf32>, tensor<i32>
   }
 }
-"""
-      return xla.call_module([x],
-                             version=2,
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()],
@@ -155,17 +164,16 @@ module @jit_f.0 {
     def f(x):  # x: f32[2, b]
       # Module takes another argument which is the value of b
       # (sin(x), x.shape[1])
-      module = """
+      module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i64>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i64>) {
     %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
     return %0, %arg0 : tensor<2x?xf32>, tensor<i64>
   }
 }
-"""
+""")
       return xla.call_module([x],
-                             version=2,
-                             module=module,
+                             module=module, version=version,
                              Tout=[x.dtype, np.int64],
                              Sout=[(None, 3), ()],
                              dim_args_spec=['0.1'])
@@ -178,7 +186,7 @@ module @jit_f.0 {
 
     def f(x):  # x: f32[2, b]
       # (sin(x), x.shape[1])
-      module = """
+      module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
@@ -190,9 +198,9 @@ module @jit_f.0 {
     return %0, %arg0 : tensor<2x?xf32>, tensor<i32>
   }
 }
-"""
-      return xla.call_module([x], version=2,
-                             module=module,
+""")
+      return xla.call_module([x],
+                             module=module, version=version,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()])
 
@@ -205,7 +213,7 @@ module @jit_f.0 {
 
     # Module takes two prefix arguments with the values of b and c
     #   return (sin(x + y), x.shape[1])
-    module = """
+    module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<2x?x?xf32>, %arg3: tensor<2x?x?xf32>) -> (tensor<2x?x?xf32>, tensor<i32>) {
     %0 = stablehlo.add %arg2, %arg3 : tensor<2x?x?xf32>
@@ -213,13 +221,12 @@ module @jit_f.0 {
     return %1, %arg0 : tensor<2x?x?xf32>, tensor<i32>
   }
 }
-"""
+""")
 
     dim_args_spec = ['0.1', '0.2']
     def f(x, y):
       return xla.call_module([x, y],
-                             version=2,
-                             module=module,
+                             module=module, version=version,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()],
                              dim_args_spec=dim_args_spec)
@@ -278,7 +285,7 @@ module @jit_f.0 {
     x = np.float32(0.)
 
     #  returns x + 2. on CPU, x + 3. on GPU and x + 4. on TPU
-    module = """
+    module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
     %to_add = "stablehlo.case"(%arg_platform_idx) ({
@@ -295,12 +302,11 @@ module @jit_f.0 {
     return %0 : tensor<f32>
   }
 }
-"""
+""")
 
     platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
     def f(x):
-      return xla.call_module([x],
-                             version=3,
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[np.float32],
                              Sout=[()],
@@ -314,7 +320,7 @@ module @jit_f.0 {
     y = np.arange(3., dtype=np.float32)
 
     #  returns x + x on CPU and x - x on TPU
-    module = """
+    module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg_platform_idx: tensor<i32>, %arg_dim0: tensor<i32>, %arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
     %res = "stablehlo.case"(%arg_platform_idx) ({
@@ -327,10 +333,9 @@ module @jit_f.0 {
     return %res : tensor<?xf32>
   }
 }
-"""
+""")
     def f(x, y):
-      return xla.call_module([x, y],
-                             version=3,
+      return xla.call_module([x, y], version=version,
                              module=module,
                              Tout=[np.float32],
                              Sout=[(None,)],
@@ -345,18 +350,17 @@ module @jit_f.0 {
     """Error reporting for the platforms attribute."""
     x = np.float32(0.)
 
-    module = """
+    module_str = """
 module @jit_f.0 {
   func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
     return %arg0 : tensor<f32>
   }
 }
 """
+    module, version = serialize(module_str)
     platforms = []
-    version = 3
     def f(x):
-      return xla.call_module([x],
-                             version=version,
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[np.float32],
                              Sout=[()],
@@ -380,6 +384,7 @@ module @jit_f.0 {
           'and 0 dimension arguments.'):
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
+<<<<<<< HEAD
     #  Same if the version is 2
     platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
     version = 2
@@ -391,6 +396,8 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     version = 3
+=======
+>>>>>>> google_upstream/master
     platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
     with self.assertRaisesRegex(
         errors.NotFoundError,
@@ -407,8 +414,13 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # The module cannot have i64 %arg_platform_idx
+<<<<<<< HEAD
     module = module.replace('i32', 'i64')
     platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
+=======
+    module, version = serialize(module_str.replace('i32', 'i64'))
+    platforms = ['CPU', 'CUDA', 'TPU']
+>>>>>>> google_upstream/master
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Module argument at index 0 should be a 0-dimensional '
@@ -417,13 +429,13 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # A module without the platform index argument
-    module = """
+    module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>) -> tensor<i32> {
     return %arg0 : tensor<i32>
   }
 }
-"""
+""")
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'The module should have 1 platform index arguments and 0 dimension '
@@ -436,7 +448,7 @@ module @jit_f.0 {
 
     def f(x):  # x: f32[b, 5]
       # return np.arange(x.shape[0], dtype=np.int32)
-      module = """
+      module, version = serialize("""
 module @jit_fun.1 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x5xi32>) -> tensor<?xi32> {
     %0 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
@@ -444,8 +456,8 @@ module @jit_fun.1 {
     return %1 : tensor<?xi32>
   }
 }
-"""
-      return xla.call_module([x,], version=2,
+""")
+      return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None,)],
@@ -457,17 +469,16 @@ module @jit_fun.1 {
     """We can construct the tf.Graph on all platforms."""
     x = np.float32(0.)
 
-    module = """
+    module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
     return %arg0 : tensor<f32>
   }
 }
-"""
+""")
     platforms = ['TPU']  # the module is compileable only on TPU
     def f(x):
-      return xla.call_module([x],
-                             version=3,
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[np.float32],
                              Sout=[()],
@@ -480,7 +491,7 @@ module @jit_f.0 {
     res = x.reshape((-1,))
 
     def f(x):  # x: f32[b, 3]
-      module = """
+      module, version = serialize("""
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x3xf32>) -> tensor<?xf32> {
     %0 = stablehlo.constant dense<3> : tensor<i32>
@@ -490,8 +501,8 @@ module @jit_fun_flat_jax {
     return %3 : tensor<?xf32>
   }
 }
-"""
-      return xla.call_module([x],
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None,)],
@@ -504,7 +515,7 @@ module @jit_fun_flat_jax {
     res = np.ones((3, 2), dtype=np.float32)
 
     def f(x):  # x: f32[b, 4]
-      module = """
+      module, version = serialize("""
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>) -> tensor<?x2xf32> {
     %0 = stablehlo.constant dense<0> : tensor<i64>
@@ -516,8 +527,8 @@ module @jit_fun_flat_jax {
     return %5 : tensor<?x2xf32>
   }
 }
-"""
-      return xla.call_module([x],
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None, 2)],
@@ -530,7 +541,7 @@ module @jit_fun_flat_jax {
     res = x[-1, :]
 
     def f(x):  # x: f32[b, 4]
-      module = """
+      module, version = serialize("""
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>) -> tensor<4xf32> {
     %0 = stablehlo.constant dense<-1> : tensor<i32>
@@ -547,8 +558,8 @@ module @jit_fun_flat_jax {
     return %12 : tensor<4xf32>
   }
 }
-"""
-      return xla.call_module([x],
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[x.dtype],
                              Sout=[(4,)],
@@ -562,7 +573,7 @@ module @jit_fun_flat_jax {
     res = x   # The update should be a nop
 
     def f(x, idx):  # x: f32[b, 4]  idx: i32
-      module = """
+      module, version = serialize("""
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>, %arg2: tensor<i32>) -> tensor<?x4xf32> {
     %0 = stablehlo.constant dense<0> : tensor<i32>
@@ -574,8 +585,8 @@ module @jit_fun_flat_jax {
     return %5 : tensor<?x4xf32>
   }
 }
-"""
-      return xla.call_module([x, idx],
+""")
+      return xla.call_module([x, idx], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None, 4)],
@@ -590,7 +601,7 @@ module @jit_fun_flat_jax {
 
     def f(x, y):  # x: f32[b, 4]  y: f32[2, b, 4]
       # return (np.broadcast_to(x, y.shape), x + y)
-      module = """
+      module, version = serialize("""
 module @jit_fun.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>, %arg2: tensor<2x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>) {
     %0 = stablehlo.constant dense<2> : tensor<1xi32>
@@ -602,8 +613,8 @@ module @jit_fun.0 {
     return %5, %6 : tensor<2x?x4xf32>, tensor<2x?x4xf32>
   }
 }
-"""
-      return xla.call_module([x, y], version=2,
+""")
+      return xla.call_module([x, y], version=version,
                              module=module,
                              Tout=[res[0].dtype, res[1].dtype],
                              Sout=[(2, None, 4), (2, None, 4)],
@@ -617,7 +628,7 @@ module @jit_fun.0 {
     res = np.sum(x) * x.shape[0]
 
     def f(x):  # x: i32[b]
-      module = """
+      module, version = serialize("""
 module @jit_fun{
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xi32>) -> tensor<i32> {
     %0 = stablehlo.constant dense<0> : tensor<i32>
@@ -630,8 +641,8 @@ module @jit_fun{
     return %2 : tensor<i32>
   }
 }
-"""
-      return xla.call_module([x], version=1,
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[res.shape],
@@ -644,7 +655,7 @@ module @jit_fun{
     res = np.arange(3, dtype=np.float32).reshape(3, 1) * 5
 
     def f(x):  # x: f32[b, 5]
-      module = """
+      module, version = serialize("""
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x5xf32>) -> tensor<?x1xf32> {
     %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
@@ -660,8 +671,8 @@ module @jit_fun_flat_jax {
     return %5 : tensor<?x1xf32>
   }
 }
-"""
-      return xla.call_module([x,],
+""")
+      return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None, 1)],
@@ -675,7 +686,7 @@ module @jit_fun_flat_jax {
     res = np.arange(x.shape[0], dtype=np.int32)
 
     def f(x):  # x: f32[b]
-      module = """
+      module, version = serialize("""
 module @jit_fun_3 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xi32> {
     %0 = call @f(%arg0, %arg1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xi32>
@@ -687,8 +698,8 @@ module @jit_fun_3 {
     return %1 : tensor<?xi32>
   }
 }
-"""
-      return xla.call_module([x,], version=2,
+""")
+      return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[()],
@@ -701,15 +712,14 @@ module @jit_fun_3 {
     res = x
 
     def f(x):  # x: f32[b]
-      module = """
+      module, version = serialize("""
 module @jit_fun_3 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
     return %arg1 : tensor<?xf32>
   }
 }
-"""
-      return xla.call_module([x],
-                             version=2,
+""")
+      return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[()],
@@ -727,7 +737,7 @@ module @jit_fun_3 {
     res1 = np.int64(5)
 
     def f(x):  # x: f32[b]
-      module = """
+      module, version = serialize("""
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> (tensor<?xf32>, tensor<i64>) {
     %0 = stablehlo.constant dense<0> : tensor<i64>
@@ -748,8 +758,8 @@ module @jit_fun_flat_jax {
     return %1#0, %1#1 : tensor<?xf32>, tensor<i64>
   }
 }
-"""
-      return xla.call_module([x,], version=2,
+""")
+      return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res0.dtype, res1.dtype],
                              Sout=[(None,), res1.shape],

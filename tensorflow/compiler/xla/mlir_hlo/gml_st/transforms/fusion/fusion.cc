@@ -22,6 +22,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
+#include "gml_st/utils/tensor_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -126,6 +128,107 @@ LogicalResult fuseTensorCast(PatternRewriter& rewriter, tensor::CastOp castOp,
   return success();
 }
 
+// TODO(vuson): maybe overload this function instead of templating it.
+// Fuse a reshape op being used by an extract_slice op (inside a loop) into the
+// loop by reversing the order of these two ops (and fixing their
+// operands/result accordingly). For example, fusing a tensor.collapse_shape:
+//
+//   %1 = tensor.collapse_shape %0 [[0], [1, 2]] :
+//            tensor<10x10x1xf32> into tensor<10x10xf32>
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %1[%a1, %a2] [1, 8] [1, 1] :
+//              tensor<10x10xf32> to tensor<1x?xf32>
+//
+// into
+//
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %0[%a1, %a2, 0] [1, 8, 1] [1, 1, 1] :
+//              tensor<10x10x1xf32> to tensor<1x?x1xf32>
+//     %1 = tensor.collapse_shape %3 [[0], [1, 2]] :
+//              tensor<1x?x1xf32> into tensor<1x?xf32>
+//
+// This also works for tensor.expand_shape instead of tensor.collapse_shape:
+//
+//   %1 = tensor.expand_shape %0 [[0], [1, 2]] :
+//            tensor<10x10xf32> into tensor<10x10x1xf32>
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %1[%a1, %a2, 0] [1, 8, 1] [1, 1, 1] :
+//              tensor<10x10x1xf32> to tensor<1x?x1xf32>
+//
+// into
+//
+//   some_scf_loop (%a1, %a2) = (0, 0) to (10, 10) step (1, 8) ...
+//     %3 = tensor.extract_slice %0[%a1, %a2] [1, 8] [1, 1] :
+//              tensor<10x10xf32> to tensor<1x?xf32>
+//     %1 = tensor.expand_shape %2 [[0], [1, 2]] :
+//              tensor<1x?xf32> into tensor<1x?x1xf32>
+template <typename TensorReshapeOp>
+LogicalResult fuseTensorReshape(PatternRewriter& rewriter,
+                                TensorReshapeOp reshapeOp,
+                                tensor::ExtractSliceOp sliceOp) {
+  if (!isDegenerateReshapeOp(reshapeOp)) return failure();
+
+  auto newSliceSrcType = reshapeOp.getSrcType();
+  llvm::ArrayRef<int64_t> newSliceSrcShape = newSliceSrcType.getShape();
+  auto newSliceRank = newSliceSrcType.getRank();
+  // If the source type of reshape op is a rank-0 tensor, there will be no
+  // extract_slice possible from that source value, let's bail out.
+  if (newSliceRank == 0) return failure();
+
+  auto one = rewriter.getIndexAttr(1);
+  auto zero = rewriter.getIndexAttr(0);
+  SmallVector<OpFoldResult> newOffsets(newSliceRank, zero);
+  SmallVector<OpFoldResult> newSizes(newSliceRank, one);
+  SmallVector<OpFoldResult> newStrides(newSliceRank, one);
+
+  llvm::ArrayRef<int64_t> sliceSrcShape = sliceOp.getSourceType().getShape();
+  auto reassociation = reshapeOp.getReassociationIndices();
+  constexpr bool isExpanding =
+      std::is_same<TensorReshapeOp, tensor::ExpandShapeOp>::value;
+  llvm::ArrayRef<int64_t> shape =
+      isExpanding ? sliceSrcShape : newSliceSrcShape;
+  // For each reassociation indices, a degenerate reshape op only has at most
+  // 1 non-unit-dimension. If there is none, it means the source shape already
+  // has some unit-dimensions (e.g. tensor<1x1x1xf32> collapsed into
+  // tensor<1xf32>)
+  assert(
+      static_cast<size_t>(
+          llvm::count_if(reassociation,
+                         [&](auto indices) {
+                           return llvm::count_if(indices, [&](int64_t idx) {
+                                    return shape[idx] != 1;
+                                  }) <= 1;
+                         })) == reassociation.size() &&
+      "Degenerate reshape op should only have at most 1 non-unit dimension for "
+      "each reassociation indices");
+  for (const auto& [enumIdx, indices] : llvm::enumerate(reassociation)) {
+    auto findIt =
+        llvm::find_if(indices, [&](int64_t idx) { return shape[idx] != 1; });
+    // No non-unit dimension, which means the source shape already has some
+    // unit-dimensions. The default values for offset/size/stride (0/1/1) should
+    // be usable. Skip updating offset/size/stride for this dimension.
+    if (findIt == indices.end()) continue;
+    auto newIdx = isExpanding ? enumIdx : *findIt;
+    auto idx = isExpanding ? *findIt : enumIdx;
+    newOffsets[newIdx] = sliceOp.getMixedOffsets()[idx];
+    newSizes[newIdx] = sliceOp.getMixedSizes()[idx];
+    newStrides[newIdx] = sliceOp.getMixedStrides()[idx];
+  }
+
+  RankedTensorType newSliceResultType =
+      tensor::ExtractSliceOp::inferCanonicalRankReducedResultType(
+          newSliceRank, newSliceSrcType, newOffsets, newSizes, newStrides);
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPointAfter(sliceOp);
+  auto newSlice = rewriter.create<tensor::ExtractSliceOp>(
+      sliceOp.getLoc(), newSliceResultType, reshapeOp.getSrc(), newOffsets,
+      newSizes, newStrides);
+
+  rewriter.replaceOpWithNewOp<TensorReshapeOp>(sliceOp, sliceOp.getResultType(),
+                                               newSlice, reassociation);
+  return success();
+}
+
 // Iterates over tensor::ExtractSliceOp inside the block, finds a suitable
 // candidate for fusion and fuses it. The fusion candidate should satisfy the
 // filter function and not have uses outside of the block. Fails if nothing
@@ -149,6 +252,12 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     // Filter candidates that we don't want to fuse.
     if (filterFn && !filterFn(fusionCandidate)) return;
 
+    // `linalg.fill` after tiling mostly becomes a scalar or a vector constant.
+    // It is beneficial to fuse it.
+    if (isa<linalg::FillOp>(fusionCandidate)) {
+      fusionCandidates.insert(fusionCandidate);
+      return;
+    }
     // Check that the candidate doesn't have users that will block fusion.
     if (!llvm::all_of(fusionCandidate->getUsers(), [](Operation* op) {
           // Fusion candidates can only be fused into tensor.extract_slice or
@@ -158,9 +267,9 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
                  isa<tensor::DimOp>(op) ||
                  // Trivially dead ops will be removed.
                  isOpTriviallyDead(op);
-        }))
+        })) {
       return;
-
+    }
     fusionCandidates.insert(fusionCandidate);
   });
 
@@ -177,9 +286,13 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     reifyDimOpsUsers(rewriter, fusionCandidate);
 
     // After the previous steps, extractSliceOp should be only one user of the
-    // fusion candidate. Otherwise this candidate should not be fused.
+    // fusion candidate. Otherwise this candidate should not be fused. We always
+    // want to fuse linalg.fill.
     auto fusionCandidateUsers = llvm::to_vector(fusionCandidate->getUsers());
-    if (fusionCandidateUsers.size() != 1) continue;
+    if (fusionCandidateUsers.size() != 1 &&
+        !isa<linalg::FillOp>(fusionCandidate)) {
+      continue;
+    }
 
     Operation* candidateUser = fusionCandidateUsers.front();
 
@@ -193,7 +306,25 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
         }
         continue;
       }
-      if (succeeded(fuse(rewriter, extractSliceOp))) {
+      if (auto collapseShapeOp =
+              dyn_cast<tensor::CollapseShapeOp>(fusionCandidate)) {
+        if (succeeded(
+                fuseTensorReshape(rewriter, collapseShapeOp, extractSliceOp))) {
+          return success();
+        }
+        continue;
+      }
+      if (auto expandShapeOp =
+              dyn_cast<tensor::ExpandShapeOp>(fusionCandidate)) {
+        if (succeeded(
+                fuseTensorReshape(rewriter, expandShapeOp, extractSliceOp))) {
+          return success();
+        }
+        continue;
+      }
+      auto fusedOp = fuse(rewriter, extractSliceOp);
+      if (succeeded(fusedOp)) {
+        setLabel(*fusedOp, kTransformedLabel);
         return success();
       }
       continue;
@@ -355,41 +486,40 @@ void fuseGreedily(PatternRewriter& rewriter, Block& block,
     ;
 }
 
-FusionCluster findMapFusionCluster(Operation* op) {
-  // Find the root operation in the chain of elementwise ops. Current approach
-  // doesn't work well if maps don't form a chain.
+// Cluster producers and consumers around the root op.
+FusionCluster getFusionCluster(
+    Operation* op, llvm::function_ref<bool(Operation*)> producerFilterFn,
+    llvm::function_ref<bool(Operation*)> consumerFilterFn) {
+  // Find a chain of users and use the last one as a root of cluster.
+  SetVector<Operation*> resultOps;
+
   Operation* rootOp = op;
   while (true) {
     auto users = llvm::to_vector(rootOp->getUsers());
 
     if (users.size() != 1) break;
-    if (!isa<linalg::MapOp>(users[0])) break;
+
+    if (!consumerFilterFn(users[0])) break;
+    resultOps.insert(rootOp);
 
     rootOp = users[0];
   }
 
-  // Run a graph search to find all linalg.map and that can be fused in
-  // the root op.
-  SetVector<Operation*> resultOps;
-  SmallVector<Operation*> remainingProducers{rootOp};
+  // Run DFS to find all ops that satisfy producerFilterFn.
+  SmallVector<Operation*> remainingProducers;
+  for (Value operand : op->getOperands())
+    remainingProducers.push_back(operand.getDefiningOp());
 
   while (!remainingProducers.empty()) {
     Operation* curOp = remainingProducers.pop_back_val();
-    if (!curOp) continue;
-
-    if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
+    if (!curOp || resultOps.contains(curOp)) continue;
+    if (curOp == op || producerFilterFn(curOp)) {
       resultOps.insert(curOp);
-      for (auto* operand : mapOp.getDpsInputOperands())
-        remainingProducers.push_back(operand->get().getDefiningOp());
-    } else if (curOp->getName() == op->getName()) {
-      for (auto* u : curOp->getUsers()) {
-        // Do not fuse curOp that is used by another op of the same type.
-        if (u->getName() == op->getName()) continue;
-      }
-      resultOps.insert(curOp);
+      for (Value operand : curOp->getOperands())
+        remainingProducers.push_back(operand.getDefiningOp());
     }
   }
-  return {resultOps, rootOp};
+  return {resultOps, rootOp, {}};
 }
 
 FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
@@ -398,13 +528,13 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
   auto tilingResult =
       tileUsingSCFForallOp(rewriter, cast<TilingInterface>(op), opts);
   if (failed(tilingResult)) return failure();
-  rewriter.replaceOp(op, tilingResult->loop->getResults());
 
   for (Operation* tiledOp : tilingResult->tiledOps)
     setLabel(tiledOp, kTransformedLabel);
 
   // If tiling created an `scf.forall` loop, we fuse.
   if (tilingResult->loop != nullptr) {
+    rewriter.replaceOp(op, tilingResult->loop->getResults());
     // Fuse ops into the loop.
     fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
                  fuseFilterFn);

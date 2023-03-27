@@ -234,12 +234,13 @@ static Status CreateHloXlaPipeline(
   if (options.outline_with_xla_framework) {
     pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
   }
-  pm.addPass(mlir::createInlinerPass());
 
   if (options.experimental_deallocation) {
     CHECK(!options.sparse_bufferization)
         << "Sparse bufferization and experimental deallocation are mutually "
            "exclusive.";
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createXlaBufferArgRewritePass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocatePass());
     pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferReusePass());

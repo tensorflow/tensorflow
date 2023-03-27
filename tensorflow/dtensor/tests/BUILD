@@ -27,6 +27,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

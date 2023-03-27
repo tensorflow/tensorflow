@@ -290,6 +290,24 @@ int64_t GetNextLocationId() {
   static std::atomic<int64_t> id(0);
   return id.fetch_add(1, std::memory_order_relaxed);
 }
+
+// TODO(b/161370736): Have a formal method to convert between TF's and TFRT's
+// device name. Currently TFRT adopts the suffix of TF's device name,
+// e.g. CPU:0.
+tfrt::Expected<const char*> ConvertTfDeviceNameToTfrt(
+    const char* device_name, tensorflow::EagerContext* eager_context) {
+  // NOTE(fishx): We need to get tf_device first because DeviceMgr in current TF
+  // allows us get the device with simplified name like "CPU:0". However, TFRT
+  // DeviceManager only allows get device via its fullname.
+  tensorflow::Device* tf_device;
+  tensorflow::Status s =
+      eager_context->FindDeviceFromName(device_name, &tf_device);
+  if (!s.ok()) {
+    return MakeStringError(s.error_message());
+  }
+  return tf_device->name().c_str();
+}
+
 }  // namespace
 
 tensorflow::DataType TensorInterface::Type() const {
@@ -1121,6 +1139,11 @@ tensorflow::Status ContextInterface::AddRemoveFunctionNotifier(
 const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(
     const std::string& name) const {
   return GetEagerContext()->FindFunctionDef(name);
+}
+
+tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>
+ContextInterface::FindRecord(const std::string& name) const {
+  return GetEagerContext()->FindRecord(name);
 }
 
 const tensorflow::DeviceNameUtils::ParsedName&

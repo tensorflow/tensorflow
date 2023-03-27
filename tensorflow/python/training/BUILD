@@ -260,13 +260,6 @@ py_library(
 )
 
 py_library(
-    name = "distribution_strategy_context",
-    srcs = ["distribution_strategy_context.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/distribute:distribute_lib"],
-)
-
-py_library(
     name = "evaluation",
     srcs = ["evaluation.py"],
     srcs_version = "PY3",
@@ -570,18 +563,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
-    name = "distribute",
-    srcs = [
-        "distribute.py",
-        "distribution_strategy_context.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -1323,9 +1304,9 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python:math_ops",
     ] + TRAINING_TEST_DEPS,
 )
 

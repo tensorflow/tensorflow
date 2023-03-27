@@ -147,6 +147,30 @@ struct GemmOpCapture : public OpCapturePattern {
   }
 };
 
+struct MemrefOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
+      // We use a heuristic to identify the direction of the memcpy operation,
+      // if the operand was allocated by alloca op or is a global memref, then
+      // it must be a memref on the host.
+      auto IsHostMemRef = [](Value value) {
+        auto* op = value.getDefiningOp();
+        return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
+      };
+
+      auto IsDeviceToDevice = [&](mlir::gpu::MemcpyOp op) {
+        return !IsHostMemRef(op.getDst()) && !IsHostMemRef(op.getSrc());
+      };
+
+      // Device-to-host Memcpy cannot be captured by CUDA graphs.
+      if (IsDeviceToDevice(memcpy)) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
+
 // Capture pure operations by cloning them into graph capture function.
 struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
 struct ViewOpCapture : public CloneOp<memref::ViewOp> {};
@@ -389,6 +413,7 @@ void OutlineCudaGraphsPass::runOnOperation() {
   patterns.emplace_back(new ConstantOpCapture());
   patterns.emplace_back(new GemmOpCapture());
   patterns.emplace_back(new ViewOpCapture());
+  patterns.emplace_back(new MemrefOpCapture());
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),

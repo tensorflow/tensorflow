@@ -2053,6 +2053,22 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorStaticOrPersistentRoAllocation(
+      TfLiteContext* context, const TfLiteTensor& tensor, int tensor_index,
+      int node_index) {
+    if (tensor.allocation_type == kTfLiteMmapRo ||
+        tensor.allocation_type == kTfLitePersistentRo ||
+        tensor.data.raw_const == nullptr) {
+      return kTfLiteOk;
+    }
+    TF_LITE_MAYBE_KERNEL_LOG(
+        context,
+        "invalid allocation type in tensor #%d in node #%d: "
+        "expected static or persistent read-only tensor",
+        tensor_index, node_index);
+    return kTfLiteError;
+  }
+
   static TfLiteStatus CheckTensorsDimensionMatch(
       TfLiteContext* context, const TfLiteTensor& input_tensor,
       const TfLiteTensor& output_tensor, int dimension_index, int node_index,
@@ -2820,6 +2836,33 @@ class Subgraph {
     int axis = concat_params->axis;
     if (axis < 0) axis += NumDimensions(&output_tensor);
     int sum_axis = 0;
+
+    if (output_tensor.type == kTfLiteUInt8) {
+      const int32_t zero_point =
+          tensors[node->outputs->data[0]].params.zero_point;
+      const float scale = tensors[node->outputs->data[0]].params.scale;
+      for (int i = 0; i < num_inputs; i++) {
+        if (tensors[node->inputs->data[i]].params.zero_point != zero_point) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "Mismatching quantization zero point across the %dth input "
+              "(%" PRId32 ") and the output (%" PRId32
+              ") for CONCATENATE operator #%d",
+              i, tensors[node->inputs->data[i]].params.zero_point, zero_point,
+              node_index);
+          return kTfLiteError;
+        }
+        if (tensors[node->inputs->data[i]].params.scale != scale) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "Mismatching quantization scale across the %dth input (%f) "
+              "and the output (%f) for CONCATENATE operator #%d",
+              i, tensors[node->inputs->data[i]].params.scale, scale,
+              node_index);
+          return kTfLiteError;
+        }
+      }
+    }
 
     for (int i = 0; i < num_inputs; i++) {
       const TfLiteTensor& input_tensor = tensors[node->inputs->data[i]];
@@ -4556,7 +4599,7 @@ class Subgraph {
                                             node_index));
       TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
           logging_context, shape_tensor, node->inputs->data[1], node_index));
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+      TF_LITE_ENSURE_STATUS(CheckTensorStaticOrPersistentRoAllocation(
           logging_context, shape_tensor, node->inputs->data[1], node_index));
     }
 

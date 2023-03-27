@@ -32,15 +32,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-struct MatmulSizes {
-  // [m, k] x [k, n]
-  int64_t m;
-  int64_t n;
-  int64_t k;
-};
-
-using MatmulTileSizeComputationFn = std::function<MatmulSizes(MatmulSizes)>;
-
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
     StringRef producer = "", StringRef consumer = "");
@@ -91,11 +82,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
 /// Pass to transform a dot operation for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformDotForCpuPass(
-    MatmulTileSizeComputationFn tileSizeFn = nullptr);
-
-/// Pass to transform a linalg.matmul op for CPU backend.
-std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    MatmulTileSizeComputationFn tileSizeFn = nullptr);
+    ArrayRef<int64_t> tileSizes = {}, StringRef cpuName = "");
 
 /// Pass to transform tensor.pack/unpack ops for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformPackForCpuPass();
@@ -107,24 +94,18 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformMmt4DForCpuPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
 
 /// Pass to convert ops on tensors with 1 element to scalar ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
+    bool scalarizeAllThlo = true);
 
-/// Pass to transform a linalg.map op for CPU backend.
+/// Pass to transform elementwise ops for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformMapForCpuPass(int64_t tileSize = 1);
+createTransformElementwiseForCpuPass(int64_t vectorSize = 8,
+                                     bool fuseDegenerateReshapes = false);
 
 /// Pass to transform a linalg.reduce op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
                                 ArrayRef<int64_t> tileSizes2D = {});
-
-/// Pass to transform a thlo.reverse op for CPU backend.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformReverseForCpuPass(int64_t vectorSize = 8);
-
-/// Pass to transform a linalg.transpose op for CPU backend.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -215,6 +196,11 @@ struct GmlStCPUTilingOptions
   Option<int64_t> statsDetailLevel{
       *this, "stats-detail-level",
       llvm::cl::desc("Vector size for a 1D reduction."), llvm::cl::init(0)};
+
+  Option<bool> fuseDegenerateReshapes{
+      *this, "fuse-degenerate-reshapes",
+      llvm::cl::desc("Fuse through tensor.expand/collapse_shape"),
+      llvm::cl::init(false)};
 };
 
 // Returns default "optimized" tiling parameters.

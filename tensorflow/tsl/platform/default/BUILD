@@ -342,13 +342,13 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/base",
+        "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:byte_order",
         "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/platform:platform",
+        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies

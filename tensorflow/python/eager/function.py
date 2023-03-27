@@ -28,7 +28,7 @@ from tensorflow.python.eager.polymorphic_function.tracing_compiler import Tracin
 from tensorflow.python.eager.polymorphic_function.atomic_function import EagerDefinedFunction as _EagerDefinedFunction
 
 # Utilities
-from tensorflow.python.eager.polymorphic_function.tracing_compiler import TfMethodTarget
+from tensorflow.python.eager.polymorphic_function.tf_method_target import TfMethodTarget
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import _inference_name
 
 # TODO(b/244360504): Remove in favor of graph transformation API.

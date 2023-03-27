@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
@@ -84,6 +85,7 @@ Value rootAlloc(Value v, bool useDeallocateInvariants) {
 
 // Eliminates redundant owernship arguments for memrefs that are always owned
 // by the block. This helps with hoisting and reuse.
+// TODO(jreiffers): Rewrite and simplify this, if possible.
 void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
   bool isFor = llvm::isa<scf::ForOp>(op);
   if (!llvm::isa<scf::WhileOp>(op) && !isFor) {
@@ -148,8 +150,13 @@ void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
       for (auto& pred : predecessors) {
         if ((pred.predecessorOp == op && isFor) ||
             (pred.predecessorRegionIndex == 0 && !isFor)) {
-          resultIndices[ownershipArgIndices[i] - pred.successorValueIndex] =
+          size_t resultToDrop =
+              ownershipArgIndices[i] - pred.successorValueIndex;
+          resultIndices[resultToDrop] =
               memrefArgIndices[i] - pred.successorValueIndex;
+          for (auto& index : resultIndices) {
+            if (index > resultToDrop) --index;
+          }
         }
         pred.predecessorOp->eraseOperands(pred.predecessorOperandIndex +
                                           ownershipArgIndices[i] -
@@ -407,6 +414,71 @@ bool doubleBuffer(Block& block) {
   return result;
 }
 
+bool isRestrictBbArg(Value value) {
+  auto bbarg = llvm::dyn_cast<BlockArgument>(value);
+  auto func =
+      llvm::dyn_cast<func::FuncOp>(value.getParentBlock()->getParentOp());
+  if (!bbarg || !func) return false;
+  auto isRestrict = func.getArgAttrOfType<BoolAttr>(bbarg.getArgNumber(),
+                                                    "deallocation.restrict");
+  return isRestrict && isRestrict.getValue();
+}
+
+void eliminateCopies(Block& block, Block& root) {
+  auto* op = &block.front();
+  while (op) {
+    for (auto& region : op->getRegions()) {
+      if (!region.empty()) {
+        assert(region.hasOneBlock());
+        eliminateCopies(region.front(), root);
+      }
+    }
+
+    auto copy = llvm::dyn_cast_or_null<memref::CopyOp>(op);
+    op = op->getNextNode();
+
+    auto dealloc = llvm::dyn_cast_or_null<memref::DeallocOp>(op);
+    if (!copy || !dealloc ||
+        copy.getTarget().getType() != copy.getSource().getType() ||
+        dealloc.getMemref() != copy.getSource()) {
+      continue;
+    }
+
+    auto sourceAlloc = llvm::dyn_cast_or_null<memref::AllocOp>(
+        copy.getSource().getDefiningOp());
+    if (!sourceAlloc) continue;
+
+    bool targetIsFirstUseOfRestrictBbArg =
+        isRestrictBbArg(copy.getTarget()) &&
+        !hasUsesBetween(&root.front(), copy, copy.getTarget());
+    if (!targetIsFirstUseOfRestrictBbArg) {
+      auto targetAlloc = llvm::dyn_cast_or_null<memref::AllocOp>(
+          copy.getTarget().getDefiningOp());
+      bool targetIsFirstUseOfAlloc =
+          targetAlloc && !hasUsesBetween(targetAlloc, copy, targetAlloc);
+
+      // If the source was used before the definition of the target, or the
+      // target was used before the copy, this transformation is unsafe.
+      if (!targetIsFirstUseOfAlloc ||
+          hasUsesBetween(&root.front(), targetAlloc, sourceAlloc)) {
+        continue;
+      }
+    }
+
+    // (no use of %b)
+    // %a = alloc or %a is a bbarg with `restrict`.
+    // %b = alloc
+    // (no use of %a)
+    // copy %b, %a
+    // dealloc %b
+    copy.getSource().replaceAllUsesWith(copy.getTarget());
+    op = dealloc->getNextNode();
+    copy->erase();
+    dealloc->erase();
+    sourceAlloc->erase();
+  }
+}
+
 enum class BufferReuseMode {
   // Only reuse buffers if between a `dealloc` and `alloc` there are no further
   // `alloc`s that might later become a candidate for buffer reuse.
@@ -444,28 +516,6 @@ bool reuseBuffers(Block& block, BufferReuseMode mode) {
         op = alloc->getNextNode();
         dealloc.erase();
         alloc.erase();
-        result = true;
-        continue;
-      }
-    }
-
-    if (auto copy = llvm::dyn_cast_or_null<memref::CopyOp>(op)) {
-      auto alloc = llvm::dyn_cast_or_null<memref::AllocOp>(
-          copy.getTarget().getDefiningOp());
-      auto dealloc =
-          llvm::dyn_cast_or_null<memref::DeallocOp>(copy->getNextNode());
-      if (alloc && dealloc &&
-          alloc.getType() == dealloc.getMemref().getType() &&
-          !hasUsesBetween(/*start=*/alloc, /*end=*/copy, alloc)) {
-        // %a = alloc
-        // (some IR not using %a)
-        // copy %b, %a
-        // dealloc %b
-        alloc.replaceAllUsesWith(dealloc.getMemref());
-        op = dealloc->getNextNode();
-        copy->erase();
-        alloc->erase();
-        dealloc->erase();
         result = true;
         continue;
       }
@@ -624,11 +674,14 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
     auto& block = getOperation().getBody().front();
     // This assumes invariants that it breaks, so it can only be run once.
     elideRedundantOwnershipArgs(block);
+    // Copy elimination requires small live-ranges to work well. We only extend
+    // live ranges afterwards, so running it more than once doesn't help.
+    eliminateCopies(block, /*root=*/block);
     do {
       // Eliminate dead code.
       (void)applyPatternsAndFoldGreedily(getOperation(), {});
-      // Only coalesce dealloc/alloc pairs that are immediate neighbors, to make
-      // sure we don't accidentally extend the live range of a buffer.
+      // Only coalesce dealloc/alloc pairs that are immediate neighbors, to
+      // make sure we don't accidentally extend the live range of a buffer.
       result = reuseBuffers(block, BufferReuseMode::CONSERVATIVE);
       // Make sure we rerun buffer reuse after every intermediate step.
       result |= hoistAllocs(block) || doubleBuffer(block) ||

@@ -26,12 +26,12 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, ConvConstantsSimpleWeights) {
   const auto status = ConvConstantsSimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConvConstants) {
   const auto status = ConvConstantsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

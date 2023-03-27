@@ -5,6 +5,7 @@ load(
     "tflite_copts",
     "tflite_copts_warnings",
     "tflite_custom_c_library",
+    "tflite_linkopts_no_undefined",
     "tflite_self_contained_libs_test_suite",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -25,7 +26,7 @@ package(
 #   - Windows: `tensorflowlite_c.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite_c",
-    linkopts = select({
+    linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:ios": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
         ],
@@ -34,7 +35,6 @@ tflite_cc_shared_object(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
             "-Wl,--version-script,$(location //tensorflow/lite/c:version_script.lds)",
         ],
     }),
@@ -117,6 +117,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     deps = [
         ":c_api_opaque_internal",
+        ":common_internal",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
@@ -134,12 +135,12 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_opaque_internal",
         ":c_api_without_op_resolver",
+        ":common_internal",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
         "//tensorflow/lite/core/c:c_api_types",
@@ -157,7 +158,6 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [

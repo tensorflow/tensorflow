@@ -1391,8 +1391,8 @@ Status EmitBatchDotOperation(
           dot, target_array, lhs_array, rhs_array, executable_run_options_value,
           b, mlir_context, hlo_module_config, target_machine_features,
           dot_info)) {
-    DotOpEmitter dot_emitter(dot_info, dot.name(), target_array, lhs_array,
-                             rhs_array, nullptr /*addend_array*/,
+    DotOpEmitter dot_emitter(dot_info, std::string(dot.name()), target_array,
+                             lhs_array, rhs_array, nullptr /*addend_array*/,
                              executable_run_options_value, b, mlir_context,
                              hlo_module_config, target_machine_features);
 
@@ -1453,9 +1453,9 @@ Status EmitBatchDotOperation(
 
           // Emit the inner non-batch dot operation.
           return EmitNonBatchDotOperation(
-              dot_info, dot.name(), target_slice, lhs_slice, rhs_slice, nullptr,
-              executable_run_options_value, b, mlir_context, hlo_module_config,
-              target_machine_features);
+              dot_info, std::string(dot.name()), target_slice, lhs_slice,
+              rhs_slice, nullptr, executable_run_options_value, b, mlir_context,
+              hlo_module_config, target_machine_features);
         });
   }
 }
@@ -1523,10 +1523,10 @@ Status EmitDotOperation(const HloInstruction& dot,
                                  hlo_module_config, target_machine_features);
   }
 
-  return EmitNonBatchDotOperation(DotInfo(dot), dot.name(), target_array,
-                                  lhs_array, rhs_array, addend_array,
-                                  executable_run_options_value, b, mlir_context,
-                                  hlo_module_config, target_machine_features);
+  return EmitNonBatchDotOperation(
+      DotInfo(dot), std::string(dot.name()), target_array, lhs_array, rhs_array,
+      addend_array, executable_run_options_value, b, mlir_context,
+      hlo_module_config, target_machine_features);
 }
 }  // namespace cpu
 }  // namespace xla

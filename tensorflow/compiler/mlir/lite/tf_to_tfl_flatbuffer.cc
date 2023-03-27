@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
@@ -237,20 +238,25 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
       return errors::Aborted("Failed to preprocess & freeze TF graph");
     }
 
-    // The default minimum number of elements a weights array must have to be
-    // quantized by this transformation.
-    const int kWeightsMinNumElementsDefault = 1024;
+    // TODO(b/264218457): Refactor the component below once StableHLO Quantizer
+    // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
+    if (!toco_flags.has_quantization_options()) {
+      // The default minimum number of elements a weights array must have to be
+      // quantized by this transformation.
+      const int kWeightsMinNumElementsDefault = 1024;
 
-    tensorflow::quantization::QuantizationOptions quantization_options;
+      tensorflow::quantization::QuantizationOptions quantization_options;
 
-    quantization_options.mutable_quantization_method()->set_experimental_method(
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
-    quantization_options.set_op_set(
-        tensorflow::quantization::UNIFORM_QUANTIZED);
-    quantization_options.set_min_num_elements_for_weights(
-        kWeightsMinNumElementsDefault);
-    tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
-        pass_manager, quantization_options);
+      quantization_options.mutable_quantization_method()
+          ->set_experimental_method(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
+      quantization_options.set_op_set(
+          tensorflow::quantization::UNIFORM_QUANTIZED);
+      quantization_options.set_min_num_elements_for_weights(
+          kWeightsMinNumElementsDefault);
+      tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
+          pass_manager, quantization_options);
+    }
     if (failed(pass_manager.run(module))) {
       return statusHandler.ConsumeStatus();
     }
@@ -262,6 +268,10 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
+  if (toco_flags.has_quantization_options()) {
+    stablehlo::quantization::AddQuantizationPasses(
+        pass_manager, toco_flags.quantization_options());
+  }
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }

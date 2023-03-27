@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -2528,11 +2528,11 @@ def TFL_MulOp : TFL_Op<"mul", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16, Complex<F<32>>]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16, Complex<F<32>>]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, UI32, I64, QI8, QUI8, QI16, I16, Complex<F<32>>]>:$lhs,
+    TFL_TensorOf<[F32, I32, UI32, I64, QI8, QUI8, QI16, I16, Complex<F<32>>]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, UI32, I64, QI8, QUI8, QI16, I16, Complex<F<32>>]>:$output);
 
   let hasFolder = 1;
 
@@ -4028,6 +4028,28 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
 
   let results = (
     outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
+
+  let hasFolder = 1;
+}
+
+def TFL_BitcastOp : TFL_Op<"bitcast", [Pure]> {
+  let summary = "Bitcast operator";
+
+  let description = [{
+    Bitcasts a tensor from one type to another.
+  }];
+
+  let arguments = (ins AnyTensor:$input);
+
+  let results = (outs AnyTensor:$output);
+
+  // TFLite's bitcast bitop does not utilize options, instead derives types
+  // from the TfLiteTensors.
+  let hasOptions = 0;
+
+  let hasFolder = 1;
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

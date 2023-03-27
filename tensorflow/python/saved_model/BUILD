@@ -32,7 +32,6 @@ py_strict_library(
         ":simple_save",
         ":tag_constants",
         ":utils",
-        "//tensorflow/python:util",
         "//tensorflow/python/saved_model/model_utils",
         "//tensorflow/python/saved_model/registration",
     ],
@@ -78,12 +77,14 @@ py_strict_library(
         ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/config:flags_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:variables",
-        "//tensorflow/python/util",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -102,12 +103,13 @@ py_strict_library(
         ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -146,7 +148,7 @@ py_strict_library(
         ":signature_def_utils",
         ":tag_constants",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -160,10 +162,10 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -186,7 +188,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
@@ -194,9 +195,15 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:test_ops",
         "//tensorflow/python/training:saver_test_utils",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -207,7 +214,7 @@ py_strict_library(
     deps = [
         ":constants",
         "//tensorflow/python:lib",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -222,11 +229,17 @@ py_strict_library(
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:byte_swap_tensor",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -240,8 +253,12 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:test_lib",
     ],
 )
 
@@ -258,7 +275,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -274,7 +291,9 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
     ],
 )
 
@@ -308,12 +327,11 @@ py_strict_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/util",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
         "@absl_py//absl/logging",
     ],
 )
@@ -413,6 +431,7 @@ tf_py_test(
         "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -448,7 +467,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
@@ -468,6 +486,7 @@ py_library(
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -491,7 +510,6 @@ py_strict_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager:wrap_function",
@@ -499,6 +517,7 @@ py_strict_library(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:monitored_session",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -516,6 +535,7 @@ cuda_py_test(
         ":save",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
@@ -528,6 +548,7 @@ cuda_py_test(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python:array_ops",
     ] + if_google([
         "//tensorflow/cc/experimental/tf2:runtime_pybind",
     ]),
@@ -604,8 +625,8 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:func_graph",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -618,6 +639,7 @@ py_strict_library(
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:default_gradient",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
@@ -626,12 +648,13 @@ py_strict_library(
         "//tensorflow/python:op_def_registry",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:tf_decorator",
         "//tensorflow/python:type_spec",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function:function_spec",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/logging",
     ],
 )
@@ -642,10 +665,10 @@ py_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:util",
         "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -666,7 +689,7 @@ py_strict_library(
     name = "save_options",
     srcs = ["save_options.py"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -689,7 +712,7 @@ py_strict_library(
         ":loader",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -702,6 +725,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -804,7 +828,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
         "@absl_py//absl/logging",
     ],
 )

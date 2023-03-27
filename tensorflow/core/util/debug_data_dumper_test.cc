@@ -61,15 +61,15 @@ TEST(DebugDataDumper, ShouldDumpTest) {
 TEST(DebugDataDumper, DumpFileBasenameTest) {
   // For the same name, the order id should increment for each new dump file
   // name.
-  EXPECT_EQ("DumpFileBasenameTest1.0.tag1",
+  EXPECT_EQ("DumpFileBasenameTest1.0000.tag1",
             DebugDataDumper::Global()->GetDumpFileBasename(
                 "DumpFileBasenameTest1", "tag1"));
-  EXPECT_EQ("DumpFileBasenameTest1.1.tag2",
+  EXPECT_EQ("DumpFileBasenameTest1.0001.tag2",
             DebugDataDumper::Global()->GetDumpFileBasename(
                 "DumpFileBasenameTest1", "tag2"));
 
   // For other names, the order id should restart from 0.
-  EXPECT_EQ("DumpFileBasenameTest2.0.tag1",
+  EXPECT_EQ("DumpFileBasenameTest2.0000.tag1",
             DebugDataDumper::Global()->GetDumpFileBasename(
                 "DumpFileBasenameTest2", "tag1"));
 }
@@ -86,7 +86,7 @@ TEST(DebugDataDumper, DumpGraphToFileTest) {
   DUMP_GRAPH("DumpGraphToFileTest", "tag", &graph);
 
   std::string dumpFilename =
-      io::JoinPath(dir, "DumpGraphToFileTest.0.tag.pbtxt");
+      io::JoinPath(dir, "DumpGraphToFileTest.0000.tag.pbtxt");
   EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
 }
 
@@ -104,7 +104,7 @@ TEST(DebugDataDumper, DumpGraphLongFileNameCrashTest) {
   DUMP_GRAPH(name, "tag", &graph);
 
   std::string dumpFilename =
-      io::JoinPath(dir, absl::StrFormat("%s.0.tag.pbtxt", name.c_str()));
+      io::JoinPath(dir, absl::StrFormat("%s.0000.tag.pbtxt", name.c_str()));
   EXPECT_EQ(absl::StatusCode::kNotFound,
             Env::Default()->FileExists(dumpFilename).code());
 }
@@ -117,7 +117,7 @@ TEST(DebugDataDumper, DumpMLIRModuleTest) {
   DUMP_MLIR_MODULE("DumpMLIRModuleTest", "test", "fake_mlir_txt", false);
 
   std::string dumpFilepath =
-      io::JoinPath(dir, "DumpMLIRModuleTest.0.test.mlir");
+      io::JoinPath(dir, "DumpMLIRModuleTest.0000.test.mlir");
   EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilepath));
 }
 
@@ -131,7 +131,41 @@ TEST(DebugDataDumper, DumpMLIRModuleLongFileNameCrashTest) {
   DUMP_MLIR_MODULE(name, "tag", "fake_mlir_txt", false);
 
   std::string dumpFilename =
-      io::JoinPath(dir, absl::StrFormat("%s.0.tag.pbtxt", name.c_str()));
+      io::JoinPath(dir, absl::StrFormat("%s.0000.tag.pbtxt", name.c_str()));
+  EXPECT_EQ(absl::StatusCode::kNotFound,
+            Env::Default()->FileExists(dumpFilename).code());
+}
+
+TEST(DebugDataDumper, DumpOpCreationStacktracesTest) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
+  std::string dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  setenv("TF_DUMP_OP_CREATION_STACKTRACES", "1", 1);
+
+  DUMP_OP_CREATION_STACKTRACES("DumpOpCreationStacktracesTest", "test", &graph);
+
+  std::string dumpFilename =
+      io::JoinPath(dir, "DumpOpCreationStacktracesTest.0000.test.csv");
+  EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
+}
+
+TEST(DebugDataDumper, NoDumpOpCreationStacktracesTest) {
+  Graph graph(OpRegistry::Global());
+  Node* node;
+  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+
+  std::string dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+
+  DUMP_OP_CREATION_STACKTRACES("DumpOpCreationStacktracesTest", "test", &graph);
+
+  std::string dumpFilename =
+      io::JoinPath(dir, "DumpOpCreationStacktracesTest.0000.test.json");
   EXPECT_EQ(absl::StatusCode::kNotFound,
             Env::Default()->FileExists(dumpFilename).code());
 }

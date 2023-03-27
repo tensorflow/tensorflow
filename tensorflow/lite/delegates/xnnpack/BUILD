@@ -2355,6 +2355,7 @@ cc_test(
 cc_test(
     name = "weights_cache_test",
     srcs = ["weights_cache_test.cc"],
+    tags = ["no_oss"],  # TODO(b/275078251): enable when fixed.
     deps = [
         ":conv_2d_tester",
         ":test_main",

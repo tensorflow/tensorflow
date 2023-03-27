@@ -117,6 +117,9 @@ mlir::LogicalResult PopulateConsumersFromModule(
 StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
     mlir::tf_device::ClusterOp cluster);
 
+// Returns Mesh attribute on the parent cluster op for the input operation.
+StatusOr<Mesh> GetMeshOnParentCluster(mlir::Operation* op);
+
 // Checks that optional metadata attributes of `op` are valid if they
 // exist. More specifically, output layouts of tf.Shape op and layouts of
 // resources inferred from AssignVariable op is added as metadata.

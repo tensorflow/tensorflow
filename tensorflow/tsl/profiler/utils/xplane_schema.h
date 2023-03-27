@@ -320,6 +320,8 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
+bool IsTensorCorePlaneName(absl::string_view plane_name);
+
 absl::optional<int64_t> FindStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.

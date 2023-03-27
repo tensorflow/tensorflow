@@ -99,6 +99,10 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";
+  let options = [
+    Option<"scalarizeAllThlo", "scalarize-all-thlo", "bool", /*default=*/"true",
+           "Enable scalarization of thlo.concatenate/gather/scatter.">,
+  ];
 }
 
 def PackMatmulPass : Pass<"xla-cpu-pack-matmul", "mlir::func::FuncOp"> {
@@ -116,14 +120,7 @@ def TransformScatterForCpuPass :
 def TransformDotForCpuPass :
     Pass<"xla-cpu-transform-dot", "mlir::func::FuncOp"> {
   let summary = "Transform dot ops for running on CPU";
-
   let constructor = "createTransformDotForCpuPass()";
-}
-
-def TransformMatmulForCpuPass :
-    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
-  let summary = "Transform matmul ops for running on CPU";
-  let constructor = "createTransformMatmulForCpuPass()";
 }
 
 def TransformPackForCpuPass :
@@ -144,27 +141,19 @@ def TransformConvForCpuPass :
   let constructor = "createTransformConvForCpuPass()";
 }
 
-def TransformMapForCpuPass :
-    Pass <"gml-st-cpu-transform-map", "mlir::func::FuncOp"> {
-  let summary = "Transform map ops for running on CPU";
-
-  let constructor = "::mlir::gml_st::createTransformMapForCpuPass()";
-
-  let options = [
-    Option<"tileSize", "tile-size", "int64_t", "1",
-           "Tile size for the innermost dimension of `linalg.map`">,
-  ];
-}
-
-def TransformTransposeForCpuPass :
-    Pass<"gml-st-cpu-transform-transpose", "mlir::func::FuncOp"> {
-  let summary = "Transform transpose ops for running on CPU";
-
-  let constructor = "createTransformTransposeForCpuPass()";
+def TransformElementwiseForCpuPass :
+    Pass <"xla-cpu-tranform-elementwise", "mlir::func::FuncOp"> {
+  let summary = "Transform elementwise ops for running on CPU";
+  let description = [{
+    Transforms elementwise ops, i.e. map, transpose, broadcast, concat, reverse.
+  }];
+  let constructor = "::mlir::gml_st::createTransformElementwiseForCpuPass()";
 
   let options = [
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.transpose`">,
+    Option<"vectorSize", "vector-size", "int64_t", "8", "Vector size.">,
+    Option<"fuseDegenerateReshapes", "fuse-degenerate-reshapes", "bool",
+           /*default=*/"false",
+           "Fuse through degenerate tensor.expand/collapse_shape">,
   ];
 }
 
@@ -184,16 +173,6 @@ def TransformReduceForCpuPass :
                "dimension and tileSizes[1] is the reduction dimension.">,
   ];
 }
-
-def TransformReverseForCpuPass :
-  Pass<"xla-cpu-transform-reverse", "mlir::func::FuncOp"> {
-    let summary = "Transform reverse ops for running on CPU";
-    let constructor = "createTransformReverseForCpuPass()";
-    let options = [
-      Option<"vectorSize", "vector-size", "int64_t", "8",
-           "Vector size for 'thlo.reverse`">,
-    ];
-  }
 
 def AddDebugInfoPass :
     Pass<"add-debug-info", "mlir::ModuleOp"> {

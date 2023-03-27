@@ -493,8 +493,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "abi.h",
         "abi.cc",
+        "abi.h",
         "base64.cc",
         "base64.h",
         "bfloat16.h",
@@ -540,8 +540,8 @@ filegroup(
         "protobuf_util.cc",
         "ram_file_system.h",
         "raw_coding.h",
-        "regexp.h",
         "refcount.h",
+        "regexp.h",
         "resource.h",
         "scanner.cc",
         "scanner.h",
@@ -569,9 +569,9 @@ filegroup(
     ] + select({
         "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
-            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "tracing.cc",
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -629,9 +629,9 @@ filegroup(
         ],
     ) + [
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -994,9 +994,9 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         ":bfloat16",
         ":float8",
+        ":platform",
         ":tstring",
     ] + tf_platform_deps("types"),
 )

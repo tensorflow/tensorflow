@@ -239,7 +239,8 @@ class _DelayedRewriteGradientFunctions(object):
     forward_function, backwards_function = self.forward_backward(len(doutputs))
     if not backwards_function.outputs:
       return backwards_function.structured_outputs
-    forward_function.add_to_graph(op.graph)
+
+    op.graph._add_function_recursive(forward_function)  # pylint: disable=protected-access
 
     # pylint: disable=protected-access
     # Rewrite an inference call op to be a forward call op
@@ -339,9 +340,12 @@ class _DelayedRewriteGradientFunctions(object):
         operation.
     """
     backward_function, to_record = self._backward(flat_outputs)
-    tape.record_operation(self._inference_function.signature.name,
-                          to_record, inference_args + input_tangents,
-                          backward_function)
+    tape.record_operation(
+        self._inference_function.cached_definition.signature.name,
+        to_record,
+        inference_args + input_tangents,
+        backward_function,
+    )
 
 
 # Contains information about a forward function wrapped to compute jvps.
@@ -548,8 +552,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function.call(context.context(),
-                                                  forward_inputs)
+          forward_outputs = forward_function.call(forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -566,7 +569,7 @@ class _TapeGradientFunctions(object):
       # TODO(allenl): It might be better to explicitly stop backward recording
       # so we don't use the second-order tape cases unnecessarily.
       tape.record_operation_forwardprop_only(
-          forward_function.signature.name,
+          forward_function.cached_definition.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
           pywrap_tfe.TFE_Py_PackJVPs(forward_outputs))
@@ -794,16 +797,16 @@ class _TapeGradientFunctions(object):
         self._forward_graph, self._backward, flat_outputs)
     if self._forwardprop_output_indices:
       tape.record_operation_backprop_only(
-          self._forward.signature.name,
+          self._forward.cached_definition.signature.name,
           to_record, inference_args,
           backward_function)
       tape.record_operation_forwardprop_only(
-          self._forward.signature.name,
+          self._forward.cached_definition.signature.name,
           flat_outputs, inference_args + input_tangents,
           backward_function,
           self._forwardprop_output_indices)
     else:
-      tape.record_operation(self._forward.signature.name,
+      tape.record_operation(self._forward.cached_definition.signature.name,
                             to_record, inference_args + input_tangents,
                             backward_function)
 
@@ -1342,7 +1345,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         and executing_eagerly):
       # No tape is watching; skip to running the function.
       return self._build_call_outputs(self._inference_function.call(
-          ctx, args, cancellation_manager=cancellation_manager))
+          args, cancellation_manager=cancellation_manager))
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
@@ -1350,12 +1353,12 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
       flat_outputs = forward_function.call(
-          ctx, args_with_tangents, cancellation_manager=cancellation_manager)
+          args_with_tangents, cancellation_manager=cancellation_manager)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function.call(ctx, args_with_tangents)
+        flat_outputs = forward_function.call(args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 
@@ -1552,7 +1555,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
   @property
   def function_def(self):
     """Returns a `FunctionDef` object representing this function."""
-    return self._delayed_rewrite_functions.forward().definition
+    return self._delayed_rewrite_functions.forward().cached_definition
 
   @property
   def output_shapes(self):
@@ -1588,16 +1591,18 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     if not context.executing_eagerly() and not g:
       g = ops.get_default_graph()
-    self._delayed_rewrite_functions.forward().add_to_graph(g, overwrite)
+
+    if g is not None:
+      g._add_function_recursive(self._delayed_rewrite_functions.forward())  # pylint: disable=protected-access
 
   def add_gradient_functions_to_graph(self, g=None):
     """Add forward/backward functions to graph `g` or the current context."""
     if not context.executing_eagerly() and not g:
       g = ops.get_default_graph()
-    self._delayed_rewrite_functions.forward().add_to_graph(g)
+    g._add_function_recursive(self._delayed_rewrite_functions.forward())  # pylint: disable=protected-access
     forward_function, backward_function = (
         self._delayed_rewrite_functions.forward_backward())
-    forward_function.add_to_graph(g)
+    g._add_function_recursive(forward_function)  # pylint: disable=protected-access
     backward_function.add_to_graph(g)
 
   def _get_gradient_function(self):

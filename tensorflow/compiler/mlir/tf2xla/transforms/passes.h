@@ -79,12 +79,10 @@ class Tf2XlaTypeConverter : public TypeConverter {
 /// `prefer_tf2xla` means an op will be included iff it is not in
 /// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
 /// included if there is no native MLIR legalization for the op.
-void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          RewritePatternSet& patterns,
-                                          MLIRContext* ctx,
-                                          Tf2XlaTypeConverter& converter,
-                                          bool prefer_tf2xla = false,
-                                          bool is_module_pass = false);
+void PopulateLegalizeTfWithTf2XlaPatterns(
+    llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
+    Tf2XlaTypeConverter& converter, bool prefer_tf2xla = false,
+    bool is_module_pass = false, bool use_tf2xla_hlo_importer = false);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.

@@ -826,11 +826,13 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<mlrt::Value> outputs) {
-  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
-                      GetOrCreateLoadedClientGraph(
-                          /*run_options=*/{}, input_names, input_dtypes,
-                          output_tensor_names, target_tensor_names,
-                          /*work_queue=*/nullptr, graph_name));
+  TF_ASSIGN_OR_RETURN(
+      LoadedClientGraph & loaded_client_graph,
+      GetOrCreateLoadedClientGraph(
+          /*run_options=*/{}, input_names, input_dtypes, output_tensor_names,
+          target_tensor_names,
+          /*work_queue=*/nullptr,
+          graph_name.empty() ? output_tensor_names[0] : graph_name));
 
   TF_ASSIGN_OR_RETURN(
       auto request_info,

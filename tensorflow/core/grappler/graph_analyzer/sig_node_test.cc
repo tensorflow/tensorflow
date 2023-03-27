@@ -1094,7 +1094,7 @@ TEST_F(SignatureTest, GraphTooBig) {
   sg.ExtractForSignature(&sig_.map);
 
   ASSERT_THAT(sig_.Compute(),
-              Eq(Status(error::INVALID_ARGUMENT,
+              Eq(Status(absl::StatusCode::kInvalidArgument,
                         "A graph of 65 nodes is too big for signature "
                         "computation, the maximal supported node count is "
                         "64.")));

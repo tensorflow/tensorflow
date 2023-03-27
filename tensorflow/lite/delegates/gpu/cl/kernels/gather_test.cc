@@ -26,7 +26,7 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, GatherWidth) {
   auto status = GatherWidthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

@@ -88,13 +88,10 @@ dtensor_test(
         PATHWAYS,
         PATHWAYS_V3_DONUT_BACKEND,
     ],
-    disable = [
-        PATHWAYS,
-        PATHWAYS_V3_DONUT_BACKEND,
-    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
@@ -102,7 +99,6 @@ dtensor_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -127,6 +123,7 @@ dtensor_test(
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
@@ -134,7 +131,6 @@ dtensor_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -163,6 +159,63 @@ py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "layout_test",
+    srcs = ["layout_test.py"],
+    disable = [
+        "gpu",
+        "tpu",
+    ],
+    main = "layout_test.py",
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "layout_propagation_test",
+    srcs = ["layout_propagation_test.py"],
+    args = if_google(
+        [
+            "--vmodule=dtensor_mlir_passes=4",
+        ],
+        [],
+    ),
+    disable = [
+        "gpu",
+        "tpu",
+    ],
+    main = "layout_propagation_test.py",
+    shard_count = {
+        "cpu": 5,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -227,7 +280,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple,LL128",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
+        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
     },
     tags = [
         "no_rocm",
@@ -273,7 +326,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple,LL128",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
+        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
     },
     tags = [
         "no_windows",
@@ -363,7 +416,7 @@ dtensor_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -417,7 +470,7 @@ dtensor_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

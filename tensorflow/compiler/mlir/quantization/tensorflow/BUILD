@@ -442,6 +442,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/tsl/platform:str_util",

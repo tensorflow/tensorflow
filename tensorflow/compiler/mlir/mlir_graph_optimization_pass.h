@@ -65,7 +65,8 @@ class MlirOptimizationPass {
       const Graph& graph,
       const FunctionLibraryDefinition& function_library) const = 0;
 
-  virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
+  virtual Status Run(const std::string& function_name,
+                     const ConfigProto& config_proto, mlir::ModuleOp module,
                      const Graph& graph,
                      const FunctionLibraryDefinition& function_library) = 0;
 };

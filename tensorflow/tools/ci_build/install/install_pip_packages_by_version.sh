@@ -42,6 +42,7 @@ JAX_PACKAGES=(
   "auditwheel"
   "msgpack"
   "typing_extensions"
+  "ml_dtypes>=0.0.3"
 )
 
 PACKAGES=(
@@ -91,13 +92,11 @@ fi
 
 if [[ "$2" == "jax" ]]; then
   # Special casing by version of Python
-  # E.g., numpy supports py3.10 only from 1.21.3
-  if [[ ${PYTHON_VERSION} -eq 10 ]]; then
-    "${PIP_INSTALL[@]}" "numpy==1.21.3" "scipy==1.7.2"
-  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+  # E.g., numpy supports py3.11 only from 1.23.4
+  if [[ ${PYTHON_VERSION} -eq 11 ]]; then
     "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.2"
   else
-    "${PIP_INSTALL[@]}" "numpy==1.20.3" "scipy==1.5.4"
+    "${PIP_INSTALL[@]}" "numpy==1.21.3" "scipy==1.7.2"
   fi
 else
   # Special casing by version of Python

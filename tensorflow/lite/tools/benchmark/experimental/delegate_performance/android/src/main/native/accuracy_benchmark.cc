@@ -20,9 +20,7 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include <cstddef>
-#include <ctime>
 #include <fstream>
-#include <iomanip>
 #include <iterator>
 #include <sstream>
 #include <string>
@@ -53,16 +51,7 @@ flatbuffers::Offset<BenchmarkEvent> Benchmark(
   options.model_offset = model_offset;
   options.model_size = model_size;
   options.data_directory_path = result_path;
-
-  // This is a mitigation to prevent file lock collisions between the previous
-  // benchmark runs and a new benchmark run.
-  // TODO(b/265406729): Remove the mitigation.
-  // Example path: "storage_path_2019-02-01_12:12:18.fb"
-  std::stringstream ss;
-  std::time_t t = std::time(nullptr);
-  ss << result_path << "/storage_path_"
-     << std::put_time(std::localtime(&t), "%F_%T.fb");
-  options.storage_path = ss.str();
+  options.storage_path = result_path + "/storage_path.fb";
   int return_code = std::remove(options.storage_path.c_str());
   if (return_code) {
     TFLITE_LOG_PROD(TFLITE_LOG_WARNING,

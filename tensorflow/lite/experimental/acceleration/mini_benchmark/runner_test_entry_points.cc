@@ -46,7 +46,7 @@ int TfLiteSigKillSelf(int argc, char** argv) {
 }
 
 int TfLiteWriteOk(int argc, char** argv) {
-  write(kStdOutFd, "ok\n", 3);
+  (void)write(kStdOutFd, "ok\n", 3);
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
@@ -55,7 +55,7 @@ int TfLiteWriteOk(int argc, char** argv) {
 int TfLiteWritePidThenSleepNSec(int argc, char** argv) {
   std::string pid = std::to_string(getpid());
   pid.resize(::tflite::acceleration::kPidBufferLength);
-  write(kStdOutFd, pid.data(), ::tflite::acceleration::kPidBufferLength);
+  (void)write(kStdOutFd, pid.data(), ::tflite::acceleration::kPidBufferLength);
 
   int sleep_sec;
   if (!absl::SimpleAtoi(argv[3], &sleep_sec)) {
@@ -75,8 +75,8 @@ int TfLiteWrite10kChars(int argc, char** argv) {
 
 int TfLiteWriteArgs(int argc, char** argv) {
   for (int i = 3; i < argc; i++) {
-    write(1, argv[i], strlen(argv[i]));
-    write(1, "\n", 1);
+    (void)write(1, argv[i], strlen(argv[i]));
+    (void)write(1, "\n", 1);
   }
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }

@@ -105,10 +105,9 @@ void registerTestHloTransformDialectEraseSchedulePass();
 void registerTestHloTransformDialectInterpreterPass();
 
 namespace hlo {
-
-void createGenericHostToLLVMPipeline(OpPassManager& pm);
-
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
+
+std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();

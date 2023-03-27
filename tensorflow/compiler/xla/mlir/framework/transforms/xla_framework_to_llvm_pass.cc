@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -61,12 +62,7 @@ struct XLABufferToMemOpConversion
     this->getMemRefDescriptorSizes(loc, mem_ref_type, ValueRange(), rewriter,
                                    sizes, strides, size_bytes);
 
-    auto ptr_type = LLVM::LLVMPointerType::get(
-        typeConverter->convertType(mem_ref_type.getElementType()),
-        mem_ref_type.getMemorySpaceAsInt());
-    Value ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.getBuffer());
-
+    Value ptr = adaptor.getBuffer();
     Value result = this->createMemRefDescriptor(loc, mem_ref_type, ptr, ptr,
                                                 sizes, strides, rewriter);
     rewriter.replaceOp(op, {result});
@@ -81,12 +77,9 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
 
   Value LoadValue(ConversionPatternRewriter &rewriter, Location loc,
                   Value pointer, Value index) const {
+    auto ptr = LLVM::LLVMPointerType::get(rewriter.getContext());
     return rewriter.create<LLVM::LoadOp>(
-        loc, rewriter.create<LLVM::GEPOp>(
-                 loc,
-                 LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-                     IntegerType::get(rewriter.getContext(), 8))),
-                 pointer, index));
+        loc, ptr, rewriter.create<LLVM::GEPOp>(loc, ptr, ptr, pointer, index));
   }
 
   mlir::func::FuncOp convertFuncOpToLLVMFuncOp(
@@ -99,20 +92,8 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
     // This only works for the global function version that tf.compile uses.
     // Local functions will only be called by MLIR compiled code, so we can
     // ignore them.
-    SmallVector<Type, 6> arg_types;
-    arg_types.reserve(6);
-    arg_types.push_back(
-        LLVM::LLVMPointerType::get(IntegerType::get(rewriter.getContext(), 8)));
-    arg_types.push_back(
-        LLVM::LLVMPointerType::get(IntegerType::get(rewriter.getContext(), 8)));
-    arg_types.push_back(LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 8))));
-    arg_types.push_back(LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 8))));
-    arg_types.push_back(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 64)));
-    arg_types.push_back(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 64)));
+    auto ptr = LLVM::LLVMPointerType::get(rewriter.getContext());
+    std::array<Type, 6> arg_types = {ptr, ptr, ptr, ptr, ptr, ptr};
     auto llvm_type =
         mlir::FunctionType::get(rewriter.getContext(), arg_types, {});
 
@@ -169,17 +150,13 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
               LoadValue(rewriter, loc, new_entry->getArgument(3), inner_index);
           mapping.map(funcOp.front().getArgument(i), ptr);
 
-          auto ptr_type = LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-              IntegerType::get(rewriter.getContext(), 8)));
-          first_load =
-              rewriter.create<LLVM::BitcastOp>(loc, ptr_type, first_load);
-
+          auto ptr_type = LLVM::LLVMPointerType::get(rewriter.getContext());
           Value second_index = rewriter.create<LLVM::ConstantOp>(
               loc, typeConverter->convertType(rewriter.getIntegerType(32)),
               rewriter.getI32IntegerAttr(current_index));
           rewriter.create<LLVM::StoreOp>(
               loc, ptr,
-              rewriter.create<LLVM::GEPOp>(loc, ptr_type, first_load,
+              rewriter.create<LLVM::GEPOp>(loc, ptr_type, ptr_type, first_load,
                                            llvm::ArrayRef(second_index)));
 
         } else {
@@ -236,12 +213,9 @@ class LegalizeXLAFrameworkToLLVMPass
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    // TODO(b/267828330): Migrate to opaque pointers.
-    LowerToLLVMOptions options(&getContext());
-    options.useOpaquePointers = false;
-    LLVMTypeConverter type_converter(ctx, options);
+    LLVMTypeConverter type_converter(ctx);
     type_converter.addConversion([&](::mlir::xla_framework::BufferType) {
-      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(ctx);
     });
 
     // Populate patterns.

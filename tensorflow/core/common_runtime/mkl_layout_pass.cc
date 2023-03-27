@@ -2407,7 +2407,7 @@ Status MklLayoutRewritePass::SetUpInputs(
     // TODO(nhasabni): implement this function just for same of completion.
     // We do not use interleaved ordering right now.
     return Status(
-        error::Code::UNIMPLEMENTED,
+        absl::StatusCode::kUnimplemented,
         "Interleaved ordering of tensors is currently not supported.");
   } else {
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
@@ -3068,7 +3068,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   if (data_format_pred != data_format_succ || T_pred != T_succ ||
       pred->assigned_device_name() != succ->assigned_device_name() ||
       pred->def().device() != succ->def().device()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "data_format or T attribute or devices of Conv2D and "
                   "BiasAdd do not match. Will skip node merge optimization");
   }
@@ -3089,7 +3089,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   const int kFirstOutputSlot = 0;
   for (const Edge* e : pred->out_edges()) {
     if (e->src_output() == kFirstOutputSlot && e->dst() != succ) {
-      return Status(error::Code::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Conv2D does not feed to BiasAdd, or "
                     "it feeds BiasAdd but has multiple outputs. "
                     "Will skip node merge optimization");
@@ -3229,7 +3229,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   if (T_pred != T_succ ||
       pred->assigned_device_name() != succ->assigned_device_name() ||
       pred->def().device() != succ->def().device()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "T attribute or devices of Conv2D and "
                   "Pad do not match. Will skip node merge optimization");
   }
@@ -3250,7 +3250,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   const int kFirstOutputSlot = 0;
   for (const Edge* e : pred->out_edges()) {
     if (e->src_output() == kFirstOutputSlot && e->dst() != succ) {
-      return Status(error::Code::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Pad does not feed to Conv2D, or "
                     "it feeds Conv2D but has multiple outputs. "
                     "Will skip node merge optimization");
@@ -3398,7 +3398,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   if (data_format_b != data_format_f || T_b != T_f ||
       badd->assigned_device_name() != fltr->assigned_device_name() ||
       badd->def().device() != fltr->def().device()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "data_format or T attribute or devices of "
                   "Conv2DBackpropFilter and BiasAddGrad do not match. "
                   "Will skip node merge optimization");
@@ -3537,7 +3537,7 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
     return this->MergeConv2DBackpropFilterWithBiasAddGrad(g, m, n);
   }
 
-  return Status(error::Code::UNIMPLEMENTED,
+  return Status(absl::StatusCode::kUnimplemented,
                 "Unimplemented case for node merge optimization.");
 }
 
@@ -3734,7 +3734,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
   } else if (ri->rewrite_cause == kRewriteForOpNameChange) {
     ret_status = RewriteNodeForJustOpNameChange(g, orig_node, &new_node, ri);
   } else {
-    ret_status = Status(error::Code::INVALID_ARGUMENT,
+    ret_status = Status(absl::StatusCode::kInvalidArgument,
                         "Unsupported rewrite cause found."
                         "RewriteNode will fail.");
   }

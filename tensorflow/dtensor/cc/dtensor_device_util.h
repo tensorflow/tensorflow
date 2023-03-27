@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.h"
@@ -51,6 +52,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
 
 #define RETURN_STATUS(status, code, message)   \
   {                                            \
@@ -190,9 +193,10 @@ class TensorWithLayoutTf
 
   // Given a single tensor, wraps it with a single device mesh and a single
   // device layout.
-  static std::unique_ptr<TensorWithLayoutTf> Wrap(
-      parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
-      const Layout& layout, TF_Status* status);
+  static std::unique_ptr<TensorWithLayoutTf> Wrap(TensorHandlePtr single_tensor,
+                                                  const Mesh& mesh,
+                                                  const Layout& layout,
+                                                  TF_Status* status);
 
   // Creates a dummy TensorWithLayoutTf without holding a ParallelTensor.
   static std::unique_ptr<TensorWithLayoutTf> Dummy(
@@ -205,9 +209,7 @@ class TensorWithLayoutTf
 
   TensorType tensor_type() const override { return TensorType::kDense; }
 
-  TF_DataType dtype() const override {
-    return dtype_.has_value() ? dtype_.value() : tensor_->dtype();
-  }
+  TF_DataType dtype() const override;
 
   // Encodes the NodeDef via provided builder, if applicable.
   void EncodeAttributes(tensorflow::NodeDefBuilder& builder) const override {}
@@ -218,9 +220,13 @@ class TensorWithLayoutTf
     return tensor_->tensor(index);
   }
 
-  size_t num_tensors() const override { return tensor_->num_tensors(); }
+  size_t num_tensors() const override {
+    return layout_.IsSingleDevice() ? 1 : tensor_->num_tensors();
+  }
 
   parallel_device::ParallelTensor* tensor() const { return tensor_.get(); }
+
+  TFE_TensorHandle* single_tensor() const { return single_tensor_.get(); }
 
   std::string SummarizeValue() const override;
 
@@ -253,8 +259,8 @@ class TensorWithLayoutTf
     const_value_node_ = std::make_unique<ConstValueNode>(const_value);
   }
 
-  TensorWithLayoutTf(parallel_device::TensorHandlePtr single_tensor,
-                     const Mesh& mesh, const Layout& layout,
+  TensorWithLayoutTf(TensorHandlePtr single_tensor, const Mesh& mesh,
+                     const Layout& layout,
                      const std::vector<int64_t>& local_shape,
                      std::optional<TF_DataType> dtype = std::nullopt,
                      std::optional<NodeDef> const_value = std::nullopt)
@@ -271,7 +277,7 @@ class TensorWithLayoutTf
   // Holds the tensor but not the underlying device. This is only used when the
   // `layout_` is a single device layout and the `mesh_` is a single device
   // mesh.
-  parallel_device::TensorHandlePtr single_tensor_;
+  TensorHandlePtr single_tensor_;
 
   Layout layout_;
 
@@ -280,6 +286,7 @@ class TensorWithLayoutTf
   // The local shape of tensors placed on each of `tensor_`'s component devices.
   std::vector<int64_t> local_shape_;
 
+  // dtype of tensor_. Empty if the layout is Single Device.
   std::optional<TF_DataType> dtype_;
 
   std::unique_ptr<ConstValueNode> const_value_node_;
@@ -430,7 +437,9 @@ class SparseTensorWithLayout
 
   TensorType tensor_type() const override { return TensorType::kSparse; }
 
-  size_t num_tensors() const override { return 3 * indices_->num_tensors(); }
+  size_t num_tensors() const override {
+    return kSparseTensorNum * indices_->num_tensors();
+  }
 
   TFE_TensorHandle* get_tensor(size_t index) const override;
 

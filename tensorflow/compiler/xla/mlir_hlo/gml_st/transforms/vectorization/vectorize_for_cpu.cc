@@ -207,48 +207,6 @@ struct InlineCastInIfOpPattern : public OpRewritePattern<tensor::CastOp> {
   }
 };
 
-// Rewrite `vector.transfer_read(linalg.expand_shape)` as
-// `vector.shape_cast(vector.transfer_read)`.
-struct TransferReadOfOneDimExpandShape
-    : public mlir::OpRewritePattern<vector::TransferReadOp> {
-  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      vector::TransferReadOp vectorRead,
-      mlir::PatternRewriter &rewriter) const override {
-    auto expand = vectorRead.getSource().getDefiningOp<tensor::ExpandShapeOp>();
-    if (!expand) return failure();
-
-    auto expandSrc = expand.getSrc();
-    auto expandSrcType = expand.getSrcType();
-    auto expandDstType = expand.getResultType();
-    if (expandSrcType.getRank() != 1 || expandDstType.getRank() != 2)
-      return failure();
-
-    auto resultType = vectorRead.getType().dyn_cast<mlir::ShapedType>();
-    if (!resultType || resultType.getShape() != expandDstType.getShape())
-      return failure();
-
-    auto zero = rewriter.create<arith::ConstantIndexOp>(vectorRead.getLoc(), 0);
-    auto map = mlir::AffineMap::get(1, 0, {rewriter.getAffineDimExpr(0)},
-                                    vectorRead.getContext());
-    // TODO(pifon): Also support canonicalization in case the map is not an
-    // identity.
-    if (!map.isIdentity()) return failure();
-
-    auto newRead = rewriter.create<vector::TransferReadOp>(
-        vectorRead.getLoc(),
-        mlir::VectorType::get(expandSrcType.getShape(),
-                              expandSrcType.getElementType()),
-        expandSrc, mlir::ValueRange{zero}, mlir::AffineMapAttr::get(map),
-        vectorRead.getPadding(),
-        /*mask=*/mlir::Value(), rewriter.getBoolArrayAttr({true}));
-    rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
-        vectorRead, vectorRead.getType(), newRead);
-    return success();
-  }
-};
-
 // This currently matches for all thlo.reverse of the form 1x1x..x1xVectorSize.
 // DimSize < kNumElementsVectorization will be handled by Scalarization.
 bool isPerfectlyTiledReverse(thlo::ReverseOp reverseOp) {
@@ -381,7 +339,6 @@ struct VectorizeForCPUPass
           >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
       patterns.add<PassVectorizedValuesThroughIfOpPattern>(ctx);
-      populateTransferReadOfOneDimExpandShapePattern(patterns);
       patterns.add<InlineCastInIfOpPattern, ThloReverseVectorizationPattern>(
           ctx);
       tensor::CastOp::getCanonicalizationPatterns(patterns, ctx);

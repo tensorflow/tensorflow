@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
 
 #include <array>
-#include <optional>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -26,12 +25,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-// Index of non-contracting dimension of a dot() operand assuming that
-// it only has one contracting, one non-contracting and an optional batch
-// dimension.
-int NoncontractingDimensionIndex(int contracting_dimension_index,
-                                 int batch_dimension_index);
 
 // Filters GEMMs which are better to handle using Triton.
 bool IsTritonHandledGEMM(const HloInstruction&,

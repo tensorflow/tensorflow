@@ -150,7 +150,7 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {
     return InternalError(
-        "Called computations specified for non-caller instruction  %s",
+        "Called computations specified for non-caller instruction %s",
         hlo->ToString());
   }
   std::optional<int> arity = HloOpcodeArity(hlo->opcode());
@@ -1353,12 +1353,9 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
-  VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
   auto input_shapes = reduce_window_instr->input_shapes();
-  VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
-  VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";
   TF_RETURN_IF_ERROR(CheckShape(
       reduce_window, ShapeInference::InferReduceWindowShape(
                          input_shapes, init_shapes, reduce_window->window(),
@@ -1418,8 +1415,7 @@ Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
     if (operand0_type != S32) {
       return InvalidArgument(
           "The first operand of indexed conditional must be a scalar of S32. "
-          "Got"
-          " type %s.",
+          "Got type %s.",
           PrimitiveType_Name(operand0_type));
     }
     TF_RET_CHECK(num_branches >= 1);
@@ -1944,7 +1940,7 @@ std::string ComputationsToString(
     absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](std::string* s, const HloComputation* computation) {
-                         s->append(computation->name());
+                         absl::StrAppend(s, computation->name());
                        });
 }
 
@@ -2620,7 +2616,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Preprocess(HloInstruction* instruction) override {
     auto [it, inserted] =
-        instructions_by_name_.insert({instruction->name(), instruction});
+        instructions_by_name_.emplace(instruction->name(), instruction);
     TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
                            << instruction->ToString() << " in computation: "
                            << instruction->parent()->name()

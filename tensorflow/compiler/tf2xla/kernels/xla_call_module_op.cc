@@ -54,14 +54,18 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// When adding a new version, write when it was added. Also change the default
+// version in the constructor in xla.py.
 // Version 1 used MHLO & CHLO, not supported anymore.
-// Version 2 supports StableHLO & CHLO. From 10/2022. Minimum from 03/2023.
+// Version 2 supports StableHLO & CHLO. From 10/2022.
 const int VERSION_START_STABLE_HLO = 2;
 // Version 3 supports platform checking and multiple platforms. From 02/2023.
 const int VERSION_START_PLATFORMS = 3;
-// Version 4 supports StableHLO with compatibility guarantees. From 03/2023
+// Version 4 supports StableHLO with compatibility guarantees.
+// Used from 03/2023.
 const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
 const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
+const int VERSION_MAXIMUM_SUPPORTED = VERSION_START_STABLE_HLO_COMPATIBILITY;
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
@@ -442,6 +446,11 @@ class XlaCallModuleOp : public XlaOpKernel {
         errors::InvalidArgument("XlaCallModuleOp with version ", version_,
                                 " is not supported anymore. Must be >= ",
                                 VERSION_MINIMUM_SUPPORTED));
+    OP_REQUIRES(
+        ctx, version_ <= VERSION_MAXIMUM_SUPPORTED,
+        errors::InvalidArgument("XlaCallModuleOp with version ", version_,
+                                " is not supported by this build. Must be <= ",
+                                VERSION_MAXIMUM_SUPPORTED));
     string module_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("module", &module_str));
     std::vector<PartialTensorShape> expected_output_shapes;

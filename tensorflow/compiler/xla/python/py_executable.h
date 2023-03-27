@@ -104,8 +104,7 @@ class PyExecuteResults {
   PyShardedToken token_;
 };
 
-using ExecuteShardedArg =
-    std::variant<PyArray, std::vector<std::variant<PyBuffer::object, PyArray>>>;
+using ExecuteShardedArg = std::variant<PyArray, std::vector<PyArray>>;
 
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
@@ -147,12 +146,6 @@ class PyLoadedExecutable
   }
 
   bool is_deleted() { return ifrt_loaded_executable_->IsDeleted(); }
-
-  StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
-  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
 
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
@@ -208,9 +201,6 @@ class PyLoadedExecutable
   void KeepAlive(pybind11::object obj);
 
  private:
-  StatusOr<std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>>
-  ExecuteInternal(absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;

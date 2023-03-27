@@ -1116,7 +1116,7 @@ bool Layout::operator==(const Layout& b) const {
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
     absl::Span<const int64_t> local_shape) const {
-  if (IsFullyReplicated()) {
+  if (IsSingleDevice() || IsFullyReplicated()) {
     return std::vector<int64_t>(local_shape.begin(), local_shape.end());
   }
   std::vector<int64_t> global_shape;

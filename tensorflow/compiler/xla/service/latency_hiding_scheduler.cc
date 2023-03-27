@@ -336,7 +336,31 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
     case ResourceTypeToIndex(ResourceType::kRecvHost):
       return "kRecvHost";
     default:
-      return "not a default resource";
+      return "Not a valid default resource";
+  }
+}
+
+absl::string_view AsyncTracker::GetResourceUsageName(
+    ResourceUsageType resource_usage_type) const {
+  return GetResourceUsageName(ResourceUsageTypeToIndex(resource_usage_type));
+}
+
+ResourceHazardType AsyncTracker::GetResourceHazardType(
+    int64_t resource_type) const {
+  return ResourceHazardType::kUnshareable;
+}
+
+absl::string_view AsyncTracker::GetResourceUsageName(
+    int64_t resource_usage_type) const {
+  switch (resource_usage_type) {
+    case ResourceUsageTypeToIndex(ResourceUsageType::kNoResource):
+      return "kNoResource";
+    case ResourceUsageTypeToIndex(ResourceUsageType::kResourceOccupy):
+      return "kResourceOccupy";
+    case ResourceUsageTypeToIndex(ResourceUsageType::kResourceRelease):
+      return "kResourceRelease";
+    default:
+      return "Not a valid resource usage type";
   }
 }
 
@@ -1180,7 +1204,8 @@ HloScheduleGraph::HloScheduleGraph(
   }
 }
 
-std::string HloScheduleGraph::ToString() const {
+std::string HloScheduleGraph::ToString(
+    const AsyncTracker* async_tracker) const {
   std::string result;
   std::vector<std::pair<const HloGraphNode*, int>> stack;
   for (const auto& node : nodes_) {
@@ -1204,7 +1229,7 @@ std::string HloScheduleGraph::ToString() const {
     }
   }
   for (auto it = order.rbegin(), e = order.rend(); it != e; ++it) {
-    absl::StrAppend(&result, (*it)->ToString());
+    absl::StrAppend(&result, (*it)->ToString(async_tracker));
   }
   return result;
 }
@@ -1300,7 +1325,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                            latency_estimator_);
   sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
   VLOG(5) << "Just built graph:";
-  XLA_VLOG_LINES(5, sched_state.sched_graph.ToString());
+  XLA_VLOG_LINES(5, sched_state.sched_graph.ToString(async_tracker_));
   async_tracker_->SetConcurrentResourceLimits(
       sched_state.max_concurrent_resource);
   // Collect the bottom roots of the graph (nodes that don't have any
