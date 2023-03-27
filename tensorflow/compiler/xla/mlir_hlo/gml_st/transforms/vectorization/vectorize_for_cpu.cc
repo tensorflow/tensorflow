@@ -287,22 +287,23 @@ struct IdentityTransposeOpFoldingPattern
   }
 };
 
-bool isNonComplexSmallTensorOrScalar(Type ty) {
-  if (auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>()) {
-    if (rankedTy.getElementType().isa<ComplexType>()) return false;
-    return rankedTy.hasStaticShape() &&
-           rankedTy.getNumElements() < kNumElementsThreshold;
-  }
-
-  if (ty.isa<ComplexType>()) return false;
-  return !isa<ShapedType>(ty);
-}
-
 struct VectorizeForCPUPass
     : public impl::VectorizeForCPUPassBase<VectorizeForCPUPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *ctx = func.getContext();
+
+    auto isNonComplexSmallTensorOrScalar = [&](Type ty) {
+      if (getElementTypeOrSelf(ty).isa<ComplexType>()) return false;
+      if (auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>()) {
+        return rankedTy.hasStaticShape() &&
+               rankedTy.getNumElements() < numElementsThreshold;
+      }
+
+      return !isa<ShapedType>(ty);
+    };
 
     auto isOpOnNonComplexSmallTensorOrScalar = [&](Operation *op) {
       return llvm::all_of(op->getOperandTypes(),
@@ -363,8 +364,11 @@ struct VectorizeForCPUPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass() {
-  return std::make_unique<VectorizeForCPUPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
+    int64_t numElementsThreshold) {
+  VectorizeForCPUPassOptions opts;
+  opts.numElementsThreshold = numElementsThreshold;
+  return std::make_unique<VectorizeForCPUPass>(opts);
 }
 
 }  // namespace gml_st

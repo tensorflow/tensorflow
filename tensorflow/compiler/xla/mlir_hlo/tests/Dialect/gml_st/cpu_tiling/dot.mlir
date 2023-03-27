@@ -1,5 +1,7 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:   --gml-st-cpu-tiling-pipeline=matmul-tile-sizes=4,5,6 | FileCheck %s
+// RUN:   --gml-st-cpu-tiling-pipeline="matmul-tile-sizes=4,5,6 \
+// RUN:                                 vectorization-size-threshold=1" | \
+// RUN: FileCheck %s
 
 func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
                   %output: tensor<33xf32>) -> tensor<33xf32> {

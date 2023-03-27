@@ -63,6 +63,11 @@ def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
     "::mlir::vector::VectorDialect",
     "::mlir::tensor::TensorDialect"
   ];
+  let options = [
+    Option<"numElementsThreshold", "num-elements-threshold", "int64_t",
+           /*default=*/"128",
+           "Number of elements max of the tensor operands in order for the op to be vectorized.">,
+  ];
 }
 
 def VectorizeCopyPass :

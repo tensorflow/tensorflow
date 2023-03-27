@@ -32,6 +32,8 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.reduction1DTileSize = 32;
   opts.reduction2DTileSizes = {4, 4};
   opts.matmulTileSizes = {};
+  opts.vectorizationSizeThreshold = 128;
+  opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
   opts.enableFusionClusters = false;
   opts.enableFusionClusterOutlining = false;
@@ -47,6 +49,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(createCollectStatsPass(options.statsDetailLevel));
   pm.addNestedPass<FuncOp>(createScalarizationPass(false));
+  pm.addNestedPass<FuncOp>(
+      createVectorizeForCPUPass(options.vectorizationSizeThreshold));
 
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
@@ -80,7 +84,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(createRewriteForallOpPass());
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
-  pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
+  pm.addNestedPass<FuncOp>(
+      createVectorizeForCPUPass(options.vectorizationTiledSizeThreshold));
 
   // Tile remaining ops by size one and scalarize what we can.
   pm.addNestedPass<FuncOp>(createTileByOnePass());
