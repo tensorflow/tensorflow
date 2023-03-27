@@ -2526,50 +2526,6 @@ bool CudnnSupport::DoRnnForward(
 bool CudnnSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<Eigen::bfloat16>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
-    const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<Eigen::bfloat16>& input_h_data,
-    const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<Eigen::bfloat16>& input_c_data,
-    const DeviceMemory<Eigen::bfloat16>& params,
-    const dnn::RnnSequenceTensorDescriptor& output_desc,
-    DeviceMemory<Eigen::bfloat16>* output_data,
-    const dnn::RnnStateTensorDescriptor& output_h_desc,
-    DeviceMemory<Eigen::bfloat16>* output_h_data,
-    const dnn::RnnStateTensorDescriptor& output_c_desc,
-    DeviceMemory<Eigen::bfloat16>* output_c_data, bool is_training,
-    ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  const CudnnRnnDescriptor& cudnn_rnn_desc =
-      static_cast<const CudnnRnnDescriptor&>(rnn_desc);
-  const CudnnRnnSequenceTensorDescriptor& cudnn_input_desc =
-      static_cast<const CudnnRnnSequenceTensorDescriptor&>(input_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_input_h_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(input_h_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_input_c_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(input_c_desc);
-  const CudnnRnnSequenceTensorDescriptor& cudnn_output_desc =
-      static_cast<const CudnnRnnSequenceTensorDescriptor&>(output_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_output_h_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(output_h_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_output_c_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(output_c_desc);
-  return IsStatusOk(
-      DoRnnForwardImpl<Eigen::bfloat16>(
-          stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          seq_lengths_data, cudnn_input_h_desc, input_h_data,
-          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
-          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
-          output_c_data, is_training, reserve_space_allocator,
-          workspace_allocator, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoRnnForward(
-    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
-    const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
     const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
@@ -2696,59 +2652,6 @@ bool CudnnSupport::DoRnnBackward(
       static_cast<const CudnnRnnStateTensorDescriptor&>(output_c_desc);
   return IsStatusOk(
       DoRnnBackwardImpl<Eigen::half>(
-          stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
-          seq_lengths_data, cudnn_input_h_desc, input_h_data,
-          cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
-          output_data, cudnn_output_h_desc, output_h_data, cudnn_output_c_desc,
-          output_c_data, output_backprop_data, output_h_backprop_data,
-          output_c_backprop_data, input_backprop_data, input_h_backprop_data,
-          input_c_backprop_data, params_backprop_data, reserve_space_data,
-          workspace_allocator, output_profile_result),
-      /*report_error=*/!output_profile_result);
-}
-
-bool CudnnSupport::DoRnnBackward(
-    Stream* stream, const dnn::RnnDescriptor& rnn_desc,
-    const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<Eigen::bfloat16>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
-    const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<Eigen::bfloat16>& input_h_data,
-    const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<Eigen::bfloat16>& input_c_data,
-    const DeviceMemory<Eigen::bfloat16>& params,
-    const dnn::RnnSequenceTensorDescriptor& output_desc,
-    const DeviceMemory<Eigen::bfloat16>& output_data,
-    const dnn::RnnStateTensorDescriptor& output_h_desc,
-    const DeviceMemory<Eigen::bfloat16>& output_h_data,
-    const dnn::RnnStateTensorDescriptor& output_c_desc,
-    const DeviceMemory<Eigen::bfloat16>& output_c_data,
-    const DeviceMemory<Eigen::bfloat16>& output_backprop_data,
-    const DeviceMemory<Eigen::bfloat16>& output_h_backprop_data,
-    const DeviceMemory<Eigen::bfloat16>& output_c_backprop_data,
-    DeviceMemory<Eigen::bfloat16>* input_backprop_data,
-    DeviceMemory<Eigen::bfloat16>* input_h_backprop_data,
-    DeviceMemory<Eigen::bfloat16>* input_c_backprop_data,
-    DeviceMemory<Eigen::bfloat16>* params_backprop_data,
-    DeviceMemory<uint8_t>* reserve_space_data,
-    ScratchAllocator* workspace_allocator,
-    dnn::ProfileResult* output_profile_result) {
-  const CudnnRnnDescriptor& cudnn_rnn_desc =
-      static_cast<const CudnnRnnDescriptor&>(rnn_desc);
-  const CudnnRnnSequenceTensorDescriptor& cudnn_input_desc =
-      static_cast<const CudnnRnnSequenceTensorDescriptor&>(input_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_input_h_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(input_h_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_input_c_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(input_c_desc);
-  const CudnnRnnSequenceTensorDescriptor& cudnn_output_desc =
-      static_cast<const CudnnRnnSequenceTensorDescriptor&>(output_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_output_h_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(output_h_desc);
-  const CudnnRnnStateTensorDescriptor& cudnn_output_c_desc =
-      static_cast<const CudnnRnnStateTensorDescriptor&>(output_c_desc);
-  return IsStatusOk(
-      DoRnnBackwardImpl<Eigen::bfloat16>(
           stream, cudnn_rnn_desc, cudnn_input_desc, input_data,
           seq_lengths_data, cudnn_input_h_desc, input_h_data,
           cudnn_input_c_desc, input_c_data, params, cudnn_output_desc,
