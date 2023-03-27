@@ -34,6 +34,7 @@ build --copt=-Wno-gnu-offsetof-extensions
 # The profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
 build --profile=/tf/pkg/profile.json.gz
+build --build_event_json_file=/tf/pkg/bep.json
 
 # Use the NVCC toolchain to compile for manylinux2014
 build --crosstool_top="@sigbuild-r2.12-clang_config_cuda//crosstool:toolchain"
