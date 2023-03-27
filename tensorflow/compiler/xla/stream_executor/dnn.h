@@ -26,13 +26,10 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
-#include <optional>
-#include <ostream>
 #include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
 #include "absl/types/optional.h"
@@ -155,75 +152,6 @@ enum class RnnDirectionMode {
 // DepthToSpace comment for more information.
 enum class DepthToSpaceLayout { DepthHeightWidth };
 
-class TensorDescriptor {
- public:
-  TensorDescriptor() = default;
-  tsl::StatusOr<std::vector<int64_t>> GetPhysicalDimensionsMajorToMinor() const;
-  std::vector<int64_t> GetPhysicalStridesMajorToMinor() const;
-  std::vector<int64_t> GetLogicalStrides() const;
-
-  static TensorDescriptor For(DataType type,
-                              absl::Span<const int64_t> dimensions,
-                              absl::Span<const int64_t> minor_to_major);
-  int ndims() const;
-  std::vector<int64_t> dimensions() const { return dimensions_; }
-  std::vector<int64_t> minor_to_major() const { return minor_to_major_; }
-  DataType type() const { return d_type_; }
-  std::string ToString() const;
-
- protected:
-  TensorDescriptor(DataType type, std::vector<int64_t> dimensions,
-                   std::vector<int64_t> minor_to_major)
-      : d_type_(type),
-        dimensions_(dimensions),
-        minor_to_major_(minor_to_major) {}
-
- private:
-  DataType d_type_;
-  std::vector<int64_t> dimensions_;
-  std::vector<int64_t> minor_to_major_;
-};
-
-class MatmulTensorDescriptor {
- public:
-  MatmulTensorDescriptor() = default;
-  tsl::StatusOr<std::vector<int64_t>> GetNonContractingDims() const;
-  std::vector<int64_t> GetCudnnCompatibleDimensions(
-      bool is_lhs
-      /*if not lhs, then rhs*/) const;
-  std::vector<int64_t> GetCudnnCompatibleStrides(
-      bool is_lhs
-      /*if not lhs, then rhs*/) const;
-  tsl::StatusOr<std::vector<int64_t>> MakeCudnnCompatible(
-      const std::vector<int64_t>&, bool is_lhs) const;
-
-  static MatmulTensorDescriptor For(DataType type,
-                                    absl::Span<const int64_t> dimensions,
-                                    absl::Span<const int64_t> minor_to_major,
-                                    absl::Span<const int64_t> batch_dims,
-                                    absl::Span<const int64_t> contracting_dims);
-  std::vector<int64_t> dimensions() const { return tensor_.dimensions(); }
-  std::vector<int64_t> minor_to_major() const {
-    return tensor_.minor_to_major();
-  }
-  DataType type() const { return tensor_.type(); }
-
-  std::string ToString() const;
-
- protected:
-  MatmulTensorDescriptor(TensorDescriptor tensor,
-                         std::vector<int64_t> batch_dims,
-                         std::vector<int64_t> contracting_dims)
-      : tensor_(tensor),
-        batch_dimension_numbers_(batch_dims),
-        contracting_dim_(contracting_dims) {}
-
- private:
-  TensorDescriptor tensor_;
-  std::vector<int64_t> batch_dimension_numbers_;
-  std::vector<int64_t> contracting_dim_;
-};
-
 // Specifies the descriptor for a RNN model.
 //
 // An example use case:
@@ -242,7 +170,7 @@ class RnnDescriptor {
     int64_t size;
   };
   typedef std::vector<ParamsRegion> ParamsRegions;
-  virtual ~RnnDescriptor() = default;
+  virtual ~RnnDescriptor() {}
   virtual int64_t ParamsSizeInBytes() const { return -1; }
   virtual ParamsRegions ParamsWeightRegions() const { return ParamsRegions(); }
   virtual ParamsRegions ParamsBiasRegions() const { return ParamsRegions(); }
@@ -254,7 +182,7 @@ class RnnDescriptor {
 // in use. The destructor releases the underlying descriptors.
 class RnnSequenceTensorDescriptor {
  public:
-  virtual ~RnnSequenceTensorDescriptor() = default;
+  virtual ~RnnSequenceTensorDescriptor() {}
 };
 
 // Specifies either the input and hidden state in a RNN model.
@@ -263,7 +191,7 @@ class RnnSequenceTensorDescriptor {
 // in use. The destructor releases the underlying descriptors.
 class RnnStateTensorDescriptor {
  public:
-  virtual ~RnnStateTensorDescriptor() = default;
+  virtual ~RnnStateTensorDescriptor() {}
 };
 
 // Returns a string representation of the given quantization mode.
@@ -942,7 +870,7 @@ class OpRunner;
 template <typename... Args>
 class OpRunner<void(Args...)> {
  public:
-  virtual ~OpRunner() = default;
+  virtual ~OpRunner() {}
 
   // Get a description of the runner, for uniqueness of autotune entries.
   //
@@ -984,34 +912,6 @@ using FusedMatmulSignature = void(DeviceMemoryBase /* a_data */,
                                   DeviceMemoryBase /* c_data */);
 using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 
-using FusedMHASoftmaxSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
-                                      DeviceMemoryBase /* BMM1_inputB_data */,
-                                      DeviceMemoryBase /* BMM2_inputA_data */,
-                                      DeviceMemoryBase /* output_data */);
-using FusedMHASoftmaxRunner = OpRunner<FusedMHASoftmaxSignature>;
-
-using FusedMHAMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
-                                   DeviceMemoryBase /* BMM1_inputB_data */,
-                                   DeviceMemoryBase /* mask_data */,
-                                   DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
-using FusedMHAMaskRunner = OpRunner<FusedMHAMaskSignature>;
-
-using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
-                                       DeviceMemoryBase /* BMM1_inputB_data */,
-                                       DeviceMemoryBase /* mask_data */,
-                                       DeviceMemoryBase /* bias_data */,
-                                       DeviceMemoryBase /* BMM2_inputA_data */,
-                                       DeviceMemoryBase /* output_data */);
-using FusedMHABiasMaskRunner = OpRunner<FusedMHABiasMaskSignature>;
-
-using FusedMHABiasSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
-                                   DeviceMemoryBase /* BMM1_inputB_data */,
-                                   DeviceMemoryBase /* bias_data */,
-                                   DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
-using FusedMHABiasRunner = OpRunner<FusedMHABiasSignature>;
-
 // Describes the configuration for the algorithms that will used.
 //
 // Arguments:
@@ -1030,7 +930,7 @@ using FusedMHABiasRunner = OpRunner<FusedMHABiasSignature>;
 // one without scratch memory, and scratch_size field is used to track it.
 class AlgorithmConfig {
  public:
-  AlgorithmConfig() = default;
+  AlgorithmConfig() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
   AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
       : algorithm_(algorithm), scratch_size_(scratch_size) {}
@@ -1259,8 +1159,8 @@ class VersionInfo {
 // PrepareForConvolution is an example for how new APIs should be written.
 class DnnSupport {
  public:
-  DnnSupport() = default;
-  virtual ~DnnSupport() = default;
+  DnnSupport() {}
+  virtual ~DnnSupport() {}
 
   virtual tsl::Status Init() = 0;
 
@@ -1635,54 +1535,6 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode);
-
-  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
-  FusedMHASoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
-
-  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
-  FusedMHAScaleMaskSoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      const dnn::TensorDescriptor& mask_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
-
-  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
-  FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      const dnn::TensorDescriptor& mask_descriptor,
-      const dnn::TensorDescriptor& bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
-
-  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
-  FusedMHAScaleBiasSoftmaxRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-      dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
-      const dnn::TensorDescriptor& bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
