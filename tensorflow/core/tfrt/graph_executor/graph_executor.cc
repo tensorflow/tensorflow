@@ -561,12 +561,20 @@ GraphExecutor::ImportAndCompileClientGraph(
   mlrt::bc::Buffer bytecode_buffer;
   std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer, tfrt::CompileTfMlirModuleToBytecode(module.get()));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
   } else if (options_.enable_mlrt) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer,
         CompileMlirModuleToByteCode(options_.compile_options, module.get()));
