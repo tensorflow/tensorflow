@@ -670,6 +670,9 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
         // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
+        pm.addPass(
+            mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(
+                options));
         pm.addPass(mlrt_compiler::CreateParallelizationPass(
             options.cost_threshold, options.merge_inter_dependent_streams));
         pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
