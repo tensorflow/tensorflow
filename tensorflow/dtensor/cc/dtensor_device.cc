@@ -420,7 +420,6 @@ class DTensorDevice {
 
   // Broadcasts `tensor` to `mesh` using replicated sharding. Returns `nullptr`
   // if it fails.
-  // TODO(b/256016071): Unify this and the one in `TensorWithLayoutTf`.
   std::unique_ptr<TensorWithLayout> Broadcast(TFE_Context* context,
                                               TFE_TensorHandle* input,
                                               const Mesh& mesh,

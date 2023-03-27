@@ -1059,7 +1059,6 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
                    status.error_message().c_str());
-      // TODO(b/256016071): Try finding a way to append source locations.
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           status.error_message());
