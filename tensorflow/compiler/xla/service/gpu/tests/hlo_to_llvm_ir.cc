@@ -104,7 +104,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
         xla::gpu::nvptx::CompileToPtx(
             llvm_module.get(), cuda_compute_capability, hlo_module->config()));
     std::cout << ptx << std::endl;
-<<<<<<< HEAD
 #elif TENSORFLOW_USE_ROCM
     std::string libdevice_dir = tsl::RocdlRoot();
     xla::gpu::GpuVersion gpu_version{rocm_compute_capability};
@@ -112,11 +111,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
       std::vector<uint8_t> ptx,
       xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
                                     hlo_module->config(), libdevice_dir));
-=======
-#else
-    return {absl::StatusCode::kUnimplemented,
-            "Feature not yet implemented in ROCm"};
->>>>>>> google_upstream/master
 #endif
   }
   return xla::OkStatus();

@@ -384,20 +384,6 @@ module @jit_f.0 {
           'and 0 dimension arguments.'):
         self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
-<<<<<<< HEAD
-    #  Same if the version is 2
-    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
-    version = 2
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        'Incorrect number of arguments passed to XlaCallModule: 1. '
-        'The module takes 2 arguments of which 0 platform index arguments '
-        'and 0 dimension arguments.'):
-      self._assertOpOutputMatchesExpected(f, (x,), (x,))
-
-    version = 3
-=======
->>>>>>> google_upstream/master
     platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
     with self.assertRaisesRegex(
         errors.NotFoundError,
@@ -414,13 +400,8 @@ module @jit_f.0 {
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     # The module cannot have i64 %arg_platform_idx
-<<<<<<< HEAD
-    module = module.replace('i32', 'i64')
-    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
-=======
     module, version = serialize(module_str.replace('i32', 'i64'))
-    platforms = ['CPU', 'CUDA', 'TPU']
->>>>>>> google_upstream/master
+    platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Module argument at index 0 should be a 0-dimensional '

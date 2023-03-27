@@ -1858,12 +1858,6 @@ tf_cuda_cc_test(
         "config-cuda-only",
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-<<<<<<< HEAD
-        "notap",
-        "no_rocm",
-        "requires-gpu-nvidia",
-=======
->>>>>>> google_upstream/master
         "no_rocm",  # ROCmSoftwarePlatform #958
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
@@ -1885,12 +1879,6 @@ tf_cuda_cc_test(
         "config-cuda-only",
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-<<<<<<< HEAD
-        "notap",
-        "no_rocm",
-        "requires-gpu-nvidia",
-=======
->>>>>>> google_upstream/master
         "no_rocm",  # ROCmSoftwarePlatform #958
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
