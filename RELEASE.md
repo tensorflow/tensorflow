@@ -83,6 +83,8 @@
         `tf.keras.optimizers` directly. The API namespace for
         `tf.keras.dtensor.experimental.optimizers` will be removed in future
         releases.
+    *   Added support for `class_weight` for 3+ dimensional targets (e.g.
+        image segmentation masks) in `Model.fit`.
 
 *   `tf.function`:
 
