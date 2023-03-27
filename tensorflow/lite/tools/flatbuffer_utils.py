@@ -297,6 +297,23 @@ def byte_swap_buffer_content(buffer, chunksize, from_endiness, to_endiness):
   )
 
 
+def byte_swap_string_content(buffer, from_endiness, to_endiness):
+  """Helper function for byte-swapping the string buffer.
+
+  Args:
+    buffer: TFLite string buffer of from_endiness format.
+    from_endiness: The original endianness format of the string buffer.
+    to_endiness: The destined endianness format of the string buffer.
+  """
+  num_of_strings = int.from_bytes(buffer.data[0:4], from_endiness)
+  string_content = bytearray(buffer.data[4*(num_of_strings+2):])
+  prefix_data = b''.join([int.from_bytes(
+    buffer.data[i:i+4], from_endiness).to_bytes(
+      4, to_endiness) for i in range(
+        0, (num_of_strings+1)*4+1, 4)])
+  buffer.data = prefix_data + string_content
+
+
 def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
   """Byte swaps the buffers field in a TFLite model.
 
@@ -334,7 +351,11 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
           and tensor.buffer not in buffer_swapped
           and model.buffers[tensor.buffer].data is not None
       ):
-        if tensor.type in types_of_16_bits:
+        if tensor.type == schema_fb.TensorType.STRING:
+          byte_swap_string_content(
+            model.buffers[tensor.buffer], from_endiness, to_endiness
+          )
+        elif tensor.type in types_of_16_bits:
           byte_swap_buffer_content(
               model.buffers[tensor.buffer], 2, from_endiness, to_endiness
           )

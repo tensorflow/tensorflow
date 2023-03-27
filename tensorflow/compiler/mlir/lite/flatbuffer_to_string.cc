@@ -141,7 +141,8 @@ int main(int argc, char** argv) {
   std::string serialized_model;
   if (tflite::ReadAndVerify(argv[1], &serialized_model)) return 1;
 #if FLATBUFFERS_LITTLEENDIAN == 0
-  tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_model);
+  if (std::string(argv[1]) == "-")
+    tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_model, true);
 #endif
   tflite::ToString(serialized_model);
   return 0;
