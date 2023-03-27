@@ -1109,6 +1109,7 @@ Status DoBackward<Eigen::bfloat16>(
   Tensor casted_output_backprop;
   Tensor casted_output_h_backprop;
   Tensor casted_output_c_backprop;
+  Tensor casted_reserve_space;
   Tensor casted_input_backprop;
   Tensor casted_input_h_backprop;
   Tensor casted_input_c_backprop;
@@ -1150,13 +1151,20 @@ Status DoBackward<Eigen::bfloat16>(
         context, context->allocate_temp(DT_FLOAT, input_c_backprop->shape(),
                                         &casted_input_c_backprop));
   }
+  // Reserve space doesn't have to be casted, but the size in bytes needs to
+  // match.
+  int64_t num_float_elements =
+      Eigen::divup(reserve_space->TotalBytes(), sizeof(float));
+  TF_RETURN_IF_ERROR(context,
+                     context->allocate_temp(DT_FLOAT, {num_float_elements},
+                                            &casted_reserve_space));
 
   TF_RETURN_IF_ERROR(DoBackwardImpl<float>(
       context, rnn_desc, model_types, model_shapes, &casted_input,
       &casted_input_h, &casted_input_c, &casted_params, &casted_output,
       &casted_output_h, &casted_output_c, &casted_output_backprop,
-      &casted_output_h_backprop, &casted_output_c_backprop, reserve_space,
-      &casted_input_backprop, &casted_input_h_backprop,
+      &casted_output_h_backprop, &casted_output_c_backprop,
+      &casted_reserve_space, &casted_input_backprop, &casted_input_h_backprop,
       &casted_input_c_backprop, &casted_params_backprop, sequence_lengths,
       time_major, workspace_allocator, output_profile_result));
 
@@ -1167,12 +1175,14 @@ Status DoBackward<Eigen::bfloat16>(
   cast_back(device, input_h_backprop->template flat<Eigen::bfloat16>(),
             const_cast<const Tensor*>(&casted_input_h_backprop)
                 ->template flat<float>());
-  cast_back(device, input_c_backprop->template flat<Eigen::bfloat16>(),
-            const_cast<const Tensor*>(&casted_input_c_backprop)
-                ->template flat<float>());
   cast_back(device, params_backprop->template flat<Eigen::bfloat16>(),
             const_cast<const Tensor*>(&casted_params_backprop)
                 ->template flat<float>());
+  if (model_types.HasInputC()) {
+    cast_back(device, input_c_backprop->template flat<Eigen::bfloat16>(),
+              const_cast<const Tensor*>(&casted_input_c_backprop)
+                  ->template flat<float>());
+  }
   return OkStatus();
 }
 
@@ -1311,7 +1321,9 @@ class CudnnRNNKernelCommon : public OpKernel {
                              std::unique_ptr<RnnDescriptor>* rnn_desc,
                              bool use_padded_io) {
     StreamExecutor* executor = context->op_device_context()->stream()->parent();
-    se::dnn::DataType data_type = ToDataType<T>::value;
+    se::dnn::DataType data_type = std::is_same_v<T, bfloat16>
+                                      ? se::dnn::DataType::kFloat
+                                      : ToDataType<T>::value;
     auto rnn_desc_s = executor->createRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, model_shapes.cell_num_units,
@@ -1359,45 +1371,6 @@ class CudnnRNNKernelCommon : public OpKernel {
 
   CudnnModelTypes model_types_;
 };
-
-template <>
-Status CudnnRNNKernelCommon::CreateRnnDescriptor<bfloat16>(
-    OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
-    const RnnInputMode& input_mode, const AlgorithmConfig& algo_config,
-    ScratchAllocator* dropout_state_allocator,
-    std::unique_ptr<RnnDescriptor>* rnn_desc, bool use_padded_io) {
-  StreamExecutor* executor = context->op_device_context()->stream()->parent();
-  se::dnn::DataType data_type = ToDataType<float>::value;
-  auto rnn_desc_s = executor->createRnnDescriptor(
-      model_shapes.num_layers, model_shapes.num_units, model_shapes.input_size,
-      model_shapes.cell_num_units, model_shapes.batch_size, input_mode,
-      rnn_direction_mode(), rnn_mode(), data_type, algo_config, dropout(),
-      seed(), dropout_state_allocator, use_padded_io);
-  TF_RETURN_IF_ERROR(rnn_desc_s.status());
-
-  *rnn_desc = std::move(rnn_desc_s).value();
-  return OkStatus();
-}
-
-template <>
-Status CudnnRNNKernelCommon::GetCachedRnnDescriptor<bfloat16>(
-    OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
-    const RnnInputMode& input_mode, const AlgorithmConfig& algo_config,
-    RnnStateCache* cache, RnnDescriptor** rnn_desc, bool use_padded_io) {
-  auto key = std::make_pair(model_shapes, algo_config.algorithm());
-  RnnScratchSpace& rnn_state = (*cache)[key];
-  if (rnn_state.rnn_desc == nullptr || ResetRndGenState()) {
-    CudnnRNNSpaceAllocator* dropout_state_allocator =
-        new CudnnRNNSpaceAllocator(context);
-    rnn_state.dropout_state_allocator.reset(dropout_state_allocator);
-    Status status = CreateRnnDescriptor<float>(
-        context, model_shapes, input_mode, algo_config, dropout_state_allocator,
-        &rnn_state.rnn_desc, use_padded_io);
-    TF_RETURN_IF_ERROR(status);
-  }
-  *rnn_desc = rnn_state.rnn_desc.get();
-  return OkStatus();
-}
 
 // A class that returns the size of the opaque parameter buffer. The user should
 // use that to create the actual parameter buffer for training. However, it
@@ -1931,12 +1904,14 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     }
 
     const auto& modeltypes = model_types();
+    const DataType dtype =
+        std::is_same_v<T, bfloat16> ? DT_FLOAT : input->dtype();
     CudnnRnnParameters rnn_params(
         model_shapes.num_layers, model_shapes.input_size,
         model_shapes.num_units, model_shapes.max_seq_length,
         model_shapes.batch_size, model_shapes.dir_count,
         /*has_dropout=*/std::abs(dropout()) > 1e-8, is_training(),
-        modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
+        modeltypes.rnn_mode, modeltypes.rnn_input_mode, dtype);
 
     if (AutotuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
       VLOG(1) << "Using existing best Cudnn RNN algorithm "
