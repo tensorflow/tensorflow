@@ -5144,11 +5144,6 @@ alias(
 )
 
 alias(
-    name = "distribute",
-    actual = "//tensorflow/python/training:distribute",
-)
-
-alias(
     name = "py_checkpoint_reader",
     actual = "//tensorflow/python/training:py_checkpoint_reader",
 )
