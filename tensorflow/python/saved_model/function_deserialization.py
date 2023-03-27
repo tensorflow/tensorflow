@@ -128,7 +128,9 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       function_spec_proto.fullargspec)
 
   # Convert a method function into a non method.
-  if function_spec_proto.is_method:
+  if function_spec_proto.is_method or (
+      typeless_fullargspec.args and typeless_fullargspec.args[0] == "self"
+  ):
     if not typeless_fullargspec.args:
       raise NotImplementedError(
           "Cannot deserialize a method function without a named "
