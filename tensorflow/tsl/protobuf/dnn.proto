@@ -174,3 +174,9 @@ message ConvolutionDescriptorProto {
   // Tensorflow node name, same as in NodeDef, for debugging purposes.
   string name = 7;
 }
+
+// FusedMHAKind kind
+enum FusedMHAKind {
+  BMM1_OUTPUT_INPUT_TYPE = 0;
+  BMM1_OUTPUT_FLOAT = 1;
+}
