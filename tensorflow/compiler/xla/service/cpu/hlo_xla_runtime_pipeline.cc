@@ -84,7 +84,8 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createPreSparsificationRewritePass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(), mlir::SparsificationOptions(),
-      mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
+      mlir::SparseTensorConversionOptions(), /*createSparseDeallocs=*/false,
+      /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
