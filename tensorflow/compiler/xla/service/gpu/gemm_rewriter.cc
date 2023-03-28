@@ -901,22 +901,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const std::vector<HloInstruction *> gemm_users = existing_gemm->users();
     HloInstruction *reduce_damax = nullptr;
     if (gemm_users.size() == 2) {
-      // Once Relu is fused, abs op will be elided since abs(Relu) = Relu.
+      // In the presence of a ReLU activation, the abs instruction is elided
+      // since abs(ReLU(x)) = ReLU(x).
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
       bool has_relu_epilogue =
           (config.epilogue() == GemmBackendConfig::BIAS_RELU ||
            config.epilogue() == GemmBackendConfig::RELU);
       for (int i = 0; i < gemm_users.size(); ++i) {
-        HloInstruction *reduce =
+        HloInstruction *maybe_reduce =
             has_relu_epilogue ? gemm_users[i] : gemm_users[i]->users()[0];
 
         if ((has_relu_epilogue || gemm_users[i]->opcode() == HloOpcode::kAbs &&
                                       gemm_users[i]->users().size() == 1) &&
-            reduce->opcode() == HloOpcode::kReduce &&
-            reduce->operands().size() == 2 &&
-            reduce->operand(1)->opcode() == HloOpcode::kConstant &&
-            ShapeUtil::IsScalar(reduce->operand(1)->shape())) {
+            maybe_reduce->opcode() == HloOpcode::kReduce &&
+            maybe_reduce->operands().size() == 2 &&
+            maybe_reduce->operand(1)->opcode() == HloOpcode::kConstant &&
+            ShapeUtil::IsScalar(maybe_reduce->operand(1)->shape())) {
+          HloInstruction *reduce = maybe_reduce;
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
           if (reduce->operand(1)->literal().Get<float>({}) <= 0. &&
