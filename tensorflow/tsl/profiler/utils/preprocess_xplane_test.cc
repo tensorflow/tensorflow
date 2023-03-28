@@ -200,6 +200,54 @@ TEST(PreprocessXPlane, MissingLegacyStatTest) {
   });
 }
 
+TEST(PreprocessXPlane, HostRunIdPreprocessorTest) {
+  XSpace space;
+  XPlane* plane = space.add_planes();
+  XPlaneBuilder plane_builder(plane);
+  plane_builder.ReserveLines(2);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  int64_t host_run_id = int64_t{582974244};
+  int64_t device_run_id = int64_t{46103332};
+  CreateXEvent(
+      &plane_builder, &line_builder,
+      GetHostEventTypeStr(HostEventType::kDoEnqueueContinuationProgram), 100,
+      100, {});
+  CreateXEvent(&plane_builder, &line_builder,
+               GetHostEventTypeStr(HostEventType::kDoEnqueueProgram), 100, 100,
+               {{StatType::kRunId, int64_t{host_run_id}}});
+  CreateXEvent(&plane_builder, &line_builder,
+               GetHostEventTypeStr(HostEventType::kTpuExecuteOp), 200, 100,
+               {{StatType::kRunId, int64_t{device_run_id}}});
+  CreateXEvent(&plane_builder, &line_builder,
+               GetHostEventTypeStr(HostEventType::kCompleteCallbacks), 300, 100,
+               {{StatType::kRunId, int64_t{host_run_id}}});
+  line_builder = plane_builder.GetOrCreateLine(1);
+  PreprocessXSpace(&space);
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Type() == HostEventType::kDoEnqueueContinuationProgram) {
+        auto run_id = event.GetStat(StatType::kRunId);
+        ASSERT_FALSE(run_id.has_value());
+      } else if (event.Type() == HostEventType::kDoEnqueueProgram) {
+        auto run_id = event.GetStat(StatType::kRunId);
+        ASSERT_TRUE(run_id.has_value());
+        ASSERT_EQ(run_id->IntValue(), device_run_id);
+      } else if (event.Type() == HostEventType::kTpuExecuteOp) {
+        auto run_id = event.GetStat(StatType::kRunId);
+        ASSERT_TRUE(run_id.has_value());
+        ASSERT_EQ(run_id->IntValue(), device_run_id);
+      } else if (event.Type() == HostEventType::kCompleteCallbacks) {
+        auto run_id = event.GetStat(StatType::kRunId);
+        ASSERT_TRUE(run_id.has_value());
+        ASSERT_EQ(run_id->IntValue(), device_run_id);
+      } else {
+        CHECK(false);
+      }
+    });
+  });
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl
