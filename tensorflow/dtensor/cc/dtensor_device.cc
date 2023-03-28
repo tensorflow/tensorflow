@@ -2071,14 +2071,11 @@ void DTensorDevice::ExecuteRegularOperation(
       RETURN_STATUS(status, TF_INTERNAL,
                     "Expected one output from VarHandleOp");
     }
-    NameAttrList name_and_attrs;
-    ASSIGN_OR_RETURN_C_STATUS(name_and_attrs, FetchAttributes(attributes),
-                              status);
 
     RETURN_C_STATUS_IF_NOT_OK(
         llvm::cast<ResourceHandleWithLayout>(typed_outputs[0].get())
-            ->UpdateShapeAndDType(name_and_attrs.attr().at("shape").shape(),
-                                  name_and_attrs.attr().at("dtype").type()),
+            ->UpdateShapeAndDType(eager_attributes.attr().at("shape").shape(),
+                                  eager_attributes.attr().at("dtype").type()),
         status);
   }
 
