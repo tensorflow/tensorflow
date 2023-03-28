@@ -474,7 +474,10 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_40:.*]] = mhlo.constant dense<-0.0142647391>
   // CHECK: %[[TMP_41:.*]] = mhlo.add %[[TMP_39]], %[[TMP_40]]
   // CHECK: %[[TMP_42:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_25]]
-  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[TMP_42]], %[[TMP_41]]
+  // CHECK: %[[TMP_43:.*]] = mhlo.divide %[[TMP_42]], %[[TMP_41]]
+  // CHECK-DAG: %[[TMP_44:.*]] = mhlo.constant dense<-1.000000e+00>
+  // CHECK-DAG: %[[TMP_45:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[RESULT:.*]] = mhlo.clamp %[[TMP_44]], %[[TMP_43]], %[[TMP_45]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %1 : tensor<f32>
