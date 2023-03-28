@@ -3055,6 +3055,15 @@ py_library(
 )
 
 py_library(
+    name = "ref_variable",
+    srcs = ["ops/ref_variable.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":variables",
+    ],
+)
+
+py_library(
     name = "gradient_checker",
     srcs = ["ops/gradient_checker.py"],
     srcs_version = "PY3",
