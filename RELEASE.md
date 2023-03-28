@@ -59,6 +59,8 @@
         libraries (like sklearn or pycocotools) into Keras as first-class Keras
         metrics.
     *   Added `tf.keras.optimizers.Lion` optimizer.
+    *   Added `tf.keras.layers.SpectralNormalization` layer wrapper to perform
+        spectral normalization on the weights of a target layer.
     *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
         `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
         exporting the model the best-scoring model as evaluated by a
