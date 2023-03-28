@@ -21,6 +21,7 @@ import pickle
 import re
 import sys
 import time
+import timeit
 import unittest
 import weakref
 
@@ -4589,6 +4590,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RecursionError):
       recursive_fn(constant_op.constant(5))
+
+  @test_util.run_v2_only
+  def test_grappler_optimization(self):
+    @polymorphic_function.function
+    def brancher(inp):
+      x = constant_op.constant(1)
+      for _ in range(1000):
+        if inp:
+          x = x + constant_op.constant(1)
+        else:
+          x = x + constant_op.constant(2)
+      return x
+
+    @polymorphic_function.function
+    def brancher_true():
+      left = constant_op.constant(True)
+      x = constant_op.constant(1)
+      for _ in range(1000):
+        if left:
+          x = x + constant_op.constant(1)
+        else:
+          x = x + constant_op.constant(2)
+      return x
+
+    x = constant_op.constant(True)
+    self.assertEqual(brancher(x), brancher_true())  # Trace each function once.
+
+    benchmark = min(timeit.repeat(lambda: brancher(x), repeat=5, number=100))
+    opt_benchmark = min(timeit.repeat(brancher_true, repeat=5, number=100))
+
+    # Constant folded execution is usually 15 - 20 times faster. Here we check
+    # for a 5x speedup to account for various machines the test might run on.
+    self.assertLess(opt_benchmark * 5, benchmark)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
