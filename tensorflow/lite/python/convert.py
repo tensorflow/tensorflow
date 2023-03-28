@@ -32,6 +32,7 @@ from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
+from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
@@ -332,19 +333,37 @@ def convert(
   # pipeline surfaces errors instead, and can be safely run in-process.
   if enable_mlir_converter or not _deprecated_conversion_binary:
     try:
-      model_str = wrap_toco.wrapped_toco_convert(
+      return wrap_toco.wrapped_toco_convert(
           model_flags.SerializeToString(),
           conversion_flags.SerializeToString(),
           input_data_str,
           debug_info_str,
           enable_mlir_converter,
       )
-      return model_str
     except Exception as e:
       converter_error = ConverterError(str(e))
 
       for error_data in _metrics_wrapper.retrieve_collected_errors():
         converter_error.append_error(error_data)
+        # Seldom we encounter the case where an unsupported
+        # `StatefulPartitionedCallOp` is not inlined and remains in the final
+        # IR. If this occurs we can set `guarantee_all_funcs_one_use` and retry.
+        # This makes the converter copy functions definitions called by
+        # multiple StatefulPartitionedCall, thus allowing them to be properly
+        # inlined.
+        if (
+            error_data.error_code
+            == converter_error_data_pb2.ConverterErrorData.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
+            and not conversion_flags.guarantee_all_funcs_one_use
+        ):
+          conversion_flags.guarantee_all_funcs_one_use = True
+          return convert(
+              model_flags,
+              conversion_flags,
+              input_data_str,
+              debug_info_str,
+              enable_mlir_converter,
+          )
       raise converter_error
 
   return _run_deprecated_conversion_binary(

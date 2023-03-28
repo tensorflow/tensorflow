@@ -387,6 +387,7 @@ pytype_strict_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
@@ -395,7 +396,7 @@ pytype_strict_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -418,8 +419,10 @@ pytype_strict_contrib_test(
     deps = [
         ":convert",
         ":interpreter",
-        ":lite_constants",
         ":op_hint",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
+        "//tensorflow/lite/python/metrics:metrics_wrapper",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
