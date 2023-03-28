@@ -1042,6 +1042,9 @@ Concrete Functions:
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
 
+    if platform.machine() == "s390x" and "aarch64" in str(target_triple):
+      self.skipTest("Skipping arm tests on s390x.")
+
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = self.AOTCompileDummyModel()
     func = getattr(dummy_model, func)

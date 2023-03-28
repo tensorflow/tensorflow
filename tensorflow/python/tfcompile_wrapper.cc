@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/Support/Host.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
@@ -44,8 +45,10 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         tensorflow::tfcompile::MainFlags flags;
         flags.graph = std::move(graph);
         flags.config = std::move(config);
-        flags.target_triple = std::move(target_triple);
-        flags.target_cpu = std::move(target_cpu);
+        flags.target_triple = std::move(target_triple.empty() ?
+                       llvm::sys::getDefaultTargetTriple() : target_triple);
+        flags.target_cpu = std::move(target_cpu.empty() ?
+                       llvm::sys::getHostCPUName().str() : target_cpu);
         flags.target_features = std::move(target_features);
         flags.entry_point = std::move(entry_point);
         flags.cpp_class = std::move(cpp_class);
@@ -62,7 +65,7 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         tensorflow::MaybeRaiseFromStatus(tensorflow::tfcompile::Main(flags));
       },
       py::arg("graph") = "", py::arg("config") = "",
-      py::arg("target_triple") = "x86_64-pc-linux", py::arg("target_cpu") = "",
+      py::arg("target_triple") = "", py::arg("target_cpu") = "",
       py::arg("target_features") = "", py::arg("entry_point") = "entry",
       py::arg("cpp_class") = "", py::arg("out_function_object") = "out_model.o",
       py::arg("out_metadata_object") = "out_helper.o",

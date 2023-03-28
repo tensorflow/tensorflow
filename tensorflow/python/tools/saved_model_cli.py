@@ -184,7 +184,7 @@ _SMCLI_VARIABLES_TO_FEED = flags.DEFINE_string(
     ' object.')
 
 _SMCLI_TARGET_TRIPLE = flags.DEFINE_string(
-    name='target_triple', default='x86_64-pc-linux',
+    name='target_triple', default='',
     help='Triple identifying a target variation, containing information such as'
     ' processor architecture, vendor, operating system, and environment. '
     'Defaults to \'x86_64-pc-linux\'.')
