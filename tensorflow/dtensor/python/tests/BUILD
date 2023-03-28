@@ -140,6 +140,40 @@ dtensor_test(
     ],
 )
 
+dtensor_test(
+    name = "device_test",
+    srcs = ["device_test.py"],
+    additional_backends = [TPU_V3_DONUT_BACKEND],
+    main = "device_test.py",
+    shard_count = {
+        TPU_V3_DONUT_BACKEND: 32,
+    },
+    tags = [
+        "nomultivm",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:dtensor_device",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_strict_test(
     name = "input_util_test",
     srcs = ["input_util_test.py"],
