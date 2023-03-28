@@ -3493,6 +3493,7 @@ std::tuple<int, int> GetTensorVectorSizeAndDim(
   return std::make_tuple(vector_size, vector_dim);
 }
 
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
 tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     absl::Span<const int64_t> dims, absl::Span<const int64_t> strides,
     int64_t uid, dnn::DataType dtype, int64_t vec_count, int64_t vec_dim,
@@ -3500,8 +3501,26 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
     cudnnBackendTensorReordering_t cudnn_tensor_order_type =
         CUDNN_TENSOR_REORDERING_NONE,
     bool is_value = false) {
-  if (cudnn_tensor_order_type != CUDNN_TENSOR_REORDERING_NONE &&
-      (CUDNN_VERSION) < 8300) {
+  auto tensor = cudnn_frontend::TensorBuilder()
+                    .setDim(dims.size(), dims.data())
+                    .setStride(strides.size(), strides.data())
+                    .setId(uid)
+                    .setAlignment(32)
+                    .setDataType(ToCudnnDataType(dtype))
+                    .setVectorCountAndDimension(vec_count, vec_dim)
+                    .setVirtual(is_virtual)
+                    .setReorderType(cudnn_tensor_order_type)
+                    .setByValue(is_value)
+                    .build();
+  RETURN_MSG_IF_CUDNN_ERROR(tensor);
+  return tensor;
+}
+#else
+tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> strides,
+    int64_t uid, dnn::DataType dtype, int64_t vec_count, int64_t vec_dim,
+    bool is_virtual = false, bool is_reordered_nchw_vect = false) {
+  if (is_reordered_nchw_vect && (CUDNN_VERSION) < 8300) {
     return tsl::errors::Internal(
         "reordered nchw_vect requires cudnn 8.3+, but version was %d",
         (CUDNN_VERSION));
@@ -3516,14 +3535,18 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnTensor(
                     .setVirtual(is_virtual)
 // TODO(jlebar): remove guard after JAX no longer supports old cudnn
 #if CUDNN_VERSION >= 8300
-                    .setReorderType(cudnn_tensor_order_type)
+                    .setReorderType(is_reordered_nchw_vect
+
+                                        ? CUDNN_TENSOR_REORDERING_INT8x32
+                                        : CUDNN_TENSOR_REORDERING_NONE)
 #endif
-                    .setByValue(is_value)
                     .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor);
   return tensor;
 }
+#endif
 
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
 // Returns a cudnn tensor that's the output of the mask op
 tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnMaskTensor(
     std::vector<cudnn_frontend::Operation>& ops, absl::Span<const int64_t> dims,
@@ -3726,9 +3749,9 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnSoftmaxFwdTensor(
   //     use_dropout ? CUDNN_TENSOR_REORDERING_F16x16
   //                 : CUDNN_TENSOR_REORDERING_NONE;
   cudnnBackendTensorReordering_t tensor_ordering = CUDNN_TENSOR_REORDERING_NONE;
-#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
-  if (use_dropout) tensor_ordering = CUDNN_TENSOR_REORDERING_F16x16;
-#endif
+  if (use_dropout) {
+    tensor_ordering = CUDNN_TENSOR_REORDERING_F16x16;
+  }
   TF_ASSIGN_OR_RETURN(
       auto divide_output_tensor,
       CreateCudnnTensor(dims, strides, 'd', dtype, 1, -1,
@@ -3766,7 +3789,6 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnSoftmaxFwdTensor(
   return divide_output_tensor;
 }
 
-#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
 // Returns a cudnn tensor that's the output of the dropout op
 tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnDropoutTensor(
     std::vector<cudnn_frontend::Operation>& ops, absl::Span<const int64_t> dims,
@@ -3854,6 +3876,7 @@ tsl::StatusOr<cudnn_frontend::Tensor> CreateCudnnDropoutTensor(
   return dropout_scale_out_tensor;
 }
 #endif
+
 tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
                        dnn::DataType output_type,
@@ -3899,16 +3922,28 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
 
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
   cudnnBackendTensorReordering_t tensor_ordering_type =
       filter_descriptor.layout() ==
               dnn::FilterLayout::kOutputInputYX32_CudnnReordered
           ? CUDNN_TENSOR_REORDERING_INT8x32
           : CUDNN_TENSOR_REORDERING_NONE;
-  TF_ASSIGN_OR_RETURN(
-      auto tensor_w,
-      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
-                        vector_size, vector_dim,
-                        /*is_virtual=*/false, tensor_ordering_type));
+#else
+  bool is_reordered_nchw_vect =
+      filter_descriptor.layout() ==
+      dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
+#endif
+
+  TF_ASSIGN_OR_RETURN(auto tensor_w,
+                      CreateCudnnTensor(filter_dims, filter_strides, 'w',
+                                        input_type, vector_size, vector_dim,
+                                        /*is_virtual=*/false,
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
+                                        tensor_ordering_type
+#else
+                                        is_reordered_nchw_vect
+#endif
+                                        ));
 
   // conv_desc.
   auto mode = convolution_descriptor.convolution_not_crosscorr()
@@ -4037,16 +4072,28 @@ GetCudnnFusedOperationGraph(
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
 
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
   cudnnBackendTensorReordering_t tensor_ordering_type =
       filter_descriptor.layout() ==
               dnn::FilterLayout::kOutputInputYX32_CudnnReordered
           ? CUDNN_TENSOR_REORDERING_INT8x32
           : CUDNN_TENSOR_REORDERING_NONE;
-  TF_ASSIGN_OR_RETURN(
-      auto tensor_w,
-      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
-                        vector_size, vector_dim,
-                        /*is_virtual=*/false, tensor_ordering_type));
+#else
+  bool is_reordered_nchw_vect =
+      filter_descriptor.layout() ==
+      dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
+#endif
+
+  TF_ASSIGN_OR_RETURN(auto tensor_w,
+                      CreateCudnnTensor(filter_dims, filter_strides, 'w',
+                                        input_type, vector_size, vector_dim,
+                                        /*is_virtual=*/false,
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
+                                        tensor_ordering_type
+#else
+                                        is_reordered_nchw_vect
+#endif
+                                        ));  // cuDNN 8.3 fails here
 
   // For the purposes of the cudnn graph, say that the bias tensor has the same
   // layout as the output tensor.  It doesn't actually matter, because bias is a
@@ -4080,9 +4127,15 @@ GetCudnnFusedOperationGraph(
   // kFloat). If it's not, then cuDNN silently does the reordering under the
   // hood, which yields incorrect results as we already do the reordering
   // ourselves.
-  auto maybe_tensor_b = CreateCudnnTensor(
-      bias_dims, bias_strides, 'b', bias_type, vector_size, vector_dim,
-      /*is_virtual=*/false, tensor_ordering_type);  // cuDNN 8.3 fails here
+  auto maybe_tensor_b = CreateCudnnTensor(bias_dims, bias_strides, 'b',
+                                          bias_type, vector_size, vector_dim,
+                                          /*is_virtual=*/false,
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
+                                          tensor_ordering_type
+#else
+                                          is_reordered_nchw_vect
+#endif
+  );  // cuDNN 8.3 fails here
   if (!maybe_tensor_b.ok()) {
     maybe_tensor_b = CreateCudnnTensor(bias_dims, bias_strides, 'b', bias_type,
                                        vector_size, vector_dim);
@@ -4415,6 +4468,7 @@ GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
   return std::make_unique<cudnn_frontend::OperationGraph>(std::move(op_graph));
 }
 
+#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
 tsl::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnFusedMHAOperationGraph(
     const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
@@ -4547,7 +4601,6 @@ GetCudnnFusedMHAOperationGraph(
         std::make_shared<cudnn_frontend::Tensor>(std::move(softmax_fwd_out));
 
     if (use_dropout) {
-#if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
       // Create dropout tensor
       TF_ASSIGN_OR_RETURN(
           auto dropout_out,
@@ -4559,10 +4612,6 @@ GetCudnnFusedMHAOperationGraph(
       bmm2_input_tensor =
           std::make_shared<cudnn_frontend::Tensor>(std::move(dropout_out));
     }
-#else
-      return tsl::errors::Unimplemented("Supported only for cuDNN >= 8.7.0");
-    }
-#endif
   }
   std::vector<int64_t> bmm2_rhs_dims =
       bmm2_rhs_descriptor.GetCudnnCompatibleDimensions(false);
@@ -4624,6 +4673,7 @@ GetCudnnFusedMHAOperationGraph(
           << "\nOpGraph: " << op_graph.describe();
   return std::make_unique<cudnn_frontend::OperationGraph>(std::move(op_graph));
 }
+#endif
 
 }  // namespace
 
@@ -6073,7 +6123,7 @@ CudnnSupport::FusedMHASoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+#if CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   // Create empty descriptors for bias and mask tensors
@@ -6100,7 +6150,7 @@ CudnnSupport::FusedMHASoftmaxRunnerFromDesc(
           std::move(runner))};
 #else
   return tsl::errors::Unimplemented(
-      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
+      "Cudnn execution plans are only supported with Cudnn >= 8.8.");
 #endif
 }
 
@@ -6115,7 +6165,7 @@ CudnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
     const dnn::TensorDescriptor& output_descriptor,
     const dnn::TensorDescriptor& mask_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+#if CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   bool use_dropout = dropout_rate && *dropout_rate > 0.0;
@@ -6140,7 +6190,7 @@ CudnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
           std::move(runner))};
 #else
   return tsl::errors::Unimplemented(
-      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
+      "Cudnn execution plans are only supported with Cudnn >= 8.8.");
 #endif
 }
 
@@ -6156,7 +6206,7 @@ CudnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
     const dnn::TensorDescriptor& mask_descriptor,
     const dnn::TensorDescriptor& bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+#if CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   bool use_dropout = dropout_rate && *dropout_rate > 0.0;
   TF_ASSIGN_OR_RETURN(auto op_graph,
@@ -6180,7 +6230,7 @@ CudnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
       std::move(runner))};
 #else
   return tsl::errors::Unimplemented(
-      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
+      "Cudnn execution plans are only supported with Cudnn >= 8.8.");
 #endif
 }
 
@@ -6195,7 +6245,7 @@ CudnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
     const dnn::TensorDescriptor& output_descriptor,
     const dnn::TensorDescriptor& bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+#if CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   // Create empty descriptors for mask tensors
   dnn::TensorDescriptor empty_mask_desc;
@@ -6220,7 +6270,7 @@ CudnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
           std::move(runner))};
 #else
   return tsl::errors::Unimplemented(
-      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
+      "Cudnn execution plans are only supported with Cudnn >= 8.8.");
 #endif
 }
 
