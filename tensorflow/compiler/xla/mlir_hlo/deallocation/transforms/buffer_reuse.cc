@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 
+#include "deallocation/IR/deallocation_ops.h"
 #include "deallocation/transforms/passes.h"
 #include "deallocation/utils/util.h"
 #include "llvm/ADT/STLExtras.h"
@@ -39,163 +39,6 @@ limitations under the License.
 namespace mlir {
 namespace deallocation {
 namespace {
-
-// Finds the start of a memref use chain (e.g. subview of cast of alloc). Stops
-// at block arguments and allocs. If `useDeallocateInvariants` is set, assumes
-// that hlo-deallocate was run previously and the invariants that it guarantees
-// still hold: each ranked memref block argument should have a corresponding
-// unranked ownership indicator argument.
-Value rootAlloc(Value v, bool useDeallocateInvariants) {
-  if (useDeallocateInvariants) {
-    if (auto bbarg = llvm::dyn_cast<BlockArgument>(v)) {
-      if (v.getType().isa<UnrankedMemRefType>()) {
-        return v;
-      }
-
-      auto memrefArgs = llvm::to_vector(llvm::make_filter_range(
-          bbarg.getParentBlock()->getArguments(),
-          [](BlockArgument arg) { return arg.getType().isa<MemRefType>(); }));
-      auto unrankedMemrefArgs = llvm::to_vector(llvm::make_filter_range(
-          bbarg.getParentBlock()->getArguments(), [](BlockArgument arg) {
-            return arg.getType().isa<UnrankedMemRefType>();
-          }));
-
-      // Find the ownership indicator for the block argument.
-      for (auto [memref, alloc] : llvm::zip(memrefArgs, unrankedMemrefArgs)) {
-        if (memref == bbarg) {
-          return alloc;
-        }
-      }
-
-      // There may not be an ownership indicator, for example if this is a
-      // function block argument.
-      return v;
-    }
-  }
-
-  if (llvm::isa_and_present<memref::SubViewOp, memref::CastOp,
-                            memref::ExpandShapeOp, memref::CollapseShapeOp,
-                            memref::ReshapeOp, memref::ViewOp,
-                            memref::ReinterpretCastOp, memref::TransposeOp>(
-          v.getDefiningOp())) {
-    return rootAlloc(v.getDefiningOp()->getOperand(0), useDeallocateInvariants);
-  }
-  return v;
-}
-
-// Eliminates redundant owernship arguments for memrefs that are always owned
-// by the block. This helps with hoisting and reuse.
-// TODO(jreiffers): Rewrite and simplify this, if possible.
-void elideRedundantOwnershipArgs(RegionBranchOpInterface op) {
-  bool isFor = llvm::isa<scf::ForOp>(op);
-  if (!llvm::isa<scf::WhileOp>(op) && !isFor) {
-    return;
-  }
-
-  SmallVector<size_t> resultIndices(op->getNumResults());
-  std::iota(resultIndices.begin(), resultIndices.end(), 0);
-
-  // Get the root allocs of all operands and arguments while the invariants are
-  // still intact.
-  DenseMap<Value, Value> rootAllocs;
-  for (auto operand : op->getOperands()) {
-    rootAllocs[operand] = rootAlloc(operand, true);
-  }
-  for (auto& region : op->getRegions()) {
-    for (auto arg : region.getArguments()) {
-      rootAllocs[arg] = rootAlloc(arg, true);
-    }
-    for (auto operand :
-         region.getBlocks().front().getTerminator()->getOperands()) {
-      rootAllocs[operand] = rootAlloc(operand, true);
-    }
-  }
-
-  for (auto& region : op->getRegions()) {
-    llvm::SmallVector<size_t> memrefArgIndices;
-    llvm::SmallVector<size_t> ownershipArgIndices;
-
-    llvm::SmallVector<Value> memrefArgs;
-    llvm::SmallVector<Value> ownershipArgs;
-    for (auto [index, arg] : llvm::enumerate(region.getArguments())) {
-      if (arg.getType().isa<UnrankedMemRefType>()) {
-        ownershipArgs.push_back(arg);
-        ownershipArgIndices.push_back(index);
-      } else if (arg.getType().isa<MemRefType>()) {
-        memrefArgs.push_back(arg);
-        memrefArgIndices.push_back(index);
-      }
-    }
-
-    // Only proceed if this region has the standard form after
-    // buffer-deallocation.
-    if (memrefArgs.size() != ownershipArgs.size()) continue;
-
-    llvm::SmallBitVector argsToDrop(ownershipArgs.size(), true);
-    auto predecessors = getPredecessorRegions(op, region.getRegionNumber());
-    for (const auto& pred : predecessors) {
-      for (unsigned i = 0; i < argsToDrop.size(); ++i) {
-        Value argRoot =
-            rootAllocs[pred.getPredecessorOperand(memrefArgIndices[i])];
-        Value ownerRoot =
-            rootAllocs[pred.getPredecessorOperand(ownershipArgIndices[i])];
-        bool same = argRoot && argRoot == ownerRoot;
-        argsToDrop[i] = argsToDrop[i] && same;
-      }
-    }
-
-    for (int64_t i = static_cast<int64_t>(argsToDrop.size()) - 1; i >= 0; --i) {
-      if (!argsToDrop[i]) continue;
-
-      for (auto& pred : predecessors) {
-        if ((pred.predecessorOp == op && isFor) ||
-            (pred.predecessorRegionIndex == 0 && !isFor)) {
-          size_t resultToDrop =
-              ownershipArgIndices[i] - pred.successorValueIndex;
-          resultIndices[resultToDrop] =
-              memrefArgIndices[i] - pred.successorValueIndex;
-          for (auto& index : resultIndices) {
-            if (index > resultToDrop) --index;
-          }
-        }
-        pred.predecessorOp->eraseOperands(pred.predecessorOperandIndex +
-                                          ownershipArgIndices[i] -
-                                          pred.successorValueIndex);
-      }
-      // Cast to the right type.
-      OpBuilder b(&region.getBlocks().front().front());
-      region.getArgument(ownershipArgIndices[i])
-          .replaceAllUsesWith(b.create<memref::CastOp>(
-              region.getLoc(), ownershipArgs[i].getType(), memrefArgs[i]));
-      region.eraseArgument(ownershipArgIndices[i]);
-    }
-  }
-
-  auto newOp = moveRegionsToNewOpButKeepOldOp(op);
-  SmallVector<Value> results;
-  OpBuilder b(op.getContext());
-  b.setInsertionPointAfter(newOp);
-  for (auto [oldIndex, newIndex] : llvm::enumerate(resultIndices)) {
-    if (oldIndex == newIndex) {
-      results.push_back(newOp->getResult(newIndex));
-    } else {
-      results.push_back(b.create<memref::CastOp>(newOp.getLoc(),
-                                                 op->getResultTypes()[oldIndex],
-                                                 newOp->getResult(newIndex)));
-    }
-  }
-
-  op->replaceAllUsesWith(results);
-  op->erase();
-}
-
-void elideRedundantOwnershipArgs(Block& block) {
-  block.walk(
-      [](RegionBranchOpInterface rbi) { elideRedundantOwnershipArgs(rbi); });
-  block.walk([](memref::DeallocOp dealloc) {
-    dealloc.setOperand(rootAlloc(dealloc.getMemref(), false));
-  });
-}
 
 SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
                                SmallVector<Value> freeAllocs) {
@@ -227,7 +70,7 @@ SmallVector<Value> hoistAllocs(Operation* parent, Region& region,
         alloc->moveBefore(parent);
         result.push_back(alloc);
       } else {
-        op->replaceAllUsesWith(ValueRange{*reusable});
+        alloc->replaceAllUsesWith(ValueRange{*reusable});
         dealloc->erase();
         op = op->getNextNode();
         alloc->erase();
@@ -538,6 +381,12 @@ void promoteToStack(memref::DeallocOp dealloc) {
   OpBuilder b(alloc);
   auto alloca = b.create<memref::AllocaOp>(
       alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>());
+  for (auto* user : alloc->getUsers()) {
+    if (auto ownership = llvm::dyn_cast<OwnOp>(user)) {
+      b.setInsertionPoint(ownership);
+      ownership->replaceAllUsesWith(b.create<NullOp>(ownership.getLoc()));
+    }
+  }
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();
   dealloc->erase();
@@ -672,8 +521,6 @@ struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
   void runOnOperation() override {
     bool result;
     auto& block = getOperation().getBody().front();
-    // This assumes invariants that it breaks, so it can only be run once.
-    elideRedundantOwnershipArgs(block);
     // Copy elimination requires small live-ranges to work well. We only extend
     // live ranges afterwards, so running it more than once doesn't help.
     eliminateCopies(block, /*root=*/block);
