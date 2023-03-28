@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -25,12 +26,18 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace deallocation {
@@ -41,11 +48,14 @@ bool isMemref(Value v) { return v.getType().isa<BaseMemRefType>(); }
 struct TransformResult {
   // Allocs that are no longer owned by the current block. Note that it is valid
   // for an alloc to be both in `acquired` and `released`, if it was temporarily
-  // released and then reacquired.
-  llvm::SmallVector<Value> released;
+  // released and then reacquired. It is valid to release an alloc that's not
+  // owned by the current block, if some ancestor that is reachable without
+  // crossing a loop boundary owns it.
+  breaks_if_you_move_ops::ValueSet released;
 
-  // Allocs that are now owned by the current block.
-  llvm::SmallVector<Value> acquired;
+  // Allocs that are now owned by the current block. Order matters here - it's
+  // the same order as in the terminator/result list.
+  SmallVector<Value> acquired;
 };
 
 bool doesAlias(Operation* op, Value v,
@@ -66,14 +76,15 @@ struct Deallocator {
   // transferred to the parent block.
   // `ownedMemrefs` contains the memrefs owned by the immediate parent block at
   // the point of `op`.
-  TransformResult transformOp(
+  FailureOr<TransformResult> transformOp(
       Operation* op, const breaks_if_you_move_ops::ValueSet& ownedMemrefs);
-  TransformResult transformOp(
+  FailureOr<TransformResult> transformOp(
       RegionBranchOpInterface op,
       const breaks_if_you_move_ops::ValueSet& ownedMemrefs);
-  // Returns the values within the block that are retained, but does not add
-  // them to the terminator.
-  llvm::SmallVector<Value> transformBlock(Block& block, bool ownsInputs = true);
+  // Transforms the block and collects newly acquired/released allocs. Does not
+  // modify the block's terminator.
+  FailureOr<TransformResult> transformBlock(Block& block,
+                                            bool ownsInputs = true);
 
   // If `value` is guaranteed to be derived from a particular alloc, returns it.
   // Otherwise, returns null.
@@ -93,32 +104,34 @@ Value Deallocator::getUniquePossibleAlloc(Value v) {
   return result;
 }
 
-llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
-                                                     bool ownsInputs) {
+FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
+                                                       bool ownsInputs) {
+  auto loc = block.getParent()->getLoc();
+  auto ownershipTy = OwnershipIndicatorType::get(loc.getContext());
   // Introduce block arguments for the owned inputs.
   breaks_if_you_move_ops::ValueSet ownedMemrefs;
-
   if (ownsInputs) {
     for (auto arg : llvm::to_vector(
              llvm::make_filter_range(block.getArguments(), isMemref))) {
       // Add an argument for a potentially owned memref.
-      auto newArg =
-          block.addArgument(OwnershipIndicatorType::get(arg.getContext()),
-                            block.getParent()->getLoc());
+      auto newArg = block.addArgument(ownershipTy, loc);
       ownedMemrefs.insert(newArg);
       aliases.unionSets(arg, newArg);
     }
   }
 
   for (auto& op : llvm::make_early_inc_range(block.without_terminator())) {
-    auto result = transformOp(&op, ownedMemrefs);
+    auto opResult = transformOp(&op, ownedMemrefs);
+    if (failed(opResult)) return failure();
     // Remove released memrefs.
-    for (auto v : result.released) {
-      bool wasRemoved = ownedMemrefs.erase(v);
-      (void)wasRemoved;
-      assert(wasRemoved && "released an alloc that was not owned");
+    for (auto v : opResult->released) {
+      if (!ownedMemrefs.erase(v)) {
+        block.getParentOp()->emitOpError(
+            "released an alloc that was not owned");
+        return failure();
+      }
     }
-    ownedMemrefs.insert(result.acquired.begin(), result.acquired.end());
+    ownedMemrefs.insert(opResult->acquired.begin(), opResult->acquired.end());
   }
   auto yieldedMemrefs = llvm::to_vector(
       llvm::make_filter_range(block.getTerminator()->getOperands(), isMemref));
@@ -135,7 +148,7 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
              !doesAlias(insertionPoint->getPrevNode(), v, aliases)) {
         insertionPoint = insertionPoint->getPrevNode();
       }
-      ImplicitLocOpBuilder b(block.getParent()->getLoc(), insertionPoint);
+      ImplicitLocOpBuilder b(loc, insertionPoint);
       b.create<RetainOp>(TypeRange{}, ValueRange{}, ValueRange{v});
     }
   }
@@ -153,8 +166,11 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
   auto ownedByLeader = groupByLeader(ownedMemrefs);
 
   // Create one retain per equivalence class.
-  ImplicitLocOpBuilder b(block.getParent()->getLoc(), block.getTerminator());
-  SmallVector<Value> results(yieldedMemrefs.size());
+  ImplicitLocOpBuilder b(loc, block.getTerminator());
+  TransformResult blockResult;
+  auto null = b.create<NullOp>();
+  blockResult.acquired =
+      SmallVector<Value>(yieldedMemrefs.size(), null.getResult());
   for (auto [leader, yielded] : yieldedByLeader) {
     auto& ownedGroup = ownedByLeader[leader];
     if (ownedGroup.size() == 1 && yielded.size() == 1 &&
@@ -162,35 +178,29 @@ llvm::SmallVector<Value> Deallocator::transformBlock(Block& block,
       // We know the alloc that the yielded memref is derived from, so we can
       // omit the retain op. This would better be a canonicalization pattern,
       // but it requires an alias analysis, which we already have here.
-      results[llvm::find(yieldedMemrefs, yielded.front()) -
-              yieldedMemrefs.begin()] = ownedGroup.front();
-    } else {
-      auto types =
-          llvm::to_vector(llvm::map_range(yielded, [](Value v) -> Type {
-            return OwnershipIndicatorType::get(v.getContext());
-          }));
-      auto retain = b.create<RetainOp>(types, yielded, ownedGroup);
-      for (auto [retained, result] : llvm::zip(retain.getResults(), yielded)) {
-        aliases.unionSets(retained, result);
-        results[llvm::find(yieldedMemrefs, result) - yieldedMemrefs.begin()] =
-            retained;
-      }
+      blockResult.acquired[llvm::find(yieldedMemrefs, yielded.front()) -
+                           yieldedMemrefs.begin()] = ownedGroup.front();
+      continue;
+    }
+
+    SmallVector<Type> types(yielded.size(), ownershipTy);
+    auto retain = b.create<RetainOp>(types, yielded, ownedGroup);
+    for (auto [retained, result] : llvm::zip(retain.getResults(), yielded)) {
+      aliases.unionSets(retained, result);
+      blockResult.acquired[llvm::find(yieldedMemrefs, result) -
+                           yieldedMemrefs.begin()] = retained;
     }
   }
-  for (auto [result, yielded] : llvm::zip(results, yieldedMemrefs)) {
-    if (!result) {
-      result = b.create<NullOp>().getResult();
-    }
-  }
-  return results;
+  if (!llvm::is_contained(blockResult.acquired, null.getResult())) null.erase();
+  return blockResult;
 }
 
-TransformResult Deallocator::transformOp(
+FailureOr<TransformResult> Deallocator::transformOp(
     RegionBranchOpInterface op,
     const breaks_if_you_move_ops::ValueSet& ownedMemrefs) {
   SmallVector<int64_t> originalNumArgsByRegion;
-  SmallVector<SmallVector<Value>> retentionSetsByRegion;
-  retentionSetsByRegion.reserve(op->getNumRegions());
+  SmallVector<TransformResult> transformResultsByRegion;
+  transformResultsByRegion.reserve(op->getNumRegions());
 
   for (auto [index, region] : llvm::enumerate(op->getRegions())) {
     assert(region.getBlocks().size() <= 1 &&
@@ -198,24 +208,32 @@ TransformResult Deallocator::transformOp(
     auto edges = getSuccessorRegions(op, index);
     originalNumArgsByRegion.push_back(region.getNumArguments());
 
-    auto& retentionSet = retentionSetsByRegion.emplace_back();
+    auto& result = transformResultsByRegion.emplace_back();
     if (region.empty()) continue;
 
     // Transform region and collect owned memrefs.
-    retentionSet = transformBlock(region.front());
+    auto transformResultOrError = transformBlock(region.front());
+    if (failed(transformResultOrError)) {
+      return failure();
+    }
+    if (!transformResultOrError->released.empty()) {
+      op->emitOpError("block unexpectededly released a memref");
+    }
+    result = *std::move(transformResultOrError);
   }
 
   // Adjust terminator operands.
-  for (auto [region, retentionSet] :
-       llvm::zip(op->getRegions(), retentionSetsByRegion)) {
+  for (auto [region, transformResult] :
+       llvm::zip(op->getRegions(), transformResultsByRegion)) {
     if (region.empty()) continue;
     auto* terminator = region.front().getTerminator();
-    terminator->setOperands(terminator->getNumOperands(), 0, retentionSet);
+    terminator->setOperands(terminator->getNumOperands(), 0,
+                            transformResult.acquired);
   }
 
   ImplicitLocOpBuilder b(op.getLoc(), op);
   SmallVector<Value> operands = op->getOperands();
-  SmallVector<Value> released;
+  breaks_if_you_move_ops::ValueSet released;
   // If we pass an owned memref to the loop and don't reuse it afterwards, we
   // can transfer ownership.
   for (auto operand : llvm::make_filter_range(operands, isMemref)) {
@@ -237,7 +255,7 @@ TransformResult Deallocator::transformOp(
       // This is an alloc that is not used again, so we can pass ownership
       // to the loop.
       op->insertOperands(op->getNumOperands(), *releasable);
-      released.push_back(*releasable);
+      released.insert(*releasable);
     } else {
       // Either the operand is not an alloc or it's reused.
       op->insertOperands(op->getNumOperands(), b.create<NullOp>().getResult());
@@ -272,11 +290,11 @@ TransformResult Deallocator::transformOp(
     setMemrefAliases(args.take_front(n), args.drop_front(n));
   }
   setMemrefAliases(newResults, retained);
-  return {released, retained};
+  return TransformResult{released, retained};
 }
 
 // Returns the set of values that are potentially owned by the op.
-TransformResult Deallocator::transformOp(
+FailureOr<TransformResult> Deallocator::transformOp(
     Operation* op, const breaks_if_you_move_ops::ValueSet& ownedMemrefs) {
   if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op)) {
     return transformOp(rbi, ownedMemrefs);
@@ -286,10 +304,20 @@ TransformResult Deallocator::transformOp(
     b.setInsertionPointAfter(alloc);
     auto owned = b.create<deallocation::OwnOp>(alloc.getLoc(), alloc);
     aliases.unionSets(alloc, owned);
-    return {{}, {owned}};
+    return TransformResult{{}, {owned}};
+  }
+  if (llvm::isa<memref::DeallocOp>(op)) {
+    op->emitOpError("expected no dealloc ops to be present in the input");
+    return failure();
   }
   if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
-    return {{}, transformBlock(func.getBody().front(), /*ownsInputs=*/false)};
+    auto transformedBlock =
+        transformBlock(func.getBody().front(), /*ownsInputs=*/false);
+    if (failed(transformedBlock)) return failure();
+    if (!transformedBlock->released.empty()) {
+      op->emitOpError("block unexpectededly released a memref");
+    }
+    return TransformResult{{}, transformedBlock->acquired};
   }
 
   // Deallocate ops inside unknown op regions.
@@ -300,7 +328,13 @@ TransformResult Deallocator::transformOp(
     assert(llvm::none_of(op->getResults(), isMemref));
     for (auto& region : op->getRegions()) {
       for (auto& block : region.getBlocks()) {
-        transformBlock(block, /*ownsInputs=*/false);
+        auto transformedBlock = transformBlock(block, /*ownsInputs=*/false);
+        if (failed(transformedBlock)) return failure();
+        if (!transformedBlock->acquired.empty() ||
+            !transformedBlock->released.empty()) {
+          op->emitOpError("block unexpectededly released or returned an alloc");
+          return failure();
+        }
       }
     }
   }
@@ -315,7 +349,7 @@ TransformResult Deallocator::transformOp(
     }
   }
   // No new allocations or releases.
-  return {};
+  return TransformResult{};
 }
 
 #define GEN_PASS_DEF_DEALLOCATEPASS
@@ -323,7 +357,9 @@ TransformResult Deallocator::transformOp(
 
 struct DeallocatePass : public impl::DeallocatePassBase<DeallocatePass> {
   void runOnOperation() override {
-    Deallocator().transformOp(getOperation(), {});
+    if (failed(Deallocator().transformOp(getOperation(), {}))) {
+      signalPassFailure();
+    }
   }
 };
 

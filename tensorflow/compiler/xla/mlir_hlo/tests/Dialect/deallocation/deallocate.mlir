@@ -189,8 +189,8 @@ func.func @yield_same_alloc_twice() {
 // CHECK-SAME: %[[NULL1]]
 // CHECK-SAME: %[[NULL2]]
 // CHECK: } do {
-// CHECK-NEXT: %[[RETAIN:.*]]:2 = deallocation.retain(%[[ALLOC]], %[[ALLOC]]) of()
 // CHECK-NEXT: %[[NULL:.*]] = deallocation.null
+// CHECK-NEXT: %[[RETAIN:.*]]:2 = deallocation.retain(%[[ALLOC]], %[[ALLOC]]) of()
 // CHECK-NEXT: scf.yield %[[ALLOC]], %[[ALLOC]], %[[RETAIN]]#1, %[[NULL]]
 
 // -----
