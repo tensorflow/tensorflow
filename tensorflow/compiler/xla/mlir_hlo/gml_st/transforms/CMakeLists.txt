@@ -59,7 +59,6 @@ add_mlir_library(GmlStPasses
 
   DEPENDS
   MLIRGmlStPassIncGen
-  MLIRGmlStUtils
 
   LINK_COMPONENTS
   Core
@@ -70,6 +69,7 @@ add_mlir_library(GmlStPasses
   MLIRDestinationStyleOpInterface
   MLIRDialectUtils
   MLIRFuncDialect
+  MLIRGmlStUtils
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms
