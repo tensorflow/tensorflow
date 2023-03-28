@@ -370,6 +370,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
