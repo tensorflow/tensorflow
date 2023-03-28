@@ -4411,7 +4411,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
 ; CHECK-NEXT:    [[C2_BCAST_PADDED:%[^ ]+]] = f32[16,32]{1,0} pad([[C2_BCAST]], [[C3]]), padding=0_3x0_1
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK-NEXT:    [[C4:%[^ ]+]] = f32[] constant(2)
+; CHECK-NEXT:    [[C4:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,32]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[C2_BCAST_PADDED]], [[P2]], [[P3]], /*index=5*/[[C4]], [[C4]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
