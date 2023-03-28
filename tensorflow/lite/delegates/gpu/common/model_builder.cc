@@ -3230,7 +3230,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 // TODO(impjdi): Check ops' parameters.
 TfLiteIntArray* GetOpsToReplace(
     TfLiteContext* context, bool allow_quant_ops, int max_delegated_partitions,
-    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops) {
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops,
+    int start_node_index, int end_node_index) {
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
@@ -3290,7 +3291,13 @@ TfLiteIntArray* GetOpsToReplace(
   delegates::FP16GraphPartitionHelper partition_helper(context,
                                                        node_supported_fn);
   std::set<std::string> unsupported_nodes_info;
-  if (partition_helper.Partition(&unsupported_nodes_info) != kTfLiteOk) {
+#ifndef TFLITE_DEBUG_DELEGATE
+  auto res = partition_helper.Partition(&unsupported_nodes_info);
+#else
+  auto res = partition_helper.Partition(&unsupported_nodes_info,
+                                        start_node_index, end_node_index);
+#endif
+  if (res != kTfLiteOk) {
     return TfLiteIntArrayCreate(0);
   }
 

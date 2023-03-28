@@ -1483,9 +1483,17 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
     excluded_ops.insert(kTfLiteBuiltinSplit);
     excluded_ops.insert(kTfLiteBuiltinSplitV);
   }
+#ifndef TFLITE_DEBUG_DELEGATE
   TfLiteIntArray* ops_to_replace =
       GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
                       gpu_delegate->MaxDelegatedPartitions(), &excluded_ops);
+#else
+  TfLiteIntArray* ops_to_replace =
+      GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
+                      gpu_delegate->MaxDelegatedPartitions(), &excluded_ops,
+                      gpu_delegate->options().first_delegate_node_index,
+                      gpu_delegate->options().last_delegate_node_index);
+#endif
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, kRegistration, ops_to_replace, delegate);
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Created %d GPU delegate kernels.",
