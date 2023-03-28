@@ -29,6 +29,10 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_TRUE(x.ok());
+#endif
+
 namespace {
 
 class AddOpModel : public SingleOpModel {
