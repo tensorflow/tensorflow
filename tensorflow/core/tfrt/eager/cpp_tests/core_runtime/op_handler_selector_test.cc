@@ -111,7 +111,7 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
         device_name_(device_name),
         dtype_(dtype) {}
 
-  void Release() override { Unref(); }
+  void Release() { Unref(); }
 
   tensorflow::DataType DataType() const override { return dtype_; }
   Status Shape(tensorflow::PartialTensorShape* shape) const override {
@@ -146,7 +146,7 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
   tensorflow::AbstractTensorInterface* Resolve(Status* status) override {
     llvm_unreachable("unimplemented method.");
   }
-  ImmediateExecutionTensorHandle* Copy() override {
+  ImmediateExecutionTensorHandle* Copy() {
     Ref();
     return this;
   }
