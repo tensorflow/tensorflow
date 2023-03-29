@@ -12,15 +12,18 @@ py_library(
         ":debug_mode",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:function_utils",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:variable_utils",
     ],
 )
 
 py_library(
     name = "debug_mode",
     srcs = ["debug_mode.py"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(
@@ -98,7 +101,6 @@ py_library(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:options",
@@ -118,7 +120,11 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -151,6 +157,12 @@ py_library(
         "//tensorflow/python/framework:type_utils",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -189,9 +201,10 @@ py_library(
         "//tensorflow/python:optional_ops_gen",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/saved_model:nested_structure_coder",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -200,9 +213,10 @@ py_library(
     srcs = ["options.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/data/util:options",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -220,11 +234,11 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/types",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
