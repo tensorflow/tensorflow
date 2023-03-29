@@ -405,6 +405,14 @@ Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
 
+  // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
+  // the transpose/reshape has multiple users.  This helps int8 models, which
+  // tend to have lots of transpose+reshape's (converting between NCHW and
+  // NCHW_VECT_C).  Without this, those reshape+transposes can get materialized
+  // out, which is really bad for perf.
+  layout_insensitive_algsimp_opts
+      .set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+
   if (gpu_target_config.platform_name == "ROCM") {
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
