@@ -184,6 +184,9 @@ struct DeallocationSimplificationPass
         op.erase();
       }
     });
+    getOperation()->walk([](OwnOp op) {
+      if (op.use_empty()) op.erase();
+    });
   }
 };
 

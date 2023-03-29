@@ -47,8 +47,7 @@ func.func @loop_nested_alloc(
 // CHECK:     %[[RETAINED_IF:.*]] = deallocation.retain(%[[IF]]#0) of(%[[B_OWNERSHIP]], %[[IF]]#1)
 // CHECK:     scf.yield %[[IF]]#0, %[[RETAINED_IF]]
 // CHECK:   }
-// CHECK:   %[[RETAINED_FOR2:.*]] = deallocation.retain(%[[FOR2]]#0) of(%[[FOR2]]#1)
-// CHECK:   scf.yield %[[FOR2]]#0, %[[RETAINED_FOR2]]
+// CHECK:   scf.yield %[[FOR2]]#0, %[[FOR2]]#1
 // CHECK: }
 // CHECK: memref.copy %[[FOR1]]#0, %[[OUT]]
 // CHECK: deallocation.retain() of(%[[FOR1]]#1)
@@ -92,8 +91,7 @@ func.func @nested_if() -> (memref<2xf32>, memref<2xf32>) {
 // CHECK-NEXT:     %[[NULL:.*]] = deallocation.retain(%[[ALLOC1]]) of()
 // CHECK-NEXT:     scf.yield %[[ALLOC1]], %[[NULL]]
 // CHECK-NEXT:   }
-// CHECK-NEXT:   %[[IF2_RETAINED:.*]] = deallocation.retain(%[[IF2]]#0) of(%[[IF2]]#1)
-// CHECK-NEXT:   scf.yield %[[IF2]]#0, %[[IF2_RETAINED]]
+// CHECK-NEXT:   scf.yield %[[IF2]]#0, %[[IF2]]#1
 // CHECK-NEXT: }
 // CHECK-NEXT: deallocation.retain(%[[ALLOC0]], %[[IF1]]#0) of(%[[ALLOC0_OWNED]], %[[ALLOC1_OWNED]], %[[IF1]]#1)
 // CHECK-NEXT: return %[[ALLOC0]], %[[IF1]]#0 : memref<2xf32>, memref<2xf32>
@@ -159,8 +157,6 @@ func.func @if_without_else() {
 // CHECK-SIMPLE-LABEL: @if_without_else
 // CHECK-SIMPLE:       scf.if
 // CHECK-SIMPLE-NEXT:    memref.alloc
-// TODO(jreiffers): Remove the `own` op in simplification.
-// CHECK-SIMPLE-NEXT:     deallocation.own
 // CHECK-SIMPLE-NEXT:    test.use
 // CHECK-SIMPLE-NEXT:    memref.dealloc
 
@@ -244,3 +240,106 @@ func.func @unknown_op() {
 // TODO(jreiffers): Remove the `own` op in simplification.
 // CHECK-SIMPLE: test.use
 // CHECK-SIMPLE-NEXT: memref.dealloc
+
+// -----
+
+func.func @unconditional_realloc(%init: index, %new: index) {
+  %alloc = memref.alloc(%init) : memref<?xi32>
+  "test.use"(%alloc) : (memref<?xi32>) -> ()
+  %realloc = memref.realloc %alloc(%new) : memref<?xi32> to memref<?xi32>
+  "test.use"(%realloc) : (memref<?xi32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @unconditional_realloc
+// CHECK-NEXT: memref.alloc
+// CHECK-NEXT: deallocation.own
+// CHECK-NEXT: test.use
+// CHECK-NEXT: %[[REALLOC:.*]] = memref.realloc
+// CHECK-NEXT: %[[OWNED:.*]] = deallocation.own %[[REALLOC]]
+// CHECK-NEXT: test.use
+// CHECK-NEXT: deallocation.retain() of(%[[OWNED]])
+// CHECK-NEXT: return
+
+// CHECK-SIMPLE-LABEL: @unconditional_realloc
+// CHECK-SIMPLE-NEXT: memref.alloc
+// CHECK-SIMPLE-NEXT: test.use
+// CHECK-SIMPLE-NEXT: %[[REALLOC:.*]] = memref.realloc
+// CHECK-SIMPLE-NEXT: test.use
+// CHECK-SIMPLE-NEXT: memref.dealloc %[[REALLOC]]
+
+// -----
+
+func.func @realloc_in_if(%init: index) {
+  %alloc = memref.alloc(%init) : memref<?xi32>
+  %cond = "test.make_condition"() : () -> (i1)
+  %new_alloc = scf.if %cond -> memref<?xi32> {
+    %new_size = "test.make_index"() : () -> (index)
+    %ret = memref.realloc %alloc(%new_size) : memref<?xi32> to memref<?xi32>
+    scf.yield %ret : memref<?xi32>
+  } else {
+    scf.yield %alloc: memref<?xi32>
+  }
+  "test.use"(%new_alloc) : (memref<?xi32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @realloc_in_if
+// CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
+// CHECK-NEXT: %[[OWNED:.*]] = deallocation.own %[[ALLOC]]
+// CHECK-NEXT: test.make_condition
+// CHECK-NEXT: %[[NEW_ALLOC:.*]]:2 = scf.if
+// CHECK-NEXT:   test.make_index
+// CHECK-NEXT:   %[[REALLOC:.*]] = memref.realloc %[[ALLOC]]
+// CHECK-NEXT:   %[[REALLOC_OWNED:.*]] = deallocation.own %[[REALLOC]]
+// CHECK-NEXT:   scf.yield %[[REALLOC]], %[[REALLOC_OWNED]]
+// CHECK-NEXT: } else {
+// CHECK-NEXT:   deallocation.retain(%[[ALLOC]]) of()
+// CHECK-NEXT:   scf.yield %[[ALLOC]], %[[OWNED]]
+// CHECK-NEXT: }
+// CHECK-NEXT: "test.use"(%[[NEW_ALLOC]]#0)
+// CHECK-NEXT: deallocation.retain() of(%[[NEW_ALLOC]]#1)
+// CHECK-NEXT: return
+
+func.func @realloc_in_if_strange_but_ok(%size: index, %cond: i1) {
+  %alloc = memref.alloc(%size) : memref<?xi32>
+  scf.if %cond -> memref<?xi32> {
+    %realloc = memref.realloc %alloc(%size) : memref<?xi32> to memref<?xi32>
+    %new = memref.alloc(%size) : memref<?xi32>
+    scf.yield %new : memref<?xi32>
+  } else {
+    "test.dummy"() : () -> ()
+    scf.yield %alloc : memref<?xi32>
+  }
+  return
+}
+
+// CHECK-LABEL: @realloc_in_if_strange_but_ok
+// CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
+// CHECK-NEXT: %[[OWNED:.*]] = deallocation.own %[[ALLOC]]
+// CHECK-NOT: deallocation.retain() of(%[[OWNED]])
+
+func.func @realloc_in_loop(%size: index, %lb: index, %ub: index, %step: index) {
+  %alloc = memref.alloc(%size) : memref<?xi32>
+  scf.for %i = %lb to %ub step %step iter_args(%arg0 = %alloc) -> memref<?xi32> {
+    %cond = "test.make_condition"() : () -> i1
+    %new = scf.if %cond -> memref<?xi32> {
+      %realloc = memref.realloc %arg0(%size) : memref<?xi32> to memref<?xi32>
+      scf.yield %realloc : memref<?xi32>
+    } else {
+      scf.yield %arg0 : memref<?xi32>
+    }
+    scf.yield %new : memref<?xi32>
+  }
+  return
+}
+
+// CHECK-LABEL: @realloc_in_loop
+// CHECK-NEXT: memref.alloc
+// CHECK-NEXT: %[[OWNED:.*]] = deallocation.own
+// CHECK-NEXT: %[[FOR:.*]]:2 = scf.for
+// CHECK:        %[[IF:.*]]:2 = scf.if
+// CHECK:        scf.yield %[[IF]]#0, %[[IF]]#1
+// CHECK-NEXT: }
+// CHECK-NEXT: deallocation.retain() of(%[[FOR]]#1)
+// CHECK-NEXT: return
