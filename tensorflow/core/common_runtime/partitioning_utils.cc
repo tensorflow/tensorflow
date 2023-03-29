@@ -247,15 +247,15 @@ Status UpdateArgAndRetvalMetadata(
     arg->AddAttr("index", i);
   }
   if (arg_alloc_attrs != nullptr) {
-    TF_RETURN_IF_ERROR(full_type::WeakSingleDeviceSetAllocAttrsForArgs(
+    TF_RETURN_IF_ERROR(full_type::SingleDeviceSetAllocAttrsForArgs(
         arg_nodes, ints_on_device, *arg_alloc_attrs));
   }
   for (int i = 0; i < ret_nodes.size(); ++i) {
     Node* ret = ret_nodes[i].first;
     ret->AddAttr("index", i);
   }
-  if (ret_alloc_attrs != nullptr) {
-    TF_RETURN_IF_ERROR(full_type::WeakSingleDeviceSetAllocAttrsForRets(
+  if (ret_alloc_attrs) {
+    TF_RETURN_IF_ERROR(full_type::SingleDeviceSetAllocAttrsForRets(
         ret_nodes, ints_on_device, *ret_alloc_attrs));
   }
 

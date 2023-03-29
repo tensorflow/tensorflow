@@ -367,7 +367,8 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
           << "Full type information with TFT_SHAPE_TENSOR for int32 for eager '"
           << tensor_handle->DebugString();
     }
-    tensorflow::full_type::LogMemoryTypeMismatch(use_host_memory, ft);
+    TF_RETURN_IF_ERROR(
+        tensorflow::full_type::CheckMemoryType(use_host_memory, ft));
     if (use_host_memory) {
       *result = cpu_device;
     } else {

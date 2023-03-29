@@ -656,10 +656,10 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // inference over function body to derive the correct input/output memory
   // types.
   MemoryTypeVector input_memory_types;
-  TF_RETURN_IF_ERROR(full_type::WeakSetMemoryTypeForArgs(
+  TF_RETURN_IF_ERROR(full_type::SetMemoryTypeForArgs(
       fbody->arg_nodes, fbody->arg_types, input_memory_types));
   MemoryTypeVector output_memory_types;
-  TF_RETURN_IF_ERROR(full_type::WeakSetMemoryTypeForRets(
+  TF_RETURN_IF_ERROR(full_type::SetMemoryTypeForRets(
       fbody->ret_nodes, fbody->ret_types, output_memory_types));
 
   // Constructs a CallOp kernel for running the instantiated function.
@@ -1064,14 +1064,14 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   ExecutorArgsFromOptions(opts, frame, exec_args);
 
   std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
-  s = full_type::WeakSetAllocAttrsForArgs(fbody->arg_nodes, fbody->arg_types,
-                                          args_alloc_attrs);
+  s = full_type::SetAllocAttrsForArgs(fbody->arg_nodes, fbody->arg_types,
+                                      args_alloc_attrs);
   if (!s.ok()) {
     done(s);
     return;
   }
-  s = full_type::WeakSetAllocAttrsForRets(fbody->ret_nodes, fbody->ret_types,
-                                          rets_alloc_attrs);
+  s = full_type::SetAllocAttrsForRets(fbody->ret_nodes, fbody->ret_types,
+                                      rets_alloc_attrs);
   if (!s.ok()) {
     done(s);
     return;
