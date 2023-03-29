@@ -57,10 +57,16 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+using ::tensorflow::monitoring::testing::CellReader;
+
+constexpr char kGraphCompilerHloOpCount[] =
+    "/tensorflow/core/tf2xla/graph_compilation_hlo_generated_op_count";
 
 class XlaCompilerTest : public ::testing::Test {
  protected:
@@ -999,9 +1005,13 @@ TEST_F(XlaCompilerTest, FunctionCallWithConstants) {
   // Builds a description of the argument.
   std::vector<XlaCompiler::Argument> args;
 
+  CellReader<int64_t> op_reader(kGraphCompilerHloOpCount);
+
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                      std::move(graph), args, &result));
+
+  EXPECT_NE(op_reader.Delta("constant"), 0);
 }
 
 // Tests CompileFunction with a local function lookup failing, fails with
