@@ -107,5 +107,7 @@ class LeakyReluOp : public OpKernel {
   float alpha_;
 };
 
-REGISTER(LeakyReluOp, CPU, "LeakyRelu", functor::leakyrelu, bfloat16);
+// Register LeakyRelu here for bfloat16 and float32
+// Other datatypes are registered in relu_op.cc
+REGISTER2(LeakyReluOp, CPU, "LeakyRelu", functor::leakyrelu, bfloat16, float);
 }  // namespace tensorflow
