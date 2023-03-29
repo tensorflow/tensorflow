@@ -16,7 +16,7 @@
 # ==============================================================================
 #
 # setup.python.sh: Install a specific Python version and packages for it.
-# Usage: setup.python.sh <pyversion> <requirements.txt>
+# Usage: setup.python.sh <pyversion> <requirements.txt> <runtime mode>
 set -xe
 
 source ~/.bashrc
@@ -32,15 +32,20 @@ $VERSION-distutils
 EOF
 /setup.packages.sh pythons.txt
 
-# Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
-# for any Python version present
-pushd /usr/include/x86_64-linux-gnu
-for f in $(ls | grep python); do
-  # set up symlink for devtoolset-9
-  rm -f /dt9/usr/include/x86_64-linux-gnu/$f
-  ln -s /usr/include/x86_64-linux-gnu/$f /dt9/usr/include/x86_64-linux-gnu/$f
-done
-popd
+if [[ $3 ]]; then
+    echo "Runtime mode"
+else
+    echo "Dev mode"
+    # Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
+    # for any Python version present
+    pushd /usr/include/x86_64-linux-gnu
+    for f in $(ls | grep python); do
+      # set up symlink for devtoolset-9
+      rm -f /dt9/usr/include/x86_64-linux-gnu/$f
+      ln -s /usr/include/x86_64-linux-gnu/$f /dt9/usr/include/x86_64-linux-gnu/$f
+    done
+    popd
+fi
 
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc

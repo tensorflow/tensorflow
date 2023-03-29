@@ -1,0 +1,45 @@
+################################################################################
+FROM ubuntu:20.04 as runtime
+################################################################################
+
+# Install dependencies
+COPY setup.packages.sh setup.packages.sh
+
+# Install ROCM
+ARG TF_PKGS_DIR=tmp/packages
+ARG TENSORFLOW_PACKAGE=tf_nightly_rocm
+ARG ROCM_VERSION=5.4.0
+ARG CUSTOM_INSTALL
+ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
+ENV ROCM_PATH=${ROCM_PATH}
+COPY ${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE} /tf/pkg
+COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
+COPY setup.packages.sh /setup.packages.sh
+COPY setup.rocm.sh /setup.rocm.sh
+COPY devel.packages.rocm.txt /devel.packages.rocm.txt
+RUN /setup.rocm.sh $ROCM_VERSION
+
+# All lines past this point are reset when $CACHEBUSTER is set. We need this
+# for Python specifically because we install some nightly packages which are
+# likely to change daily.
+ARG CACHEBUSTER=0
+RUN echo $CACHEBUSTER
+
+# Setup Python environment. PYTHON_VERSION is e.g. "python3.8"
+ARG PYTHON_VERSION
+COPY setup.python.sh /setup.python.sh
+COPY devel.requirements.txt /devel.requirements.txt
+RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt true
+
+# Setup ENV variables for tensorflow pip build
+ENV TF_NEED_ROCM=1
+ENV TF_ROCM_GCC=1
+ENV ROCM_TOOLKIT_PATH=${ROCM_PATH}
+
+RUN pip install --no-cache-dir ${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE}
+RUN echo 'ALL ALL=NOPASSWD:ALL' | tee /etc/sudoers.d/sudo-nopasswd
+
+RUN git clone https://github.com/tensorflow/models.git
+RUN git clone https://github.com/tensorflow/examples.git
+RUN git clone https://github.com/tensorflow/autograph.git
+RUN git clone https://github.com/tensorflow/benchmarks.git
