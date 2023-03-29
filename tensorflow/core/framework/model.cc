@@ -51,6 +51,14 @@ constexpr double kOutlierSigmas = 2.0;
 // processing time. For example, a value of 1 would mean that the target time is
 // faster than 84% of the gap times.
 constexpr double kTargetTimeSigmas = 1.0;
+// The scaling factors to apply to buffer optimization when upsizing or
+// downsizing a buffer.
+constexpr double kBufferUpsizeMultiplier = 2.0;
+constexpr double kBufferDownsizeMultipliter = 0.9;
+
+constexpr char kFlatMap[] = "FlatMap";
+constexpr char kInterleave[] = "Interleave";
+constexpr char kParallelInterleave[] = "ParallelInterleave";
 
 // A class to prune outliers given a set of points. To use it, instantiate an
 // object and call the `GetCleanPoints()` method.
@@ -188,6 +196,29 @@ class NodeParallelismParameters {
   absl::flat_hash_map<const Node*, Parameter*> node_parallelism_;
 };
 
+// Replaces `\[[0-9].+\]` with `\[\]`.
+std::string RemoveArrayIndices(absl::string_view s) {
+  absl::string_view::size_type start_pos = 0;
+  absl::string_view::size_type pos;
+  std::string res;
+  do {
+    pos = s.find("[", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + start_pos, pos - start_pos + 1);
+    start_pos = pos + 1;
+    pos = s.find("]", start_pos);
+    if (pos == absl::string_view::npos) {
+      break;
+    }
+    res.append(s.data() + pos, 1);
+    start_pos = pos + 1;
+  } while (true);
+  res.append(s.data() + start_pos, s.length() - start_pos);
+  return res;
+}
+
 // Returns true if all parameters have reached their max values.
 bool AreAllParametersMax(const Model::ModelParameters& parameters) {
   for (const auto& pair : parameters) {
@@ -233,6 +264,21 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
 // Helper function for node traversal that returns only asynchronous nodes.
 inline bool IsAsyncNode(const std::shared_ptr<Node> node) {
   return node->IsAsync();
+}
+
+// Helper function for node traversal that returns only asynchronous interleave
+// many nodes.
+inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
+  return absl::StartsWith(node->name(), kParallelInterleave);
+}
+inline bool IsAsyncInterleaveManyNode(const Node* node) {
+  return absl::StartsWith(node->name(), kParallelInterleave);
+}
+
+// Helper function for node traversal that returns nodes other than asynchronous
+// interleave many nodes.
+inline bool IsNotAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
+  return !absl::StartsWith(node->name(), kParallelInterleave);
 }
 
 // Wrapper for the square function to reduce verbosity.
@@ -1831,12 +1877,12 @@ bool Node::TryDownsizeBuffer() {
           (buffered_elements_high_ - buffered_elements_low_ + 1) <
               parameter->value) {
         double old_value = parameter->value;
-        // By default, we double buffer sizes if there is enough RAM in
-        // upsize. We cap the downsize by 1/4 of the current size to avoid
-        // undoing the previous upsize.
-        parameter->value =
-            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
-                     static_cast<int64_t>(old_value * 0.75));
+        // By default, we increase the buffer sizes by `kBufferUpsizeMultiplier`
+        // if there is enough RAM in upsize. We cap the downsize by
+        // `kBufferDownsizeMultipliter` of the current size.
+        parameter->value = std::max(
+            buffered_elements_high_ - buffered_elements_low_ + 1,
+            static_cast<int64_t>(old_value * kBufferDownsizeMultipliter));
         if (old_value != parameter->value) {
           VLOG(2) << "Downsize buffer " << long_name()
                   << "::" << parameter->name << " from " << old_value << " to "
@@ -2559,19 +2605,105 @@ double Model::ComputeTargetTimeNsec() {
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager) {
-  return OptimizeStageBasedParallelism(
+  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
+             "optimization with a target time of "
+          << optimization_params.model_input_time() << " nanoseconds.";
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    OptimizeStageBasedAsyncInterleaveManyNodes(snapshot, optimization_params,
+                                               cancellation_manager);
+  }
+  OptimizeStageBasedNonAsyncInterleaveManyNodes(
       snapshot, optimization_params.model_input_time(), optimization_params,
       cancellation_manager);
 }
 
-void Model::OptimizeStageBasedParallelism(
+void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  VLOG(2) << "Optimizing async interleave many nodes.";
+  Node::NodeVector interleave_many_nodes =
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncInterleaveManyNode);
+  if (IsAsyncInterleaveManyNode(snapshot)) {
+    interleave_many_nodes.push_back(snapshot);
+  }
+  Node::ModelParameters tunable_parameters;
+  for (auto node : interleave_many_nodes) {
+    Node::ModelParameters node_tunable_parameters =
+        node->CollectNodeTunableParameters();
+    tunable_parameters.insert(tunable_parameters.end(),
+                              node_tunable_parameters.begin(),
+                              node_tunable_parameters.end());
+  }
+  ModelTiming model_timing(snapshot);
+  ModelTimingPriorityQueue priority_queue(model_timing);
+  NodeParallelismParameters node_parallelism;
+  while (!cancellation_manager->IsCancelled()) {
+    StatusOr<std::pair<double, Node*>> critical_root_status =
+        priority_queue.PopSlowestStageRoot();
+    if (!critical_root_status.ok()) {
+      // All async interleave many nodes have been processed.
+      break;
+    }
+    std::pair<double, Node*> critical_root = critical_root_status.value();
+    if (!IsAsyncInterleaveManyNode(critical_root.second)) {
+      continue;
+    }
+    Parameter* parallelism_parameter =
+        node_parallelism.Get(critical_root.second);
+    if (parallelism_parameter == nullptr ||
+        parallelism_parameter->value >= parallelism_parameter->max) {
+      continue;
+    }
+    parallelism_parameter->value += 1.0;
+    if (TotalMaximumBufferedBytes(snapshot) >
+        optimization_params.ram_budget()) {
+      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
+      // stop optimization because we cannot improve the most critical stage.
+      // There is also a decent chance that the current optimization iteration
+      // is under-optimized. For that reason, return immediately without
+      // updating the parameter state values.
+      parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      return;
+    }
+    model_timing.ComputeNodeTotalTime(*critical_root.second);
+    // This async interleave many node has not reached its max parallelism
+    // value. Push it back to the priority queue.
+    const ModelTiming::NodeTiming* root_timing =
+        model_timing.GetTiming(critical_root.second);
+    priority_queue.Push(critical_root.second, *root_timing);
+  }
+  UpdateStateValues(&tunable_parameters);
+}
+
+void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     std::shared_ptr<Node> snapshot, double target_time_nsec,
     const OptimizationParams& optimization_params,
     CancellationManager* cancellation_manager) {
-  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
-             "optimization with a target time of "
-          << optimization_params.model_input_time() << " nanoseconds.";
-  Node::ModelParameters tunable_parameters = CollectTunableParameters(snapshot);
+  VLOG(2) << "Optimizing nodes other than async interleave many nodes.";
+  Node::NodeVector all_nodes;
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS,
+                                       IsNotAsyncInterleaveManyNode);
+    if (!IsAsyncInterleaveManyNode(snapshot)) {
+      all_nodes.push_back(snapshot);
+    }
+  } else {
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
+    all_nodes.push_back(snapshot);
+  }
+  Node::ModelParameters tunable_parameters;
+  for (auto node : all_nodes) {
+    Node::ModelParameters node_tunable_parameters =
+        node->CollectNodeTunableParameters();
+    tunable_parameters.insert(tunable_parameters.end(),
+                              node_tunable_parameters.begin(),
+                              node_tunable_parameters.end());
+  }
   // Initialize the parallelism parameter values to minimal before tuning.
   for (std::pair<string, std::shared_ptr<Parameter>>& pair :
        tunable_parameters) {
@@ -2585,6 +2717,7 @@ void Model::OptimizeStageBasedParallelism(
   StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
     return;
   }
   NodeParallelismParameters node_parallelism;
@@ -2594,19 +2727,34 @@ void Model::OptimizeStageBasedParallelism(
         node_parallelism.Get(critical_root.second);
     // Stop optimization if the critical stage has no `parallelism` parameter or
     // it has reached the max parallelism value.
-    if (parallelism_parameter == nullptr ||
-        parallelism_parameter->value >= parallelism_parameter->max) {
+    if (parallelism_parameter == nullptr) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "no_optimizable_parameter:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      break;
+    }
+    if (parallelism_parameter->value >= parallelism_parameter->max) {
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "parameter_max_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     parallelism_parameter->value += 1.0;
-    if (TotalMaximumBufferedBytes(snapshot) >
-        optimization_params.ram_budget()) {
-      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
-      // stop optimization because we cannot improve the most critical stage.
-      // There is also a decent chance that the current optimization iteration
-      // is under-optimized. For that reason, return immediately without
-      // updating the parameter state values.
-      parallelism_parameter->value -= 1.0;
+    if (cancellation_manager->IsCancelled() ||
+        TotalMaximumBufferedBytes(snapshot) >
+            optimization_params.ram_budget()) {
+      // Either the optimization thread is cancelled or increasing the
+      // parallelism by 1 exceeded ram budget. There is a decent chance that the
+      // current optimization iteration is under-optimized. For that reason,
+      // return immediately without updating the parameter state values after
+      // recording the stopping criteria.
+
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       return;
     }
     // Compute the new total time and put the node back in the queue after its
@@ -2618,6 +2766,10 @@ void Model::OptimizeStageBasedParallelism(
     if (critical_root.first <=
         (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
       parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "total_time_not_improved:",
+          RemoveArrayIndices(critical_root.second->long_name())));
       break;
     }
     // Push it back to the priority queue.
@@ -2625,6 +2777,7 @@ void Model::OptimizeStageBasedParallelism(
     // Get the next critical stage root.
     critical_root_status = priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");
       break;
     }
     critical_root = critical_root_status.value();
@@ -2672,7 +2825,7 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   }
 
   // Compute a uniform scaling factor for all buffers. Cap the factor at 2.
-  double scaling_factor = 2.0;
+  double scaling_factor = kBufferUpsizeMultiplier;
   if (max_buffered_bytes > 0) {
     scaling_factor =
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
@@ -2900,7 +3053,21 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
     if (node->output() != nullptr || timing_nodes_.contains(node->output())) {
       const auto& output_timing = timing_nodes_[node->output()];
       parent_pipeline_ratio = output_timing.pipeline_ratio;
-      if (node->num_elements() > 0 && node->output()->num_elements() > 0) {
+      auto should_estimate_first_input_ratio = [node]() {
+        // Elements of the first input of some transformations like `Interleave`
+        // are used to produce "derived" inputs whose elements are then produced
+        // as the output of the transformation. For this reason, the ratio of
+        // such inputs is not known statically and is instead estimated as the
+        // ratio of `num_elements` it produces and `num_elements` its output
+        // produces.
+        return (absl::StartsWith(node->output()->name(), kFlatMap) ||
+                absl::StartsWith(node->output()->name(), kInterleave) ||
+                absl::StartsWith(node->output()->name(),
+                                 kParallelInterleave)) &&
+               node.get() == node->output()->inputs().begin()->get() &&
+               node->num_elements() > 0 && node->output()->num_elements() > 0;
+      };
+      if (should_estimate_first_input_ratio()) {
         parent_ratio = static_cast<double>(node->num_elements()) /
                        static_cast<double>(node->output()->num_elements() +
                                            node->output()->buffered_elements());
@@ -2918,31 +3085,35 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
 
 void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  auto& node_timing = timing_nodes_[&node];
-  double input_total_time_nsec = 0.0;
-  for (auto input : node.inputs()) {
-    if (input->IsAsync()) {
-      continue;
+  auto inputs = node.inputs();
+  auto input = inputs.begin();
+  double first_input_total_time = 0.0;
+  // The total time of a node is scaled by its ratio to account for how many
+  // elements it needs to produce for its output node to produce an element. If
+  // this is an interleave node or a flat map node, then the ratio is not known
+  // statically and is instead estimated using empirical data.
+  if (absl::StartsWith(node.name(), kFlatMap) ||
+      absl::StartsWith(node.name(), kInterleave)) {
+    first_input_total_time = ComputeInterleaveManyFirstInputTotalTime(node);
+    if (input != inputs.end()) {
+      ++input;
     }
-    if (!input->autotune() || input->num_elements() <= 0) {
-      continue;
-    }
-    DCHECK(timing_nodes_.contains(input.get()))
-        << "Input " << input->long_name() << " of node " << node.long_name()
-        << " has no timing node.";
-    // We use the dynamic ratio of `num_elements` of input over that of output
-    // rather than the static `Ratio()` computed based on the type of the node
-    // (e.g. batch size of a `Batch`) because the static value can be inaccurate
-    // for nodes like an interleave node where the ratio of the first input is
-    // different from the ratio of the interleaved inputs. Moreover, this
-    // dynamic quantity should closely match the static one for nodes other than
-    // interleave nodes and is more generic since its value is specific to an
-    // input to output pair rather than a single numnber for the output node.
-    input_total_time_nsec +=
-        timing_nodes_[input.get()].total_time_nsec *
-        static_cast<double>(input->num_elements()) /
-        static_cast<double>(node.num_elements() + node.buffered_elements());
   }
+  double input_total_time_nsec = first_input_total_time;
+  for (; input != inputs.end(); ++input) {
+    if ((*input)->IsAsync()) {
+      continue;
+    }
+    if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
+      continue;
+    }
+    DCHECK(timing_nodes_.contains((*input).get()))
+        << "Input " << (*input)->long_name() << " of node " << node.long_name()
+        << " has no timing node.";
+    input_total_time_nsec +=
+        timing_nodes_[(*input).get()].total_time_nsec * node.Ratio();
+  }
+  auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
       node_timing.self_time_nsec + input_total_time_nsec;
 }
@@ -2952,7 +3123,7 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   auto& node_timing = timing_nodes_[&node];
   node_timing.total_time_nsec =
       node_timing.self_time_nsec +
-      ComputeAsyncInterleaveManyFirstInputTotalTime(node) +
+      ComputeInterleaveManyFirstInputTotalTime(node) +
       ComputeAsyncInterleaveManyInterleavedInputsTotalTime(node);
 }
 
@@ -3033,10 +3204,9 @@ double ModelTiming::ComputeAsyncInterleaveManyInterleavedInputsTotalTime(
   return input_total_time_nsec;
 }
 
-double ModelTiming::ComputeAsyncInterleaveManyFirstInputTotalTime(
-    const Node& node) {
+double ModelTiming::ComputeInterleaveManyFirstInputTotalTime(const Node& node) {
   DCHECK(timing_nodes_.contains(&node));
-  // `ParallelInterleave` is often used to interleave processing of datasets
+  // An interleave node is often used to interleave processing of datasets
   // generated from the first input, e.g. reading from IO where the first input
   // has the list of all filenames. The contribution of the first input total
   // time is proportional to the number of elements it produces over the number
@@ -3067,17 +3237,11 @@ void ModelTiming::ComputeNodeTotalTime(const Node& node) {
   if (!node.autotune() || node.num_elements() <= 0) {
     return;
   }
-#if !defined(IS_MOBILE_PLATFORM)
-  // This block of code is defined only for non-mobile platform because mobile
-  // platform lacks RTTI, i.e. the use of `dynamic_cast`.
-  if (dynamic_cast<const AsyncInterleaveMany*>(&node) != nullptr) {
+  if (absl::StartsWith(node.name(), kParallelInterleave)) {
     ComputeAsyncInterleaveManyTotalTime(node);
-  } else {
-    ComputeNonAsyncInterleaveManyTotalTime(node);
+    return;
   }
-#else   // !IS_MOBILE_PLATFORM
   ComputeNonAsyncInterleaveManyTotalTime(node);
-#endif  // !IS_MOBILE_PLATFORM
 }
 
 std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {

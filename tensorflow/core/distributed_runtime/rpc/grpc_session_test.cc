@@ -255,7 +255,7 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
     GraphDef graph_copy(graph);
     graph::SetDefaultDevice(cluster->devices()[1].name(), &graph_copy);
     auto status = session->Create(graph_copy);
-    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
+    EXPECT_EQ(absl::StatusCode::kInvalidArgument, status.code());
   }
 }
 

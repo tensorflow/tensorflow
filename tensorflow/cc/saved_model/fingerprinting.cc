@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/container/btree_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
@@ -71,7 +72,7 @@ uint64 RegularizeAndHashSignatureDefs(
 
 // The SavedObjectGraph contains two parts: the list of nodes and the map of
 // concrete functions. Regularization treats these two parts separately.
-uint64 RegularizeAndHashSavedObjectGraph(
+StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
     const SavedObjectGraph& object_graph_def) {
   // Sort `concrete_functions`, which is an unordered map from function names to
   // SavedConcreteFunction, using the suffix UID of the function name. Assumes
@@ -80,13 +81,9 @@ uint64 RegularizeAndHashSavedObjectGraph(
   absl::btree_map<int, std::string> uid_to_function_names;
   for (const auto& [name, concrete_function] :
        object_graph_def.concrete_functions()) {
-    StatusOr<int> uid = graph_regularization::GetSuffixUID(name);
     // All valid function names should end in an UID.
-    if (uid.ok()) {
-      uid_to_function_names.insert({*uid, name});
-    } else {
-      LOG(ERROR) << uid.status().error_message();
-    }
+    TF_ASSIGN_OR_RETURN(int uid, graph_regularization::GetSuffixUID(name));
+    uid_to_function_names.insert({uid, name});
   }
   uint64 result_hash = 0;
   for (const auto& [uid, function_name] : uid_to_function_names) {
@@ -115,15 +112,14 @@ uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
   if (read_status.ok()) {
     return tensorflow::Fingerprint64(data);
   } else {
-    LOG(WARNING) << read_status.error_message();
     return 0;
   }
 }
 
 }  // namespace
 
-FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
-                                    absl::string_view export_dir) {
+StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
+                                              absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
   MetaGraphDef metagraph_copy = saved_model.meta_graphs(0);
@@ -138,10 +134,10 @@ FingerprintDef CreateFingerprintDef(const SavedModel& saved_model,
   fingerprint_def.set_signature_def_hash(
       RegularizeAndHashSignatureDefs(metagraph_copy.signature_def()));
   // Set fingerprint field #4.
-  StatusOr<uint64> object_graph_hash =
-      RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def());
-  fingerprint_def.set_saved_object_graph_hash(
+  TF_ASSIGN_OR_RETURN(
+      StatusOr<uint64> object_graph_hash,
       RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
+  fingerprint_def.set_saved_object_graph_hash(object_graph_hash.value());
   // Set fingerprint field #5.
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
   // Set version of the fingerprint.
@@ -168,18 +164,25 @@ StatusOr<FingerprintDef> ReadSavedModelFingerprint(
   return found_pb;
 }
 
-std::unordered_map<std::string, uint64_t> MakeFingerprintMap(
-    const FingerprintDef& fingerprint) {
-  std::unordered_map<std::string, uint64_t> fingerprint_map;
-  fingerprint_map["saved_model_checksum"] = fingerprint.saved_model_checksum();
-  fingerprint_map["graph_def_program_hash"] =
-      fingerprint.graph_def_program_hash();
-  fingerprint_map["signature_def_hash"] = fingerprint.signature_def_hash();
-  fingerprint_map["saved_object_graph_hash"] =
-      fingerprint.saved_object_graph_hash();
-  fingerprint_map["checkpoint_hash"] = fingerprint.checkpoint_hash();
-  fingerprint_map["version"] = fingerprint.version().producer();
-  return fingerprint_map;
+std::string Singleprint(uint64 graph_def_program_hash,
+                        uint64 signature_def_hash,
+                        uint64 saved_object_graph_hash,
+                        uint64 checkpoint_hash) {
+  return std::to_string(graph_def_program_hash) + "/" +
+         std::to_string(signature_def_hash) + "/" +
+         std::to_string(saved_object_graph_hash) + "/" +
+         std::to_string(checkpoint_hash);
+}
+
+std::string Singleprint(const FingerprintDef& fingerprint) {
+  return Singleprint(
+      fingerprint.graph_def_program_hash(), fingerprint.signature_def_hash(),
+      fingerprint.saved_object_graph_hash(), fingerprint.checkpoint_hash());
+}
+
+std::string Singleprint(absl::string_view export_dir) {
+  FingerprintDef fingerprint = ReadSavedModelFingerprint(export_dir).value();
+  return Singleprint(fingerprint);
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

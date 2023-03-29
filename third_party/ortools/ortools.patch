@@ -125,6 +125,24 @@ diff '--color=auto' -u -r or-tools-7.3/ortools/util/file_util.cc or-tools-7.3-ne
    }
    const std::string output_filename = absl::StrCat(filename, file_type_suffix);
    VLOG(1) << "Writing " << output_string.size() << " bytes to "
+diff '--color=auto' -u -r or-tools-7.3/ortools/base/BUILD or-tools-7.3-new/ortools/base/BUILD
+--- or-tools-7.3/ortools/base/BUILD 2019-08-05 20:37:22.000000000 +0000
++++ or-tools-7.3-new/ortools/base/BUILD	2023-03-17 21:01:45.070628657 +0000
+@@ -137,13 +137,13 @@
+     hdrs = [
+         "recordio.h",
+     ],
+-    linkopts = ["-lz"],
+     deps = [
+         ":base",
+         ":file",
+         ":status",
+         "@com_google_absl//absl/strings:strings",
+         "@com_google_protobuf_cc//:protobuf",
++        "@zlib",
+     ],
+ )
+ 
 diff --git a/ortools/util/fp_utils.h b/ortools/util/fp_utils.h
 index 569eeddf47..7188abb29a 100644
 --- a/ortools/util/fp_utils.h

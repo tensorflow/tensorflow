@@ -185,7 +185,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                    ROCMFftType(type), 1 /* = batch */);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 1d plan:" << ret;
-            return tsl::Status{tsl::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 1d plan."};
           }
           return tsl::OkStatus();
@@ -195,7 +195,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                    elem_count_[1], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 2d plan:" << ret;
-            return tsl::Status{tsl::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 2d plan."};
           }
           return tsl::OkStatus();
@@ -206,7 +206,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                  elem_count_[2], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 3d plan:" << ret;
-            return tsl::Status{tsl::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 3d plan."};
           }
           return tsl::OkStatus();
@@ -214,20 +214,20 @@ tsl::Status ROCMFftPlan::Initialize(
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return tsl::Status{tsl::error::INVALID_ARGUMENT,
+          return tsl::Status{absl::StatusCode::kInvalidArgument,
                              "hipfftPlan only takes rank 1, 2, or 3."};
       }
     } else {
       ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT plan:" << ret;
-        return tsl::Status{tsl::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT plan."};
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for rocFFT plan:" << ret;
-        return tsl::Status{tsl::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to set auto allocation for rocFFT plan."};
       }
       switch (rank) {
@@ -237,7 +237,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                        &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 1d plan:" << ret;
-            return tsl::Status{tsl::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 1d plan."};
           }
           break;
@@ -247,7 +247,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                        &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 2d plan:" << ret;
-            return tsl::Status{tsl::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 2d plan."};
           }
           break;
@@ -257,7 +257,7 @@ tsl::Status ROCMFftPlan::Initialize(
                                        ROCMFftType(type), &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 3d plan:" << ret;
-            return tsl::Status{tsl::error::INTERNAL,
+            return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 3d plan."};
           }
           break;
@@ -265,7 +265,7 @@ tsl::Status ROCMFftPlan::Initialize(
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return tsl::Status{tsl::error::INVALID_ARGUMENT,
+          return tsl::Status{absl::StatusCode::kInvalidArgument,
                              "hipfftPlan only takes rank 1, 2, or 3."};
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
@@ -280,14 +280,14 @@ tsl::Status ROCMFftPlan::Initialize(
           output_distance, ROCMFftType(type), batch_count);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
-        return tsl::Status{tsl::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT batched plan."};
       }
     } else {
       auto ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
-        return tsl::Status{tsl::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT batched plan."};
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
@@ -295,7 +295,7 @@ tsl::Status ROCMFftPlan::Initialize(
         LOG(ERROR) << "failed to set auto allocation for rocFFT batched plan:"
                    << ret;
         return tsl::Status{
-            tsl::error::INTERNAL,
+            absl::StatusCode::kInternal,
             "Failed to set auto allocation for rocFFT batched plan."};
       }
       ret = wrap::hipfftMakePlanMany(
@@ -306,7 +306,7 @@ tsl::Status ROCMFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to make rocFFT batched plan:" << ret;
-        return tsl::Status{tsl::error::INTERNAL,
+        return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to make rocFFT batched plan."};
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
@@ -340,7 +340,7 @@ tsl::Status ROCMFftPlan::UpdateScratchAllocator(
   auto ret = wrap::hipfftSetWorkArea(parent_, plan_, scratch_.opaque());
   if (ret != HIPFFT_SUCCESS) {
     LOG(ERROR) << "failed to set work area for rocFFT plan:" << ret;
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "Failed to set work area for rocFFT plan.");
   }
   return tsl::OkStatus();

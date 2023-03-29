@@ -32,10 +32,10 @@ namespace latency {
 namespace {
 
 static constexpr char kModelPath[] =
-    "third_party/tensorflow/lite/java/demo/app/src/main/assets/"
+    "../tflite_mobilenet_float/"
     "mobilenet_v1_1.0_224.tflite";
 static constexpr char kSettingsFilePath[] =
-    "third_party/tensorflow/lite/tools/delegates/experimental/stable_delegate/"
+    "tensorflow/lite/tools/delegates/experimental/stable_delegate/"
     "test_sample_stable_delegate_settings.json";
 
 class LatencyBenchmarkTest : public ::testing::Test {

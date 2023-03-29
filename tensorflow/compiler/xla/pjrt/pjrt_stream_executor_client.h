@@ -714,6 +714,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
       std::vector<std::unique_ptr<LocalExecutable>> executables,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
+      CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices,
       PjRtStreamExecutorClient* client);
@@ -868,6 +869,7 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
   // and thus must be donated when executing the computation.
   std::vector<std::vector<int>> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
+  CompileOptions compile_options_;
 
   // True if the executables were compiled expecting arguments in a single
   // tuple.

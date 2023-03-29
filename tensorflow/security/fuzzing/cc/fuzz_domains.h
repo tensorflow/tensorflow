@@ -21,17 +21,13 @@ limitations under the License.
 
 namespace helper {
 
-inline fuzztest::Domain<tensorflow::error::Code> AnyErrorCode() {
+inline fuzztest::Domain<absl::StatusCode> AnyErrorCode() {
   // We cannot build a `Status` with error_code of 0 and a message, so force
   // error code to be non-zero.
   return fuzztest::Map(
-      [](uint32_t code) {
-        return static_cast<tensorflow::error::Code>(code);
-      },
-      fuzztest::Filter(
-        [](uint32_t code) { return code != 0; },
-        fuzztest::Arbitrary<uint32_t>()
-      ));
+      [](uint32_t code) { return static_cast<absl::StatusCode>(code); },
+      fuzztest::Filter([](uint32_t code) { return code != 0; },
+                       fuzztest::Arbitrary<uint32_t>()));
 }
 
 }  // namespace helper

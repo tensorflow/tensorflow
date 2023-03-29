@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -206,7 +205,7 @@ TF::ReshapeOp createOutputReshapeOpForDynamic(
       /*shape=*/concat_out_shape->getResults()[0]);
 }
 
-llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
+std::optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
     llvm::StringRef equation) {
   llvm::SmallDenseMap<char, int64_t> map;
   for (int64_t i = 0; i < equation.size(); ++i) {
@@ -223,7 +222,7 @@ llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
   return map;
 }
 
-llvm::Optional<llvm::SetVector<char>> GetAvailableLabels(
+std::optional<llvm::SetVector<char>> GetAvailableLabels(
     llvm::StringRef lhs, llvm::StringRef rhs, int* lhs_named_label_count,
     int* rhs_named_label_count) {
   llvm::SetVector<char> labels;
@@ -345,7 +344,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   return std::make_tuple(new_lhs, new_rhs, new_output);
 }
 
-llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
+std::optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
     llvm::StringRef equation, RankedTensorType lhs_ty,
     RankedTensorType rhs_ty) {
   llvm::StringRef lhs_rhs;

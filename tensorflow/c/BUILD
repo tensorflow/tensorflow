@@ -22,6 +22,29 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "safe_ptr_hdr",
+    srcs = ["safe_ptr.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+cc_library(
+    name = "safe_ptr",
+    srcs = [
+        "safe_ptr.cc",
+        "//tensorflow/c/eager:headers",
+    ],
+    hdrs = ["safe_ptr.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":c_api_internal",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -62,10 +85,10 @@ filegroup(
             "*test*",
         ],
     ) + [
-        "//tensorflow/tsl/c:srcs",
-        "//tensorflow/tsl/platform:ctstring",
         "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
+        "//tensorflow/tsl/c:srcs",
+        "//tensorflow/tsl/platform:ctstring",
     ],
     visibility = ["//visibility:public"],
 )
@@ -94,14 +117,17 @@ cc_library(
     name = "c_api_headers",
     hdrs = [
         "c_api.h",
-        "c_api_macros.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros_hdrs",
         ":tf_attrtype",
-        ":tf_buffer",
-        ":tf_datatype",
+        ":tf_buffer_hdrs",
+        ":tf_datatype_hdrs",
         ":tf_status_headers",
+        ":tf_tensor_hdrs",
+        # TODO: Only include tf_tstring_hdrs. Don't expose the implementation of TF_TString to API
+        # users.
         ":tf_tstring",
     ],
 )
@@ -166,6 +192,14 @@ cc_library(
 )
 
 cc_library(
+    name = "c_api_macros_hdrs",
+    hdrs = [
+        "c_api_macros.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "c_api_macros",
     hdrs = [
         "c_api_macros.h",
@@ -195,8 +229,8 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api_no_xla",
         ":c_api_internal",
+        ":c_api_no_xla",
         ":tf_attrtype",
         ":tf_buffer",
         ":tf_file_statistics",
@@ -207,8 +241,8 @@ tf_cuda_library(
         "//tensorflow/tsl/c:tsl_status",
     ] + select({
         "//tensorflow:with_xla_support": [
-            "//tensorflow/compiler/tf2xla:xla_compiler",
             "//tensorflow/compiler/jit",
+            "//tensorflow/compiler/tf2xla:xla_compiler",
         ],
         "//conditions:default": [],
     }) + if_tensorrt([
@@ -240,9 +274,9 @@ tf_cuda_library(
     deps = [
         ":c_api_internal",
         ":tf_attrtype",
-        ":tf_datatype",
         ":tf_buffer",
         ":tf_buffer_internal",
+        ":tf_datatype",
         ":tf_status_internal",
     ] + select({
         "//tensorflow:android": [
@@ -255,23 +289,23 @@ tf_cuda_library(
             ":tf_tensor",
             "@com_google_absl//absl/strings",
             "//tensorflow/c/experimental/filesystem:modular_filesystem",
-            "//tensorflow/cc/saved_model:loader_lite",
+            "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
-            "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:scope_internal",
             "//tensorflow/cc:while_loop",
+            "//tensorflow/cc/saved_model:loader_lite",
+            "//tensorflow/compiler/mlir/tfr:graph_decompose_pass",
+            "//tensorflow/compiler/mlir/tfr:node_expansion_pass",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
-            "//tensorflow/core:op_gen_lib",
-            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core:op_gen_lib",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
-            "//tensorflow/compiler/mlir/tfr:node_expansion_pass",
-            "//tensorflow/compiler/mlir/tfr:graph_decompose_pass",
         ],
     }),
     alwayslink = 1,
@@ -308,9 +342,9 @@ tf_cuda_library(
         "//tensorflow/core/transforms:__subpackages__",
     ],
     deps = [
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/c:tsl_status",
         "//tensorflow/tsl/c:tsl_status_internal",
+        "//tensorflow/tsl/platform:status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -380,7 +414,7 @@ cc_library(
     hdrs = ["tf_status.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/tsl/c:tsl_status",
+        "//tensorflow/tsl/c:tsl_status_headers",
     ],
 )
 
@@ -390,15 +424,15 @@ cc_library(
         "tf_tstring.cc",
     ],
     hdrs = [
-        "c_api_macros.h",
-        "tf_datatype.h",
-        "tf_status.h",
-        "tf_tensor.h",
         "tf_tstring.h",
     ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros_hdrs",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+        ":tf_tensor_hdrs",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/tsl/c:tsl_status",
@@ -427,6 +461,11 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_datatype_hdrs",
+    hdrs = ["tf_datatype.h"],
+)
+
+cc_library(
     name = "tf_datatype",
     srcs = ["tf_datatype.cc"],
     hdrs = ["tf_datatype.h"],
@@ -441,6 +480,17 @@ cc_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_tensor_hdrs",
+    hdrs = ["tf_tensor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_macros_hdrs",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+    ],
 )
 
 cc_library(
@@ -491,6 +541,13 @@ tf_cuda_library(
             "//tensorflow/core/platform:casts",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_buffer_hdrs",
+    hdrs = [
+        "tf_buffer.h",
+    ],
 )
 
 cc_library(
@@ -635,9 +692,9 @@ tf_cuda_library(
         ],
     }) + [
         ":c_api_macros",
+        ":tf_file_statistics",
         ":tf_status",
         ":tf_status_helper",
-        ":tf_file_statistics",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:types",
@@ -652,10 +709,10 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":c_api_internal",
-        ":tf_datatype",
-        ":tf_status",
-        ":tf_tensor",
+        ":c_api_headers",
+        ":tf_datatype_hdrs",
+        ":tf_status_headers",
+        ":tf_tensor_hdrs",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
     ],
 )
@@ -685,12 +742,12 @@ tf_cuda_library(
         "//conditions:default": [
             ":c_api_internal",
             ":tf_tensor",
-            "//tensorflow/compiler/xla/stream_executor:stream_executor",
+            "//tensorflow/c/experimental/stream_executor",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+            "//tensorflow/compiler/xla/stream_executor",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
-            "//tensorflow/c/experimental/stream_executor:stream_executor",
-            "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
 )
@@ -812,7 +869,6 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
-        "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
@@ -867,10 +923,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/149031034
-        "notsan",  # b/149031034
-    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [
@@ -942,7 +994,6 @@ tf_cuda_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [
@@ -988,7 +1039,6 @@ tf_cc_test(
     linkopts = select({
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     deps = [

@@ -32,7 +32,9 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -52,10 +54,18 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Version 1 uses MHLO, starting with version 2 use StableHLO.
+// When adding a new version, write when it was added. Also change the default
+// version in the constructor in xla.py.
+// Version 1 used MHLO & CHLO, not supported anymore.
+// Version 2 supports StableHLO & CHLO. From 10/2022.
 const int VERSION_START_STABLE_HLO = 2;
-// Version 3 supports platform checking and multiple platforms
+// Version 3 supports platform checking and multiple platforms. From 02/2023.
 const int VERSION_START_PLATFORMS = 3;
+// Version 4 supports StableHLO with compatibility guarantees.
+// Used from 03/2023.
+const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
+const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
+const int VERSION_MAXIMUM_SUPPORTED = VERSION_START_STABLE_HLO_COMPATIBILITY;
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
@@ -92,22 +102,12 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
   mlir::Value val;
   mlir::Type get_dim_type =
       mlir::RankedTensorType::get({}, op_builder.getI32Type());
-  if (version >= VERSION_START_STABLE_HLO) {
-    val = op_builder.create<mlir::stablehlo::GetDimensionSizeOp>(
-        arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
-        op_builder.getI64IntegerAttr(arg_axis_idx));
-    if (dim_arg_type != get_dim_type) {
-      val = op_builder.create<mlir::stablehlo::ConvertOp>(
-          arguments[arg_idx].getLoc(), dim_arg_type, val);
-    }
-  } else {
-    val = op_builder.create<mlir::mhlo::GetDimensionSizeOp>(
-        arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
-        op_builder.getI64IntegerAttr(arg_axis_idx));
-    if (dim_arg_type != get_dim_type) {
-      val = op_builder.create<mlir::mhlo::ConvertOp>(
-          arguments[arg_idx].getLoc(), dim_arg_type, val);
-    }
+  val = op_builder.create<mlir::stablehlo::GetDimensionSizeOp>(
+      arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
+      op_builder.getI64IntegerAttr(arg_axis_idx));
+  if (dim_arg_type != get_dim_type) {
+    val = op_builder.create<mlir::stablehlo::ConvertOp>(
+        arguments[arg_idx].getLoc(), dim_arg_type, val);
   }
   return val;
 }
@@ -239,16 +239,6 @@ Status AddMainWrapper(int version, mlir::ModuleOp module, int platform_index,
   op_builder.create<mlir::func::ReturnOp>(loc, call_op.getResults());
   VLOG(3) << "XlaCallModule module with wrapper: " << debugString(module);
 
-  mlir::PassManager pm(module.getContext());
-  // Inliner will merge main and _wrapped_main, making subsequent passes
-  // like constant propagation and shape refinement work better.
-  pm.addPass(mlir::createInlinerPass());
-  if (!mlir::succeeded(pm.run(module))) {
-    return errors::InvalidArgument("Module inlining failed");
-  }
-  VLOG(3) << "XlaCallModule module with inlined wrapper: "
-          << debugString(module);
-
   return OkStatus();
 }
 
@@ -271,11 +261,12 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   int non_dimension_arguments = ctx->num_inputs();
   if (non_dimension_arguments != main_body.getNumArguments()) {
     return errors::InvalidArgument(
-        "Incorrect number of arguments for XlaCallModule: ",
-        non_dimension_arguments, ". The module has ",
+        "Incorrect number of arguments passed to XlaCallModule: ",
+        non_dimension_arguments, ". The module takes ",
         main_body.getNumArguments() + nr_platform_args + nr_dim_args,
-        " of which ", nr_platform_args, " platform index arguments and ",
-        nr_dim_args, " dimension arguments. It must be called with ",
+        " arguments of which ", nr_platform_args,
+        " platform index arguments and ", nr_dim_args,
+        " dimension arguments. It must be called with ",
         main_body.getNumArguments(), " arguments.");
   }
 
@@ -297,10 +288,20 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
             << debugString(type);
     static_array_input_types[i] = type;
   }
+
   // Refine 'main' argument types to use static input types instead.
   // This will only change the argument types and will not propagate the
   // additional type information further. For that, we'll need to run
   // shape refinement as explained below.
+  // Before refining the argument types it is useful to run the inliner to
+  // remove calls that may be called with the input arguments.
+  mlir::PassManager pm_inline((*module)->getContext());
+  pm_inline.addPass(mlir::createInlinerPass());
+  if (!mlir::succeeded(pm_inline.run(**module))) {
+    return errors::InvalidArgument("Module inlining failed");
+  }
+  VLOG(3) << "XlaCallModule module after inlining: " << debugString(module);
+
   auto static_array_output_types = llvm::to_vector(main.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     auto arg = main_body.getArgument(i);
@@ -351,17 +352,21 @@ Status LoadAndPreprocessModule(int version,
                                mlir::MLIRContext *context, string module_str,
                                std::vector<string> dim_args_spec,
                                std::vector<string> platforms,
-                               int platform_index, bool *has_dynamic_shapes,
-                               int *nr_outputs) {
+                               int platform_index, int *nr_outputs) {
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
   context->loadDialect<mlir::func::FuncDialect>();
   context->loadDialect<mlir::stablehlo::StablehloDialect>();
   context->loadDialect<mlir::mhlo::MhloDialect>();
   context->loadDialect<mlir::chlo::ChloDialect>();
+  context->loadDialect<mlir::vhlo::VhloDialect>();
   // Parses both IR text and bytecode.
-  *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
-                                                    context);
+  if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
+    *module = mlir::stablehlo::deserializePortableArtifact(module_str, context);
+  } else {
+    *module = mlir::parseSourceString<mlir::ModuleOp>(module_str, context);
+  }
+
   if (!*module) {
     return errors::InvalidArgument("Cannot deserialize computation");
   }
@@ -380,24 +385,7 @@ Status LoadAndPreprocessModule(int version,
   if (!main) {
     return errors::InvalidArgument("Cannot find 'main' in module");
   }
-  *has_dynamic_shapes = false;
-  for (const mlir::Type arg_type : main.getArgumentTypes()) {
-    mlir::RankedTensorType arg_ranked_type =
-        arg_type.dyn_cast<mlir::RankedTensorType>();
-    if (!arg_ranked_type) {
-      return errors::InvalidArgument("Module main has unranked arguments");
-    }
-    for (const int64_t arg_dim_size : arg_ranked_type.getShape()) {
-      if (arg_dim_size < 0) {
-        *has_dynamic_shapes = true;
-      }
-    }
-  }
 
-  if (*has_dynamic_shapes && dim_args_spec.empty()) {
-    return errors::InvalidArgument(
-        "Module main has dynamic shapes but no dim_args_spec was given");
-  }
   if (!dim_args_spec.empty() || platform_index >= 0) {
     TF_RETURN_IF_ERROR(
         AddMainWrapper(version, **module, platform_index, dim_args_spec));
@@ -453,6 +441,16 @@ class XlaCallModuleOp : public XlaOpKernel {
  public:
   explicit XlaCallModuleOp(OpKernelConstruction *ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("version", &version_));
+    OP_REQUIRES(
+        ctx, version_ >= VERSION_MINIMUM_SUPPORTED,
+        errors::InvalidArgument("XlaCallModuleOp with version ", version_,
+                                " is not supported anymore. Must be >= ",
+                                VERSION_MINIMUM_SUPPORTED));
+    OP_REQUIRES(
+        ctx, version_ <= VERSION_MAXIMUM_SUPPORTED,
+        errors::InvalidArgument("XlaCallModuleOp with version ", version_,
+                                " is not supported by this build. Must be <= ",
+                                VERSION_MAXIMUM_SUPPORTED));
     string module_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("module", &module_str));
     std::vector<PartialTensorShape> expected_output_shapes;
@@ -509,15 +507,13 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(
         ctx, LoadAndPreprocessModule(version_, &module_, &context_, module_str,
                                      dim_args_spec_, platforms, platform_index_,
-                                     &has_dynamic_shapes_, &nr_outputs_));
+                                     &nr_outputs_));
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
-    if (has_dynamic_shapes_) {
-      OP_REQUIRES_OK(ctx, RefineDynamicShapes(ctx, &module_,
-                                              (platform_index_ >= 0 ? 1 : 0),
-                                              dim_args_spec_.size()));
-    }
+    OP_REQUIRES_OK(
+        ctx, RefineDynamicShapes(ctx, &module_, (platform_index_ >= 0 ? 1 : 0),
+                                 dim_args_spec_.size()));
     OP_REQUIRES_OK(ctx, ValidateModule(*module_));
 
     std::vector<xla::XlaOp> inputs(ctx->num_inputs());
@@ -564,7 +560,6 @@ class XlaCallModuleOp : public XlaOpKernel {
   int version_;
   int nr_outputs_;
   std::vector<string> dim_args_spec_;
-  bool has_dynamic_shapes_;
   int platform_index_;  // Index in platforms of the current platform, or -1
                         // if module does not take a platform index arg.
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};

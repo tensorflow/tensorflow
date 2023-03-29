@@ -337,7 +337,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
       VLOG(1) << "Device to host transfer finished.";
       if (!status.ok()) {
         host_value->status =
-            Status(static_cast<tsl::error::Code>(status.code()),
+            Status(static_cast<absl::StatusCode>(status.code()),
                    status.error_message());
       }
 
@@ -737,7 +737,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     if (!s.ok()) {
       if (failed == 0) {
         first_failure_status =
-            Status(static_cast<tsl::error::Code>(s.code()), s.error_message());
+            Status(static_cast<absl::StatusCode>(s.code()), s.error_message());
       }
       ++failed;
     }
@@ -860,7 +860,7 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
         compiled_program->program_shape(&program_shape_proto);
 
     if (!fetch_metadata_status.ok()) {
-      return Status(static_cast<tsl::error::Code>(fetch_metadata_status.code()),
+      return Status(static_cast<absl::StatusCode>(fetch_metadata_status.code()),
                     fetch_metadata_status.error_message());
     }
     result_layout = ::xla::Shape(program_shape_proto.result());

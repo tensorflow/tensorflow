@@ -30,6 +30,7 @@ py_library(
     srcs = ["mirrored_strategy.py"],
     deps = [
         ":dtensor_util",
+        "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
@@ -44,6 +45,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util",
     ],
@@ -52,6 +54,7 @@ py_library(
 dtensor_test(
     name = "mirrored_strategy_test",
     srcs = ["mirrored_strategy_test.py"],
+    shard_count = {"tpu": 2},
     tags = ["no_pip"],
     deps = [
         ":dtensor_util",
@@ -98,6 +101,7 @@ dtensor_test(
         "//tensorflow/dtensor/python/tests:test_util",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//third_party/py/numpy",

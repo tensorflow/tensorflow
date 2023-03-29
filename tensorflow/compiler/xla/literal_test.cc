@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -105,8 +106,14 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto false_lit = LiteralUtil::CreateR0<bool>(false);
   EXPECT_EQ("pred[] false", false_lit.ToString());
 
+  auto u4_lit = LiteralUtil::CreateR0<u4>(u4(5));
+  EXPECT_EQ("u4[] 5", u4_lit.ToString());
+
   auto u32_lit = LiteralUtil::CreateR0<uint32_t>(42);
   EXPECT_EQ("u32[] 42", u32_lit.ToString());
+
+  auto s4_lit = LiteralUtil::CreateR0<s4>(s4(-3));
+  EXPECT_EQ("s4[] -3", s4_lit.ToString());
 
   auto s32_lit = LiteralUtil::CreateR0<int32_t>(-999);
   EXPECT_EQ("s32[] -999", s32_lit.ToString());
@@ -1430,6 +1437,16 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 1, 0, 1}, {1, 0, 1, 0}},
     {{1, 0, 1, 0}, {0, 1, 0, 1}},
   }}, layout_r4_dim0major_);
+  auto s4nums = LiteralUtil::CreateR4WithLayout<s4>({{
+    {{s4(1), s4(0), s4(2), s4(0)}, {s4(0), s4(5), s4(0), s4(7)}},
+    {{s4(0), s4(1), s4(0), s4(1)}, {s4(2), s4(0), s4(4), s4(0)}},
+    {{s4(2), s4(0), s4(2), s4(0)}, {s4(0), s4(3), s4(0), s4(3)}},
+  }}, layout_r4_dim0major_);
+  auto int32_s4nums = LiteralUtil::CreateR4WithLayout<int32_t>({{
+    {{1, 0, 2, 0}, {0, 5, 0, 7}},
+    {{0, 1, 0, 1}, {2, 0, 4, 0}},
+    {{2, 0, 2, 0}, {0, 3, 0, 3}},
+  }}, layout_r4_dim0major_);
   auto f16 = LiteralUtil::CreateR4WithLayout<half>({{
     {{half(10.0), half(0.0), half(12.0), half(0.0)},
      {half(0.0), half(15.0), half(0.0), half(17.0)}},
@@ -1497,6 +1514,9 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
 
   conv = pred.Convert(S32).value();
   EXPECT_EQ(conv, int32_pred);
+
+  conv = s4nums.Convert(S32).value();
+  EXPECT_EQ(conv, int32_s4nums);
 
   conv = f32.Convert(S32).value();
   EXPECT_EQ(conv, s32);
@@ -1992,6 +2012,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
       LiteralUtil::CreateR1<e4>({e4{10.0}, e4{20.0}, e4{-32.0}});
   auto matrix_pred =
       LiteralUtil::CreateR2<bool>({{true, false, true}, {false, false, true}});
+  auto vector_s4 = LiteralUtil::CreateR1<s4>({s4{-1}, s4{3}, s4{7}});
+  auto vector_u4 = LiteralUtil::CreateR1<u4>({u4{1}, u4{3}, u4{15}});
   auto tuple = LiteralUtil::MakeTuple(
       {&one_f32, &vector_half, &matrix_pred, &matrix_pred});
   Literal nil_literal(ShapeUtil::MakeNil());
@@ -2011,6 +2033,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   EXPECT_EQ(vector_f8e5m2, to_from_proto(vector_f8e5m2));
   EXPECT_EQ(vector_f8e4m3, to_from_proto(vector_f8e4m3));
   EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));
+  EXPECT_EQ(vector_s4, to_from_proto(vector_s4));
+  EXPECT_EQ(vector_u4, to_from_proto(vector_u4));
   EXPECT_EQ(tuple, to_from_proto(tuple));
   EXPECT_EQ(nested_tuple, to_from_proto(nested_tuple));
   EXPECT_EQ(nil_literal, to_from_proto(nil_literal));
@@ -2199,6 +2223,30 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
                         /*dimensions=*/{1}));
   EXPECT_EQ(broadcasted_literal, LiteralUtil::CreateR2<int64_t>({{1}, {1}}));
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
+}
+
+TEST_F(LiteralUtilTest, GetAsDouble) {
+  auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*m.GetAsDouble({0, 0}), 1.0);
+  EXPECT_EQ(*m.GetAsDouble({1, 0}), 3.0);
+}
+
+TEST_F(LiteralUtilTest, GetSumAsDouble) {
+  auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*m.GetSumAsDouble({0, 3}), 1.0 + 4.0);
+  EXPECT_EQ(*m.GetSumAsDouble({0, 1, 2, 3}), 1.0 + 2.0 + 3.0 + 4.0);
+  auto md = LiteralUtil::CreateR2<double>({{1.0, 2.0}, {3.0, 4.0}});
+  EXPECT_EQ(*md.GetSumAsDouble({0, 3}), 1.0 + 4.0);
+  EXPECT_EQ(*md.GetSumAsDouble({0, 1, 2, 3}), 1.0 + 2.0 + 3.0 + 4.0);
+
+  // Test fetching every other value for a range of number of indices
+  std::vector<float> vals(1024, 1.0);
+  auto v = LiteralUtil::CreateR1<float>(vals);
+  std::vector<int64_t> indices;
+  for (int i = 0; i < 1024; i += 2) {
+    indices.push_back(i);
+    EXPECT_EQ(*v.GetSumAsDouble(indices), (i + 2) / 2.0);
+  }
 }
 
 TEST_F(LiteralUtilTest, GetAsComplex128) {

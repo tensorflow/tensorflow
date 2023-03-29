@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 
 namespace tflite {
 namespace async {
@@ -40,7 +40,7 @@ class MockAsyncKernel : public delegates::BackendAsyncKernelInterface {
   MOCK_METHOD(TfLiteStatus, UnregisterBuffer,
               (TfLiteOpaqueContext*, TfLiteBufferHandle), (override));
   MOCK_METHOD(bool, ReconcileRestrictions,
-              (TfLiteOpaqueContext*, TfLiteOpaqueNode*, int,
+              (const TfLiteOpaqueContext*, const TfLiteOpaqueNode*, int,
                const TfLiteAttributeMap*, TfLiteAttributeMap*,
                TfLiteAttributeMap*),
               (const, override));

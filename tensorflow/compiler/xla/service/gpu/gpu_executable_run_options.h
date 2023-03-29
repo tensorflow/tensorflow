@@ -84,9 +84,9 @@ class GpuExecutableRunOptions {
 // NCCL-related execution parameters.
 struct NcclExecuteParams {
   NcclExecuteParams(const ServiceExecutableRunOptions& run_options,
-                    se::Stream* stream);
+                    se::StreamExecutor* stream_executor);
 
-  se::Stream* stream;
+  se::StreamExecutor* stream_executor;
   RunId run_id;
   const DeviceAssignment* device_assn;                         // never null
   const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null

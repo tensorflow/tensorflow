@@ -42,14 +42,14 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/tsl/util:stats_calculator_portable",
-        "//tensorflow/lite/profiling:time",
-        "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
+        "//tensorflow/tsl/util:stats_calculator_portable",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_jpeg_internal",

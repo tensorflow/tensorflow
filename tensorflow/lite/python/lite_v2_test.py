@@ -31,6 +31,7 @@ import tensorflow as tf
 if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as metadata_fb
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
@@ -62,6 +63,9 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.trackable import autotrackable
+
+# Type alias for preset quantization method protobuf enums.
+_PresetQuantizationMethod = quant_opts_pb2.PresetQuantizationMethod.PresetMethod
 
 # Only run jax related tests when we can import jax.
 DISABLE_JAX_TEST = False
@@ -2645,6 +2649,43 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
+  @parameterized.named_parameters(
+      (
+          '_Float16Quantization',
+          _PresetQuantizationMethod.FLOAT16,
+      ),
+  )
+  @test_util.run_v2_only
+  def testMlirStableHLOPresetQuantizationMethod(
+      self, preset_quantization_method
+  ):
+    k_num_filters = 38
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(k_num_filters, (3, 3), activation='relu')]
+    )
+    model.build(input_shape=(1, 5, 5, 3))
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
+    save(model, saved_model_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_quantization_method=quant_opts_pb2.PresetQuantizationMethod(
+                preset_method=preset_quantization_method
+            )
+        )
+    )
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter._experimental_quantization_options = quantization_options
+
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS
+    ]
+    converter.exclude_conversion_metadata = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_stablehlo_model = converter.convert()
+    self.assertIsNotNone(quantized_stablehlo_model)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -2656,6 +2697,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
   )
   @test_util.run_v2_only
   def testVariableQuantization(self, variable_quantization, number_of_states):
+    k_readvariable_name = 'model/read_assign/concat/ReadVariableOp'
     model, calibration_gen = self._createReadAssignModel(number_of_states)
 
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -2666,8 +2708,28 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     converter.inference_output_type = tf.int8  # or tf.uint8
     converter._experimental_variable_quantization = variable_quantization
 
-    converter.convert()
-    # TODO(b/261940892): Reinforce end-to-end test
+    quantized_tflite_model = converter.convert()
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+
+    detail = next(
+        (
+            d
+            for d in interpreter.get_tensor_details()
+            if d['name'].startswith(k_readvariable_name)
+        )
+    )
+    quant_params = detail['quantization_parameters']
+    if variable_quantization:
+      expected_num_params = 1
+    else:
+      # This number is not a spec. Since It's the unintended number, it can be
+      # changed later by the other features of the quantizer.
+      expected_num_params = 0
+
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @test_util.run_v2_only
   def testSequentialModel(self):

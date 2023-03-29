@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convert_operand_folding.h"
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 namespace xla {
 namespace {

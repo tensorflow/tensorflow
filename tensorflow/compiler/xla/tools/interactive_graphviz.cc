@@ -334,7 +334,7 @@ void DoInfoCommand(const HloModule& module,
     std::cout << "HloInstruction " << instr->name() << std::endl;
     std::cout << "  Parent computation: " << instr->parent()->name()
               << std::endl;
-    std::cout << "  Opcode: " << HloOpcodeString(instr->opcode()) << std::endl;
+    std::cout << "  Opcode: " << instr->opcode() << std::endl;
     std::cout << "  Shape: " << ShapeUtil::HumanStringWithLayout(instr->shape())
               << std::endl;
     std::cout << "  Metadata:" << std::endl;

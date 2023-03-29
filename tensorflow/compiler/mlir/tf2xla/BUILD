@@ -4,6 +4,13 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
+package_group(
+    name = "tensorflow_mlir_tf2xla",
+    packages = [
+        "//tensorflow/compiler/mlir/tf2xla/...",
+    ],
+)
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
@@ -45,10 +52,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
-        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_targets",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/tf2xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_argument",
@@ -71,6 +78,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
@@ -91,6 +99,10 @@ tf_cc_test(
     srcs = ["api/v0/compile_mlir_util_test.cc"],
     deps = [
         ":compile_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -102,3 +114,21 @@ alias(
     name = "compile_mlir_util",
     actual = ":compile_mlir_util_no_tf_dialect_passes",
 )
+
+# Targets in the transform package we alias here to avoid updating all clients.
+aliased_targets = [
+    "legalize_tf",
+    "legalize_utils",
+    "tf_xla_passes",
+    "xla_legalize_tf",
+    "xla_legalize_tf_no_fallback",
+    "xla_legalize_tf_with_tf2xla",
+]
+
+[
+    alias(
+        name = target,
+        actual = "//tensorflow/compiler/mlir/tf2xla/transforms:%s" % target,
+    )
+    for target in aliased_targets
+]

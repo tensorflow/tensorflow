@@ -205,10 +205,10 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -219,12 +219,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.types import distribute as ds_types
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -263,32 +262,6 @@ class UpdateContext(object):
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
     _update_replica_id.current = self._old_replica_id
-
-
-# ------------------------------------------------------------------------------
-# Public utility functions.
-
-
-@tf_export(v1=["distribute.get_loss_reduction"])
-def get_loss_reduction():
-  """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
-
-  This is used to decide whether loss should be scaled in optimizer (used only
-  for estimator + v1 optimizer use case).
-
-  Returns:
-    `tf.distribute.ReduceOp` corresponding to the last loss reduction for
-    estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
-  """
-  if not distribution_strategy_context.get_strategy()._scale_loss_for_estimator:  # pylint: disable=protected-access
-    # If we are not in Estimator context then return 'SUM'. We do not need to
-    # scale loss in the optimizer.
-    return reduce_util.ReduceOp.SUM
-  last_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
-  if (last_reduction == losses_impl.Reduction.SUM or
-      last_reduction == "sum"):  # Check for tf.keras.losses.Reduction.SUM
-    return reduce_util.ReduceOp.SUM
-  return reduce_util.ReduceOp.MEAN
 
 
 # ------------------------------------------------------------------------------
@@ -2131,47 +2104,53 @@ class StrategyExtendedV2(object):
 
     def creator_with_resource_vars(next_creator, **kwargs):
       """Variable creator to use in `_CurrentDistributionContext`."""
-      _require_strategy_scope_extended(self)
-      kwargs["use_resource"] = True
-      kwargs["distribute_strategy"] = strategy
-
-      # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
-      # dereferencing a `Tensor` that is without a `name`. We still need to
-      # propagate the metadata it's holding.
-      if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
-        checkpoint_restore_uid = kwargs[
-            "initial_value"].checkpoint_position.restore_uid
-        kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
-      elif isinstance(kwargs["initial_value"],
-                      trackable.CheckpointInitialValueCallable):
-        checkpoint_restore_uid = kwargs[
-            "initial_value"].checkpoint_position.restore_uid
-      elif (isinstance(kwargs["initial_value"], functools.partial) and
-            isinstance(kwargs["initial_value"].func,
-                       trackable.CheckpointInitialValueCallable)):
-        # Some libraries (e.g, Keras) create partial function out of initializer
-        # to bind shape/dtype, for example:
-        #  initial_val = functools.partial(initializer, shape, dtype=dtype)
-        # Therefore to get the restore_uid we need to examine the "func" of
-        # the partial function.
-        checkpoint_restore_uid = kwargs[
-            "initial_value"].func.checkpoint_position.restore_uid
+      if ops.inside_function():
+        if_graph_building = "graph_building"
       else:
-        checkpoint_restore_uid = None
+        if_graph_building = "not_graph_building"
 
-      created = self._create_variable(next_creator, **kwargs)
+      with monitoring.MonitoredTimer(distributed_variable_creation_time_counter.get_cell(strategy.__class__.__name__, if_graph_building)):
+        _require_strategy_scope_extended(self)
+        kwargs["use_resource"] = True
+        kwargs["distribute_strategy"] = strategy
 
-      if checkpoint_restore_uid is not None:
-        # pylint: disable=protected-access
-        # Let the checkpointing infrastructure know that the variable was
-        # already restored so it doesn't waste memory loading the value again.
-        # In this case of CheckpointInitialValueCallable this may already be
-        # done by the final variable creator, but it doesn't hurt to do it
-        # again.
-        created._maybe_initialize_trackable()
-        created._update_uid = checkpoint_restore_uid
-        # pylint: enable=protected-access
-      return created
+        # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
+        # dereferencing a `Tensor` that is without a `name`. We still need to
+        # propagate the metadata it's holding.
+        if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
+          checkpoint_restore_uid = kwargs[
+              "initial_value"].checkpoint_position.restore_uid
+          kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+        elif isinstance(kwargs["initial_value"],
+                        trackable.CheckpointInitialValueCallable):
+          checkpoint_restore_uid = kwargs[
+              "initial_value"].checkpoint_position.restore_uid
+        elif (isinstance(kwargs["initial_value"], functools.partial) and
+              isinstance(kwargs["initial_value"].func,
+                         trackable.CheckpointInitialValueCallable)):
+          # Some libraries (e.g, Keras) create partial function out of initializer
+          # to bind shape/dtype, for example:
+          #  initial_val = functools.partial(initializer, shape, dtype=dtype)
+          # Therefore to get the restore_uid we need to examine the "func" of
+          # the partial function.
+          checkpoint_restore_uid = kwargs[
+              "initial_value"].func.checkpoint_position.restore_uid
+        else:
+          checkpoint_restore_uid = None
+
+        created = self._create_variable(next_creator, **kwargs)
+
+        if checkpoint_restore_uid is not None:
+          # pylint: disable=protected-access
+          # Let the checkpointing infrastructure know that the variable was
+          # already restored so it doesn't waste memory loading the value again.
+          # In this case of CheckpointInitialValueCallable this may already be
+          # done by the final variable creator, but it doesn't hurt to do it
+          # again.
+          created._maybe_initialize_trackable()
+          created._update_uid = checkpoint_restore_uid
+          # pylint: enable=protected-access
+        return created
 
     def distributed_getter(getter, *args, **kwargs):
       if not self._allow_variable_partition():
@@ -2316,36 +2295,36 @@ class StrategyExtendedV2(object):
     It can be used in `tf.distribute.ReplicaContext.merge_call` to write code
     that works for all `tf.distribute.Strategy`.
 
-    >>> @tf.function
-    ... def step_fn(var):
-    ...
-    ...   def merge_fn(strategy, value, var):
-    ...     # All-reduce the value. Note that `value` here is a
-    ...     # `tf.distribute.DistributedValues`.
-    ...     reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
-    ...         value, destinations=var)
-    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-    ...         args=(reduced,))
-    ...
-    ...   value = tf.identity(1.)
-    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
-    ...     args=(value, var))
-    >>>
-    >>> def run(strategy):
-    ...   with strategy.scope():
-    ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn, args=(v,))
-    ...     return v
-    >>>
-    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    @tf.function
+    def step_fn(var):
+
+      def merge_fn(strategy, value, var):
+        # All-reduce the value. Note that `value` here is a
+        # `tf.distribute.DistributedValues`.
+        reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
+            value, destinations=var)
+        strategy.extended.update(var, lambda var, value: var.assign(value),
+            args=(reduced,))
+
+      value = tf.identity(1.)
+      tf.distribute.get_replica_context().merge_call(merge_fn,
+        args=(value, var))
+
+    def run(strategy):
+      with strategy.scope():
+        v = tf.Variable(0.)
+        strategy.run(step_fn, args=(v,))
+        return v
+
+    run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
-    >>> run(tf.distribute.experimental.CentralStorageStrategy(
-    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    run(tf.distribute.experimental.CentralStorageStrategy(
+        compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
-    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    run(tf.distribute.OneDeviceStrategy("GPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
@@ -2399,36 +2378,36 @@ class StrategyExtendedV2(object):
 
     See `reduce_to` for more information.
 
-    >>> @tf.function
-    ... def step_fn(var):
-    ...
-    ...   def merge_fn(strategy, value, var):
-    ...     # All-reduce the value. Note that `value` here is a
-    ...     # `tf.distribute.DistributedValues`.
-    ...     reduced = strategy.extended.batch_reduce_to(
-    ...         tf.distribute.ReduceOp.SUM, [(value, var)])[0]
-    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-    ...         args=(reduced,))
-    ...
-    ...   value = tf.identity(1.)
-    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
-    ...     args=(value, var))
-    >>>
-    >>> def run(strategy):
-    ...   with strategy.scope():
-    ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn, args=(v,))
-    ...     return v
-    >>>
-    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    @tf.function
+    def step_fn(var):
+
+      def merge_fn(strategy, value, var):
+        # All-reduce the value. Note that `value` here is a
+        # `tf.distribute.DistributedValues`.
+        reduced = strategy.extended.batch_reduce_to(
+            tf.distribute.ReduceOp.SUM, [(value, var)])[0]
+        strategy.extended.update(var, lambda var, value: var.assign(value),
+            args=(reduced,))
+
+      value = tf.identity(1.)
+      tf.distribute.get_replica_context().merge_call(merge_fn,
+        args=(value, var))
+
+    def run(strategy):
+      with strategy.scope():
+        v = tf.Variable(0.)
+        strategy.run(step_fn, args=(v,))
+        return v
+
+    run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
-    >>> run(tf.distribute.experimental.CentralStorageStrategy(
-    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    run(tf.distribute.experimental.CentralStorageStrategy(
+        compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
-    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    run(tf.distribute.OneDeviceStrategy("GPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
@@ -2636,14 +2615,14 @@ class StrategyExtendedV2(object):
 
   def _local_results(self, val):
     """Returns local results per replica as a tuple."""
-    if isinstance(val, values.DistributedValues):
+    if isinstance(val, ds_types.DistributedValues):
       return val._values  # pylint: disable=protected-access
 
     if nest.is_nested(val):
       replica_values = []
 
       def get_values(x, index):
-        if isinstance(x, values.DistributedValues):
+        if isinstance(x, ds_types.DistributedValues):
           return x._values[index]  # pylint: disable=protected-access
         return x
 
@@ -3814,7 +3793,7 @@ class _DefaultReplicaContext(ReplicaContext):
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
-_original_from_proto = resource_variable_ops._from_proto_fn
+_original_from_proto = variable_scope._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
@@ -3825,11 +3804,24 @@ def _from_proto_fn(v, import_scope=None):
   else:
     return _original_from_proto(v, import_scope=import_scope)
 
-resource_variable_ops._from_proto_fn = _from_proto_fn
+variable_scope._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
 
 
-#-------------------------------------------------------------------------------
+def get_local_results_or_value_container(variable):
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context()
+  )
+  if context:
+    return [strategy.extended.value_container(variable)]
+  else:
+    return strategy.experimental_local_results(variable)
+
+
+tape.register_watched_variable_resolver(get_local_results_or_value_container)
+
+
+# -------------------------------------------------------------------------------
 # Shorthand for some methods from distribution_strategy_context.
 _push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
 _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access
@@ -3850,3 +3842,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
 distribution_strategy_input_api_counter = monitoring.Counter(
     "/tensorflow/api/distribution_strategy/input_api",
     "Counter to track the usage of the input APIs", "strategy", "api")
+distributed_variable_creation_time_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/distributed_variable_creation_time_usecs",
+    "Time to create distributed variables (us).", "strategy", "if_graph_building")

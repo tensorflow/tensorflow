@@ -121,7 +121,7 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 
   let arguments = (ins
     StrAttr:$sym_name,
-    ElementsAttr:$value,
+    OptionalAttr<ElementsAttr>:$value,
     TypeAttr:$type,
     UnitAttr:$is_mutable
   );

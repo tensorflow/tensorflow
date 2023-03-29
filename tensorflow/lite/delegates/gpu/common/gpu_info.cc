@@ -52,6 +52,7 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 7xx series
+      {"740", AdrenoGpu::kAdreno740},
       {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
@@ -218,7 +219,8 @@ bool AdrenoInfo::IsAdreno6xx() const {
 }
 
 bool AdrenoInfo::IsAdreno7xx() const {
-  return adreno_gpu == AdrenoGpu::kAdreno730;
+  return adreno_gpu == AdrenoGpu::kAdreno730 ||
+         adreno_gpu == AdrenoGpu::kAdreno740;
 }
 
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
@@ -284,6 +286,8 @@ int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
     // Adreno 7xx series
+    case AdrenoGpu::kAdreno740:
+      return 6;
     case AdrenoGpu::kAdreno730:
       return 4;
     // Adreno 6xx series

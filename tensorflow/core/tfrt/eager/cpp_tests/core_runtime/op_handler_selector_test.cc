@@ -111,7 +111,7 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
         device_name_(device_name),
         dtype_(dtype) {}
 
-  void Release() override { Unref(); }
+  void Release() { Unref(); }
 
   tensorflow::DataType DataType() const override { return dtype_; }
   Status Shape(tensorflow::PartialTensorShape* shape) const override {
@@ -146,9 +146,14 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
   tensorflow::AbstractTensorInterface* Resolve(Status* status) override {
     llvm_unreachable("unimplemented method.");
   }
-  ImmediateExecutionTensorHandle* Copy() override {
+  ImmediateExecutionTensorHandle* Copy() {
     Ref();
     return this;
+  }
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
   }
 
   static bool classof(const AbstractTensorHandle* ptr) { return true; }
@@ -460,10 +465,9 @@ TEST_F(SelectorTest, InvalidDeviceNameTest) {
   OpHandler* op_handler = nullptr;
   s = selector()->SelectFromNodeDef(*op, &op->GetAttrs()->BuildNodeDef(),
                                     &op_handler);
-  ASSERT_EQ(s.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(s.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_FALSE(static_cast<bool>(op_handler));
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "Failed to parse device name"));
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "Failed to parse device name"));
 }
 
 TEST_F(SelectorTest, SoftPlacementTest) {
@@ -475,7 +479,7 @@ TEST_F(SelectorTest, SoftPlacementTest) {
   s = selector()->SelectFromNodeDef(*op, &op->GetAttrs()->BuildNodeDef(),
                                     &op_handler);
   ASSERT_EQ(s, ::tensorflow::OkStatus());
-  ASSERT_TRUE(static_cast<bool>(op_handler)) << StrCat(s.error_message());
+  ASSERT_TRUE(static_cast<bool>(op_handler)) << StrCat(s.ToString());
   ASSERT_EQ(op_handler, gpu_op_handler_);
 }
 

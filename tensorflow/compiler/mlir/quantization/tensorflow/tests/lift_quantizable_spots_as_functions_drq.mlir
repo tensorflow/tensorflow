@@ -209,7 +209,7 @@ func.func @lift_float_gather(%arg0: tensor<6xi64>) -> (tensor<6x32xf32>) {
 // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {{.*}} : () -> tensor<i32>
 // CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{.*}} : () -> tensor<128x32xf32>
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%[[CST_1]], %arg0, %[[CST]])
-// CHECK-NOT: {_tfl_quant_trait = "fully_quantizable",
+// CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
 // CHECK-SAME: f = @composite_gather_fn_1}
 // CHECK: return %[[PARTITIONEDCALL_0]]
 

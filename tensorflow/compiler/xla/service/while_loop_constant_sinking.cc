@@ -157,9 +157,7 @@ StatusOr<bool> WhileLoopConstantSinking::Run(
     // This will let us sink the constant into the outer while first and then
     // into the inner while in a single run of this pass.
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kWhile;
-                    });
+                    HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
   for (HloInstruction* while_instr : while_instrs) {

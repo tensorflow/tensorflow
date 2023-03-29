@@ -532,12 +532,14 @@ class Iterator(trackable.Trackable):
 
     return self._element_spec
 
+  # override
   def _serialize_to_tensors(self):
     serialized_iterator = gen_dataset_ops.serialize_iterator(
         self._iterator_resource,
         options_lib.ExternalStatePolicy.FAIL.value)
     return {"_STATE": serialized_iterator}
 
+  # override
   def _restore_from_tensors(self, restored_tensors):
     with ops.colocate_with(self._iterator_resource):
       return [gen_dataset_ops.deserialize_iterator(

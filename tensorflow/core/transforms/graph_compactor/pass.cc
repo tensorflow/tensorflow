@@ -240,7 +240,7 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
   // Construct and set the new attributes.
   SmallVector<NamedAttribute> new_attrs;
   new_attrs.reserve(attrs.size());
-  for (auto &it : llvm::enumerate(attrs)) {
+  for (const auto &it : llvm::enumerate(attrs)) {
     if (indices_to_remove.test(it.index())) continue;
     new_attrs.push_back(it.value());
   }

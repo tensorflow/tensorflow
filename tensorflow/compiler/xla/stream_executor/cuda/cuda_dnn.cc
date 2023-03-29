@@ -84,7 +84,7 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
       std::ostringstream oss;                                           \
       oss << CudnnStatusToString(_status) << "\nin " << __FILE__ << "(" \
           << __LINE__ << "): '" << #expr << "'";                        \
-      return tsl::Status(tsl::error::UNKNOWN, oss.str());               \
+      return tsl::Status(absl::StatusCode::kUnknown, oss.str());        \
     }                                                                   \
   } while (false)
 
@@ -95,7 +95,7 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
       std::ostringstream oss;                                           \
       oss << CudnnStatusToString(_status) << "\nin " << __FILE__ << "(" \
           << __LINE__ << "): '" << #expr << "' " << (expr).get_error(); \
-      return tsl::Status(tsl::error::UNKNOWN, oss.str());               \
+      return tsl::Status(absl::StatusCode::kUnknown, oss.str());        \
     }                                                                   \
   } while (false)
 
@@ -416,7 +416,7 @@ tsl::Status CudnnSupport::Init() {
           "configuration.");
       LOG(ERROR) << error;
       cudnnDestroy(cudnn_handle);
-      return tsl::Status(tsl::error::INTERNAL, error);
+      return tsl::Status(absl::StatusCode::kInternal, error);
     }
 
     cudnn_.reset(new CudnnAccess(cudnn_handle));
@@ -440,7 +440,7 @@ tsl::Status CudnnSupport::Init() {
     }
   }
 
-  return tsl::Status(tsl::error::INTERNAL,
+  return tsl::Status(absl::StatusCode::kInternal,
                      absl::StrCat("cudnn library could not create a handle: ",
                                   CudnnStatusToString(status)));
 }
@@ -1300,7 +1300,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
             ? algorithm_config.algorithm()->tensor_ops_enabled()
             : allow_tensor_ops;
     if (use_tensor_ops && !allow_tensor_ops) {
-      return tsl::Status(tsl::error::INVALID_ARGUMENT,
+      return tsl::Status(absl::StatusCode::kInvalidArgument,
                          "Algo requests disallowed tensor op evaluation.");
     }
 
@@ -1659,7 +1659,8 @@ class CudnnRnnSequenceTensorDescriptor
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       cudnnDataType_t data_type) {
     if (max_seq_length <= 0) {
-      return tsl::Status(tsl::error::INVALID_ARGUMENT, "max_seq_length <= 0");
+      return tsl::Status(absl::StatusCode::kInvalidArgument,
+                         "max_seq_length <= 0");
     }
     int dims[] = {batch_size, data_size, 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
@@ -1678,7 +1679,8 @@ class CudnnRnnSequenceTensorDescriptor
       const absl::Span<const int>& seq_lengths, bool time_major,
       cudnnDataType_t data_type) {
     if (max_seq_length <= 0) {
-      return tsl::Status(tsl::error::INVALID_ARGUMENT, "max_seq_length <= 0");
+      return tsl::Status(absl::StatusCode::kInvalidArgument,
+                         "max_seq_length <= 0");
     }
     int dims[] = {batch_size, data_size, 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
@@ -1805,30 +1807,35 @@ tsl::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
             model_dims.num_layers * model_dims.dir_count &&
         input_h_desc.batch_size() == model_dims.batch_size &&
         input_h_desc.data_size() == model_dims.hidden_size)) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT, "Invalid input_h shape");
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Invalid input_h shape");
   }
   // The LSTM projection will be used if input_h_desc.data_size() <
   // input_c_desc.data_size()
   if (!(input_h_desc.num_layers() == input_c_desc.num_layers() &&
         input_h_desc.batch_size() == input_c_desc.batch_size() &&
         input_h_desc.data_size() <= input_c_desc.data_size())) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT, "Invalid input_c shape");
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Invalid input_c shape");
   }
   if (!(output_desc.max_seq_length() == model_dims.max_seq_length &&
         output_desc.batch_size() == model_dims.batch_size &&
         output_desc.data_size() ==
             model_dims.hidden_size * model_dims.dir_count)) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT, "Invalid output shape");
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Invalid output shape");
   }
   if (!(input_h_desc.num_layers() == output_h_desc.num_layers() &&
         input_h_desc.batch_size() == output_h_desc.batch_size() &&
         input_h_desc.data_size() == output_h_desc.data_size())) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT, "Invalid output_h shape");
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Invalid output_h shape");
   }
   if (!(input_h_desc.num_layers() == output_c_desc.num_layers() &&
         input_h_desc.batch_size() == output_c_desc.batch_size() &&
         input_h_desc.data_size() <= output_c_desc.data_size())) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT, "Invalid output_c shape");
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Invalid output_c shape");
   }
 
   return model_dims;
@@ -1850,7 +1857,7 @@ tsl::Status CheckRNNParameterSize(
 #endif
   if (static_cast<int64_t>(params_size_in_bytes) !=
       rnn_desc.ParamsSizeInBytes()) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "Mismatching RNN parameter size");
   }
   return ::tsl::OkStatus();
@@ -1998,7 +2005,8 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
       // possible. It is still possible for other threads to issue workload on
       // to this stream. So it could take multiple profiling measurements.
       if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(absl::StatusCode::kInternal,
+                           "Failed to start timer");
       }
     }
 
@@ -2021,7 +2029,7 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
 
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
       }
       auto algo_desc = *rnn_desc.algorithm_config().algorithm();
       output_profile_result->set_algorithm(algo_desc);
@@ -2059,7 +2067,7 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
     if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+      return tsl::Status(absl::StatusCode::kInternal, "Failed to start timer");
     }
   }
 
@@ -2131,7 +2139,7 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
 
   if (is_profiling) {
     if (!timer->Stop(AsGpuStream(stream))) {
-      return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+      return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
     }
     auto algo_desc = *rnn_desc.algorithm_config().algorithm();
     output_profile_result->set_algorithm(algo_desc);
@@ -2205,7 +2213,8 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
       // possible. It is still possible for other threads to issue workload on
       // to this stream. So it could take multiple profiling measurements.
       if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(absl::StatusCode::kInternal,
+                           "Failed to start timer");
       }
     }
 
@@ -2254,7 +2263,7 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
 
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
       }
       auto algo_desc = *rnn_desc.algorithm_config().algorithm();
       output_profile_result->set_algorithm(algo_desc);
@@ -2276,7 +2285,7 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
     if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+      return tsl::Status(absl::StatusCode::kInternal, "Failed to start timer");
     }
   }
 
@@ -2363,7 +2372,7 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
 
   if (is_profiling) {
     if (!timer->Stop(AsGpuStream(stream))) {
-      return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+      return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
     }
     auto algo_desc = *rnn_desc.algorithm_config().algorithm();
     output_profile_result->set_algorithm(algo_desc);
@@ -2405,7 +2414,7 @@ tsl::Status CudnnSupport::DoCtcLossImpl(
       /*workspace=*/scratch_memory.opaque(),
       /*workSpaceSizeInBytes=*/scratch_memory.size()));
 #else
-  return tsl::Status(tsl::error::INVALID_ARGUMENT,
+  return tsl::Status(absl::StatusCode::kInvalidArgument,
                      "No supported cudnnCTCLoss when "
                      "CUDNN_VERSION < 7.6.3");
 #endif
@@ -2787,7 +2796,7 @@ tsl::StatusOr<cudnnConvolutionFwdAlgo_t> GetCudnnConvolutionForwardAlgo(
       return perf_results[r].algo;
     }
   }
-  return tsl::Status(tsl::error::INTERNAL,
+  return tsl::Status(absl::StatusCode::kInternal,
                      "cudnnGetConvolutionForwardAlgorithm_v7 returned "
                      "no suitable algorithms. This could be a cudnn bug.");
 #else
@@ -2829,7 +2838,7 @@ GetCudnnConvolutionBackwardDataAlgo(const CudnnHandle& cudnn,
       return perf_results[r].algo;
     }
   }
-  return tsl::Status(tsl::error::INTERNAL,
+  return tsl::Status(absl::StatusCode::kInternal,
                      "cudnnGetConvolutionBackwardDataAlgorithm_v7 returned "
                      "no suitable algorithms. This could be a cudnn bug.");
 #else
@@ -2871,7 +2880,7 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
       return perf_results[r].algo;
     }
   }
-  return tsl::Status(tsl::error::INTERNAL,
+  return tsl::Status(absl::StatusCode::kInternal,
                      "cudnnGetConvolutionBackwardFilterAlgorithm_v7 returned "
                      "no suitable algorithms. This could be a cudnn bug.");
 #else
@@ -2896,7 +2905,7 @@ tsl::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
     ScratchAllocator* scratch_allocator) {
   if (IsTensorMathOpSet(conv) != algorithm_desc.tensor_ops_enabled()) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "Mismatch between cudnn conv and algorithm descriptors.");
   }
 
@@ -2918,7 +2927,7 @@ tsl::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
 
   if (ABSL_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "cudnnGetConvolutionForwardWorkspaceSize() returned "
         "negative sizeInBytes value. This could be a cudnn bug.");
   }
@@ -2928,7 +2937,7 @@ tsl::StatusOr<DeviceMemory<uint8_t>> AllocateCudnnConvolutionForwardWorkspace(
   }
 
   if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "No scratch allocator provided");
   }
 
@@ -2945,7 +2954,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
     ScratchAllocator* scratch_allocator) {
   if (IsTensorMathOpSet(conv) != algorithm_desc.tensor_ops_enabled()) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "Mismatch between cudnn conv and algorithm descriptors.");
   }
 
@@ -2968,7 +2977,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
 
   if (ABSL_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "cudnnGetConvolutionBackwardDataWorkspaceSize() returned "
         "negative sizeInBytes value. This could be a cudnn bug.");
   }
@@ -2978,7 +2987,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
   }
 
   if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "No scratch allocator provided");
   }
 
@@ -2995,7 +3004,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
     ScratchAllocator* scratch_allocator) {
   if (IsTensorMathOpSet(conv) != algorithm_desc.tensor_ops_enabled()) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "Mismatch between cudnn conv and algorithm descriptors.");
   }
 
@@ -3018,7 +3027,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 
   if (ABSL_PREDICT_FALSE(size_in_bytes_int64_t < 0)) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "cudnnGetConvolutionBackwardFilterWorkspaceSize() returned "
         "negative sizeInBytes value. This could be a cudnn bug.");
   }
@@ -3028,7 +3037,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
   }
 
   if (ABSL_PREDICT_FALSE(!scratch_allocator)) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "No scratch allocator provided");
   }
 
@@ -3041,7 +3050,7 @@ tsl::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
   if (desc.has_value()) {
     use_tensor_ops = desc->tensor_ops_enabled();
     if (use_tensor_ops && !IsTensorMathEnabled(stream, type)) {
-      return tsl::Status(tsl::error::INVALID_ARGUMENT,
+      return tsl::Status(absl::StatusCode::kInvalidArgument,
                          "Algo requests disabled tensor op evaluation.");
     }
   } else {
@@ -3163,7 +3172,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
   // no_scratch algorithm.
   if (!algo_desc.has_value()) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         "The primary convolution algorithm failed memory allocation, "
         "while a secondary algorithm is not provided.");
   }
@@ -3225,7 +3234,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
   // no_scratch algorithm.
   if (!algo_desc.has_value()) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat(
             "The primary convolution algorithm failed memory allocation, "
             "while a secondary algorithm is not provided. Actual error: ",
@@ -3556,13 +3565,14 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
 
+  bool is_reordered_nchw_vect =
+      filter_descriptor.layout() ==
+      dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
   TF_ASSIGN_OR_RETURN(
       auto tensor_w,
-      CreateCudnnTensor(
-          filter_dims, filter_strides, 'w', input_type, vector_size, vector_dim,
-          /*is_virtual=*/false,
-          /*is_reordered_nchw_vect=*/filter_descriptor.layout() ==
-              dnn::FilterLayout::kOutputInputYX32_CudnnReordered));
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false, is_reordered_nchw_vect));
 
   // conv_desc.
   auto mode = convolution_descriptor.convolution_not_crosscorr()
@@ -3690,13 +3700,15 @@ GetCudnnFusedOperationGraph(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
+
+  bool is_reordered_nchw_vect =
+      filter_descriptor.layout() ==
+      dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
   TF_ASSIGN_OR_RETURN(
       auto tensor_w,
-      CreateCudnnTensor(
-          filter_dims, filter_strides, 'w', input_type, vector_size, vector_dim,
-          /*is_virtual=*/false,
-          /*is_reordered_nchw_vect=*/filter_descriptor.layout() ==
-              dnn::FilterLayout::kOutputInputYX32_CudnnReordered));
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false, is_reordered_nchw_vect));
 
   // For the purposes of the cudnn graph, say that the bias tensor has the same
   // layout as the output tensor.  It doesn't actually matter, because bias is a
@@ -3716,9 +3728,28 @@ GetCudnnFusedOperationGraph(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   std::vector<int64_t> bias_strides = bias_descriptor.vectorized_strides(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
-  TF_ASSIGN_OR_RETURN(auto tensor_b,
-                      CreateCudnnTensor(bias_dims, bias_strides, 'b', bias_type,
-                                        vector_size, vector_dim));
+
+  // Experimental cuDNN versions handle int8x32 convolutions with a bias
+  // differently from stable versions. Which versions exactly are affected is
+  // unknown, but fortunately we can write code that works for both flavors.
+  //
+  // cuDNN version *8.3* expects the bias tensor to have the reordering set to
+  // CUDNN_TENSOR_REORDERING_NONE, and fails with CUDNN_STATUS_BAD_PARAM if
+  // it's set to something else.
+  //
+  // cuDNN version *8.7* expects the bias tensor to have the reordering set to
+  // CUDNN_TENSOR_REORDERING_INT8x32 (which is weird, as the bias_type is
+  // kFloat). If it's not, then cuDNN silently does the reordering under the
+  // hood, which yields incorrect results as we already do the reordering
+  // ourselves.
+  auto maybe_tensor_b = CreateCudnnTensor(
+      bias_dims, bias_strides, 'b', bias_type, vector_size, vector_dim,
+      /*is_virtual=*/false, is_reordered_nchw_vect);  // cuDNN 8.3 fails here
+  if (!maybe_tensor_b.ok()) {
+    maybe_tensor_b = CreateCudnnTensor(bias_dims, bias_strides, 'b', bias_type,
+                                       vector_size, vector_dim);
+  }
+  TF_ASSIGN_OR_RETURN(auto tensor_b, std::move(maybe_tensor_b));
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(output_descriptor, output_type);
@@ -4267,7 +4298,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
       // possible. It is still possible for other threads to issue workload on
       // to this stream. So it could take multiple profiling measurements.
       if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(absl::StatusCode::kInternal,
+                           "Failed to start timer");
       }
     }
 
@@ -4277,7 +4309,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
           ToCudnnDataType(input_type_) == CUDNN_DATA_INT8 &&
           ToCudnnDataType(output_type_) == CUDNN_DATA_FLOAT) {
         return tsl::Status(
-            tsl::error::FAILED_PRECONDITION,
+            absl::StatusCode::kFailedPrecondition,
             "This configuration potentially produces incorrect results.");
       }
 #else
@@ -4349,7 +4381,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
 
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
       }
       profile_result->set_algorithm(algo);
       profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
@@ -4644,7 +4676,8 @@ class CudnnExecutionPlanRunner<void(Args...)>
       // possible. It is still possible for other threads to issue workload on
       // to this stream. So it could take multiple profiling measurements.
       if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(absl::StatusCode::kInternal,
+                           "Failed to start timer");
       }
     }
 
@@ -4654,7 +4687,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
 
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
       }
       TF_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
       profile_result->set_algorithm(desc);
@@ -4884,7 +4917,7 @@ tsl::Status CudnnSupport::GetConvolveRunners(
     }
     if (!got_algos) {
       return tsl::Status(
-          tsl::error::UNKNOWN,
+          absl::StatusCode::kUnknown,
           absl::StrFormat("Listing algorithms failed for kind %d", kind));
     }
 
@@ -5059,7 +5092,8 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
       // possible. It is still possible for other threads to issue workload on
       // to this stream. So it could take multiple profiling measurements.
       if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(absl::StatusCode::kInternal,
+                           "Failed to start timer");
       }
     }
     auto side_input_data_ptr = (side_input_scale_ == 0)
@@ -5087,7 +5121,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
             << "\noutput_data.opaque() = " << output_data.opaque();
 
     if (IsTensorMathOpSet(conv_) != tensor_ops_enabled_) {
-      return tsl::Status(tsl::error::FAILED_PRECONDITION,
+      return tsl::Status(absl::StatusCode::kFailedPrecondition,
                          "Tensor op math type in dnn::AlgorithmDesc does not "
                          "match that of the CudnnConvolutionDescriptor");
     }
@@ -5117,7 +5151,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
     if (profile_result) {
       if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
       }
       profile_result->set_algorithm(algo);
       profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
@@ -5339,7 +5373,7 @@ tsl::Status CudnnSupport::GetFusedConvolveRunners(
       activation_mode != dnn::ActivationMode::kElu &&
       activation_mode != dnn::ActivationMode::kLeakyRelu &&
       activation_mode != dnn::ActivationMode::kNone) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "CuDNN fusion only supports activations of "
                        "{Relu, Relu6, Elu, <None>}.");
   }
@@ -5350,7 +5384,7 @@ tsl::Status CudnnSupport::GetFusedConvolveRunners(
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
     if (!GetConvolveAlgorithms(cuda_compute_capability, input_type,
                                &algorithms)) {
-      return tsl::Status(tsl::error::UNKNOWN,
+      return tsl::Status(absl::StatusCode::kUnknown,
                          "Listing fused convolve algorithms failed.");
     }
 
@@ -5385,7 +5419,7 @@ tsl::Status CudnnSupport::GetFusedConvolveRunners(
       leakyrelu_alpha, input_descriptor, filter_descriptor, bias_descriptor,
       output_descriptor, convolution_descriptor, activation_mode, cudnn);
   if (!op_graph_status.status().ok()) {
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        absl::StrCat("Cudnn graph failed to build: ",
                                     op_graph_status.status().ToString()));
   }
@@ -5422,7 +5456,7 @@ tsl::Status CudnnSupport::GetFusedMatmulRunners(
       input_type, bias_type, output_type, trans_a, trans_b, m, n, k, lda, ldb,
       ldc, activation_mode, cudnn);
   if (!op_graph_status.status().ok()) {
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        absl::StrCat("Cudnn graph failed to build: ",
                                     op_graph_status.status().ToString()));
   }
@@ -5716,7 +5750,7 @@ tsl::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     if (activation_mode != dnn::ActivationMode::kNone ||
         !side_input.is_null()) {
       return tsl::Status(
-          tsl::error::INTERNAL,
+          absl::StatusCode::kInternal,
           absl::StrCat(
               "Side input and activation are not supported by cuDNN version: ",
               CUDNN_VERSION));
@@ -5999,7 +6033,7 @@ tsl::Status CudnnSupport::DoFusedConvolve(
 
   if (activation_mode != dnn::ActivationMode::kRelu &&
       activation_mode != dnn::ActivationMode::kNone) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "cudnnConvolutionBiasActivationForward() only supports "
                        "Relu or None activation.");
   }
@@ -6126,7 +6160,7 @@ tsl::Status CudnnSupport::DoPrepareForCtcLoss(
   }
   *ctc_loss_algo_id = algo;
 #else
-  return tsl::Status(tsl::error::INVALID_ARGUMENT,
+  return tsl::Status(absl::StatusCode::kInvalidArgument,
                      "No supported cudnnGetCTCLossWorkspaceSize when "
                      "CUDNN_VERSION < 7.6.3");
 #endif
@@ -6156,7 +6190,7 @@ tsl::Status CudnnSupport::DoCtcLoss(
     int ctc_loss_algo_id) {
   // Current cuDNN CTC Loss only supports the float datatype
   if (CUDNN_VERSION < 7603 || element_type != dnn::DataType::kFloat) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "CudnnCtcLossDescriptor is supported only when the "
                        "CUDNN_VERSION >= 7.6.3 and DataType is float");
   }
@@ -6438,7 +6472,7 @@ tsl::StatusOr<std::vector<PoolingSplitsSpec>> GetTensorSplits(
 
   if (max_batches_per_split == 0) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrCat(
             "Tensor has too many elements for int32 indexing: batches=",
             num_batches, " elements_per_batch=", elements_per_batch_input,
@@ -6498,7 +6532,8 @@ tsl::Status CudnnSupport::DoPoolForward(
   auto splits_or =
       GetTensorSplits(input_dimensions, output_dimensions, element_type);
   if (!splits_or.ok()) {
-    return tsl::Status(tsl::error::INTERNAL, "Cudnn pooling failed to split");
+    return tsl::Status(absl::StatusCode::kInternal,
+                       "Cudnn pooling failed to split");
   }
   auto splits = std::move(splits_or.value());
 
@@ -6567,7 +6602,8 @@ tsl::Status CudnnSupport::DoPoolBackward(
   auto splits_or =
       GetTensorSplits(input_dimensions, output_dimensions, element_type);
   if (!splits_or.ok()) {
-    return tsl::Status(tsl::error::INTERNAL, "Cudnn pooling failed to split");
+    return tsl::Status(absl::StatusCode::kInternal,
+                       "Cudnn pooling failed to split");
   }
   auto splits = std::move(splits_or.value());
 

@@ -132,7 +132,10 @@ genrule(
 cc_library(
     name = "devicedb_sample",
     srcs = ["devicedb-sample.cc"],
-    hdrs = ["devicedb-sample.h"],
+    hdrs = [
+        "devicedb-sample.h",
+        "variables.h",
+    ],
     deps = [":database_fbs"],
 )
 

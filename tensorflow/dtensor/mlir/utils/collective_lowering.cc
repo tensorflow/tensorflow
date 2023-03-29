@@ -928,7 +928,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
         // For sharded dimensions, the slice range is [step * device_id, step *
         // (device_id + 1)), where step = dim_size / num_of_shards.
         StatusOr<DeviceLocation> device_loc_or_status =
-            src_layout.device_location(device_id);
+            src_layout.mesh().device_location(device_id);
         if (!device_loc_or_status.ok())
           return all_gather.emitOpError()
                  << device_loc_or_status.status().error_message();

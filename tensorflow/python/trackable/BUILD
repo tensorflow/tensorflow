@@ -44,9 +44,10 @@ py_library(
         "//tensorflow/python:control_flow_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -124,6 +125,7 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -134,6 +136,7 @@ py_library(
     deps = [
         ":base",
         ":data_structures",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -144,6 +147,7 @@ tf_py_test(
         ":autotrackable",
         ":data_structures",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -154,6 +158,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -170,6 +176,7 @@ py_library(
     name = "layer_utils",
     srcs = ["layer_utils.py"],
     srcs_version = "PY3",
+    deps = ["//tensorflow/python/util:object_identity"],
 )
 
 py_library(
@@ -179,6 +186,8 @@ py_library(
     deps = [
         ":base",
         ":layer_utils",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
         "@wrapt",
     ],
 )
@@ -198,6 +207,8 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:serialization",
     ],
 )
 

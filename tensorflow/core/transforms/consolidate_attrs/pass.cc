@@ -205,7 +205,8 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
   auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
-  for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
+  for (const auto &it :
+       llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
     Type ret_type = ret.getType();
@@ -452,7 +453,7 @@ DictionaryAttr PrepareAttributesForExportPassImpl::prepareAttributesFor(
     auto shape = ShapeAttr::get(&getContext(),
                                 type.isa<RankedTensorType>()
                                     ? type.cast<RankedTensorType>().getShape()
-                                    : Optional<ArrayRef<int64_t>>());
+                                    : std::optional<ArrayRef<int64_t>>());
     attrs.set(output_shapes_id_, ArrayAttr::get(&getContext(), {shape}));
   }
   auto element_type = type.cast<TensorType>().getElementType();

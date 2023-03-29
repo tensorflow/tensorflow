@@ -24,7 +24,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
@@ -510,7 +510,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
 
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(
-          "third_party/tensorflow/lite/testdata/add.bin");
+          "tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
   constexpr int kNumTensorElements = 1 * 8 * 8 * 3;
 
@@ -581,7 +581,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
 TEST(TestDelegateKernel, WithoutName) {
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(
-          "third_party/tensorflow/lite/testdata/add.bin");
+          "tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;

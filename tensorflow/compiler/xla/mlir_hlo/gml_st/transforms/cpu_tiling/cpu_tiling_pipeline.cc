@@ -13,22 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <functional>
+
 #include "gml_st/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Dialect/Func/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
 namespace mlir {
 namespace gml_st {
 
-GmlStCPUTilingOptions getDefaultCPUPipelineOptions() {
+GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
+                                                   int64_t statsDetailLevel) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
   opts.reduction1DTileSize = 32;
   opts.reduction2DTileSizes = {4, 4};
-  opts.matmulTileSizes = {4, 4, 4};
+  opts.matmulTileSizes = {};
+  opts.vectorizationSizeThreshold = 128;
+  opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
+  opts.enableFusionClusters = false;
+  opts.enableFusionClusterOutlining = false;
+  opts.cpuName = cpuName;
+  opts.statsDetailLevel = statsDetailLevel;
+  opts.fuseDegenerateReshapes = false;
   return opts;
 }
 
@@ -36,41 +47,66 @@ void addCPUTilingPipeline(OpPassManager& pm,
                           const GmlStCPUTilingOptions& options) {
   using func::FuncOp;
 
+  pm.addNestedPass<FuncOp>(createCollectStatsPass(options.statsDetailLevel));
+  pm.addNestedPass<FuncOp>(createScalarizationPass(false));
+  pm.addNestedPass<FuncOp>(
+      createVectorizeForCPUPass(options.vectorizationSizeThreshold));
+
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
   }
 
+  // Outline and deduplicate fusion clusters.
+  if (options.enableFusionClusterOutlining) {
+    pm.addPass(createFusionOutliningPass());
+    pm.addPass(func::createDuplicateFunctionEliminationPass());
+    pm.addPass(createCSEPass());
+  }
+
+  if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
+
+  pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
       options.vectorSize, options.reduction1DTileSize,
       options.reduction2DTileSizes));
   pm.addNestedPass<FuncOp>(
-      createTransformDotForCpuPass(options.matmulTileSizes));
-  pm.addNestedPass<FuncOp>(createTransformMatmulForCpuPass(
-      options.matmulTileSizes, options.lowerToMmt4d));
-  // TODO(b/270534416): Re-enable.
-  // pm.addNestedPass<FuncOp>(createTransformGenericForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
-  pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::gml_st::createTransformReverseForCpuPass());
+      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
+  // Upstream generalization of tensor.pack/unpack (i.e. tensor.pack/unpack ->
+  // tensor.pad + linalg.transpose + tensor.insert_slice) does not transfer
+  // transformed labels from tensor.pack/unpack to linalg.transpose and thus
+  // makes the latter being tiled again.
+  // Hence, elementwise ops transformation needs to be run before pack/unpack
+  // transformation.
+  pm.addNestedPass<FuncOp>(createTransformElementwiseForCpuPass(
+      options.vectorSize, options.fuseDegenerateReshapes));
+  pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
 
   pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 
+  pm.addNestedPass<FuncOp>(createRewriteForallOpPass());
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
-  pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
+  pm.addNestedPass<FuncOp>(
+      createVectorizeForCPUPass(options.vectorizationTiledSizeThreshold));
 
   // Tile remaining ops by size one and scalarize what we can.
   pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+
+  pm.addPass(createCanonicalizerPass());
+
+  // Remove transformed labels after tiling all ops.
+  pm.addNestedPass<FuncOp>(createRemoveLabelPass());
 }
 
-void addDefaultCPUTilingPipeline(OpPassManager& pm) {
-  addCPUTilingPipeline(pm, getDefaultCPUPipelineOptions());
+void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName,
+                                 int64_t statsDetailLevel) {
+  addCPUTilingPipeline(pm,
+                       getDefaultCPUPipelineOptions(cpuName, statsDetailLevel));
 }
 
 }  // namespace gml_st

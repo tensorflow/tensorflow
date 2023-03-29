@@ -89,3 +89,9 @@ message CompileOptionsProto {
   int64 profile_version = 5;
   bytes serialized_multi_slice_config = 6;
 }
+
+// Helper for serializing opaque executables alongside CompileOptions.
+message ExecutableAndOptionsProto {
+  bytes serialized_executable = 1;
+  CompileOptionsProto compile_options = 2;
+}

@@ -408,7 +408,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelMapDatasetOpTest,
 TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {
   auto dataset_params = ParallelMapDatasetParamsWithInvalidNumParallelCalls();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

@@ -27,6 +27,7 @@ REGISTER9(BinaryOp, GPU, "LessEqual", functor::less_equal, float, Eigen::half,
           double, int64, uint8, uint16, uint32, uint64, int8);
 REGISTER(BinaryOp, GPU, "LessEqual", functor::less_equal, int16);
 #endif
+REGISTER(BinaryOp, GPU, "LessEqual", functor::less_equal, bfloat16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

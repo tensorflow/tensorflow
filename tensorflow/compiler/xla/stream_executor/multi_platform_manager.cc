@@ -95,7 +95,7 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
   std::string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "platform is already registered with name: \"" +
                            platform->Name() + "\"");
   }
@@ -155,7 +155,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithName(
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (platform->Initialized()) {
     return tsl::Status(
-        tsl::error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         absl::StrCat("platform \"", target, "\" is already initialized"));
   }
 
@@ -171,7 +171,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
     return tsl::Status(
-        tsl::error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         absl::StrFormat("platform with id %p is already initialized", id));
   }
 
@@ -231,7 +231,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByNameLocked(
   auto it = name_map_.find(absl::AsciiStrToLower(target));
   if (it == name_map_.end()) {
     return tsl::Status(
-        tsl::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrCat("Could not find registered platform with name: \"", target,
                      "\". Available platform names are: ",
                      absl::StrJoin(InitializedPlatformNamesWithFilter(), " ")));
@@ -244,7 +244,7 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::LookupByIdLocked(
   auto it = id_map_.find(id);
   if (it == id_map_.end()) {
     return tsl::Status(
-        tsl::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrFormat("could not find registered platform with id: %p", id));
   }
   return it->second;

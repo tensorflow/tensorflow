@@ -18,3 +18,16 @@ func.func @split() {
 // CHECK-NEXT: some.use
 // CHECK-NEXT: alloc_tensor
 // CHECK-NEXT: some.op
+
+func.func @split_empty_region() {
+  %alloc_tensor = bufferization.alloc_tensor() : tensor<2xf32>
+  %cond = "test.cond"() : () -> (i1)
+  scf.if %cond {
+    %a = "some.op"(%alloc_tensor) : (tensor<2xf32>) -> (tensor<2xf32>)
+  }
+  // No else.
+  return
+}
+
+// This is a regression test. Just check that this is processed successfully.
+// CHECK-LABEL: @split_empty_region

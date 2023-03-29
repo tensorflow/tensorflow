@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -56,9 +56,7 @@ class GpuReduceScatterCreatorTest : public HloTestBase {
 
   size_t AllReduceCount(std::unique_ptr<HloModule> &module) {
     return absl::c_count_if(module->entry_computation()->instructions(),
-                            [](const HloInstruction *inst) {
-                              return inst->opcode() == HloOpcode::kAllReduce;
-                            });
+                            HloPredicateIsOp<HloOpcode::kAllReduce>);
   }
 };
 

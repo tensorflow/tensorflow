@@ -84,8 +84,8 @@ cc_library(
     deps = [
         "@com_google_absl//absl/base",
         "//third_party/eigen3",
-        "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/framework/fixedpoint",
+        "//tensorflow/tsl/platform:dynamic_annotations",
     ] + select({
         "//tensorflow/tsl:android_x86": [],
         "//tensorflow/tsl:arm_any": [],

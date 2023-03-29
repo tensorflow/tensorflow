@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:uniform_op_quant_spec",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

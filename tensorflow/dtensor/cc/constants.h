@@ -142,6 +142,9 @@ static constexpr char kIteratorElementLayouts[] = "tf._element_layouts";
 // Attribute used in tf.data ops which stores the shapes of the output elements.
 static constexpr char kIteratorOutputShapes[] = "output_shapes";
 
+// The number of list of regular tensors used to represent sparse tensors.
+static constexpr int kSparseTensorNum = 3;
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

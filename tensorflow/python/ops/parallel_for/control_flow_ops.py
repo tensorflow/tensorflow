@@ -29,9 +29,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.parallel_for.pfor import PFor
 from tensorflow.python.ops.parallel_for.pfor import PForConfig
 from tensorflow.python.platform import tf_logging as logging
@@ -90,12 +91,10 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
     extra_args = {"parallel_iterations": parallel_iterations}
   else:
     extra_args = {}
-  ta_list = control_flow_ops.while_loop(
-      lambda i, *ta: i < iters,
-      while_body,
-      [0] + [tensor_array_ops.TensorArray(dtype.base_dtype, iters)
-             for dtype in flat_loop_fn_dtypes],
-      **extra_args)[1:]
+  ta_list = while_loop.while_loop(lambda i, *ta: i < iters, while_body, [0] + [
+      tensor_array_ops.TensorArray(dtype.base_dtype, iters)
+      for dtype in flat_loop_fn_dtypes
+  ], **extra_args)[1:]
 
   # TODO(rachelim): enable this for sparse tensors
 
@@ -401,7 +400,7 @@ def _pfor_impl(loop_fn,
 
     with ops.name_scope("pfor"):
       if iters_value is None or iters_value % parallel_iterations:
-        output_tensors = control_flow_ops.cond(
+        output_tensors = cond.cond(
             math_ops.equal(num_remaining_iterations, 0),
             lambda: tiled_output_tensors,
             lambda: [array_ops.concat([x, y], axis=0)  # pylint: disable=g-long-lambda
