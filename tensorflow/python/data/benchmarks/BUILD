@@ -98,7 +98,6 @@ tf_py_test(
         ":benchmark_base",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:map_op",
     ],
 )
 

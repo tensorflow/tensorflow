@@ -38,6 +38,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -60,7 +61,6 @@ cc_library(
         "//tensorflow/python:pybind11_status",
         "//tensorflow/python/lib/core:py_seq_tensor",
         "//tensorflow/python/lib/core:py_util",
-        "//tensorflow/python/lib/core:safe_ptr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
@@ -201,6 +201,7 @@ py_library(
     deps = [
         ":executor",
         ":monitoring",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
@@ -221,13 +222,14 @@ tf_python_pybind_extension(
     srcs = ["custom_device_testutil.cc"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:custom_device_testutil",
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -251,7 +253,10 @@ py_test(
     deps = [
         ":context",
         ":custom_device_testutil",
-        ":test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -385,7 +390,7 @@ cuda_py_test(
         ":context",
         ":test",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
@@ -457,6 +462,7 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:tensor_conversion_registry",
     ],
 )
 
@@ -489,6 +495,7 @@ cuda_py_test(
 
 py_library(
     name = "framework_for_generated_wrappers",
+    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
@@ -507,6 +514,7 @@ py_library(
     deps = [
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:quarantine",
+        "//tensorflow/python/eager/polymorphic_function:tf_method_target",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
     ],
 )
@@ -592,6 +600,7 @@ cuda_py_test(
         ":function",
         ":remote",
         ":test",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",

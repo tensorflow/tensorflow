@@ -15,8 +15,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
@@ -109,6 +111,71 @@ TEST(ExecuteTest, SimpleFunction) {
 
   retvals[0]->Unref();
   retvals[0] = nullptr;
+  ctx->Unref();
+}
+
+TEST(ExecuteTest, SimpleFunctionInt32BadFullType) {
+  StaticDeviceMgr device_mgr(
+      DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_EXPLICIT,
+      false, &device_mgr, /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
+      /*cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
+
+  const Tensor kTwo = test::AsScalar<int32_t>(2);
+  const string function_name = "XTimesTwo";
+  const FunctionDef x_times_two = FunctionDefHelper::Define(
+      // Name
+      function_name,
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT32}}},
+          {{"scale"},
+           "Cast",
+           {"two"},
+           {{"SrcT", DT_INT32}, {"DstT", DT_INT32}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", DT_INT32}}},
+      });
+  TF_ASSERT_OK(ctx->AddFunctionDef(x_times_two));
+
+  auto op = std::make_unique<EagerOperation>(ctx);
+  TF_ASSERT_OK(op->Reset(
+      /*op=*/function_name.c_str(),
+      /*raw_device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0"));
+
+  // Get a TensorHandle for the input (which has a method for setting its full
+  // type information) and set bad full type information (TFT_TENSOR instead of
+  // TFT_TENSOR[TFT_INT32]) to cause Int32FulltypePass to return an error.
+  Tensor input_tensor = test::AsScalar<int32_t>(3);
+  ASSERT_NE(ctx->HostCPUName().c_str(), nullptr);
+  Device* d = nullptr;
+  TF_ASSERT_OK(ctx->FindDeviceFromName(ctx->HostCPUName().c_str(), &d));
+  auto input = core::RefCountPtr<TensorHandle>(
+      TensorHandle::CreateLocalHandle(std::move(input_tensor), /*d=*/d,
+                                      /*op_device=*/nullptr, ctx));
+  TF_ASSERT_OK(op->AddInput(input.get()));
+  FullTypeDef ft;
+  ft.set_type_id(TFT_TENSOR);
+  input.get()->SetFullType(ft);
+
+  std::vector<TensorHandle*> retvals(1);
+  int num_retvals = retvals.size();
+  Status status = EagerExecute(op.get(), retvals.data(), &num_retvals);
+  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "TFT_TENSOR has 0 args instead of 1"))
+      << "Actual: " << status.error_message();
+  // Since an error occured before the function ran, retval[0] was never
+  // assigned.
+  ASSERT_EQ(retvals[0], nullptr);
   ctx->Unref();
 }
 

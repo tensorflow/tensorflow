@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 
+#include <string>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
@@ -47,7 +49,7 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllReduce) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_all_reduce = [](const HloInstruction*) { return true; };
+  config.convert_all_reduce = HloPredicateTrue;
   TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -72,7 +74,7 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllGather) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_all_gather = [](const HloInstruction*) { return true; };
+  config.convert_all_gather = HloPredicateTrue;
   TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -97,9 +99,7 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleCollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_collective_permute = [](const HloInstruction*) {
-    return true;
-  };
+  config.convert_collective_permute = HloPredicateTrue;
   TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -129,9 +129,7 @@ ENTRY %module_spmd () -> f32[4,4,128] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_collective_permute = [](const HloInstruction*) {
-    return true;
-  };
+  config.convert_collective_permute = HloPredicateTrue;
   TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -159,9 +157,7 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleCollectivePermuteScheduled) {
       hlo_module->schedule().sequence(hlo_module->entry_computation()).size();
 
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_collective_permute = [](const HloInstruction*) {
-    return true;
-  };
+  config.convert_collective_permute = HloPredicateTrue;
   TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -189,7 +185,7 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllToAll) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_all_to_all = [](const HloInstruction*) { return true; };
+  config.convert_all_to_all = HloPredicateTrue;
   TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 

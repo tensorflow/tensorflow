@@ -65,7 +65,7 @@ StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   }
 #endif
   VLOG(1) << message;
-  return Status(error::FAILED_PRECONDITION, message);
+  return Status(absl::StatusCode::kFailedPrecondition, message);
 }
 }  // namespace
 

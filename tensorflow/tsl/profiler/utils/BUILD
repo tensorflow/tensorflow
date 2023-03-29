@@ -119,6 +119,7 @@ cc_library(
         "//tensorflow/tsl/lib/gtl:map_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/lib:context_types_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -189,6 +190,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -399,5 +402,44 @@ tsl_cc_test(
         ":buffer_pool",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "preprocess_xplane",
+    srcs = ["preprocess_xplane.cc"],
+    hdrs = ["preprocess_xplane.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":trace_utils",
+        ":xplane_builder",
+        ":xplane_schema",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
+        "//tensorflow/tsl/profiler/lib:context_types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tsl_cc_test(
+    name = "preprocess_xplane_test",
+    srcs = ["preprocess_xplane_test.cc"],
+    deps = [
+        ":preprocess_xplane",
+        ":tf_xplane_visitor",
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_test_utils",
+        ":xplane_visitor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
     ],
 )

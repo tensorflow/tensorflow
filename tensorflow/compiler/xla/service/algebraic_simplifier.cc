@@ -3648,7 +3648,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
       }
       if (OutputIsPermutationOfOperandElements(user, broadcast) ||
           OutputIsSubsetOfOperandElements(user, broadcast)) {
-        VLOG(10) << "transform permuting/subset  of a scalar broadcast into "
+        VLOG(10) << "transform permuting/subset of a scalar broadcast into "
                  << "a single broadcast";
         HloInstruction* new_broadcast = user->AddInstruction(
             HloInstruction::CreateBroadcast(user->shape(), operand, {}));
@@ -4166,9 +4166,9 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
         new_operands.push_back(operand);
       }
     }
-    VLOG(4) << "Sinking broadcast after user:";
-    VLOG(4) << "  old broadcast: " << broadcast->ToString();
-    VLOG(4) << "  old user: " << user->ToString();
+    VLOG(4) << "Sinking broadcast after user:"
+            << "\n  old broadcast: " << broadcast->ToString()
+            << "\n  old user: " << user->ToString();
     changed_shape = ShapeUtil::ChangeElementType(operand->shape(),
                                                  user->shape().element_type());
     simplifier_->UpdateLayout(&changed_shape);

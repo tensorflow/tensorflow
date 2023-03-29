@@ -1098,7 +1098,7 @@ tf_module {
   }
   member_method {
     name: "DatasetCardinality"
-    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'cardinality_options\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "DatasetFromGraph"

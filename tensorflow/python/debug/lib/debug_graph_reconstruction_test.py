@@ -26,7 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
@@ -144,7 +144,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = variables.Variable(10.0, name="x")
       y = variables.Variable(20.0, name="y")
-      cond = control_flow_ops.cond(
+      cond = tf_cond.cond(
           x > y, lambda: math_ops.add(x, 1), lambda: math_ops.add(y, 1))
       self.evaluate(x.initializer)
       self.evaluate(y.initializer)

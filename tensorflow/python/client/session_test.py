@@ -56,6 +56,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -1167,7 +1168,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with ops.colocate_with(x):
         y = array_ops.placeholder(dtype=dtypes.float32)
       with ops.device('/cpu:0'):
-        z = control_flow_ops.while_loop(
+        z = while_loop.while_loop(
             lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
       with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
         gradients_impl.gradients(z, [x, y])

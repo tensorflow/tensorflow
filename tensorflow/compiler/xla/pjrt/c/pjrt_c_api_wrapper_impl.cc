@@ -148,7 +148,8 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Error_GetCode_Args", PJRT_Error_GetCode_Args_STRUCT_SIZE,
       args->struct_size));
-  args->code = StatusCodeToPjrtErrorCode(args->error->status.code());
+  args->code = StatusCodeToPjrtErrorCode(
+      static_cast<absl::StatusCode>(args->error->status.code()));
   return nullptr;
 }
 
@@ -708,43 +709,35 @@ static xla::SendCallback CSendCallbackToCpp(
     const PJRT_SendCallbackInfo& c_callback) {
   return xla::SendCallback{
       c_callback.channel_id,
+      // Transfer metadata is unused because PJRT C API doesn't support
+      // use_major_to_minor_data_layout_for_callbacks = false
       [user_arg = c_callback.user_arg, callback = c_callback.send_callback](
-          const xla::PjRtTransferMetadata& metadata, xla::PjRtChunk input,
-          size_t total_size_in_bytes, bool done) -> xla::Status {
-        PJRT_TransferMetadata c_metadata{metadata.device_shape};
+          const xla::PjRtTransferMetadata& unused_metadata,
+          xla::PjRtChunk input, size_t total_size_in_bytes,
+          bool done) -> xla::Status {
+        PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
+        // PJRT_CallbackError creates PJRT_Error in the implementation, but
+        // using the caller's callback status code & message. This way, the
+        // caller avoids creating PJRT_Error itself, and the PJRT_Error is fully
+        // managed in the implementation layer.
+        PJRT_CallbackError c_callback_error =
+            [](PJRT_Error_Code code, const char* message, size_t message_size) {
+              return new PJRT_Error{
+                  xla::Status(static_cast<absl::StatusCode>(code),
+                              std::string(message, message_size))};
+            };
 
-        // `deleter_arg` holds a copy of the original xla::PjRtChunk
-        // deleter. The original xla::PjRtChunk `input` releases its ownership
-        // of data, which will subsequently be managed by `deleter` along with
-        // `deleter_arg`.
-        PJRT_Chunk c_chunk{
-            /*data=*/input.data(), /*size=*/static_cast<size_t>(input.size()),
-            /*deleter=*/
-            [](void* data, void* deleter_arg) {
-              auto* deleter =
-                  reinterpret_cast<std::function<void(void*)>*>(deleter_arg);
-              (*deleter)(data);
-              delete deleter;
-            },
-            /*deleter_arg=*/new std::function(input.deleter())};
-        // Release the ownership of `input.data()`, so it can be managed
-        // by `c_chunk`.
-        input.release();
-
-        // TODO(b/267255088) retrieve up the callback error message.
-        bool success = callback(&c_metadata, &c_chunk, total_size_in_bytes,
-                                done, user_arg);
-        if (success) {
+        std::unique_ptr<PJRT_Error> error(callback(
+            &c_chunk, &c_callback_error, total_size_in_bytes, done, user_arg));
+        if (error == nullptr) {
           return tsl::OkStatus();
         }
-        return xla::Status(tsl::error::UNKNOWN,
-                           "PJRT_SendCallback returned false (error).");
+        return error->status;
       }};
 }
 
-// Create new libtpu C++ callbacks that does the following:
-// - convert libtpu PjRtTransferMetadata to PJRT_TransferMetadata, etc.
-// - call C API callback with the converted arguments
+// Create new libtpu C++ callbacks that calls C API callback with converted
+// arguments.
 static void CSendCallbackListsToCpp(
     PJRT_SendCallbackInfo** c_lists, size_t outer_size, size_t inner_size,
     std::vector<std::vector<xla::SendCallback>>& cpp_lists) {
@@ -762,15 +755,13 @@ static xla::RecvCallback CRecvCallbackToCpp(
     const PJRT_RecvCallbackInfo& c_callback) {
   return xla::RecvCallback{
       c_callback.channel_id,
+      // Transfer metadata is unused because PJRT C API doesn't support
+      // use_major_to_minor_data_layout_for_callbacks = false
       [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
-          const xla::PjRtTransferMetadata& metadata,
+          const xla::PjRtTransferMetadata& unused_metadata,
           std::unique_ptr<xla::CopyToDeviceStream> stream) {
-        Int64List c_dimensions;
-        ApiConverter::CreateVector(metadata.device_shape.dimensions(),
-                                   &c_dimensions);
-        PJRT_TransferMetadata c_metadata{metadata.device_shape};
         PJRT_CopyToDeviceStream c_stream{std::move(stream)};
-        callback(&c_metadata, &c_stream, user_arg);
+        callback(&c_stream, user_arg);
       }};
 }
 
@@ -816,6 +807,7 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.untuple_result = true;
   options.context = nullptr;
   options.multi_slice_config = nullptr;
+  options.use_major_to_minor_data_layout_for_callbacks = true;
 
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
@@ -1002,7 +994,13 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
       "PJRT_Buffer_OnDeviceTrimmedShape_Args",
       PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE, args->struct_size));
 
-  const xla::Shape& shape = args->buffer->buffer->on_device_shape();
+  xla::Shape shape;
+  if (args->is_logical_on_device_shape) {
+    PJRT_ASSIGN_OR_RETURN(shape,
+                          args->buffer->buffer->logical_on_device_shape());
+  } else {
+    shape = args->buffer->buffer->on_device_shape();
+  }
   args->element_type = shape.element_type();
   ApiConverter::CreateVector(shape.dimensions(), &args->dimensions);
   ApiConverter::CreateVector(shape.dynamic_dimensions(),
@@ -1138,6 +1136,51 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
   PJRT_ASSIGN_OR_RETURN(args->buffer_pointer,
                         args->buffer->client->client->UnsafeBufferPointer(
                             args->buffer->buffer.get()));
+  return nullptr;
+}
+
+// ---------------------------- CopyToDeviceStream -----------------------------
+
+PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
+    PJRT_CopyToDeviceStream_AddChunk_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_AddChunk_Args",
+      PJRT_CopyToDeviceStream_AddChunk_Args_STRUCT_SIZE, args->struct_size));
+
+  xla::PjRtFuture<xla::Status> future =
+      args->stream->stream->AddChunk(ConvertToCppChunk(*args->chunk));
+  args->transfer_complete = new PJRT_Event{std::move(future)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
+    PJRT_CopyToDeviceStream_TotalBytes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_TotalBytes_Args",
+      PJRT_CopyToDeviceStream_TotalBytes_Args_STRUCT_SIZE, args->struct_size));
+
+  args->total_bytes = args->stream->stream->total_bytes();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CopyToDeviceStream_GranuleSize(
+    PJRT_CopyToDeviceStream_GranuleSize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_GranuleSize_Args",
+      PJRT_CopyToDeviceStream_GranuleSize_Args_STRUCT_SIZE, args->struct_size));
+
+  args->granule_size_in_bytes = args->stream->stream->granule_size_in_bytes();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
+    PJRT_CopyToDeviceStream_CurrentBytes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_CurrentBytes_Args",
+      PJRT_CopyToDeviceStream_CurrentBytes_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->current_bytes = args->stream->stream->current_bytes();
   return nullptr;
 }
 

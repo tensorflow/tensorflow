@@ -44,12 +44,15 @@ Status PjRtState::SetPjRtClient(const DeviceType& device_type,
   return OkStatus();
 }
 
-Status PjRtState::DeletePjRtClientIfExists(const DeviceType& device_type) {
+Status PjRtState::MovePjRtClientToUnused(const DeviceType& device_type) {
   absl::MutexLock lock(&mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
+    unused_.push_back(std::move(it->second));
     clients_.erase(it);
+    return OkStatus();
   }
-  return OkStatus();
+  return errors::NotFound("PjRt client not found for device type ",
+                          device_type);
 }
 
 string PjRtState::DebugString() const { return "PjRtState"; }

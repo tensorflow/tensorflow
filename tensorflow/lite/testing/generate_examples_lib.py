@@ -45,6 +45,7 @@ from tensorflow.lite.testing.op_tests.atan2 import make_atan2_tests
 from tensorflow.lite.testing.op_tests.batch_to_space_nd import make_batch_to_space_nd_tests
 from tensorflow.lite.testing.op_tests.batchmatmul import make_batchmatmul_tests
 from tensorflow.lite.testing.op_tests.binary_op import make_add_tests, make_div_tests, make_sub_tests, make_mul_tests, make_pow_tests, make_floor_div_tests, make_floor_mod_tests, make_squared_difference_tests
+from tensorflow.lite.testing.op_tests.bitcast import make_bitcast_tests
 from tensorflow.lite.testing.op_tests.broadcast_args import make_broadcast_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_to import make_broadcast_to_tests

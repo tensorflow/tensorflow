@@ -29,7 +29,7 @@ message QuantizationMethod {
 // NEXT ID: 2
 message PresetQuantizationMethod {
   // Preset quantization methods that are supported as a stable API.
-  // NEXT ID: 3
+  // NEXT ID: 4
   enum PresetMethod {
     // TODO(b/266173150): Update preset methods after redefining quantization
     // pattern matching in DarwiNN.
@@ -45,6 +45,11 @@ message PresetQuantizationMethod {
     // ranges are determined during graph runtime. Data type is as follows:
     // Weight: i8, Bias: f32, Activation: f32, Input/output: f32
     DYNAMIC_RANGE = 2;
+
+    // Apply float16 quantization to all the filters. Quantized filters will be
+    // quantized before running inference.
+    // Weight: f16, Bias: f32, Activation: f32, Input/output: f32
+    FLOAT16 = 3;
   }
   PresetMethod preset_method = 1;
 }

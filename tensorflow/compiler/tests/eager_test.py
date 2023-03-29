@@ -30,7 +30,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import pooling
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
@@ -637,7 +637,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       def f(pred, value):
         fn1 = lambda: math_ops.add(value, 1.0)
         fn2 = lambda: math_ops.subtract(value, 1.0)
-        return control_flow_ops.cond(pred, fn1, fn2)
+        return cond.cond(pred, fn1, fn2)
 
       plus_one = f(constant_op.constant(True), constant_op.constant(10.0))
       minus_one = f(constant_op.constant(False), constant_op.constant(10.0))

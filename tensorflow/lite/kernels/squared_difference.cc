@@ -34,6 +34,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
@@ -249,15 +250,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       CpuBackendContext* cpu_backend_context =
           CpuBackendContext::GetFromContext(context);
       pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      threadpool = nullptr;
       const enum xnn_status status = xnn_run_squared_difference_nd_f32(
           num_input1_dims, input1_shape.data(), num_input2_dims,
           input2_shape.data(), GetTensorData<float>(input1),
           GetTensorData<float>(input2), GetTensorData<float>(output),
           /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(context,
-                           "Failed to run xnn_run_squared_difference_nd_f32");
-        return kTfLiteError;
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to run xnn_run_squared_difference_nd_f32. Error code: %d",
+            status);
+        EvalSquaredDifference<float>(context, node, data, input1, input2,
+                                     output);
       }
       return kTfLiteOk;
     }

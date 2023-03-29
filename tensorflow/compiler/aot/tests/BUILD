@@ -72,6 +72,7 @@ py_binary(
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -324,6 +325,86 @@ tfcompile_test_dep_configs = [
     ]
     for suffix, mlir_component in tfcompile_test_dep_configs
 ]
+
+tfcompile_bench_tfmatmul_mkn = [
+    (x, x, x)
+    for x in (16, 32, 64, 128, 256, 512, 1024)
+] + [
+    (1, 2, 256),
+    (1, 8, 256),
+    (1, 18, 300),
+    (1, 37, 256),
+    (1, 91, 256),
+    (1, 111, 256),
+    (1, 192, 192),
+    (1, 226, 256),
+    (1, 256, 192),
+    (1, 256, 256),
+    (1, 512, 512),
+    (1, 300, 18),
+    (21, 24, 1),
+    (21, 120, 1),
+    (10, 10, 10),
+    (100, 100, 100),
+    (18, 1, 300),
+    (18, 300, 1),
+    (300, 1, 18),
+    (300, 18, 1),
+]
+
+tfcompile_bench_tfmatmul = [
+    (
+        "bench_graph_tfmatmul_%sx%sx%s" % (m, k, n),
+        "bench_graph_tfmatmul_%sx%sx%s.config.pbtxt" % (m, k, n),
+        "bench_graph_tfmatmul.template.pbtxt",
+        "-e \"s|<M>|%s|g\" -e \"s|<K>|%s|g\" -e \"s|<N>|%s|g\"" % (m, k, n),
+    )
+    for (m, k, n) in tfcompile_bench_tfmatmul_mkn
+]
+
+test_suite(
+    name = "all_tfmatmul_benchmarks",
+    tags = ["manual"],
+    tests = [
+        (":%s_test" % bench_name)
+        for (bench_name, _, _, _) in tfcompile_bench_tfmatmul
+    ],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
+    name = "all_tfmatmul_mlir_benchmarks",
+    tags = ["manual"],
+    tests = [
+        (":%s_mlir_test" % bench_name)
+        for (bench_name, _, _, _) in tfcompile_bench_tfmatmul
+    ],
+    visibility = ["//visibility:public"],
+)
+
+[[
+    genrule(
+        name = "gen_" + config_file,
+        testonly = 1,
+        srcs = [template_file],
+        outs = [config_file],
+        cmd = ("sed " + sed_replace + " " +
+               "$(location " + template_file + ") " +
+               "> $(OUTS)"),
+        tags = ["manual"],
+    ),
+    tf_library(
+        name = bench_name,
+        testonly = 1,
+        config = config_file,
+        cpp_class = "foo::bar::MatMulComp",
+        graph = "test_graph_tfmatmul.pb",
+        tags = [
+            "manual",
+            "no_mac",  # TODO(b/228273415)
+        ],
+    ),
+] for (bench_name, config_file, template_file, sed_replace) in tfcompile_bench_tfmatmul]
 
 tf_cc_test(
     name = "tfcompile_test",

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
 #include "tensorflow/lite/core/c/common.h"
@@ -115,6 +116,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   CpuBackendContext* cpu_backend_context =
       CpuBackendContext::GetFromContext(context);
   pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+  // TODO (grantjensen): Add threading.
   threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
@@ -151,9 +153,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x32(
             GetTensorData<int32_t>(op_context.input),
             GetTensorData<int32_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
+          TFLITE_LOG(
+              TFLITE_LOG_INFO,
+              "Failed to run xnnpack xnn_run_transpose_nd_x32. Error code: %d",
+              status);
+          TF_LITE_TRANSPOSE(reference_ops, int32_t);
         }
 #else   // TFLITE_KERNEL_USE_XNNPACK
         TF_LITE_TRANSPOSE(optimized_ops, int32_t);
@@ -175,9 +182,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x8(
             GetTensorData<int8_t>(op_context.input),
             GetTensorData<int8_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
+          TFLITE_LOG(
+              TFLITE_LOG_INFO,
+              "Failed to run xnnpack xnn_run_transpose_nd_x8. Error code: %d",
+              status);
+          TF_LITE_TRANSPOSE(reference_ops, int8_t);
         }
 #else   // TFLITE_KERNEL_USE_XNNPACK
         TF_LITE_TRANSPOSE(optimized_ops, int8_t);
@@ -192,9 +204,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x16(
             GetTensorData<int16_t>(op_context.input),
             GetTensorData<int16_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
+          TFLITE_LOG(
+              TFLITE_LOG_INFO,
+              "Failed to run xnnpack xnn_run_transpose_nd_x16. Error code: %d",
+              status);
+          TF_LITE_TRANSPOSE(reference_ops, int8_t);
         }
 #else   // TFLITE_KERNEL_USE_XNNPACK
         TF_LITE_TRANSPOSE(optimized_ops, int16_t);

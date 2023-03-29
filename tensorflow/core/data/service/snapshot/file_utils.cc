@@ -91,20 +91,20 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
   return tsl::OkStatus();
 }
 
-tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
-                                    const Tensor& tensor,
-                                    absl::string_view compression,
-                                    tsl::Env* env) {
+tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                     const std::vector<Tensor>& tensors,
+                                     absl::string_view compression,
+                                     tsl::Env* env) {
   auto nonatomically_write = [&](const std::string& uncomitted_filename) {
     snapshot_util::TFRecordWriter writer(uncomitted_filename,
                                          std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
-    TF_RETURN_IF_ERROR(writer.WriteTensors({tensor}));
+    TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
     return tsl::OkStatus();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
-      "Requested to write tensor: ", tensor.DebugString());
+      " Requested file: ", filename);
   return tsl::OkStatus();
 }
 

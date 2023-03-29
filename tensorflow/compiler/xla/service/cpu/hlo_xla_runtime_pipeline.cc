@@ -84,7 +84,8 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createPreSparsificationRewritePass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(), mlir::SparsificationOptions(),
-      mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
+      mlir::SparseTensorConversionOptions(), /*createSparseDeallocs=*/false,
+      /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
@@ -166,7 +167,14 @@ static Status CreateHloXlaPipeline(
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (options.enable_tiling_and_fusion) {
-    mlir::gml_st::addDefaultCPUTilingPipeline(pm, options.cpu_name);
+    mlir::gml_st::GmlStCPUTilingOptions opts =
+        mlir::gml_st::getDefaultCPUPipelineOptions(options.cpu_name);
+    if (options.enable_fusion_outlining) {
+      opts.enableFusionClusters = true;
+      opts.enableFusionClusterOutlining = true;
+    }
+    mlir::gml_st::addCPUTilingPipeline(pm, opts);
+
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());
@@ -210,7 +218,7 @@ static Status CreateHloXlaPipeline(
 
   if (options.enable_tiling_and_fusion) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createNaiveCopyRemovalPass());
   }
   // Handle framework specific requirements for buffers and then insert
   // deallocations for temporary buffers.
@@ -227,16 +235,19 @@ static Status CreateHloXlaPipeline(
   if (options.outline_with_xla_framework) {
     pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
   }
-  pm.addPass(mlir::createInlinerPass());
 
   if (options.experimental_deallocation) {
     CHECK(!options.sparse_bufferization)
         << "Sparse bufferization and experimental deallocation are mutually "
            "exclusive.";
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createXlaBufferArgRewritePass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocatePass());
-    pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createDeallocationSimplificationPass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferReusePass());
-    pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createDeallocationSimplificationPass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocationToScfPass());
   } else {
     pm.addNestedPass<FuncOp>(
@@ -265,8 +276,6 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeI1VectorTransferOpsPass());
   pm.addNestedPass<FuncOp>(
       xla::cpu::createConvertXlaCpuMemRefElementCastToLLVMPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::deallocation::createConvertDeallocationOpsToLLVM());
   return OkStatus();
 }
 

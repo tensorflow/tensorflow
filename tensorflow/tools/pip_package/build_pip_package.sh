@@ -189,11 +189,12 @@ function prepare_src() {
     # which is a symlink to tensorflow/tsl/python/lib/core/libbfloat16.so in
     # the Bazel build tree. We do not export the file in _solib_local (nor
     # symlinks in general, I think Python wheels have poor support for them?)
+    so_lib_dir=$(ls $RUNFILES | grep solib)
     if is_macos; then
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      install_name_tool -change "@loader_path/../../../../../_solib_darwin_x86_64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      install_name_tool -change "@loader_path/../../_solib_darwin_x86_64//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
@@ -204,13 +205,10 @@ function prepare_src() {
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     fi
-    so_lib_dir=$(ls $RUNFILES | grep solib) || true
-    if [ -n "${so_lib_dir}" ]; then
-      mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
-      if [ -n "${mkl_so_dir}" ]; then
-        mkdir "${TMPDIR}/${so_lib_dir}"
-        cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
-      fi
+    mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+    if [ -n "${mkl_so_dir}" ]; then
+      mkdir "${TMPDIR}/${so_lib_dir}"
+      cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
     fi
   fi
 

@@ -37,7 +37,7 @@ from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
@@ -836,7 +836,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     with backprop.GradientTape() as g:
       g.watch(x)
-      y = control_flow_ops.cond(x < x, true_fn, false_fn)
+      y = tf_cond.cond(x < x, true_fn, false_fn)
 
     if not context.executing_eagerly():
       with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
@@ -1933,7 +1933,7 @@ class JacobianTest(test.TestCase):
 
     @def_function.function
     def f(x):
-      y = control_flow_ops.cond(x > 0., lambda: x**3., lambda: x**2.)
+      y = tf_cond.cond(x > 0., lambda: x**3., lambda: x**2.)
       return y
 
     with backprop.GradientTape(persistent=True) as tape:

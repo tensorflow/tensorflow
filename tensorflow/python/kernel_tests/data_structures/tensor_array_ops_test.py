@@ -31,7 +31,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -168,7 +168,7 @@ class TensorArrayTest(test.TestCase):
         return w2.concat()
 
       def _write(index, output):
-        elements = control_flow_ops.cond(
+        elements = cond.cond(
             math_ops.less(index, 3), _concat_1, _concat_2)
         return (index + 1, output.write(index, elements))
 
@@ -1083,7 +1083,7 @@ class TensorArrayTest(test.TestCase):
         c = lambda i, acc: i < 5
 
         def b(i, acc):
-          x1 = control_flow_ops.cond(
+          x1 = cond.cond(
               math_ops.equal(i, 0), lambda: x,
               lambda: math_ops.multiply(acc.read(i - 1), 2.0))
           return i + 1, acc.write(i, x1)

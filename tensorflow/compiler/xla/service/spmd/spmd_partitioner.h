@@ -353,7 +353,7 @@ class PartitionedHlo {
     PartitionedHlo new_phlo = *this;
     new_phlo.hlo_ = hlo;
     if (!hlo->has_sharding() && hlo_->has_sharding()) {
-      hlo->set_sharding(hlo_->sharding());
+      hlo->copy_sharding(hlo_);
     }
     return new_phlo;
   }

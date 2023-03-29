@@ -775,7 +775,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         )
         return {'output': q_out}
 
-    np.random.seed(1234)
     model = ConvModel()
     saved_model_save.save(model, self._input_saved_model_path)
 
@@ -1220,6 +1219,77 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
 
+  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
+  @test_util.deprecated_graph_mode_only
+  def test_qat_file_init_hash_table_lookup_model_tf1(self):
+    tags = {tag_constants.SERVING}
+    signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+    # Create and save a simple model that involves a hash table.
+    inputs, outputs = self._create_and_save_file_init_hash_table_qat_model_tf1(
+        self._input_saved_model_path, tags, signature_def_key
+    )
+
+    # Make sure that the desired input key and output key is present.
+    self.assertIn('input_vocabs', inputs.keys())
+    self.assertIn('lookup', outputs.keys())
+
+    # Representative dataset is composed of a set of vocabs for table lookup.
+    repr_ds = [
+        {'input_vocabs': np.array([b'static', b'range', b'quantization'])}
+        for _ in range(4)
+    ]
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        )
+    )
+    signature_def_keys = [signature_def_key]
+
+    quantize_model.quantize(
+        self._input_saved_model_path,
+        signature_def_keys,
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=repr_ds,
+    )
+
+    # Tests table lookup to make sure the table has been initialized
+    # successfully.
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = saved_model_loader.load(
+          sess, tags=tags, export_dir=self._output_saved_model_path
+      )
+
+      # The graph should contain a quantized function call (it contains a
+      # single f32 matmul node).
+      self.assertTrue(
+          self._contains_quantized_function_call(
+              output_meta_graph_def.graph_def
+          )
+      )
+      self.assertCountEqual(
+          output_meta_graph_def.signature_def.keys(), signature_def_keys
+      )
+
+      signature_def = output_meta_graph_def.signature_def[signature_def_key]
+      input_tensor_name = signature_def.inputs['input_vocabs'].name
+      input_tensor = sess.graph.get_tensor_by_name(input_tensor_name)
+      lookup_tensor_name = signature_def.outputs['lookup'].name
+      lookup_tensor = sess.graph.get_tensor_by_name(lookup_tensor_name)
+
+      lookup_val = sess.run(
+          lookup_tensor,
+          feed_dict={
+              input_tensor: np.array([b'dynamic', b'quantization', b'range'])
+          },
+      )
+
+      # "dynamic" is not in the table: -1 (default value)
+      self.assertAllClose(lookup_val, [-1.0, 2.0, 1.0])
+
   # Run this test only with the eager mode.
   @test_util.run_v2_only
   def test_ptq_model_with_variable(self):
@@ -1309,140 +1379,143 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
-  # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
+  # Check only the most simple case and the most complicated cases.
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF, False, False),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, False),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, False),
-      ('bn', None, False, True, quant_opts_pb2.TF, False, False),
-      (
-          'bn_and_relu',
-          nn_ops.relu,
-          False,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      ('with_bias', None, True, False, quant_opts_pb2.TF, False, False),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False, False),
-      (
-          'with_bias_and_bn_and_relu',
-          nn_ops.relu,
-          True,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla_dynamic',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla_dynamic',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'none_to_uq',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'none_to_uq_per_channel',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          True,
-      ),
-      (
-          'relu_to_uq',
-          nn_ops.relu,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_to_uq',
-          None,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu_to_uq',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_uq',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(
@@ -1457,7 +1530,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
     filter_shape = [2, 3, 3, 2]
 
-    np.random.seed(1234)
     model = self._create_conv2d_model(
         input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
     )
@@ -1628,140 +1700,143 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       else:
         self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
-  # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
+  # Check only the most simple case and the most complicated cases.
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF, False, False),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, False),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, False),
-      ('bn', None, False, True, quant_opts_pb2.TF, False, False),
-      (
-          'bn_and_relu',
-          nn_ops.relu,
-          False,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      ('with_bias', None, True, False, quant_opts_pb2.TF, False, False),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False, False),
-      (
-          'with_bias_and_bn_and_relu',
-          nn_ops.relu,
-          True,
-          True,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.TF,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_bn_to_xla_dynamic',
-          None,
-          True,
-          True,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_xla_dynamic',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.XLA,
-          True,
-          False,
-      ),
-      (
-          'none_to_uq',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'none_to_uq_per_channel',
-          None,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          True,
-      ),
-      (
-          'relu_to_uq',
-          nn_ops.relu,
-          False,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_to_uq',
-          None,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu_to_uq',
-          nn_ops.relu,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
-      (
-          'with_bias_and_relu6_to_uq',
-          nn_ops.relu6,
-          True,
-          False,
-          quant_opts_pb2.UNIFORM_QUANTIZED,
-          False,
-          False,
-      ),
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(
@@ -1778,7 +1853,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     model = self._create_depthwise_conv2d_model(
         input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
     )
-    np.random.seed(1234)
     saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
@@ -1910,7 +1984,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       batch_sizes: Sequence[int],
       target_opset: quant_opts_pb2.OpSet,
   ):
-    np.random.seed(1234)
     lhs_batch_size, rhs_batch_size = batch_sizes
     input_shape = (*lhs_batch_size, 1, 1024)
     filter_shape = (*rhs_batch_size, 1024, 3)
@@ -1922,15 +1995,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         has_bias,
         activation_fn,
     )
+    rng = np.random.default_rng(seed=1234)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(500):
         yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(
-                    low=0.0, high=1.0, size=static_input_shape
-                ).astype('f4')
-            ),
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
         }
 
     tags = {tag_constants.SERVING}
@@ -1961,15 +2033,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     input_data = ops.convert_to_tensor(
-        np.random.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            'f4'
+        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
+            np.float32
         )
     )
     expected_outputs = model.matmul(input_data)
     got_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
-    self.assertAllClose(expected_outputs, got_outputs, atol=0.1674)
+    # The atol value is arbitrary.
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.22)
 
     # Check the converted model in the target opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2003,8 +2076,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_tensor=ops.convert_to_tensor(input_data)
     )
     # The difference between TF and target path is expected to be small.
-    self.assertAllClose(new_outputs, got_outputs, atol=0.1202)
-    self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
+    # The atol value is arbitrary.
+    self.assertAllClose(new_outputs, got_outputs, atol=0.13)
+    self.assertAllClose(new_outputs, expected_outputs, atol=0.13)
 
   @parameterized.parameters(
       ('abc,cde->abde', (2, 2, 64), (64, 3, 3), (3, 3), quant_opts_pb2.XLA),
@@ -2175,6 +2249,68 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           if func.signature.name == func_name:
             self._contains_op_with_name_and_attribute(
                 func.node_def, op_name='XlaConvV2', attr_name='', attr_val=None
+            )
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_alias_preserved_in_qat(self):
+    _, y_shape, _, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes('ab,bc->ac')
+    )
+    model = self._create_einsum_model_with_fake_quant(
+        'ab,bc->ac', y_shape, x_signature, y_signature
+    )
+
+    signatures = {
+        'serving_default': model.einsum_with_kernel.get_concrete_function(),
+    }
+    save_opts = save_options.SaveOptions(
+        function_aliases={'einsum_with_kernel': model.einsum_with_kernel}
+    )
+
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures, save_opts
+    )
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.OpSet.XLA,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    # Test whether the aliased function exists.
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+
+    # Confirm that the function alias is preserved.
+    meta_graph_def = output_loader.get_meta_graph_def_from_tags(tags)
+    function_aliases = meta_graph_def.meta_info_def.function_aliases
+    self.assertNotEmpty(function_aliases)
+    self.assertCountEqual(function_aliases.values(), {'einsum_with_kernel'})
+
+    # Test that the aliased function contains a quantized op.
+    for func_name, alias in function_aliases.items():
+      if alias == 'einsum_with_kernel':
+        for func in meta_graph_def.graph_def.library.function:
+          if func.signature.name == func_name:
+            self._contains_op_with_name_and_attribute(
+                func.node_def, op_name='XlaDotV2', attr_name='', attr_val=None
             )
 
   @test_util.deprecated_graph_mode_only
@@ -3515,7 +3651,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
-    np.random.seed(1234)
     model = ConvModel()
     saved_model_save.save(model, self._input_saved_model_path)
 
@@ -4391,6 +4526,61 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       )
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
+
+  @test_util.deprecated_graph_mode_only
+  def test_file_init_hash_table_lookup_model(self):
+    tags = {tag_constants.SERVING}
+    signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+    # Create and save a simple model that involves a hash table.
+    inputs, outputs = self._create_and_save_file_init_hash_table_model_tf1(
+        self._input_saved_model_path, tags, signature_def_key
+    )
+    # Make sure that the desired input key and output key is present.
+    self.assertIn('input_vocabs', inputs.keys())
+    self.assertIn('lookup', outputs.keys())
+
+    signature_def_keys = [signature_def_key]
+    quantize_model.quantize(
+        self._input_saved_model_path,
+        signature_def_keys,
+        tags,
+        self._output_saved_model_path,
+        quantization_options=quant_opts_pb2.QuantizationOptions(
+            quantization_method=quant_opts_pb2.QuantizationMethod(
+                experimental_method=_ExperimentalMethod.DYNAMIC_RANGE
+            ),
+        ),
+    )
+
+    # Tests table lookup to make sure the table has been initialized
+    # successfully.
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = saved_model_loader.load(
+          sess, tags=tags, export_dir=self._output_saved_model_path
+      )
+
+      self.assertCountEqual(
+          output_meta_graph_def.signature_def.keys(), signature_def_keys
+      )
+
+      signature_def = output_meta_graph_def.signature_def[signature_def_key]
+
+      input_tensor_name = signature_def.inputs['input_vocabs'].name
+      input_tensor = sess.graph.get_tensor_by_name(input_tensor_name)
+
+      lookup_tensor_name = signature_def.outputs['lookup'].name
+      lookup_tensor = sess.graph.get_tensor_by_name(lookup_tensor_name)
+
+      lookup_val = sess.run(
+          lookup_tensor,
+          feed_dict={
+              input_tensor: np.array([b'dynamic', b'quantization', b'range'])
+          },
+      )
+
+      # "dynamic" is not in the table: -1 (default value)
+      self.assertAllClose(lookup_val, [-1.0, 2.0, 1.0])
 
 
 class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):

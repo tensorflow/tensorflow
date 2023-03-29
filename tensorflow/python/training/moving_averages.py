@@ -550,7 +550,10 @@ class ExponentialMovingAverage:
         with ops.init_scope():
           if isinstance(var, variables.Variable):
             with ops.device(var.device):
-              initialized_value = var.initialized_value()
+              initialized_value = control_flow_ops.cond(
+                  variables.is_variable_initialized(var),
+                  var.read_value,
+                  lambda: var.initial_value)  # pylint: disable=cell-var-from-loop
             avg = slot_creator.create_slot(
                 var,
                 initialized_value,

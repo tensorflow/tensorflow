@@ -16,14 +16,16 @@ limitations under the License.
 #include "tensorflow/core/data/snapshot_utils.h"
 
 #include <algorithm>
+#include <climits>
 #include <functional>
+#include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -37,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/coding.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
@@ -47,6 +48,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -60,6 +64,18 @@ constexpr const char* const kVersion = "version";
 constexpr const char* const kCurrentCheckpointID = "current_checkpoint_id";
 constexpr const char* const kIndex = "index";
 constexpr const char* const kStartIndex = "start_index";
+
+std::string ProtoSerializationErrorMessage(const TensorProto& proto,
+                                           const std::string& output_file) {
+  const auto proto_byte_size = proto.ByteSizeLong();
+  std::string error_message =
+      absl::StrCat("Failed to serialize tensor proto of ", proto_byte_size,
+                   " bytes to file: ", output_file);
+  if (proto_byte_size > INT_MAX) {
+    absl::StrAppend(&error_message, ": exceeded maximum protobuf size of 2GB.");
+  }
+  return error_message;
+}
 
 }  // namespace
 
@@ -141,13 +157,20 @@ Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
     // will result in a smart pointer being moved upon function creation, which
     // will result in proto_buffer == nullptr when WriteRecord happens.
     auto* proto_buffer = new std::string();
-    proto.SerializeToString(proto_buffer);
+    if (!proto.SerializeToString(proto_buffer)) {
+      delete proto_buffer;
+      return errors::DataLoss(ProtoSerializationErrorMessage(proto, filename_));
+    }
     absl::Cord proto_serialized = absl::MakeCordFromExternal(
         *proto_buffer,
         [proto_buffer](absl::string_view) { delete proto_buffer; });
     TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto_serialized));
 #else   // TF_CORD_SUPPORT
-    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsString()));
+    std::string proto_serialized;
+    if (!proto.SerializeToString(&proto_serialized)) {
+      return errors::DataLoss(ProtoSerializationErrorMessage(proto, filename_));
+    }
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto_serialized));
 #endif  // TF_CORD_SUPPORT
   }
   return OkStatus();
@@ -700,29 +723,31 @@ Status Reader::MakeNestedDataset(Env* env,
                 datasets.begin() + (start_index % shard_dirs.size()),
                 datasets.end());
   }
+  MakeNestedDataset(datasets, output);
+  return OkStatus();
+}
 
+void Reader::MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
+                               DatasetBase** output) {
   *output = new NestedDataset(
       DatasetContext(DatasetContext::Params(
           {"SnapshotNestedDatasetReader", "SnapshotNestedDatasetReader"})),
       datasets);
   (*output)->Initialize(/*metadata=*/{});
-  return OkStatus();
 }
 
-TFRecordReader::TFRecordReader(const std::string& filename,
-                               const string& compression_type,
-                               const DataTypeVector& dtypes,
-                               std::optional<int64_t> output_buffer_size)
+TFRecordReaderImpl::TFRecordReaderImpl(
+    const std::string& filename, const string& compression,
+    std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
-      compression_type_(compression_type),
-      dtypes_(dtypes),
+      compression_(compression),
       output_buffer_size_(output_buffer_size) {}
 
-Status TFRecordReader::Initialize(Env* env) {
+Status TFRecordReaderImpl::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
   auto options = io::RecordReaderOptions::CreateRecordReaderOptions(
-      /*compression_type=*/compression_type_);
+      /*compression_type=*/compression_);
 #if !defined(IS_SLIM_BUILD)
   if (output_buffer_size_.has_value()) {
     options.snappy_options.output_buffer_size = *output_buffer_size_;
@@ -733,26 +758,47 @@ Status TFRecordReader::Initialize(Env* env) {
   return OkStatus();
 }
 
+StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
+  tstring record;
+  TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+  return Parse(record);
+}
+
+StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
+  std::vector<Tensor> tensors;
+  while (true) {
+    StatusOr<Tensor> tensor = GetNext();
+    if (errors::IsOutOfRange(tensor.status())) {
+      return tensors;
+    }
+    TF_RETURN_IF_ERROR(tensor.status());
+    tensors.push_back(std::move(*tensor));
+  }
+  return tensors;
+}
+
+StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
+  TensorProto proto;
+  if (!proto.ParseFromArray(record.data(), record.size())) {
+    return errors::DataLoss(
+        "Unable to parse tensor from stored proto in file: ", filename_,
+        ", record ", offset_, ". Serialized proto: ", record);
+  }
+
+  Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    return errors::DataLoss(
+        "Unable to parse tensor from stored proto in file: ", filename_,
+        ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
+  }
+  return tensor;
+}
+
 Status TFRecordReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+  read_tensors->clear();
   read_tensors->reserve(dtypes_.size());
   for (int i = 0; i < dtypes_.size(); ++i) {
-    tstring record;
-    TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
-
-    TensorProto proto;
-    if (!proto.ParseFromArray(record.data(), record.size())) {
-      return errors::DataLoss(
-          "Unable to parse tensor from stored proto in file: ", filename_,
-          ", record ", offset_, ". Serialized proto: ", record);
-    }
-
-    Tensor tensor;
-    if (!tensor.FromProto(proto)) {
-      return errors::DataLoss(
-          "Unable to parse tensor from stored proto in file: ", filename_,
-          ", record ", offset_, ". TensorProto: ", proto.ShortDebugString());
-    }
-
+    TF_ASSIGN_OR_RETURN(Tensor tensor, reader_impl_.GetNext());
     read_tensors->push_back(std::move(tensor));
   }
   return OkStatus();

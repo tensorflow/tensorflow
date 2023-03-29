@@ -257,7 +257,10 @@ class TFKernelToLLVMPass
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    LLVMTypeConverter type_converter(ctx);
+    // TODO(b/267828330): Migrate to opaque pointers.
+    LowerToLLVMOptions options(&getContext());
+    options.useOpaquePointers = false;
+    LLVMTypeConverter type_converter(ctx, options);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });

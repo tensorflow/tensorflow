@@ -19,16 +19,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
-#include <sstream>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -153,9 +155,10 @@ std::string OutfeedData::DebugString() const {
 
 class OutfeedReceiverImpl {
  public:
-  OutfeedReceiverImpl(OutfeedReceiver::Callback callback,
-                      absl::Span<PjRtClient* const> clients,
-                      ssize_t max_callback_queue_size_bytes);
+  OutfeedReceiverImpl(
+      OutfeedReceiver::Callback callback, absl::Span<PjRtClient* const> clients,
+      ssize_t max_callback_queue_size_bytes,
+      const std::optional<ExecutableBuildOptions>& executable_build_options);
 
   OutfeedReceiverImpl(const OutfeedReceiverImpl&) = delete;
   OutfeedReceiverImpl& operator=(const OutfeedReceiverImpl&) = delete;
@@ -204,6 +207,7 @@ class OutfeedReceiverImpl {
   std::vector<PjRtDevice*> devices_;
   // Maximum bytes capacity of the ensemble of callback queues.
   uint64_t max_callback_queue_size_bytes_;
+  std::optional<ExecutableBuildOptions> executable_build_options_;
 
   absl::Mutex mu_;
   // Registered shapes by consumer id.
@@ -228,7 +232,9 @@ class OutfeedReceiverImpl {
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
     OutfeedReceiver::Callback callback, absl::Span<PjRtClient* const> clients,
-    ssize_t max_callback_queue_size_bytes) {
+    ssize_t max_callback_queue_size_bytes,
+    const std::optional<ExecutableBuildOptions>& executable_build_options)
+    : executable_build_options_(executable_build_options) {
   callback_ = callback;
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
@@ -414,6 +420,9 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   XlaComputation computation = builder.Build(add_dep).value();
 
   CompileOptions compile_options;
+  if (executable_build_options_) {
+    compile_options.executable_build_options = *executable_build_options_;
+  }
   compile_options.executable_build_options.set_num_replicas(1);
   compile_options.executable_build_options.set_num_partitions(1);
   DeviceAssignment device_assignment(1, 1);
@@ -474,11 +483,13 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
   return token;
 }
 
-OutfeedReceiver::OutfeedReceiver(Callback callback,
-                                 absl::Span<PjRtClient* const> clients,
-                                 ssize_t max_callback_queue_size_bytes) {
-  p_impl_ = std::make_unique<OutfeedReceiverImpl>(
-      callback, clients, max_callback_queue_size_bytes);
+OutfeedReceiver::OutfeedReceiver(
+    Callback callback, absl::Span<PjRtClient* const> clients,
+    ssize_t max_callback_queue_size_bytes,
+    const std::optional<ExecutableBuildOptions>& executable_build_options) {
+  p_impl_ = std::make_unique<OutfeedReceiverImpl>(callback, clients,
+                                                  max_callback_queue_size_bytes,
+                                                  executable_build_options);
 }
 
 OutfeedReceiver::~OutfeedReceiver() {}

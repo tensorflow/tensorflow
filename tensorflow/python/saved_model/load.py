@@ -45,6 +45,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
@@ -995,12 +996,15 @@ def load_partial(export_dir, filters, tags=None, options=None):
   # Read and log SavedModel checksum, if it is nonzero.
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
-    if fingerprint.saved_model_checksum != 0:
-      metrics.SetReadFingerprint(
-          saved_model_checksum=str(fingerprint.saved_model_checksum))
   except FileNotFoundError:
-    logging.error("Unable to load fingerprint when loading saved model.",
-                  exc_info=True)
+    logging.exception("Unable to load fingerprint when loading saved model.")
+    singleprint = ""
+  else:
+    metrics.SetReadFingerprint(
+        fingerprint=fingerprinting_utils.to_proto(
+            fingerprint).SerializeToString())
+    singleprint = fingerprint.singleprint()
+  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

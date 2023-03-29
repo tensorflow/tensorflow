@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -324,29 +324,31 @@ cc_library(
     alwayslink = 1,
 )
 
-# Benchmarks should link this library to see the actual result.
-cc_library(
-    name = "tensorflow_profiler_logger",
-    srcs = ["tensorflow_profiler_logger.cc"],
-    hdrs = ["tensorflow_profiler_logger.h"],
-    copts = tflite_copts_warnings(),
-    deps = [
-        ":macros",
-        "//base:addressmap",
-        "//base:examine_stack",
-        "//base:low_level_alloc",
-        "//base:malloc_hook",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/debugging:stacktrace",
-        "@com_google_absl//absl/debugging:symbolize",
-        "@com_google_absl//absl/synchronization",
-    ],
-    alwayslink = 1,
-)
+# copybara:uncomment_begin(google-only)
+# # Benchmarks should link this library to see the actual result.
+# cc_library(
+#     name = "tensorflow_profiler_logger",
+#     srcs = ["tensorflow_profiler_logger.cc"],
+#     hdrs = ["tensorflow_profiler_logger.h"],
+#     copts = tflite_copts_warnings(),
+#     deps = [
+#         ":macros",
+#         "//base:addressmap",
+#         "//base:examine_stack",
+#         "//base:low_level_alloc",
+#         "//base:malloc_hook",
+#         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+#         "//tensorflow/core/profiler/lib:traceme",
+#         "//tensorflow/lite/core/c:common",
+#         "//tensorflow/lite/kernels:kernel_util",
+#         "@com_google_absl//absl/base",
+#         "@com_google_absl//absl/debugging:stacktrace",
+#         "@com_google_absl//absl/debugging:symbolize",
+#         "@com_google_absl//absl/synchronization",
+#     ],
+#     alwayslink = 1,
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "simple_memory_arena_debug_dump",
@@ -1305,13 +1307,12 @@ tflite_cc_shared_object(
     # Until we have more granular symbol export for the C++ API on Windows,
     # export all symbols.
     features = ["windows_export_all_symbols"],
-    linkopts = select({
+    linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),
@@ -1324,15 +1325,6 @@ tflite_cc_shared_object(
     ],
 )
 
-package_group(
-    name = "tflite_test_util_visibility",
-    packages = [
-        "//tensorflow/lite/...",
-        "//tensorflow_lite_support/...",
-        "//third_party/mediapipe/tasks/...",
-    ],
-)
-
 cc_library_with_tflite(
     name = "test_util",
     testonly = True,
@@ -1340,7 +1332,6 @@ cc_library_with_tflite(
     tflite_deps = [
         "//tensorflow/lite/c:test_util",
     ],
-    visibility = [":tflite_test_util_visibility"],
     deps = [
         "@com_google_googletest//:gtest",
     ],

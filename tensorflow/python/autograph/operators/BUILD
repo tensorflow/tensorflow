@@ -5,18 +5,6 @@ package(
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
-)
-
 py_library(
     name = "operators",
     srcs = [
@@ -34,6 +22,7 @@ py_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
@@ -45,6 +34,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/autograph/utils:ag_logging",
         "//tensorflow/python/autograph/utils:misc",
         "//tensorflow/python/autograph/utils:tensors",
@@ -52,6 +42,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//third_party/py/numpy",
     ],
 )
@@ -125,7 +116,8 @@ py_test(
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/core:function_wrappers",
         # TODO(b/145618471): Remove this transitive dependency.
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",

@@ -687,9 +687,9 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
-  error::Code code = static_cast<error::Code>(code_int);
+  absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-  if (code != error::Code::OK) {
+  if (code != absl::StatusCode::kOk) {
     tstring error_message;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -964,9 +964,8 @@ REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
-                            RandomJobSamplePercentage<10>,
-                            IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<1>,
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             IndependentHostTasks);
 }  // namespace
 }  // namespace data

@@ -314,8 +314,7 @@ void DataServiceClient::UpdateIterationFinished(bool iteration_finished)
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const std::string& protocol,
-                                      const TaskInfo& task_info,
-                                      bool check_compatibility) {
+                                      const TaskInfo& task_info) {
   for (const auto& transfer_server : task_info.transfer_servers()) {
     if (transfer_server.protocol() == protocol) {
       return CreateDataServiceWorkerClient(params_.protocol, transfer_server);
@@ -342,8 +341,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     LOG(INFO)
         << "This task is participating in the \"data_transfer\" experiment.";
     StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
-        CreateWorkerClient(default_protocol, task_info,
-                           /*check_compatibility=*/true);
+        CreateWorkerClient(default_protocol, task_info);
     if (worker.ok()) {
       LOG(INFO) << "Successfully started client for data transfer protocol '"
                 << default_protocol << "'.";
@@ -776,7 +774,8 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
                  << DefaultDataTransferProtocol() << "'; falling back to grpc. "
                  << "Original error: " << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
-          DefaultDataTransferProtocol(), s.code(), s.error_message());
+          DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
+          s.error_message());
       continue;
     }
     if (!IsCoordinatedRead()) {

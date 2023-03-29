@@ -1958,7 +1958,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           // We require while body ROOTs to be the last in the schedule.
           CHECK_EQ(instruction_schedule.at(while_body->root_instruction()) + 1,
                    instruction_schedule.at(hlo_use.instruction))
-              << "While body ROOTs need to be the last in the schedule!  "
+              << "While body ROOTs need to be the last in the schedule! "
                  "Please run RootInstructionSinker.";
           // Replace the use time with the parameter time so that we can decide
           // on alternate memory allocations within the while loop body when we
@@ -4743,9 +4743,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     HeapSimulatorTrace::Event* heap_trace_event = heap_trace->add_events();
     heap_trace_event->set_kind(kind);
     heap_trace_event->set_buffer_id(buffer_id);
-    heap_trace_event->set_instruction_name(value->instruction()->name());
-    heap_trace_event->set_computation_name(
-        value->instruction()->parent()->name());
+    *heap_trace_event->mutable_instruction_name() =
+        std::string(value->instruction()->name());
+    *heap_trace_event->mutable_computation_name() =
+        std::string(value->instruction()->parent()->name());
 
     if (prev_time != time) {
       VLOG(2) << "Memory usage: " << std::max(memory_usage, prev_memory_usage)

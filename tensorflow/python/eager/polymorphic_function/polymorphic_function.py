@@ -85,6 +85,7 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -384,7 +385,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Capture the handle ahead of time in order to avoid querying the shape
         # of the handle which helps async execution performance
         graph.capture(self._handle, shape=())
-        control_flow_ops.cond(
+        cond.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
 
@@ -921,7 +922,7 @@ class Function(core.GenericFunction, trackable.Trackable):
                 v.handle))
       # We want to call no_variable_creation if possible because it avoids
       # recomputing potentially expensive initializers.
-      return control_flow_ops.cond(
+      return cond.cond(
           condition,
           lambda: self._no_variable_creation_fn(*inner_args, **inner_kwds),
           functools.partial(

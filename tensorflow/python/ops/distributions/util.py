@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -128,7 +129,7 @@ def same_dynamic_shape(a, b):
 
   # One of the shapes isn't fully defined, so we need to use the dynamic
   # shape.
-  return control_flow_ops.cond(
+  return tf_cond.cond(
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
       all_shapes_equal, lambda: constant_op.constant(False))
 

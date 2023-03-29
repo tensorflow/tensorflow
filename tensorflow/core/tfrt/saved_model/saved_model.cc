@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "absl/log/check.h"
@@ -700,6 +701,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
   // Register infra and standard math kernels
   tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
   tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
 
   std::optional<mlrt::LoadedExecutable> loaded_executable;

@@ -97,11 +97,10 @@ Status SnapshotSplitProvider::GetSplitFromFile(const std::string& split_file,
                                                bool* end_of_splits)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(3) << "Getting the next split from file: " << split_file;
-  snapshot_util::TFRecordReader reader(split_file, tsl::io::compression::kNone,
-                                       DataTypeVector{1, DT_VARIANT});
-  std::vector<Tensor> tensors;
+  snapshot_util::TFRecordReaderImpl reader(split_file,
+                                           tsl::io::compression::kNone);
   TF_RETURN_IF_ERROR(reader.Initialize(env_));
-  TF_RETURN_IF_ERROR(reader.ReadTensors(&tensors));
+  TF_ASSIGN_OR_RETURN(std::vector<Tensor> tensors, reader.GetTensors());
   if (tensors.size() != 1) {
     return errors::Internal(
         "A snapshot split file is expected to contain 1 tensor. Got ",

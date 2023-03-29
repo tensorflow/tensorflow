@@ -26,6 +26,7 @@ message ConverterErrorData {
     ERROR_NEEDS_FLEX_OPS = 1;
     ERROR_NEEDS_CUSTOM_OPS = 2;
     ERROR_UNSUPPORTED_CONTROL_FLOW_V1 = 3;
+    ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR = 4;
 
     // 200- 209 error codes are reserved for backend(delegate) compatibility.
     // Backend compatibility is checked at MlirToFlatBufferTranslateFunction()

@@ -25,17 +25,15 @@ package_group(
 )
 
 cc_library(
-    name = "saved_model",
+    name = "saved_model_lib",
     srcs = [
         "saved_model.cc",
+        "saved_model.h",
         "saved_model_import_input.cc",
         "saved_model_import_input.h",
     ],
-    hdrs = ["saved_model.h"],
-    tags = ["no_oss"],
+    visibility = ["//visibility:private"],
     deps = [
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -49,23 +47,21 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/ops",
         "//tensorflow/core/platform:enable_tf2_utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
-        "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/graph_executor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
@@ -82,6 +78,55 @@ cc_library(
         "@tf_runtime//:support",
     ] + if_google([
         "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:batch_kernel",
+        "//learning/brain/experimental/tfrt/native_lowering/kernels",
+    ]),
+)
+
+cc_library(
+    name = "saved_model_cpu",
+    hdrs = ["saved_model.h"],
+    deps = [
+        ":saved_model_lib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/graph_executor",
+        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "saved_model",
+    hdrs = ["saved_model.h"],
+    tags = ["no_oss"],
+    deps = [
+        ":saved_model_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        # TODO(chky): Remove kernel fallback tensor deps.
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor_conversion_alwayslink",
+        "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/graph_executor",
+        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/runtime",
+        "@tf_runtime//:hostcontext",
+    ] + if_google([
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 

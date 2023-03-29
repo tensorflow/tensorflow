@@ -68,13 +68,52 @@ class Fingerprint(object):
 
   @classmethod
   def from_proto(cls, proto):
-    return Fingerprint(
-        proto.saved_model_checksum,
-        proto.graph_def_program_hash,
-        proto.signature_def_hash,
-        proto.saved_object_graph_hash,
-        proto.checkpoint_hash,
-        proto.version)
+    """Constructs Fingerprint object from protocol buffer message."""
+    if isinstance(proto, bytes):
+      proto = fingerprint_pb2.FingerprintDef.FromString(proto)
+    try:
+      return Fingerprint(
+          proto.saved_model_checksum,
+          proto.graph_def_program_hash,
+          proto.signature_def_hash,
+          proto.saved_object_graph_hash,
+          proto.checkpoint_hash,
+          proto.version)
+    except AttributeError as e:
+      raise ValueError(
+          f"Given proto could not be deserialized as fingerprint."
+          f"{e}") from None
+
+  def __eq__(self, other):
+    if (isinstance(other, Fingerprint) or
+        isinstance(other, fingerprint_pb2.FingerprintDef)):
+      try:
+        return (
+            self.saved_model_checksum == other.saved_model_checksum and
+            self.graph_def_program_hash == other.graph_def_program_hash and
+            self.signature_def_hash == other.signature_def_hash and
+            self.saved_object_graph_hash == other.saved_object_graph_hash and
+            self.checkpoint_hash == other.checkpoint_hash)
+      except AttributeError:
+        pass
+    return False
+
+  def __str__(self):
+    return "\n".join([
+        f"SavedModel Fingerprint",
+        f"  saved_model_checksum: {self.saved_model_checksum}",
+        f"  graph_def_program_hash: {self.graph_def_program_hash}",
+        f"  signature_def_hash: {self.signature_def_hash}",
+        f"  saved_object_graph_hash: {self.saved_object_graph_hash}",
+        f"  checkpoint_hash: {self.checkpoint_hash}"
+    ])
+
+  def __repr__(self):
+    return (f"Fingerprint({self.saved_model_checksum}, "
+            f"{self.graph_def_program_hash}, "
+            f"{self.signature_def_hash}, "
+            f"{self.saved_object_graph_hash}, "
+            f"{self.checkpoint_hash})")
 
   def singleprint(self):
     """Canonical fingerprinting ID for a SavedModel.
@@ -85,7 +124,7 @@ class Fingerprint(object):
 
     Returns:
       The string concatenation of `graph_def_program_hash`,
-      `signature_def_hash`, and `saved_object_graph_hash`
+      `signature_def_hash`, `saved_object_graph_hash`, and `checkpoint_hash`
       fingerprint attributes (separated by '/').
 
     Raises:

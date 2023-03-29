@@ -77,12 +77,7 @@ config_setting(
 cc_library(
     name = "tflite_with_xnnpack_qu8_default",
     compatible_with = get_compatible_with_portable(),
-    defines = select({
-        # Enable for WebAssembly builds
-        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
-        # Disable for all other builds
-        "//conditions:default": [],
-    }),
+    defines = ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
 )
 
 cc_library(
@@ -167,7 +162,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK",
+        "@XNNPACK//:XNNPACK_test_mode",
     ],
 )
 
@@ -677,7 +672,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -730,7 +725,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -748,7 +743,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -843,7 +838,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -865,7 +860,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -1803,6 +1798,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_tanh_test",
+    srcs = ["signed_quantized_tanh_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_unary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_transpose_test",
     srcs = ["signed_quantized_transpose_test.cc"],
     linkopts = select({
@@ -1962,6 +1972,21 @@ cc_test(
     deps = [
         ":binary_elementwise_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "tanh_test",
+    srcs = ["tanh_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
@@ -2283,6 +2308,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_tanh_test",
+    srcs = ["unsigned_quantized_tanh_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_unary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_transpose_test",
     srcs = ["unsigned_quantized_transpose_test.cc"],
     linkopts = select({
@@ -2315,6 +2355,7 @@ cc_test(
 cc_test(
     name = "weights_cache_test",
     srcs = ["weights_cache_test.cc"],
+    tags = ["no_oss"],  # TODO(b/275078251): enable when fixed.
     deps = [
         ":conv_2d_tester",
         ":test_main",

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "deallocation/IR/deallocation_ops.h"
 #include "deallocation/transforms/passes.h"
-#include "deallocation/utils/util.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -53,12 +52,7 @@ LogicalResult rewriteRetain(RetainOp op, PatternRewriter& rewriter) {
   // Get the buffers of all `alloc` values.
   SmallVector<Value> remainingBuffersAndResult;
   for (Value alloc : op.getAllocs()) {
-    if (alloc.getType().isa<UnrankedMemRefType>()) {
-      remainingBuffersAndResult.push_back(alloc);
-    } else {
-      remainingBuffersAndResult.push_back(rewriter.create<memref::CastOp>(
-          loc, getUnrankedMemrefType(alloc), alloc));
-    }
+    remainingBuffersAndResult.push_back(alloc);
   }
   llvm::copy(llvm::map_range(op.getAllocs(),
                              [&](Value alloc) -> Value {
@@ -68,8 +62,7 @@ LogicalResult rewriteRetain(RetainOp op, PatternRewriter& rewriter) {
              std::back_inserter(remainingBuffersAndResult));
   remainingBuffersAndResult.push_back({});
 
-  Value null =
-      rewriter.create<NullOp>(loc, getUnrankedMemrefType(op.getAllocs()[0]));
+  Value null = rewriter.create<NullOp>(loc);
   auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
   SmallVector<Value> results;
 
@@ -110,16 +103,15 @@ LogicalResult rewriteRetain(RetainOp op, PatternRewriter& rewriter) {
   }
 
   // Deallocate any remaining buffers.
-  for (auto index : llvm::seq<size_t>(0, op.getAllocs().size())) {
+  for (auto index : llvm::seq<size_t>(0, nAllocs)) {
     auto nonZero = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::ne,
-        remainingBuffersAndResult[index + op.getAllocs().size()], zero);
-    rewriter.create<scf::IfOp>(loc, nonZero,
-                               [&](OpBuilder& thenBuilder, Location loc) {
-                                 thenBuilder.create<memref::DeallocOp>(
-                                     loc, remainingBuffersAndResult[index]);
-                                 thenBuilder.create<scf::YieldOp>(loc);
-                               });
+        remainingBuffersAndResult[index + nAllocs], zero);
+    rewriter.create<scf::IfOp>(
+        loc, nonZero, [&](OpBuilder& thenBuilder, Location loc) {
+          thenBuilder.create<FreeOp>(loc, remainingBuffersAndResult[index]);
+          thenBuilder.create<scf::YieldOp>(loc);
+        });
   }
 
   rewriter.replaceOp(op, results);

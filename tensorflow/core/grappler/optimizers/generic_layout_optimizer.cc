@@ -188,7 +188,7 @@ Status ExpandLayoutSensitiveOp(TransposeContext* context,
           transposer_factory->GetTransposer(*node_def);
       if (transposer == nullptr) {
         return Status(
-            error::NOT_FOUND,
+            absl::StatusCode::kNotFound,
             absl::StrCat(
                 "Layout sensitive operation should have a transposer. Node: ",
                 node_def->DebugString()));
@@ -209,7 +209,7 @@ Status ExpandLayoutAgnosticOp(TransposeContext* context,
       const auto& transposer = transposer_factory->GetTransposer(*node_def);
       if (transposer == nullptr) {
         return Status(
-            error::NOT_FOUND,
+            absl::StatusCode::kNotFound,
             absl::StrCat(
                 "Layout agnostic operation should have a transposer. Node: ",
                 node_def->DebugString()));
@@ -471,7 +471,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   if (!enforced_layout_.empty() && enforced_layout_ != "NHWC" &&
       enforced_layout_ != "NCHW") {
     return Status(
-        tensorflow::error::Code::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat("Invalid value for enforced_layout: ", enforced_layout_,
                      ". Supported layouts: 'NHWC', 'NCHW'."));
   }

@@ -413,8 +413,13 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  // Whether XLA is allowed to use CUDA Graphs.
-  bool xla_gpu_enable_cuda_graphs = 180;
+  // 0:   Disable CUDA graph capture.
+  // 1:   Enable cuda graphs for fusions and memcpy (safest ones).
+  // 2:   Enable cuda graphs for gemms and convs.
+  // 3+   Enable cuda graphs for collectives.
+  //
+  // Default: 0.
+  int32 xla_gpu_cuda_graph_level = 194;
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
@@ -450,6 +455,8 @@ message DebugOptions {
   // instead.
   bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
+  bool xla_cpu_enable_mlir_fusion_outlining = 192;
+
   // If set, use the experimental deallocation pass from mlir-hlo.
   bool xla_cpu_enable_experimental_deallocation = 191;
 
@@ -470,7 +477,9 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 192
+  bool xla_gpu_allow_all_reduce_kernel = 193;
+
+  // Next id: 195
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -480,7 +489,8 @@ message DebugOptions {
   // xla_gpu_use_horizontal_fusion,
   // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
   // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
-  reserved 5, 117, 133, 139, 176, 178;
+  // xla_gpu_enable_cuda_graphs
+  reserved 5, 117, 133, 139, 176, 178, 180;
 }
 
 message ShardableValueUpdatePairProto {
@@ -857,4 +867,13 @@ message ScheduleProto {
   int64 computation_id = 2;
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
+}
+
+message ProfiledInstructionsProto {
+  message Instruction {
+    string name = 1;
+    double timestamp_us = 2;
+    double duration_us = 3;
+  }
+  repeated Instruction instructions = 1;
 }

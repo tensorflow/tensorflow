@@ -16,6 +16,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -46,6 +47,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_case",
@@ -85,6 +87,7 @@ tf_py_test(
     srcs = ["control_flow_util_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_ops_gen",
         "//tensorflow/python:control_flow_util",
@@ -99,9 +102,9 @@ tf_py_test(
     srcs = ["control_flow_util_v2_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util_v2",
         "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",

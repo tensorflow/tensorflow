@@ -34,7 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -2202,7 +2202,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = (time_ >= sequence_length)
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2314,7 +2314,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2357,7 +2357,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2400,7 +2400,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2466,7 +2466,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = (time_ >= sequence_length)
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))

@@ -187,11 +187,11 @@ std::string ComparisonTypeToString(Comparison::Type type) {
   }
 }
 
-std::string ComparisonPrimitiveTypeToString(PrimitiveType type) {
+absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type) {
   return PrimitiveType_Name(type);
 }
 
-std::string ComparisonOrderToString(Comparison::Order order) {
+absl::string_view ComparisonOrderToString(Comparison::Order order) {
   switch (order) {
     case Comparison::Order::kPartial:
       return "PARTIALORDER";

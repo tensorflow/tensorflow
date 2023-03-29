@@ -64,6 +64,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -589,8 +591,7 @@ DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
     if (completed.ok()) {
       progress.set_completed(*completed);
     } else {
-      progress.set_error_code(completed.status().code());
-      progress.set_error_message(completed.status().error_message());
+      *progress.mutable_status() = tsl::StatusToProto(completed.status());
     }
     snapshot_task_progress.push_back(std::move(progress));
   }

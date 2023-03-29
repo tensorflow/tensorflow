@@ -311,10 +311,6 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
-  # If this is set to True, use NCCL collective ops instead of NCCL cross device
-  # ops.
-  _prefer_collective_ops = False
-
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
     if context.executing_eagerly():
@@ -335,11 +331,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
-    self._cross_device_ops = cross_device_ops
-    self._collective_ops_in_use = False
+
     self._collective_key_base = container_strategy._collective_key_base
     self._communication_options = collective_util.Options(
         implementation=collective_util.CommunicationImplementation.NCCL)
+    self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
@@ -363,22 +359,23 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     devices = tuple(device_util.resolve(d) for d in devices)
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument: %s" % (devices,))
-    if _is_device_list_single_worker(devices):
-      self._initialize_single_worker(devices)
-      self._collective_ops = self._make_collective_ops_with_fallbacks()
-      if self._prefer_collective_ops and (
-          isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
-          or isinstance(self._inferred_cross_device_ops,
-                        cross_device_ops_lib.NcclAllReduce)):
-        self._collective_ops_in_use = True
-        self._inferred_cross_device_ops = None
-      logging.info("Using MirroredStrategy with devices %r", devices)
-    else:
-      self._initialize_multi_worker(devices)
+
+    self._initialize_single_worker(devices)
+
+    self._collective_ops = self._make_collective_ops_with_fallbacks()
+    # If cross_device_ops is not provided, set it to collective op by default.
+    if not self._cross_device_ops:
+      self._cross_device_ops = self._collective_ops
 
   def _make_collective_ops_with_fallbacks(self):
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)
+
+    if not ops.executing_eagerly_outside_functions() and any(
+        "gpu" not in d.lower() for d in self._devices):
+      # In TF1/Session, fall back to ReductionToOneDevice() if there are
+      # non-GPU devices or virtual GPUs are used.
+      return cross_device_ops_lib.ReductionToOneDevice()
 
     # Use ReductionToOneDevice() if mixed devices are used.
     if any("cpu" in d.lower() for d in self._devices) and any(
@@ -394,7 +391,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       physical_gpus = context.context().list_physical_devices(device_type="GPU")
       logical_gpus = context.context().list_logical_devices(device_type="GPU")
       # Use RING collective ops if virtual devices are used.
-      if len(physical_gpus) != len(logical_gpus):
+      if len(physical_gpus) < len(logical_gpus):
         self._communication_options = collective_util.Options(
             implementation=collective_util.CommunicationImplementation.RING)
 
@@ -411,17 +408,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._input_workers_devices = (
         (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
 
-    self._inferred_cross_device_ops = None if self._cross_device_ops else (
-        cross_device_ops_lib.select_cross_device_ops(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
         self._input_workers_devices[0][0])
-    self._is_multi_worker_training = False
     device_spec = tf_device.DeviceSpec.from_string(
         self._input_workers_devices[0][0])
     # Ensures when we enter strategy.scope() we use the correct default device
     if device_spec.job is not None and device_spec.job != "localhost":
       self._default_device = "/job:%s/replica:%d/task:%d" % (
           device_spec.job, device_spec.replica, device_spec.task)
+
+    logging.info("Using MirroredStrategy with devices %r", devices)
 
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
@@ -725,22 +721,31 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return updated_config
 
   def _get_cross_device_ops(self, value):
+    # Always use CollectiveAllReduce when XLA is enabled, since other cross
+    # device ops don't have as good support on XLA.
     if not self._use_merge_call():
+      if not isinstance(self._cross_device_ops,
+                        cross_device_ops_lib.CollectiveAllReduce):
+        logging.warning(
+            "Under XLA context, MirroredStrategy uses CollectiveAllReduce op. "
+            "Although %r is provided to initialize MirroredStrategy, it is "
+            "ignored in XLA. Please use CollectiveAllReduce(or default option) "
+            "in the future, since other cross device ops are not well "
+            "supported on XLA.", self._cross_device_ops
+        )
       return self._collective_ops
 
-    if self._collective_ops_in_use:
-      if isinstance(value, values.DistributedValues):
-        value_int32 = True in {
-            dtypes.as_dtype(v.dtype) == dtypes.int32 for v in value.values
-        }
-      else:
-        value_int32 = dtypes.as_dtype(value.dtype) == dtypes.int32
-      if value_int32:
-        return cross_device_ops_lib.ReductionToOneDevice()
-      else:
-        return self._collective_ops
+    if isinstance(value, values.DistributedValues):
+      value_int32 = True in {
+          dtypes.as_dtype(v.dtype) == dtypes.int32 for v in value.values
+      }
+    else:
+      value_int32 = dtypes.as_dtype(value.dtype) == dtypes.int32
 
-    return self._cross_device_ops or self._inferred_cross_device_ops
+    if value_int32:
+      return cross_device_ops_lib.ReductionToOneDevice()
+    else:
+      return self._cross_device_ops
 
   def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
@@ -765,10 +770,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         # be 0.
         return cross_device_ops_lib.reduce_non_distributed_value(
             reduce_op, value, destinations, self._num_replicas_in_sync)
-      if self._use_merge_call() and self._collective_ops_in_use and ((
+
+      if self._use_merge_call() and (
           not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
           any("cpu" in d.lower()
-              for d in cross_device_ops_lib.get_devices_from(destinations)))):
+              for d in cross_device_ops_lib.get_devices_from(destinations))):
         return cross_device_ops_lib.ReductionToOneDevice().reduce(
             reduce_op, value, destinations)
       return self._get_cross_device_ops(value).reduce(

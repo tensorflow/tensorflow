@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/context.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -122,7 +124,8 @@ tensorflow::Status RunMlrtFunction(
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
-      fallback_request_state, request_context->resource_context()));
+      fallback_request_state, request_context->resource_context(),
+      request_context->cancellation_context().get()));
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -261,20 +264,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());
 
-  if (loaded_executable) {
-    auto function = loaded_executable->GetFunction(signature_name);
-    if (!function) {
-      return errors::InvalidArgument(absl::StrCat(
-          "Function not found in MLRT executable: ", signature_name));
-    }
-
-    return RunMlrtFunction(function, *loaded_executable,
-                           request_info->tfrt_request_context,
-                           *request_info->request_queue, inputs, outputs);
-  }
-
-  DCHECK(func);
-
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
     auto deadline = run_options.deadline.value();
@@ -288,6 +277,20 @@ tensorflow::Status GraphExecutionRunOnFunction(
     req_deadline_tracker->CancelRequestOnDeadline(
         deadline, request_info->tfrt_request_context);
   }
+
+  if (loaded_executable) {
+    auto function = loaded_executable->GetFunction(signature_name);
+    if (!function) {
+      return errors::InvalidArgument(absl::StrCat(
+          "Function not found in MLRT executable: ", signature_name));
+    }
+
+    return RunMlrtFunction(function, *loaded_executable,
+                           request_info->tfrt_request_context,
+                           *request_info->request_queue, inputs, outputs);
+  }
+
+  DCHECK(func);
 
   tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
   if (run_options.work_queue) {
@@ -558,12 +561,20 @@ GraphExecutor::ImportAndCompileClientGraph(
   mlrt::bc::Buffer bytecode_buffer;
   std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer, tfrt::CompileTfMlirModuleToBytecode(module.get()));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
   } else if (options_.enable_mlrt) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer,
         CompileMlirModuleToByteCode(options_.compile_options, module.get()));
@@ -664,11 +675,22 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
       options, module,
       [&bytecode_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
                          const TfrtPipelineOptions& options) {
+        // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
+        pm.addPass(
+            mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(
+                options));
         pm.addPass(mlrt_compiler::CreateParallelizationPass(
             options.cost_threshold, options.merge_inter_dependent_streams));
         pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
+
+        // Perform optimizations in the lowered MLIR.
+        pm.addNestedPass<mlir::func::FuncOp>(
+            mlrt_compiler::CreateFuseAwaitPass());
+        pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+        pm.addPass(mlir::createInlinerPass());
+        pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 
         if (mlir::failed(pm.run(module)))
           return diag_handler.Combine(tensorflow::errors::Internal(
@@ -815,11 +837,13 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<mlrt::Value> outputs) {
-  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
-                      GetOrCreateLoadedClientGraph(
-                          /*run_options=*/{}, input_names, input_dtypes,
-                          output_tensor_names, target_tensor_names,
-                          /*work_queue=*/nullptr, graph_name));
+  TF_ASSIGN_OR_RETURN(
+      LoadedClientGraph & loaded_client_graph,
+      GetOrCreateLoadedClientGraph(
+          /*run_options=*/{}, input_names, input_dtypes, output_tensor_names,
+          target_tensor_names,
+          /*work_queue=*/nullptr,
+          graph_name.empty() ? output_tensor_names[0] : graph_name));
 
   TF_ASSIGN_OR_RETURN(
       auto request_info,

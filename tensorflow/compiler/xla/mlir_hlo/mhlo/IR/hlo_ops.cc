@@ -156,6 +156,15 @@ void AsyncBundleType::getFlattenedTypes(SmallVectorImpl<Type>& types) {
 }
 
 namespace {
+//===----------------------------------------------------------------------===//
+// Utilities
+//===----------------------------------------------------------------------===//
+
+hlo::HloDialectInterface* getMhloDialect(MLIRContext* context) {
+  MhloDialect* dialect = context->getLoadedDialect<MhloDialect>();
+  return dialect->getRegisteredInterface<hlo::HloDialectInterface>();
+}
+
 void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
                 ArrayRef<Type> types,
                 SmallVector<OpAsmParser::Argument>& args) {
@@ -430,7 +439,7 @@ LogicalResult AsyncStartOp::verify() {
   if (calleeThreadName != getExecutionThread()) {
     return emitOpError()
            << "execution_thread does not match the execution_thread of "
-           << getCalledComputation() << ".  Got: \"" << getExecutionThread()
+           << getCalledComputation() << ". Got: \"" << getExecutionThread()
            << "\", but expected " << calleeThreadName << ".";
   }
 
@@ -485,7 +494,7 @@ LogicalResult AsyncUpdateOp::verify() {
     return emitOpError() << "callee must have execution_thread attribute.";
   if (calleeThreadName != getExecutionThread()) {
     return emitOpError() << "execution_thread does not match name of "
-                         << getCalledComputation() << ".  Got: \""
+                         << getCalledComputation() << ". Got: \""
                          << getExecutionThread() << "\", but expected "
                          << calleeThreadName << ".";
   }
@@ -533,7 +542,7 @@ LogicalResult AsyncDoneOp::verify() {
     return emitOpError() << "callee must have execution_thread attribute.";
   if (calleeThreadName != getExecutionThread()) {
     return emitOpError() << "execution_thread does not match name of "
-                         << getCalledComputation() << ".  Got: \""
+                         << getCalledComputation() << ". Got: \""
                          << getExecutionThread() << "\", but expected "
                          << calleeThreadName << ".";
   }
@@ -579,8 +588,8 @@ LogicalResult AsyncDoneOp::inferReturnTypes(
 LogicalResult AfterAllOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto dialect = context->getLoadedDialect<MhloDialect>();
-  return hlo::inferAfterAllOp(dialect, location, inferredReturnTypes);
+  return hlo::inferAfterAllOp(getMhloDialect(context), location,
+                              inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -751,8 +760,8 @@ LogicalResult FusionOp::verify() { return verifyOutputOperandAliasing(this); }
 LogicalResult CreateTokenOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto dialect = context->getLoadedDialect<MhloDialect>();
-  return hlo::inferCreateTokenOp(dialect, location, inferredReturnTypes);
+  return hlo::inferCreateTokenOp(getMhloDialect(context), location,
+                                 inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1716,7 +1725,7 @@ LogicalResult ConvolutionOp::verify() {
 
   // P2.
   if (failed(hlo::verifyConvolutionAttributes(
-          getLoc(), getLhs(), getRhs(),
+          getLoc(), getLhs().getType(), getRhs().getType(),
           getDimensionNumbers().getInputBatchDimension(),
           getDimensionNumbers().getInputFeatureDimension(),
           getDimensionNumbers().getInputSpatialDimensions(),
@@ -3094,8 +3103,8 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult InfeedOp::verify() {
-  auto dialect = getContext()->getLoadedDialect<MhloDialect>();
-  return hlo::verifyInfeedOp(dialect, getLoc(), getLayout(), getResults());
+  return hlo::verifyInfeedOp(getMhloDialect(getContext()), getLoc(),
+                             getLayout(), getResults());
 }
 
 //===----------------------------------------------------------------------===//
@@ -3140,8 +3149,8 @@ LogicalResult MapOp::reifyReturnTypeShapes(
 LogicalResult OutfeedOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto dialect = context->getLoadedDialect<MhloDialect>();
-  return hlo::inferOutfeedOp(dialect, location, inferredReturnTypes);
+  return hlo::inferOutfeedOp(getMhloDialect(context), location,
+                             inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3151,8 +3160,8 @@ LogicalResult OutfeedOp::inferReturnTypes(
 LogicalResult SendOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto dialect = context->getLoadedDialect<MhloDialect>();
-  return hlo::inferSendOp(dialect, location, inferredReturnTypes);
+  return hlo::inferSendOp(getMhloDialect(context), location,
+                          inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3160,8 +3169,8 @@ LogicalResult SendOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RecvOp::verify() {
-  auto dialect = getContext()->getLoadedDialect<MhloDialect>();
-  return hlo::verifyRecvOp(dialect, getLoc(), getResults());
+  return hlo::verifyRecvOp(getMhloDialect(getContext()), getLoc(),
+                           getResults());
 }
 
 //===----------------------------------------------------------------------===//
@@ -4081,10 +4090,9 @@ LogicalResult SetDimensionSizeOp::inferReturnTypeComponents(
     ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SetDimensionSizeOp::Adaptor adaptor(operands, attributes, regions);
-  auto dialect = context->getLoadedDialect<MhloDialect>();
   return hlo::inferSetDimensionSizeOp(
-      dialect, location, adaptor.getOperand().getType(), adaptor.getSize(),
-      adaptor.getDimension(), inferredReturnShapes);
+      getMhloDialect(context), location, adaptor.getOperand().getType(),
+      adaptor.getSize(), adaptor.getDimension(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4096,8 +4104,9 @@ LogicalResult PadOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   PadOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferPadOp(location, adaptor.getOperand(),
-                         adaptor.getPaddingValue(), adaptor.getEdgePaddingLow(),
+  return hlo::inferPadOp(location, adaptor.getOperand().getType(),
+                         adaptor.getPaddingValue().getType(),
+                         adaptor.getEdgePaddingLow(),
                          adaptor.getEdgePaddingHigh(),
                          adaptor.getInteriorPadding(), inferredReturnTypes);
 }

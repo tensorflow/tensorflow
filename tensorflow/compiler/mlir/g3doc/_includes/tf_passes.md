@@ -726,6 +726,11 @@ func @outside_compilation() -> tensor<f32> {
   return %0 : tensor<f32>
 }
 ```
+### `-tf-extract-tpu-copy-with-dynamic-shape-op`: Extract the TPUCopyWithDynamicShapeOp out of the host launch and place it on device launch
+This pass looks for TPUCopyWithDynamicShapeOp which wraps in a
+`tf_device.launch` with host device attribute. It extracts the ops and wrap
+them in `tf_device.launch` with tpu device attribute so that ops can be
+run on TPU instead of CPU while still being compiled on host.
 ### `-tf-functional-control-flow-to-cfg`: Transform functional control flow Ops to MLIR Control Form Graph (CFG) form
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
 This pass transforms functional control flow operations in the TensorFlow
@@ -1409,6 +1414,10 @@ func @main(%arg0: tensor<8x4xf32>) {
   return
 }
 ```
+### `-tf-tpu-annotate-dynamic-shape-inputs`: Annotate the inputs returned by TPUCopyWithDynamicShapeOp with dynamic shape
+This pass looks for the usage of the result of TPUCopyWithDynamicShapeOp
+and sets the shape of these inputs to be dynamic shaped. This will ensure
+that the generated HLO program is correctly reflecting the dynamic shape.
 ### `-tf-tpu-cleanup-cluster-attributes`: Eliminate _replication_info and other attributes from ops in a cluster
 This pass eliminate `_replication_info` and `device` attribute on operations
 that are contained in a tf_device.cluster op.

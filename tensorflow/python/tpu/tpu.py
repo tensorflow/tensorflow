@@ -39,6 +39,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -482,7 +483,7 @@ def _pad_all_input(
           # TODO(rxsang): This is a hack to make sure padded_input has dynamic
           # shapes, so any tf.size/tf.shape op performed on it won't be constant
           # folded. Do we have better ways to do it?
-          padded_input = control_flow_ops.cond(
+          padded_input = cond.cond(
               array_ops.constant(True),
               lambda: array_ops.pad(input_tensor, paddings),  # pylint: disable=cell-var-from-loop
               lambda: input_tensor)

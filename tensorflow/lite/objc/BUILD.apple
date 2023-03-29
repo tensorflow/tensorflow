@@ -73,6 +73,24 @@ objc_library(
     alwayslink = 1,
 )
 
+objc_library(
+    name = "TensorFlowLite_without_op_resolver",
+    srcs = SOURCES,
+    hdrs = API_HEADERS,
+    copts = RELEASE_COPTS,
+    tags = TFL_DEFAULT_TAGS,
+    visibility = ios_visibility_allowlist(),
+    deps = [
+        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite/core/c:c_api_without_op_resolver",
+        "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//third_party/apple_frameworks:Foundation",
+    ],
+    alwayslink = 1,
+)
+
 # NOTE: This test target name must be lower-cased in order to match it with the
 # directory name. (See: b/174508866)
 ios_unit_test(
@@ -138,8 +156,8 @@ objc_library(
     ],
     module_name = "TestApp",
     tags = TFL_DEFAULT_TAGS + [
-        "manual",
         "builder_default_ios_x86_64",
+        "manual",
     ],
     deps = [
         ":TensorFlowLite",

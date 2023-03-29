@@ -19,6 +19,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
@@ -75,13 +76,13 @@ def remove_squeezable_dimensions(
     rank_diff = array_ops.rank(predictions) - array_ops.rank(labels)
     if (predictions_rank is None) or (
         predictions_shape.dims[-1].is_compatible_with(1)):
-      predictions = control_flow_ops.cond(
+      predictions = cond.cond(
           math_ops.equal(expected_rank_diff + 1, rank_diff),
           lambda: array_ops.squeeze(predictions, [-1]),
           lambda: predictions)
     if (labels_rank is None) or (
         labels_shape.dims[-1].is_compatible_with(1)):
-      labels = control_flow_ops.cond(
+      labels = cond.cond(
           math_ops.equal(expected_rank_diff - 1, rank_diff),
           lambda: array_ops.squeeze(labels, [-1]),
           lambda: labels)

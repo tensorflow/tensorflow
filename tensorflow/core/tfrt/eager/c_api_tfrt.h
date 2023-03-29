@@ -169,6 +169,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
       const std::string& func, std::function<void()> notifier) override;
   const tensorflow::FunctionDef* FindFunctionDef(
       const std::string& name) const override;
+  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> FindRecord(
+      const std::string& name) const override;
 
   const tensorflow::DeviceNameUtils::ParsedName& HostCPUParsedName()
       const override;
@@ -556,7 +558,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
     // TODO(b/181368626): Support cancellation.
   }
 
-  absl::optional<tensorflow::ManagedStackTrace> GetStackTrace() override {
+  std::optional<tensorflow::ManagedStackTrace> GetStackTrace() override {
     return stack_trace_;
   }
 
@@ -601,7 +603,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   AbortLocationHandler abort_location_handler_;
   ContextInterface* const context_;
   // TODO(kkb): Use tfrt::Location and implement TFRT async stack tracing.
-  absl::optional<tensorflow::ManagedStackTrace> stack_trace_;
+  std::optional<tensorflow::ManagedStackTrace> stack_trace_;
 
   int custom_device_tensor_handle_count_ = 0;
 };

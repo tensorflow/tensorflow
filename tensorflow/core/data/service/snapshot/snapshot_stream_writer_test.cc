@@ -81,9 +81,13 @@ class ElementOrErrorIterator : public TaskIterator {
     return OkStatus();
   }
 
-  StatusOr<Tensor> Save() override { return Tensor(); }
+  StatusOr<std::vector<Tensor>> Save() override {
+    return std::vector<Tensor>{};
+  }
 
-  Status Restore(const Tensor& saved_iterator) override { return OkStatus(); }
+  Status Restore(const std::vector<Tensor>& saved_iterator) override {
+    return OkStatus();
+  }
 
   int64_t Cardinality() const override { return elements_.size(); }
 

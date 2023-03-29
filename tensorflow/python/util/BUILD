@@ -193,10 +193,11 @@ tf_python_pybind_extension(
     hdrs = [
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
+        "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/python/lib/core:ndarray_tensor_hdr",
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -218,9 +219,9 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/c:safe_ptr",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/python/lib/core:safe_ptr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
@@ -261,6 +262,7 @@ tf_py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+        "//tensorflow/python/framework:tensor_conversion",
     ],
 )
 
@@ -279,7 +281,10 @@ py_strict_library(
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_estimator:__subpackages__",
+    ],
     deps = [
         ":tf_decorator",
     ],
@@ -424,10 +429,10 @@ tf_python_pybind_extension(
     srcs = ["function_parameter_canonicalizer_binding_for_test.cc"],
     hdrs = [
         "function_parameter_canonicalizer.h",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/types:span",
         "@pybind11",

@@ -208,6 +208,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -218,7 +219,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
@@ -2295,36 +2295,36 @@ class StrategyExtendedV2(object):
     It can be used in `tf.distribute.ReplicaContext.merge_call` to write code
     that works for all `tf.distribute.Strategy`.
 
-    >>> @tf.function
-    ... def step_fn(var):
-    ...
-    ...   def merge_fn(strategy, value, var):
-    ...     # All-reduce the value. Note that `value` here is a
-    ...     # `tf.distribute.DistributedValues`.
-    ...     reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
-    ...         value, destinations=var)
-    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-    ...         args=(reduced,))
-    ...
-    ...   value = tf.identity(1.)
-    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
-    ...     args=(value, var))
-    >>>
-    >>> def run(strategy):
-    ...   with strategy.scope():
-    ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn, args=(v,))
-    ...     return v
-    >>>
-    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    @tf.function
+    def step_fn(var):
+
+      def merge_fn(strategy, value, var):
+        # All-reduce the value. Note that `value` here is a
+        # `tf.distribute.DistributedValues`.
+        reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
+            value, destinations=var)
+        strategy.extended.update(var, lambda var, value: var.assign(value),
+            args=(reduced,))
+
+      value = tf.identity(1.)
+      tf.distribute.get_replica_context().merge_call(merge_fn,
+        args=(value, var))
+
+    def run(strategy):
+      with strategy.scope():
+        v = tf.Variable(0.)
+        strategy.run(step_fn, args=(v,))
+        return v
+
+    run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
-    >>> run(tf.distribute.experimental.CentralStorageStrategy(
-    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    run(tf.distribute.experimental.CentralStorageStrategy(
+        compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
-    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    run(tf.distribute.OneDeviceStrategy("GPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
@@ -2378,36 +2378,36 @@ class StrategyExtendedV2(object):
 
     See `reduce_to` for more information.
 
-    >>> @tf.function
-    ... def step_fn(var):
-    ...
-    ...   def merge_fn(strategy, value, var):
-    ...     # All-reduce the value. Note that `value` here is a
-    ...     # `tf.distribute.DistributedValues`.
-    ...     reduced = strategy.extended.batch_reduce_to(
-    ...         tf.distribute.ReduceOp.SUM, [(value, var)])[0]
-    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-    ...         args=(reduced,))
-    ...
-    ...   value = tf.identity(1.)
-    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
-    ...     args=(value, var))
-    >>>
-    >>> def run(strategy):
-    ...   with strategy.scope():
-    ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn, args=(v,))
-    ...     return v
-    >>>
-    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    @tf.function
+    def step_fn(var):
+
+      def merge_fn(strategy, value, var):
+        # All-reduce the value. Note that `value` here is a
+        # `tf.distribute.DistributedValues`.
+        reduced = strategy.extended.batch_reduce_to(
+            tf.distribute.ReduceOp.SUM, [(value, var)])[0]
+        strategy.extended.update(var, lambda var, value: var.assign(value),
+            args=(reduced,))
+
+      value = tf.identity(1.)
+      tf.distribute.get_replica_context().merge_call(merge_fn,
+        args=(value, var))
+
+    def run(strategy):
+      with strategy.scope():
+        v = tf.Variable(0.)
+        strategy.run(step_fn, args=(v,))
+        return v
+
+    run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
       0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
-    >>> run(tf.distribute.experimental.CentralStorageStrategy(
-    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    run(tf.distribute.experimental.CentralStorageStrategy(
+        compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
-    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    run(tf.distribute.OneDeviceStrategy("GPU:0"))
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
@@ -3793,7 +3793,7 @@ class _DefaultReplicaContext(ReplicaContext):
 # So here we catch any attempts to deserialize variables
 # when using distribution strategies.
 # pylint: disable=protected-access
-_original_from_proto = resource_variable_ops._from_proto_fn
+_original_from_proto = variable_scope._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
@@ -3804,11 +3804,24 @@ def _from_proto_fn(v, import_scope=None):
   else:
     return _original_from_proto(v, import_scope=import_scope)
 
-resource_variable_ops._from_proto_fn = _from_proto_fn
+variable_scope._from_proto_fn = _from_proto_fn
 # pylint: enable=protected-access
 
 
-#-------------------------------------------------------------------------------
+def get_local_results_or_value_container(variable):
+  strategy, context = (
+      distribution_strategy_context.get_strategy_and_replica_context()
+  )
+  if context:
+    return [strategy.extended.value_container(variable)]
+  else:
+    return strategy.experimental_local_results(variable)
+
+
+tape.register_watched_variable_resolver(get_local_results_or_value_container)
+
+
+# -------------------------------------------------------------------------------
 # Shorthand for some methods from distribution_strategy_context.
 _push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
 _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access

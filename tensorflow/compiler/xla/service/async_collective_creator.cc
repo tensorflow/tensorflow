@@ -44,13 +44,13 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
       if ((instruction->opcode() == HloOpcode::kAllReduce &&
-           convert_all_reduce_(instruction)) ||
+           config_.convert_all_reduce(instruction)) ||
           (instruction->opcode() == HloOpcode::kAllGather &&
-           convert_all_gather_(instruction)) ||
+           config_.convert_all_gather(instruction)) ||
           (instruction->opcode() == HloOpcode::kCollectivePermute &&
-           convert_collective_permute_(instruction)) ||
+           config_.convert_collective_permute(instruction)) ||
           (instruction->opcode() == HloOpcode::kAllToAll &&
-           convert_all_to_all_(instruction))) {
+           config_.convert_all_to_all(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }

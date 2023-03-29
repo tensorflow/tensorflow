@@ -24,7 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
@@ -749,7 +749,7 @@ def zero_fraction(value, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = array_ops.size(value, out_type=dtypes.int64)
     # If the count is small, we can save memory/CPU with an int32 reduction.
-    num_nonzero = control_flow_ops.cond(
+    num_nonzero = tf_cond.cond(
         size <= dtypes.int32.max,
         # pylint: disable=g-long-lambda
         true_fn=lambda: math_ops.cast(

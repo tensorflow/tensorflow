@@ -784,6 +784,20 @@ def squeeze(a, axis=None):
   return array_ops.squeeze(a, axis)
 
 
+@np_utils.np_doc('flatten', link=np_utils.NoLink())
+def flatten(a, order='C'):
+  a = asarray(a)
+  if order == 'C' or order == 'A' or order == 'K':
+    # Row major.
+    return array_ops.reshape(a, [-1])
+  elif order == 'F':
+    # Column major
+    return array_ops.reshape(array_ops.transpose(a), [-1])
+  else:
+    raise ValueError('order can only be C, A, K (all row major) or F '
+                     '(column major).')
+
+
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)

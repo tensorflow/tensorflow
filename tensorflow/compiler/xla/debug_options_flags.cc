@@ -71,10 +71,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_cudnn_frontend(true);
 
+  // Note: CublasLt will be used for FP8 GEMMs regardless of the value of this
+  // flag.
   opts.set_xla_gpu_enable_cublaslt(false);
 
-  // TODO(b/258036887): Remove this flag once CUDA Graphs are fully supported.
-  opts.set_xla_gpu_enable_cuda_graphs(false);
+  // TODO(b/258036887): Enable once CUDA Graphs are fully supported.
+  opts.set_xla_gpu_cuda_graph_level(0);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -110,8 +112,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
   opts.set_xla_gpu_enable_triton_gemm(true);
-  opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(false);
+  opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
+
+  opts.set_xla_gpu_allow_all_reduce_kernel(false);
+
   return opts;
 }
 
@@ -324,14 +329,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_nans),
       debug_options->xla_cpu_fast_math_honor_nans(),
       "When xla_cpu_enable_fast_math is true then this controls whether we "
-      "allow operations to produce NaNs.  Ignored when "
+      "allow operations to produce NaNs. Ignored when "
       "xla_cpu_enable_fast_math is false."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_fast_math_honor_infs",
       bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_infs),
       debug_options->xla_cpu_fast_math_honor_infs(),
       "When xla_cpu_enable_fast_math is true then this controls whether we "
-      "allow operations to produce infinites.  Ignored when "
+      "allow operations to produce infinites. Ignored when "
       "xla_cpu_enable_fast_math is false."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_fast_math_honor_division",
@@ -401,10 +406,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag(
       "xla_disable_all_hlo_passes",
       bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
-      "Disables all HLO passes.  Notes that some passes are necessary for "
+      "Disables all HLO passes. Notes that some passes are necessary for "
       "correctness and the invariants that must be satisfied by 'fully "
       "optimized' HLO are different for different devices and may change "
-      "over time.  The only 'guarantee', such as it is, is that if you compile "
+      "over time. The only 'guarantee', such as it is, is that if you compile "
       "XLA and dump the optimized HLO for some graph, you should be able to "
       "run it again on the same device with the same build of XLA."));
   flag_list->push_back(
@@ -525,7 +530,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If multiple parameters, separate them by comma."));
   flag_list->push_back(tsl::Flag(
       "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
-      "Sets compiler fuel, useful for bisecting bugs in passes.  Format "
+      "Sets compiler fuel, useful for bisecting bugs in passes. Format "
       "--xla_fuel=PASS1=NUM1,PASS2=NUM2,..."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_to", string_setter_for(&DebugOptions::set_xla_dump_to),
@@ -762,10 +767,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_cuda_graphs",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cuda_graphs),
-      debug_options->xla_gpu_enable_cuda_graphs(),
-      "Use CUDA graphs to execute XLA GPU executables when possible."));
+      "xla_gpu_cuda_graphs_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_level),
+      debug_options->xla_gpu_cuda_graph_level(),
+      "Set CUDA graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
+      "capture convolutions and gemms; 3 = capture collectives."));
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
@@ -832,7 +838,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_strict_dot_conv_math),
       debug_options->xla_cpu_strict_dot_conv_math(),
       "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
-      "generally (much) faster on our hardware.  Set this flag to true to "
+      "generally (much) faster on our hardware. Set this flag to true to "
       "disable this behavior."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_latency_hiding_schedule",
@@ -844,6 +850,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
       debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
       "Enable MLIR tiling and fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_mlir_fusion_outlining",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_fusion_outlining),
+      debug_options->xla_cpu_enable_mlir_fusion_outlining(),
+      "Enable MLIR fusion outlining (to improve compile time)."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_enable_experimental_deallocation",
       bool_setter_for(
@@ -879,6 +890,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_allow_all_reduce_kernel",
+      bool_setter_for(&DebugOptions::set_xla_gpu_allow_all_reduce_kernel),
+      debug_options->xla_gpu_allow_all_reduce_kernel(),
+      "Mark all reduce ops to use costum kernel if feasible."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

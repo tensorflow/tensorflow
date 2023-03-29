@@ -372,6 +372,7 @@ pytype_strict_binary(
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -603,17 +604,13 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
-        "//tensorflow/core/tfrt/mla:mla_test_utils",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",
         "@tf_runtime//:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],
     alwayslink = 1,
 )

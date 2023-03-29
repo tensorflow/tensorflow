@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cassert>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -88,23 +89,64 @@ struct SparseUnpackCallRewriter {
 
 struct SparseTransposeCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() >= 2 && "Need argument and permutation");
+    assert(op.getInputs().size() == 2 && "Need argument and permutation");
     assert(op.getResults().size() == 1 && "Need one output tensor");
-    // Rebuild the permutation from the parameters.
-    unsigned sz = op.getInputs().size() - 1;
-    llvm::SmallVector<int64_t> permutation_array(sz);
-    for (int64_t i = 0; i < sz; i++) {
-      auto input = op.getInputs()[i + 1].getDefiningOp<mhlo::ConstantOp>();
-      auto attr = input.getValue().cast<DenseElementsAttr>();
-      permutation_array[i] = attr.getValues<uint64_t>()[0];
-    }
-    DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
-        RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
-        permutation_array);
+
+    // The permutation is passed in as a constant of dense int elements.
+    auto permutation_constant =
+        op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto permutation =
+        permutation_constant.getValue().cast<DenseIntElementsAttr>();
+
     // Reconstruct the transpose operation.
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
         op, ret_sp_tensor.getType(), op.getInputs()[0], permutation);
+    return success();
+  }
+};
+
+struct SparseConcatenateCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // The concatenation dimension.
+    auto concat_dim = op.getInputs().back().getDefiningOp<mhlo::ConstantOp>();
+    auto concat_dim_attr = concat_dim.getValue().cast<DenseIntElementsAttr>();
+    // Reconstruct the concatenate operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    // Depending on test setup, we can get either a 32-bit integer or a 64-bit
+    // integer.
+    if (concat_dim_attr.getElementType().isInteger(32)) {
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint32_t>()[0]));
+    } else {
+      assert(concat_dim_attr.getElementType().isInteger(64));
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint64_t>()[0]));
+    }
+
+    return success();
+  }
+};
+
+struct SparseBroadcastInDimCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 &&
+           "Need argument and broadcast dimensions");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // Broadcast dimensions are passed in as a constant of dense int elements.
+    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto broadcast_dimensions =
+        dims_constant.getValue().cast<DenseIntElementsAttr>();
+
+    // Reconstruct the broadcast_in_dim operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], broadcast_dimensions);
     return success();
   }
 };
@@ -118,6 +160,10 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_sparse_pack", SparsePackCallRewriter()),
       std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
       std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
+      std::make_pair("sparse_tensor_broadcast_in_dim",
+                     SparseBroadcastInDimCallRewriter()),
+      std::make_pair("sparse_tensor_concatenate",
+                     SparseConcatenateCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to

@@ -114,7 +114,7 @@ TEST_F(ChangeOpDataTypeTest, SimpleWithCloner) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  HloPredicate matcher = [](const HloInstruction*) { return true; };
+  HloPredicate matcher = HloPredicateTrue;
 
   int count = 0;
   ChangeOpDataType::HloCloner cloner =

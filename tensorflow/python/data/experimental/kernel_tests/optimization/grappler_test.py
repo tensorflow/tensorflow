@@ -23,7 +23,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
@@ -44,9 +44,9 @@ class GrapplerTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       size = array_ops.size(parsed)
       value = math_ops.cast(parsed, dtypes.bool)
-      return control_flow_ops.cond(size > 0,
-                                   lambda: array_ops.reshape(value, []),
-                                   lambda: array_ops.zeros([], dtypes.bool))
+      return cond.cond(size > 0,
+                       lambda: array_ops.reshape(value, []),
+                       lambda: array_ops.zeros([], dtypes.bool))
 
     dataset = dataset.map(parse_fn)
 

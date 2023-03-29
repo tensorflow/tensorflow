@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -603,7 +604,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     with session.Session() as sess:
       x = variables.VariableV1(10.0, name="x")
       y = variables.VariableV1(20.0, name="y")
-      cond = control_flow_ops.cond(
+      cond = tf_cond.cond(
           x > y, lambda: math_ops.add(x, 1), lambda: math_ops.add(y, 1))
 
       sess.run(variables.global_variables_initializer())

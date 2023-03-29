@@ -52,19 +52,19 @@ cc_library(
     hdrs = ["accuracy_benchmark.h"],
     deps = [
         ":status_codes",
-        "@flatbuffers//:flatbuffers",
+        "@flatbuffers",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/experimental/acceleration/configuration:stable_delegate_plugin",
+        "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_entrypoint",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",
-        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration:stable_delegate_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
-        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
     ] + select({
         # On Android, as the validation runs in a separate process as a
         # different binary, any TFLite delegates to be validated need to

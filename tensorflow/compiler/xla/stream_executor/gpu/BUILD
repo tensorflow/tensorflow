@@ -98,6 +98,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_stream_header",
         "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/tsl/platform:status",
     ]),
 )
 
@@ -375,6 +376,7 @@ cc_library(
         ":gpu_asm_opts",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/tsl/lib/math:math_util",

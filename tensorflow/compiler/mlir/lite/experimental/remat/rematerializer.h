@@ -34,6 +34,8 @@ namespace TFL {
 // (1) Encodes in concise form the memory requirements of a computational graph
 // (2) Allows for the fast simulation of changes to the peak memory requirement
 //     under rematerialization of intermediate results in the graph
+// (3) Implements a greedy algorithm for finding rematerializations of
+//     intermediate results in that graph to lower peak memory requirements.
 class Rematerializer {
  public:
   Rematerializer() = default;
@@ -93,6 +95,17 @@ class Rematerializer {
   // doesn't actually insert them). `remat` must be valid (see above).
   MemProfile GetMemProfile(const RematSpec& remat = {}) const;
 
+  // Runs the greedy incremental block algorithm: Finds a sequence of
+  // rematerializations of block size up to max_block_length, each reducing peak
+  // memory by at least min_savings. If max_cost >= 0, at most max_cost
+  // operations will be re-inserted. For each rematerialization found,
+  // ApplyRemat is invoked (which can be used to apply the rematerialization to
+  // the higher- level representation, e.g., MLIR, flatbuffer, ...)
+  void RunGreedyAlgorithm(int max_cost, int max_block_length,
+                          SizeT min_savings);
+
+  virtual void ApplyRemat(const RematSpec& remat) {}
+
  protected:
   // Rematerializes the outputs of the operations [`remat.begin`, `remat.end`)
   // before operation remat.insert by copying that operation range before
@@ -108,9 +121,10 @@ class Rematerializer {
   // contiguous increasing index for each new object, starting at 0.
   int AddTensor(SizeT size);
 
-  // Creates an operation. Returns a contiguous increasing index for each new
-  // object, starting at 0.
-  int AddOperation();
+  // Creates an operation. If `is_stateful`, the operation (and any block of
+  // operations containing it) will never be considered for rematerialization.
+  // Returns a contiguous increasing index for each new object, starting at 0.
+  int AddOperation(bool is_stateful);
 
   // The operator with index `ioperation` will be assumed to produce and/or
   // consume the tensor with index `itensor`. NoOp if that's already the case.
@@ -124,6 +138,22 @@ class Rematerializer {
   void DelUse(int ioperation, int itensor);
 
  private:
+  // Find the best remat operation that saves at least `min_savings` bytes for a
+  // block of operators with a length is between [`begin_len`, `end_len`).
+  // 'Best' means with the highest savings, ties are broken towards shorter
+  // blocks.
+  std::tuple<SizeT, RematSpec> FindBestRemat(SizeT min_savings, int begin_len,
+                                             int end_len) const;
+
+  // Optimization: Estimate (from above) the remat savings of instruction block
+  // [begin, end) after operation `peak_location`
+  SizeT MaxSavings(int begin, int end, int peak_loc) const;
+
+  // If I want to remat ops [begin, end) after the op at operation `peak_loc`,
+  // find the latest point at which to reinsert them (the op before which to
+  // insert.)
+  int FindBestRematPoint(int begin, int end, int peak_loc) const;
+
   // The memory objects.
   struct Tensor {
     SizeT size;                   // The size of the object (in bytes.)
@@ -139,6 +169,15 @@ class Rematerializer {
 
   // The operators.
   struct Operation {
+    bool is_stateful = false;  // Results of an Operation can be rematerialized
+                               // only if `!is_stateful`. This probably should
+                               // be replaced with a more-fine grained
+                               // approach--for example, the results of a "read
+                               // resource variable" operation can be
+                               // rematerialized as long as this doesn't happen
+                               // after the corresponding "write resource
+                               // variable" operation.
+
     std::vector<int> tensors;  // The tensors that are used (input or output) by
                                // this operation. They needn't correspond to
                                // tensors in the TF graph -- we may add fake

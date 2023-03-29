@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -425,6 +426,35 @@ Type GetType(Attribute shape_attr, Attribute type_attr) {
                                                 type.getValue());
   else
     return UnrankedTensorType::get(type.getValue());
+}
+
+// Returns a new arg type based on the shape and element type. If there are
+// dynamic bounds attribute to the arg, update the bounds based on the shape
+// as well.
+Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
+                   Type element_type, mlir::MLIRContext* context) {
+  Type new_arg_type = tensorflow::GetTypeFromTFTensorShape(shape, element_type);
+
+  if (auto input_ty = old_arg_type.dyn_cast<RankedTensorType>()) {
+    ArrayRef<int64_t> bounds = hlo::encodingToBounds(input_ty.getEncoding());
+    // The input type has bounded dynamic dimension.
+    if (!bounds.empty()) {
+      SmallVector<int64_t> new_bounds(bounds.begin(), bounds.end());
+      SmallVector<int64_t> new_shape(shape.begin(), shape.end());
+      // If dimension of the input type is dynamic. Update the
+      // bounds of the dim with the new type if needed.
+      for (int i = 0; i < input_ty.getShape().size(); i++) {
+        if (hlo::isDynamicDimSize(input_ty.getShape()[i])) {
+          new_bounds[i] = new_shape[i];
+          new_shape[i] = ShapedType::kDynamic;
+        }
+      }
+      new_arg_type = tensorflow::GetTypeFromTFTensorShape(
+          new_shape, element_type,
+          mhlo::TypeExtensionsAttr::get(context, new_bounds));
+    }
+  }
+  return new_arg_type;
 }
 
 }  // namespace
@@ -2952,8 +2982,9 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
       element_type = unranked_input_ty.getElementType();
     }
 
-    auto new_arg_type =
-        tensorflow::GetTypeFromTFTensorShape(shape, element_type);
+    auto new_arg_type = GetNewArgType(func_type.getInput(i), shape,
+                                      element_type, func.getContext());
+
     if (new_arg_type != func_type.getInput(i)) {
       // If the new type is more detailed, trigger shape inference.
       func.getArgument(i).setType(new_arg_type);

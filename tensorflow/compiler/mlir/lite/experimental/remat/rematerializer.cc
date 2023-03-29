@@ -45,8 +45,9 @@ void Erase(const int item, std::vector<int>& items) {
 
 }  // namespace
 
-int Rematerializer::AddOperation() {
+int Rematerializer::AddOperation(const bool is_stateful) {
   operations_.emplace_back();
+  operations_.back().is_stateful = is_stateful;
   return operations_.size() - 1;
 }
 
@@ -109,6 +110,74 @@ void Rematerializer::AddUse(const int ioperation, const int itensor) {
   }
   Insert(ioperation, tensor.operations);
   Insert(itensor, operation.tensors);
+}
+
+Rematerializer::SizeT Rematerializer::MaxSavings(const int begin, const int end,
+                                                 const int peak_loc) const {
+  SizeT max_savings = 0;
+
+  // We're looking at the outputs of all operators in [`begin`, `end`).  If an
+  // output is alive after `peak_loc`, rematerializing the operator anywhere
+  // after `peak_loc` would lower the memory profile at `peak_loc`.
+  for (int ioperation = begin; ioperation != end; ++ioperation) {
+    for (const int itensor : operations_[ioperation].tensors) {
+      if (const Tensor& tensor = tensors_[itensor];
+          tensor.first_use() == ioperation /* output */ &&
+          tensor.last_use() > peak_loc /* used later */) {
+        max_savings += tensor.size;
+      }
+    }
+  }
+  return max_savings;
+}
+
+std::tuple<Rematerializer::SizeT, Rematerializer::RematSpec>
+Rematerializer::FindBestRemat(const SizeT min_savings, const int begin_len,
+                              const int end_len) const {
+  const auto peak = GetPeakMemory();
+  SizeT best_peak_mem = peak.size;
+  RematSpec best_remat = {};
+
+  for (int len = begin_len; len < end_len; ++len) {
+    std::vector<std::tuple<SizeT, int, int>> pre_screen;
+    for (int begin = 0, end = begin + len; end <= peak.op_index;
+         ++begin, ++end) {
+      if (!std::any_of(operations_.begin() + begin, operations_.begin() + end,
+                       [](const Operation& s) { return s.is_stateful; })) {
+        if (const auto max_savings = MaxSavings(begin, end, peak.op_index);
+            max_savings >= min_savings) {
+          pre_screen.emplace_back(max_savings, begin, end);
+        }
+      }
+    }
+    std::sort(pre_screen.begin(), pre_screen.end());
+
+    for (; !pre_screen.empty(); pre_screen.pop_back()) {
+      const auto& [max_savings, begin, end] = pre_screen.back();
+      const auto insert_before = FindBestRematPoint(begin, end, peak.op_index);
+      if (insert_before == operations_.size()) {
+        continue;
+      }
+      const RematSpec this_remat = {begin, end, insert_before};
+      if (const auto new_peak = GetPeakMemory(this_remat);
+          new_peak.size < best_peak_mem &&
+          peak.size >= new_peak.size + min_savings) {
+        best_peak_mem = new_peak.size;
+        best_remat = this_remat;
+      }
+
+      // If the actual savings achieved is bigger than the maximal savings that
+      // can be possibly achieved, leave early.
+      if (peak.size >= max_savings + best_peak_mem) {
+        break;
+      }
+    }
+    // We already found one savings for this length.
+    if (peak.size >= min_savings + best_peak_mem) {
+      break;
+    }
+  }
+  return std::make_tuple(best_peak_mem, best_remat);
 }
 
 std::vector<Rematerializer::MemSpec> Rematerializer::GetDeltas(
@@ -216,6 +285,33 @@ Rematerializer::MemSpec Rematerializer::GetPeakMemory(
   return peak;
 }
 
+int Rematerializer::FindBestRematPoint(const int begin, const int end,
+                                       const int peak_loc) const {
+  // All tensors necessarily have their last use before or at the last operator
+  // (which is the yield operation of a function), so an unchanged best ==
+  // operations_.size() value means that there is no valid configuration.
+  int best = operations_.size();
+
+  // All tensors whose first use is in [begin, end) and that are not destroyed
+  // until after peak_loc.
+  for (int ioperation = begin; ioperation < end; ++ioperation) {
+    for (const int itensor : operations_[ioperation].tensors) {
+      if (const auto& tensor = tensors_[itensor];
+          tensor.first_use() >= begin && tensor.first_use() < end &&
+          tensor.last_use() > peak_loc) {
+        for (const int ioperation : tensor.operations) {
+          // We return the earliest dependence on any output tensor.
+          if (ioperation > peak_loc && ioperation < best) {
+            best = ioperation;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+
 void Rematerializer::Remat(const RematSpec& remat) {
   const int num_inserted = remat.end - remat.begin;
   // Rewrite all operation indices.
@@ -252,6 +348,31 @@ void Rematerializer::Remat(const RematSpec& remat) {
         DelUse(iop, old_tensor);
         AddUse(iop, new_tensor->second);
       }
+    }
+  }
+}
+
+void Rematerializer::RunGreedyAlgorithm(const int max_cost,
+                                        const int max_block_length,
+                                        const SizeT min_savings) {
+  const bool unlimited_cost = (max_cost < 0);
+  for (int min_block_length = 1, cost = 0;
+       min_block_length <= max_block_length &&
+       (unlimited_cost || cost <= max_cost);
+       min_block_length *= 2) {
+    while (unlimited_cost || cost <= max_cost) {
+      const auto [peak, remat] = FindBestRemat(
+          /*min_savings*/ min_savings,
+          /*begin_len=*/min_block_length,
+          /*end_len=*/
+          std::min(1 + (unlimited_cost
+                            ? max_block_length
+                            : std::min(max_block_length, max_cost - cost)),
+                   2 * min_block_length));
+      if (remat.begin == remat.end) break;
+      Remat(remat);
+      ApplyRemat(remat);
+      cost += (remat.end - remat.begin);
     }
   }
 }

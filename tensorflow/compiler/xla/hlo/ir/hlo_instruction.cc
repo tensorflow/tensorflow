@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1042,7 +1041,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
-    int64_t parameter_number, const Shape& shape, const std::string& name) {
+    int64_t parameter_number, const Shape& shape, absl::string_view name) {
   return std::make_unique<HloParameterInstruction>(parameter_number, shape,
                                                    name);
 }
@@ -1741,7 +1740,7 @@ HloInstruction::CreateBroadcastSequence(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {});
     broadcast->set_metadata(operand->metadata());
     if (operand->has_sharding()) {
-      broadcast->set_sharding(operand->sharding());
+      broadcast->copy_sharding(operand);
     }
     broadcast->set_frontend_attributes(operand->frontend_attributes());
     return broadcast;
@@ -1767,7 +1766,7 @@ HloInstruction::CreateBroadcastSequence(
       operand));
   reshaped_operand->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
-    reshaped_operand->set_sharding(operand->sharding());
+    reshaped_operand->copy_sharding(operand);
   }
   reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
   // Broadcast 'reshape' up to the larger size.
@@ -1775,7 +1774,7 @@ HloInstruction::CreateBroadcastSequence(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
   broadcast->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
-    broadcast->set_sharding(operand->sharding());
+    broadcast->copy_sharding(operand);
   }
   broadcast->set_frontend_attributes(operand->frontend_attributes());
   return broadcast;
@@ -2275,7 +2274,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
-    clone->name_ = name();
+    clone->name_.assign(name().begin(), name().end());
   } else {
     // If an instruction is cloned multiple times avoid names like
     // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
@@ -2285,14 +2284,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
     size_t index = name().rfind(dot_suffix);
     if (index == std::string::npos) {
       // Existing name does not include ".suffix".
-      clone->name_ = name() + dot_suffix;
+      clone->name_ = absl::StrCat(name(), dot_suffix);
     } else {
       // Existing name includes ".suffix". Determine if substring after
       // ".suffix" is numeric and should be replaced with an incremented number.
-      std::string after_suffix = name().substr(index + dot_suffix.size());
+      auto after_suffix = name().substr(index + dot_suffix.size());
       if (after_suffix.empty()) {
         // Existing name ends in ".suffix". New name should end in ".suffix2".
-        clone->name_ = name() + "2";
+        clone->name_ = absl::StrCat(name(), "2");
       } else {
         // If names ends with .suffix[0-9]+ then replace with a suffix with the
         // numeric value incremented.
@@ -2302,7 +2301,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
               StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
         } else {
           // Substring after ".suffix" is non-numeric.
-          clone->name_ = name() + dot_suffix;
+          clone->name_ = absl::StrCat(name(), dot_suffix);
         }
       }
     }
@@ -2400,6 +2399,21 @@ Status HloInstruction::DropAllControlDeps() {
   control_successors_.clear();
   control_predecessors_.clear();
   return OkStatus();
+}
+
+Status HloInstruction::SafelyDropAllControlDependencies() {
+  // Add all pairs of transitive dependencies from predecessors to successors.
+  for (HloInstruction* predecessor : control_predecessors_) {
+    for (HloInstruction* successor : control_successors_) {
+      TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(successor));
+    }
+  }
+  TF_RETURN_IF_ERROR(DropAllControlDeps());
+  return OkStatus();
+}
+
+bool HloInstruction::HasControlDependencies() const {
+  return !control_predecessors_.empty() || !control_successors_.empty();
 }
 
 Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
@@ -2867,9 +2881,6 @@ HloComputation* HloInstruction::to_apply() const {
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   if (has_to_apply()) {
     CHECK_EQ(called_computations_.size(), 1)
         << "Expected a to_apply computation for " << opcode();
@@ -2911,17 +2922,11 @@ HloComputation* HloInstruction::while_body() const {
 }
 
 void HloInstruction::set_while_condition(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kConditionComputationIndex] = computation;
 }
 
 void HloInstruction::set_while_body(HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kBodyComputationIndex] = computation;
 }
@@ -2963,9 +2968,6 @@ HloComputation* HloInstruction::branch_computation(int b) const {
 
 void HloInstruction::set_branch_computation(int b,
                                             HloComputation* computation) {
-  // Don't allow changing the computation for fused instructions so we don't
-  // have to recompute called_instructions for the entire fusion instruction.
-  CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kConditional, opcode_);
   called_computations_[b] = computation;
 }
@@ -3021,7 +3023,7 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
                   << absl::StrJoin(
                          dfs, "\n  ",
                          [](std::string* out, const HloInstruction* instr) {
-                           out->append(instr->name());
+                           absl::StrAppend(out, instr->name());
                          });
         return;
       }
@@ -3050,6 +3052,10 @@ std::string HloInstruction::ToString(const HloPrintOptions& options) const {
   StringPrinter printer;
   Print(&printer, options);
   return std::move(printer).ToString();
+}
+
+std::string HloInstruction::ToString() const {
+  return ToString(HloPrintOptions::Default());
 }
 
 bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
@@ -4574,7 +4580,6 @@ HloModule* HloInstruction::GetModule() const {
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
-  std::string parent_str = parent() == nullptr ? "noparent" : parent()->name();
   name_ = name_uniquer->GetUniqueName(name_);
 }
 

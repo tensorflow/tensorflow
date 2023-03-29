@@ -69,7 +69,8 @@ namespace {
 // nor Y is adjointed). The dimension to contract along is switched when any
 // operand is adjointed.
 // See http://en.wikipedia.org/wiki/Tensor_contraction
-Eigen::IndexPair<Eigen::DenseIndex> ContractionDims(bool adj_x, bool adj_y) {
+inline Eigen::IndexPair<Eigen::DenseIndex> ContractionDims(bool adj_x,
+                                                           bool adj_y) {
   return Eigen::IndexPair<Eigen::DenseIndex>(adj_x ? 0 : 1, adj_y ? 1 : 0);
 }
 

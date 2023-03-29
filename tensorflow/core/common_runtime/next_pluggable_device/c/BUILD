@@ -12,8 +12,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:tf_status_headers",
-        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c:tf_tensor_hdrs",
         "//tensorflow/compiler/xla/c:c_api_decl",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
     ],
@@ -38,6 +39,7 @@ tf_cc_test(
     deps = [
         ":example_plugin",
         ":plugin_c_api_hdrs",
+        "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core/platform:status",
         "@com_google_googletest//:gtest_main",

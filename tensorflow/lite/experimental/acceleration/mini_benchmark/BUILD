@@ -968,6 +968,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
         "@flatbuffers",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",

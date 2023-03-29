@@ -1432,6 +1432,10 @@ tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_op.getComputation(), &builder_));
+  auto debug_opts = instr->GetModule()->config().debug_options();
+  all_reduce_op->setAttr(
+      "allow_all_reduce_kernel",
+      builder_.getBoolAttr(debug_opts.xla_gpu_allow_all_reduce_kernel()));
   return all_reduce_op;
 }
 
@@ -1457,6 +1461,10 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_start_op.getComputation(), &builder_));
+  auto debug_opts = instr->GetModule()->config().debug_options();
+  all_reduce_start_op->setAttr(
+      "allow_all_reduce_kernel",
+      builder_.getBoolAttr(debug_opts.xla_gpu_allow_all_reduce_kernel()));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_reduce_start_op.getToken()});
@@ -1975,8 +1983,10 @@ tsl::Status LhloDialectEmitter::Initialize() {
   mlir::IntegerAttr unique_id =
       builder_.getI32IntegerAttr(computation_.parent()->unique_id());
   module_->setAttr("hlo.unique_id", unique_id);
-  std::string function_name =
-      computation_.name().empty() ? "__compute" : computation_.name();
+  llvm::StringRef function_name =
+      computation_.name().empty() ? "__compute"
+                                  : llvm::StringRef(computation_.name().data(),
+                                                    computation_.name().size());
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.

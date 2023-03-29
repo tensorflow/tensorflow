@@ -147,7 +147,7 @@ LogicalResult ParallelExecuteOp::verify() {
   }
 
   int output_index = 0;
-  for (auto& region_and_index : llvm::enumerate(regions)) {
+  for (const auto& region_and_index : llvm::enumerate(regions)) {
     auto& region = region_and_index.value();
     auto* region_terminator = region.front().getTerminator();
 

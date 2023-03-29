@@ -285,6 +285,13 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   for (int32_t i = -128; i < 128; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
+
+    double max = (output_scale > 1.0) ? DBL_MAX : (DBL_MAX * output_scale);
+    if (transformed >= max) {
+      table.push_back(INT8_MAX);
+      continue;
+    }
+
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
@@ -431,6 +438,21 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
+}
+
+// Create an expected bitwidth integer constant operator based on the type
+// parameter.
+Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
+                                  int64_t val) {
+  auto bit_width = type.getIntOrFloatBitWidth();
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      {}, builder.getIntegerType(bit_width));
+  auto const_attr =
+      SplatElementsAttr::get(const_type, builder.getIntegerAttr(type, val));
+
+  auto const_op =
+      builder.create<tosa::ConstOp>(builder.getLoc(), const_type, const_attr);
   return const_op.getResult();
 }
 

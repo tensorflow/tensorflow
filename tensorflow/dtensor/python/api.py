@@ -21,7 +21,6 @@ from typing import Any, Callable, Optional, Sequence
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -54,22 +53,9 @@ def call_with_layout(fn: Callable[...,
     The return value of `fn` transformed to a DTensor if requested.
   """
   if layout is not None:
-    if not context.executing_eagerly():
-      # This is a workaround for b/199324097, where functions such as tf.ones
-      # could attach an incorrect layout to the tf.const generated under the
-      # hood. The op runs successfully in eager mode, but in graph mode, MLIR
-      # passes sometimes attach the default layout to a scalar constant.
-      # %cst = tf.Const([1])  -- With the given layout
-      # %0 = "tf.DTensorLayout"(%cst). -- Fails in MLIR pass since shape for
-      #                                -- layout could be different than
-      #                                -- shape[0] for %cst.
-      # %1 = tf.Fill(%0, 1)
-      result = fn(*args, **kwargs)
-      return relayout(result, layout)
-    else:
-      with default_mesh(layout.mesh):
-        with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
-          return fn(*args, **kwargs)
+    with default_mesh(layout.mesh):
+      with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
+        return fn(*args, **kwargs)
   return fn(*args, **kwargs)
 
 

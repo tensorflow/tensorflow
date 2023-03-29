@@ -47,7 +47,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
@@ -1398,7 +1398,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
           def else_branch():
             return 0.
 
-          return control_flow_ops.cond(
+          return cond.cond(
               constant_op.constant(True), then_branch, else_branch)
 
         return fn_with_many_reads_inner()

@@ -260,13 +260,6 @@ py_library(
 )
 
 py_library(
-    name = "distribution_strategy_context",
-    srcs = ["distribution_strategy_context.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/distribute:distribute_lib"],
-)
-
-py_library(
     name = "evaluation",
     srcs = ["evaluation.py"],
     srcs_version = "PY3",
@@ -573,18 +566,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "distribute",
-    srcs = [
-        "distribute.py",
-        "distribution_strategy_context.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/distribute:distribute_lib",
-    ],
-)
-
 tf_py_test(
     name = "server_lib_test",
     size = "small",
@@ -879,6 +860,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
@@ -1322,9 +1304,9 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python:math_ops",
     ] + TRAINING_TEST_DEPS,
 )
 

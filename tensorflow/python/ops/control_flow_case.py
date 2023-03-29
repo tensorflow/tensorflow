@@ -20,19 +20,13 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import dispatch
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(b/269483538): needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
 
 
 @tf_export("case", v1=[])
@@ -131,7 +125,7 @@ def case_v2(pred_fn_pairs,
                callable.
   """
   return _case_helper(
-      control_flow_ops.cond,
+      cond.cond,
       pred_fn_pairs,
       default,
       exclusive,
@@ -240,7 +234,7 @@ def case(pred_fn_pairs,
                callable.
   """
   return _case_helper(
-      control_flow_ops.cond,
+      cond.cond,
       pred_fn_pairs,
       default,
       exclusive,
@@ -257,7 +251,7 @@ def _assert_at_most_n_true(predicates, n, msg):
     n: maximum number of true predicates allowed.
     msg: Error message.
   """
-  preds_c = array_ops.stack(predicates, name="preds_c")
+  preds_c = array_ops_stack.stack(predicates, name="preds_c")
   num_true_conditions = math_ops.reduce_sum(
       math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
   condition = math_ops.less_equal(num_true_conditions,
@@ -294,7 +288,7 @@ def _case_create_default_action(predicates, actions):
                   "predicates are True: " % k)
     default_msg = ("Input error: "
                    "None of conditions evaluated as True:",
-                   array_ops.stack(predicates, name="preds_c"))
+                   array_ops_stack.stack(predicates, name="preds_c"))
     with ops.control_dependencies([
         _assert_at_most_n_true(  # pylint: disable=protected-access
             other_predicates, n=0, msg=others_msg),

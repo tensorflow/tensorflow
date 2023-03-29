@@ -1622,7 +1622,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
     for (int i = 0; !wrote_explanation && i < 2; ++i) {
       if (!matches[i][0] && !matches[i][1]) {
         EXPLAIN << "HloInstruction's operands (ignoring order) did not match "
-                << (i == 0 ? "first" : "second") << " matcher.  Specifically,";
+                << (i == 0 ? "first" : "second") << " matcher. Specifically,";
         describe_matcher(i);
         wrote_explanation = true;
       }
@@ -1636,7 +1636,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
         CHECK(!matches[1][(i + 1) % 2]);
         CHECK(!wrote_explanation);
         EXPLAIN << "HloInstruction's " << (i == 1 ? "LHS" : "RHS")
-                << " operand did not match either of the two matchers.  "
+                << " operand did not match either of the two matchers. "
                    "Specifically,";
         describe_matcher(0);
         EXPLAIN << "\nand";
