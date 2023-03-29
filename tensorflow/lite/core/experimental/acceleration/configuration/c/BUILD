@@ -71,8 +71,8 @@ cc_test(
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": ["gpu_plugin_test.cc"],
         "//conditions:default": [],
     }),
-    tags = tf_gpu_tests_tags(),
     linkopts = gpu_delegate_linkopts(),
+    tags = tf_gpu_tests_tags(),
     deps = select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [":gpu_plugin"],
         "//conditions:default": [],
