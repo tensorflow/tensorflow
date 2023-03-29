@@ -846,8 +846,12 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+    Shape device_shape = on_device_shape();
+    if (device_shape.is_dynamic()) {
+      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    }
     auto literal = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(on_device_shape()));
+        ShapeUtil::DeviceShapeToHostShape(device_shape));
     TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }
