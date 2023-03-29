@@ -1,7 +1,8 @@
 path: "tensorflow.distribute.DistributedIterator"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.input_lib.DistributedIteratorInterface\'>"
-  is_instance: "<class \'collections.abc.Iterator\'>"
+  is_instance: "<class \'tensorflow.python.types.distribute.DistributedIteratorInterface\'>"
+  is_instance: "<class \'tensorflow.python.types.distribute.Iterator\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "element_spec"
     mtype: "<type \'property\'>"

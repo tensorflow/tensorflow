@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
@@ -468,7 +469,8 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
                                 const std::vector<uint8_t>& binary,
                                 const BufferAllocations& buffer_allocations,
                                 const BufferAllocation* temp_buffer,
-                                bool block_host_until_done) {
+                                bool block_host_until_done,
+                                NonAtomicallyUpgradeableRWLock& gpu_lock) {
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
@@ -485,7 +487,7 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
   });
 
   auto executed = gpu_runtime_executable.Execute(
-      run_options, asm_text, binary, buffer_allocations, temp_buffer);
+      run_options, asm_text, binary, buffer_allocations, gpu_lock, temp_buffer);
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
@@ -508,7 +510,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously.
-  absl::ReaderMutexLock gpu_lock(&GetGpuMutex(executor));
+  NonAtomicallyUpgradeableRWLock gpu_lock(&GetGpuMutex(executor));
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
@@ -639,8 +641,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(run_options, buffer_allocations,
-                                               block_host_until_done));
+  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(
+      run_options, buffer_allocations, block_host_until_done, gpu_lock));
 
   // Free all temporary allocations.
   TF_RETURN_IF_ERROR(
@@ -655,7 +657,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
 Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations, bool block_host_until_done) {
+    const BufferAllocations& buffer_allocations, bool block_host_until_done,
+    NonAtomicallyUpgradeableRWLock& gpu_lock) {
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
 
@@ -687,7 +690,7 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     }
     return ExecuteXlaRuntime(module_name_, unique_id, *gpu_runtime_executable_,
                              run_options, text_, binary_, buffer_allocations,
-                             temp_buffer, block_host_until_done);
+                             temp_buffer, block_host_until_done, gpu_lock);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");

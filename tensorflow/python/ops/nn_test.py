@@ -1854,7 +1854,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
                                              ragged_rank=1)
 
-    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    embedded_ragged = nn.embedding_lookup(weights, ragged_ids)
     expected_output = ragged_factory_ops.constant(
         [[[1, 1, 1], [2, 2, 2], [3, 3, 3]], [[0, 0, 0]], [[1, 1, 1], [2, 2, 2]]
         ],
@@ -1870,7 +1870,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
                                                                        ]],
         ragged_rank=2)
 
-    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    embedded_ragged = nn.embedding_lookup(weights, ragged_ids)
     expected_output = ragged_factory_ops.constant(
         [[[[[3, 3], [4, 4]], [[0, 0], [6, 6]]], []],
          [[[[2, 2], [1, 1]], [[1, 1], [0, 0]]],
@@ -1882,16 +1882,14 @@ class RaggedEmbeddingTest(test_lib.TestCase):
   def testMissingWeights(self):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
 
-    with self.assertRaisesRegex(ValueError,
-                                "The embedding weights must be specified.*"):
-      nn.embedding_lookup_ragged(None, ragged_ids)
+    with self.assertRaisesRegex(ValueError, "params must be specified.*"):
+      nn.embedding_lookup(None, ragged_ids)
 
   def testEmptyWeights(self):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
 
-    with self.assertRaisesRegex(ValueError,
-                                "The embedding weights should not be empty.*"):
-      nn.embedding_lookup_ragged([], ragged_ids)
+    with self.assertRaisesRegex(ValueError, "params should not be empty.*"):
+      nn.embedding_lookup([], ragged_ids)
 
   def testInvalidIndicesType(self):
     weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
@@ -1899,7 +1897,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The values contained by the inputs have type*"):
-      nn.embedding_lookup_ragged(weights, ragged_ids)
+      nn.embedding_lookup(weights, ragged_ids)
 
   def testMaxNormForEmbeddings(self):
     weights = constant_op.constant(

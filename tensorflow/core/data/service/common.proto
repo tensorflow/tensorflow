@@ -3,10 +3,9 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
-import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
+import "tensorflow/tsl/protobuf/status.proto";
 
 // Next tag: 2
 message DatasetDef {
@@ -93,10 +92,9 @@ message SnapshotTaskProgress {
   // True if the snapshot is complete successfully. Unset if the snapshot is not
   // complete or an error has occurred.
   bool completed = 2;
-  // If any error occurs during the snapshot processing, the `error_code` and
-  // `error_message` will be filled with the error status.
-  error.Code error_code = 3;
-  string error_message = 4;
+  // If any error occurs during the snapshot processing, `status` will be filled
+  // with the error status.
+  StatusProto status = 3;
 }
 
 message SnapshotStreamInfo {
@@ -133,4 +131,7 @@ enum TargetWorkers {
 message DataTransferServerInfo {
   string protocol = 1;
   string address = 2;
+  // If provided, properties of the server used to determine compatibility with
+  // a client.
+  bytes compatibility_info = 3;
 }

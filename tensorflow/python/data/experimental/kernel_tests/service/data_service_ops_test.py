@@ -403,6 +403,32 @@ class DataServiceOpsTest(
     results += self.getIteratorOutput(get_next_2)
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testSharedJobNameRepeatEmptyJob(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds1 = ds.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF,
+            cluster.dispatcher_address(),
+            job_name="shared_job"))
+    ds1 = ds1.repeat()
+    ds2 = ds.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.OFF,
+            cluster.dispatcher_address(),
+            job_name="shared_job"))
+    ds2 = ds2.repeat()
+
+    get_next_1 = self.getNext(ds1)
+    for i in list(range(num_elements)) * 3:
+      self.assertEqual(self.evaluate(get_next_1()), i)
+    # Verifies ds2 is non-empty.
+    get_next_2 = self.getNext(ds2)
+    for i in list(range(num_elements)) * 3:
+      _ = self.evaluate(get_next_2())
+
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameMultipleEpochs(self):
     cluster = self.make_test_cluster(num_workers=1)
@@ -788,17 +814,20 @@ class DataServiceOpsTest(
   def testFromDatasetIdSharedJobs(self):
     cluster = self.make_test_cluster(num_workers=2)
 
+    dataset_ids = ["dataset_1", "dataset_2"]
     datasets = [
         dataset_ops.Dataset.range(20, output_type=dtypes.int32),
         dataset_ops.Dataset.from_tensor_slices(list(range(20, 40))),
     ]
-    dataset_ids = []
 
-    for ds in datasets:
-      dataset_id = data_service_ops.register_dataset(
-          cluster.dispatcher_address(), ds
+    for ds, dataset_id in zip(datasets, dataset_ids):
+      # Evaluate to ensure that in graph mode `register_dataset` is called
+      # before `from_dataset_id` below.
+      self.evaluate(
+          data_service_ops.register_dataset(
+              cluster.dispatcher_address(), ds, dataset_id=dataset_id
+          )
       )
-      dataset_ids.append(dataset_id)
 
     # Read from both jobs in parallel, with 2 consumers for each job.
     data_service_datasets = []
@@ -912,15 +941,6 @@ class DataServiceOpsTest(
     self.assertEqual(0, self.evaluate(get_next()))
     # Without properly implemented cancellation, we will hang here while trying
     # to garbage collect the dataset iterator.
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testRegisterEquivalentDatasets(self):
-    ds_1 = dataset_ops.Dataset.range(10)
-    ds_2 = dataset_ops.Dataset.range(10)
-    cluster = self.make_test_cluster(num_workers=1)
-    id_1 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_1)
-    id_2 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_2)
-    self.assertEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testRegisterDifferentDatasets(self):

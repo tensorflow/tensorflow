@@ -65,3 +65,26 @@ func.func @ori() -> i32 {
 // CHECK-LABEL: @ori
 // CHECK-NEXT: Results
 // CHECK-NEXT: i32: 11
+
+func.func @shrui() -> i32 {
+  %c3 = arith.constant 20 : i32
+  %c-1 = arith.constant -1 : i32
+  %ret = arith.shrui %c-1, %c3 : i32
+  return %ret : i32
+}
+
+// CHECK-LABEL: @shrui
+// CHECK-NEXT: Results
+// CHECK-NEXT: 4095
+
+func.func @shli() -> i32 {
+  %c2 = arith.constant 2 : i32
+  %c42 = arith.constant 42 : i32
+  %ret = arith.shli %c42, %c2 : i32
+  return %ret : i32
+}
+
+// CHECK-LABEL: @shli
+// CHECK-NEXT: Results
+// CHECK-NEXT: 168
+

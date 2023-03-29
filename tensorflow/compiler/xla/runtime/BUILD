@@ -18,6 +18,7 @@ cc_library(
     hdrs = ["arguments.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":async_runtime",
         ":errors",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
@@ -371,9 +372,9 @@ cc_library(
     hdrs = ["memory_mapper.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/tsl/platform",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Support",
+        "//tensorflow/tsl/platform",
     ] + tf_platform_deps(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
@@ -537,6 +538,11 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
     ],
+)
+
+cc_library(
+    name = "cpu_event",
+    hdrs = ["cpu_event.h"],
 )
 
 xla_cc_test(

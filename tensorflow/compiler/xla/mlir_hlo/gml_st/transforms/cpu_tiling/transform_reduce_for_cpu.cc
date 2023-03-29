@@ -36,25 +36,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TRANSFORMREDUCEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
-
-constexpr llvm::StringRef kReduceTransformedLabel =
-    "__reduce_transformed_label__";
-
-FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
-                                   linalg::ReduceOp reduceOp,
-                                   ArrayRef<int64_t> tileSizes) {
-  TilingOptions opts;
-  opts.setTileSizeComputationFn(tileSizes);
-  opts.distribute = true;
-  return tileUsingGmlSt(opts, rewriter,
-                        cast<TilingInterface>(reduceOp.getOperation()));
-}
 
 SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
                                              int64_t parallelDimTileSize) {
@@ -103,12 +91,12 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
   LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(reduceOp, kReduceTransformedLabel)) {
+    if (hasLabel(reduceOp, kTransformedLabel)) {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
     }
 
-    if (isa<gml_st::ParallelOp, scf::ForOp>(reduceOp->getParentOp())) {
+    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
       return rewriter.notifyMatchFailure(
           reduceOp, "has already been tiled by another pass.");
     }
@@ -116,9 +104,15 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
       return failure();
 
-    Location loc = reduceOp.getLoc();
+    // 0-d tensor with the neutral elements.
+    auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
+    if (!fillOp)
+      return rewriter.notifyMatchFailure(reduceOp,
+                                         "init not defined by fill op");
+    auto neutralValue = fillOp.value();
 
     // Constants.
+    Location loc = reduceOp.getLoc();
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value tileSizeValue =
         rewriter.create<arith::ConstantIndexOp>(loc, tileSize);
@@ -134,16 +128,9 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     Value remainderSize =
         getRemainderSize(rewriter, loc, tileableBound, inputSize);
 
-    // 0-d tensor with the neutral elements.
-    auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
-    if (!fillOp) return failure();
-    auto neutralValue = fillOp.value();
-
-    // fillOp.getValue();
-    Type elementType = neutralValue.getType();
-
     // Create tensor<VECTOR_SIZExELEM_TYPE> with neutral elements for tile loop
     // init.
+    Type elementType = neutralValue.getType();
     Value emptyVector = rewriter.create<tensor::EmptyOp>(
         loc, llvm::ArrayRef({vectorSize}), elementType);
     Value filledVector =
@@ -169,7 +156,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       OpBuilder::InsertionGuard g(rewriter);
       Region &region = tiledReduceOp.getRegion();
       rewriter.cloneRegionBefore(reduceOp.getRegion(), region, region.end());
-      setLabel(tiledReduceOp, kReduceTransformedLabel);
+      setLabel(tiledReduceOp, kTransformedLabel);
 
       b.create<scf::YieldOp>(loc, tiledReduceOp.getResults());
     };
@@ -253,7 +240,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     bvm.map(reduceOp.getInits(), ValueRange{newInit});
 
     auto *newReduceOp = b.clone(*reduceOp.getOperation(), bvm);
-    setLabel(newReduceOp, kReduceTransformedLabel);
+    setLabel(newReduceOp, kTransformedLabel);
     return newReduceOp->getResult(0);
   }
 
@@ -273,7 +260,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 };
 
 /// Pattern to tile `linalg.reduce` and fuse `linalg.fill` into generated
-/// `gml_st.parallel`.
+/// `scf.forall`.
 struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
   using OpRewritePattern<linalg::ReduceOp>::OpRewritePattern;
 
@@ -290,8 +277,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (reduceOp.getDimensions().size() != 1) return failure();
     int64_t reductionDim = reduceOp.getDimensions()[0];
 
-    if (reduceOp->getParentOfType<ParallelOp>()) return failure();
-    if (hasLabel(reduceOp, kReduceTransformedLabel)) {
+    if (reduceOp->getParentOfType<scf::ForallOp>()) return failure();
+    if (hasLabel(reduceOp, kTransformedLabel)) {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
     }
@@ -308,113 +295,60 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     auto cluster = getFusionCluster(reduceOp, producerFilterFn);
     auto fusionCluster = cluster.operations;
     auto *tilingRoot = cluster.root;
-    if (!isa<linalg::MapOp>(tilingRoot) && !isa<linalg::ReduceOp>(tilingRoot)) {
-      return rewriter.notifyMatchFailure(
-          tilingRoot,
-          "Expected MapOp or ReduceOp as a root of fusion cluster.");
-    }
 
     // First level tiling: parallel dimension.
-    auto tilingParallelDimsResult =
-        tileParallelDimensions(tilingRoot, rewriter);
+    auto parallelDimsTileSizes =
+        isa<linalg::ReduceOp>(tilingRoot)
+            ? getParallelDimTileSizes(reduceOp.getDimensions()[0],
+                                      parallelDimTileSize)
+            : SmallVector<int64_t>{parallelDimTileSize};
+    auto tilingParallelDimsResult = tileUsingSCFForallOpAndFuseGreedily(
+        rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes),
+        [&](Operation *op) { return fusionCluster.contains(op); });
     if (failed(tilingParallelDimsResult)) return failure();
 
-    // Update the results if tiling occurred.
-    rewriter.replaceOp(tilingRoot,
-                       tilingParallelDimsResult->loop->getResults());
-    tilingRoot = (tilingParallelDimsResult->tiledOps.front());
-
-    // Fuse greedily into root op.
-    fuseGreedily(rewriter, *tilingRoot->getBlock(),
-                 [&](Operation *op) { return fusionCluster.contains(op); });
-
-    (void)fuseFillOpsIntoParallelOp(
-        rewriter, cast<ParallelOp>(tilingParallelDimsResult->loop));
+    auto peeledParallelLoop =
+        peelAllLoops(tilingParallelDimsResult->loop, rewriter);
 
     // Process main parallel loop.
-    auto peeledParallelLoop = peelAllLoops(
-        cast<ParallelOp>(tilingParallelDimsResult->loop), rewriter);
-
-    ParallelOp mainParallelLoop = peeledParallelLoop.mainLoop;
+    scf::ForallOp mainParallelLoop = peeledParallelLoop.mainLoop;
     if (mainParallelLoop) {
-      for (auto tiledReduceOp : llvm::to_vector(
-               tilingRoot->getBlock()->getOps<linalg::ReduceOp>())) {
-        FailureOr<scf::SCFTilingResult> reductionDimTilingResult =
-            tileUsingSCFForOpAndFuseGreedily(
-                rewriter, tiledReduceOp,
-                getSCFTilingOptions(getReductionDimTileSizes(
-                    reductionDim, reductionDimTileSize)),
-                kReduceTransformedLabel, producerFilterFn);
-        if (failed(reductionDimTilingResult)) return failure();
-
-        SCFForPeelingResult reductionDimPeelingResult =
-            peelSCFForOp(rewriter, reductionDimTilingResult->loops.front());
-        if (reductionDimPeelingResult.mainLoop) {
-          setLabel(reductionDimPeelingResult.mainLoop,
-                   kPerfectlyTiledLoopLabel);
-        }
-        if (reductionDimPeelingResult.tailLoop) {
-          for (auto reduOp :
-               llvm::to_vector(reductionDimPeelingResult.tailLoop.getBody()
-                                   ->getOps<linalg::ReduceOp>())) {
-            // Column reductions have to be tiled even further, otherwise we
-            // would get vector.multi_reduction 4x1 -> 1, which is expensive.
-            // Potentially, we could lower it to a horizontal add.
-            if (reductionDim == 0) {
-              auto parallelDimSizeOneTilingResult =
-                  tileUsingSCFForOpAndFuseGreedily(
-                      rewriter, reduOp,
-                      getSCFTilingOptions(
-                          getParallelDimTileSizes(reductionDim, 1)),
-                      kReduceTransformedLabel, producerFilterFn);
-              if (failed(parallelDimSizeOneTilingResult)) return failure();
-
-              reduOp = cast<linalg::ReduceOp>(
-                  parallelDimSizeOneTilingResult->tiledOps.front());
-            }
-            if (failed(tileUsingSCFForOpAndFuseGreedily(
-                    rewriter, reduOp,
-                    getSCFTilingOptions(
-                        getReductionDimTileSizes(reductionDim, 1)),
-                    kReduceTransformedLabel, producerFilterFn))) {
-              return failure();
-            }
-          }
-        }
+      auto tiledReduceOp =
+          *mainParallelLoop.getBody()->getOps<linalg::ReduceOp>().begin();
+      if (failed(tileAndPeelReductionDim(rewriter, tiledReduceOp, reductionDim,
+                                         producerFilterFn))) {
+        return failure();
       }
     }
 
     // Process tail parallel loop.
-    ParallelOp tailParallelLoop = peeledParallelLoop.tailLoops.size() == 1
-                                      ? peeledParallelLoop.tailLoops.front()
-                                      : nullptr;
+    scf::ForallOp tailParallelLoop = peeledParallelLoop.tailLoops.size() == 1
+                                         ? peeledParallelLoop.tailLoops.front()
+                                         : nullptr;
     if (tailParallelLoop) {
-      auto terminatorOp = tailParallelLoop.getTerminator();
-      auto *definingOp = terminatorOp->getOperand(0).getDefiningOp();
+      Value yieldedTensor =
+          getYieldedValues(tailParallelLoop.getTerminator()).front();
+      auto *definingOp = yieldedTensor.getDefiningOp();
       if (!definingOp) return failure();
 
-      mlir::gml_st::TilingOptions opts;
-      opts.setTileSizeComputationFn(SmallVector<int64_t>(
+      auto opts = getSCFTilingOptions(SmallVector<int64_t>(
           definingOp->getResult(0).getType().cast<RankedTensorType>().getRank(),
           1));
       auto parallelDimTilingOpts =
           isa<linalg::ReduceOp>(definingOp)
-              ? getGmlStTilingOptions(getParallelDimTileSizes(reductionDim, 1))
-              : getGmlStTilingOptions({1});
-      auto parallelDimTilingResult = tileUsingGmlStParallelAndFuseGreedily(
-          rewriter, definingOp, parallelDimTilingOpts, kReduceTransformedLabel,
-          fusionClusterFn);
+              ? getSCFTilingOptions(getParallelDimTileSizes(reductionDim, 1))
+              : getSCFTilingOptions({1});
+      auto parallelDimTilingResult = tileUsingSCFForallOpAndFuseGreedily(
+          rewriter, definingOp, parallelDimTilingOpts, fusionClusterFn);
       if (failed(parallelDimTilingResult)) return failure();
 
-      (void)fuseFillOpsIntoParallelOp(rewriter, *parallelDimTilingResult);
-
       for (auto tiledReduceOp :
-           llvm::to_vector(parallelDimTilingResult->getBody()
+           llvm::to_vector(parallelDimTilingResult->loop.getBody()
                                ->getOps<linalg::ReduceOp>())) {
         auto reductionDimTilingResult = tileUsingSCFForOpAndFuseGreedily(
             rewriter, tiledReduceOp,
             getSCFTilingOptions(getReductionDimTileSizes(reductionDim, 1)),
-            kReduceTransformedLabel, producerFilterFn);
+            producerFilterFn);
         if (failed(reductionDimTilingResult)) return failure();
       }
     }
@@ -436,7 +370,7 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       auto users = llvm::to_vector(rootOp->getUsers());
 
       if (users.size() != 1) break;
-      if (!isa<linalg::MapOp>(users[0])) break;
+      if (!isa<linalg::MapOp, thlo::ReverseOp>(users[0])) break;
       resultOps.insert(rootOp);
 
       rootOp = users[0];
@@ -463,85 +397,50 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     return {resultOps, rootOp};
   }
 
-  FailureOr<TilingResult> tileParallelDimensions(
-      Operation *tilingRoot, PatternRewriter &rewriter) const {
-    FailureOr<TilingResult> tilingParallelDimsResult;
-    if (auto reduceOp = dyn_cast<linalg::ReduceOp>(tilingRoot)) {
-      tilingParallelDimsResult =
-          tileReduce(rewriter, reduceOp,
-                     getParallelDimTileSizes(reduceOp.getDimensions()[0],
-                                             parallelDimTileSize));
-    } else if (isa<linalg::MapOp>(tilingRoot)) {
-      TilingOptions opts;
-      opts.setTileSizeComputationFn({parallelDimTileSize});
-      opts.distribute = true;
+  LogicalResult tileAndPeelReductionDim(
+      PatternRewriter &rewriter, linalg::ReduceOp reduceOp,
+      int64_t reductionDim,
+      llvm::function_ref<bool(Operation *)> producerFilterFn) const {
+    FailureOr<scf::SCFTilingResult> reductionDimTilingResult =
+        tileUsingSCFForOpAndFuseGreedily(
+            rewriter, reduceOp,
+            getSCFTilingOptions(
+                getReductionDimTileSizes(reductionDim, reductionDimTileSize)),
+            producerFilterFn);
+    if (failed(reductionDimTilingResult)) return failure();
 
-      tilingParallelDimsResult =
-          tileUsingGmlSt(opts, rewriter, cast<TilingInterface>(tilingRoot));
-    } else {
-      return failure();
+    SCFForPeelingResult reductionDimPeelingResult =
+        peelSCFForOp(rewriter, reductionDimTilingResult->loops.front());
+    if (reductionDimPeelingResult.mainLoop) {
+      setLabel(reductionDimPeelingResult.mainLoop, kPerfectlyTiledLoopLabel);
     }
+    if (reductionDimPeelingResult.tailLoop) {
+      for (auto reduOp :
+           llvm::to_vector(reductionDimPeelingResult.tailLoop.getBody()
+                               ->getOps<linalg::ReduceOp>())) {
+        // Column reductions have to be tiled even further, otherwise we
+        // would get vector.multi_reduction 4x1 -> 1, which is expensive.
+        // Potentially, we could lower it to a horizontal add.
+        if (reductionDim == 0) {
+          auto parallelDimSizeOneTilingResult =
+              tileUsingSCFForOpAndFuseGreedily(
+                  rewriter, reduOp,
+                  getSCFTilingOptions(getParallelDimTileSizes(reductionDim, 1)),
+                  producerFilterFn);
+          if (failed(parallelDimSizeOneTilingResult)) return failure();
 
-    return tilingParallelDimsResult;
-  }
-
-  FailureOr<scf::SCFTilingResult> tileReductionDims(
-      PatternRewriter &rewriter, linalg::ReduceOp reduceOp) const {
-    scf::SCFTilingOptions tilingOptions;
-    tilingOptions.setTileSizes(getReductionDimTileSizes(
-        reduceOp.getDimensions()[0], reductionDimTileSize));
-    return scf::tileUsingSCFForOp(rewriter, reduceOp.getOperation(),
-                                  tilingOptions);
-  }
-
-  LogicalResult peelReduction(
-      PatternRewriter &rewriter, const TilingResult &tilingParallelDimsResult,
-      const scf::SCFTilingResult &tilingReductionDimsResult) const {
-    // Peel parallel loops.
-    if (auto loop =
-            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult.loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-    }
-
-    // Peel reduction loop inside the main parallel loop, label the main loop
-    // as "perfectly tiled" one, to enable vectorization after
-    // canonicalization.
-    if (!tilingReductionDimsResult.loops.empty()) {
-      scf::ForOp forLoop = tilingReductionDimsResult.loops.front();
-      SCFForPeelingResult peelingResult = peelSCFForOp(rewriter, forLoop);
-      if (peelingResult.mainLoop) {
-        setLabel(peelingResult.mainLoop, kPerfectlyTiledLoopLabel);
+          reduOp = cast<linalg::ReduceOp>(
+              parallelDimSizeOneTilingResult->tiledOps.front());
+        }
+        if (failed(tileUsingSCFForOpAndFuseGreedily(
+                rewriter, reduOp,
+                getSCFTilingOptions(getReductionDimTileSizes(reductionDim, 1)),
+                producerFilterFn))) {
+          return failure();
+        }
       }
-
-      if (!peelingResult.tailLoop) return success();
-      // Tile ops in the peeled loop again, to size 1, so they can be
-      // scalarized.
-      scf::ForOp peeledLoop = peelingResult.tailLoop;
-      auto yieldOp = cast<scf::YieldOp>(peeledLoop.getBody()->getTerminator());
-      auto reduceOp = getRootReduce(yieldOp);
-      if (!reduceOp) return failure();
-
-      scf::SCFTilingOptions opts;
-      opts.setTileSizes(
-          getReductionDimTileSizes(reduceOp.getDimensions()[0], 1));
-
-      if (failed(tileUsingSCFForOpAndFuseGreedily(
-              rewriter, reduceOp, opts, kReduceTransformedLabel,
-              [&](Operation *op) { return isa<linalg::MapOp>(op); })))
-        return failure();
     }
     return success();
-  }
-
-  linalg::ReduceOp getRootReduce(scf::YieldOp yieldOp) const {
-    if (yieldOp.getResults().size() != 1) return nullptr;
-
-    Value reduceResult = yieldOp.getResults().front();
-    if (auto insertSliceOp =
-            reduceResult.getDefiningOp<tensor::InsertSliceOp>()) {
-      reduceResult = insertSliceOp.getSource();
-    }
-    return reduceResult.getDefiningOp<linalg::ReduceOp>();
   }
 
   int64_t parallelDimTileSize;
@@ -581,6 +480,7 @@ struct TransformReduceForCpuPass
     RewritePatternSet patterns(ctx);
     patterns.add<Reduce1DTransformPattern>(ctx, vectorSize, tileSize1D);
     patterns.add<Reduce2DTransformPattern>(ctx, tileSizes2D[0], tileSizes2D[1]);
+    populateCollapseForallOpDimensionsPattern(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
@@ -588,7 +488,7 @@ struct TransformReduceForCpuPass
 
     // Ensure we drop the marker in the end.
     f.walk([](linalg::ReduceOp reduceOp) {
-      removeLabel(reduceOp, kReduceTransformedLabel);
+      removeLabel(reduceOp, kTransformedLabel);
     });
   }
 };

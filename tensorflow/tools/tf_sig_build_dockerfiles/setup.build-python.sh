@@ -24,16 +24,7 @@ PYTHON_VERSION=$1
 REQUIREMENTS=$2
 
 # PYTHON
-if [ "$PYTHON_VERSION" = "3.7" ]; then
-    wget https://www.python.org/ftp/python/3.7.11/Python-3.7.11.tgz && tar xvf Python-3.7.11.tgz && cd Python-3.7*/ && ./configure --enable-optimizations && make altinstall
-    ln -sf /usr/local/bin/python3.7 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.7 /usr/bin/pip3
-    ln -sf /usr/local/lib/python3.7 /usr/lib/tf_python
-
-    scl enable devtoolset-9 'bash'
-    rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-9/root/usr/bin/ld /usr/bin/ld
-
-    NUMPY_VERSION=1.18.5
-elif [ "$PYTHON_VERSION" = "3.8" ]; then
+if [ "$PYTHON_VERSION" = "3.8" ]; then
     wget https://www.python.org/ftp/python/3.8.9/Python-3.8.9.tgz && tar xvf Python-3.8.9.tgz && cd Python-3.8*/ && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.8 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.8 /usr/bin/pip3
     ln -sf /usr/local/lib/python3.8 /usr/lib/tf_python
@@ -60,6 +51,20 @@ elif [ "$PYTHON_VERSION" = "3.10" ]; then
         sed -i 's/PKG_CONFIG openssl /PKG_CONFIG openssl11 /g' configure && ./configure --enable-optimizations && make altinstall
     ln -sf /usr/local/bin/python3.10 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.10 /usr/bin/pip3
     ln -sf /usr/local/lib/python3.10 /usr/lib/tf_python
+
+    scl enable devtoolset-9 'bash'
+    rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-9/root/usr/bin/ld /usr/bin/ld
+
+    NUMPY_VERSION=1.21.4
+elif [ "$PYTHON_VERSION" = "3.11" ]; then
+    #install openssl1.1.1
+    wget --no-check-certificate https://ftp.openssl.org/source/openssl-1.1.1k.tar.gz && tar xvf openssl-1.1.1k.tar.gz && cd openssl-1.1.1k &&
+        ./config --prefix=/usr --openssldir=/etc/ssl --libdir=lib no-shared zlib-dynamic && make && make install
+
+    wget https://www.python.org/ftp/python/3.11.2/Python-3.11.2.tgz && tar xvf Python-3.11.2.tgz && cd Python-3.11*/ &&
+        sed -i 's/PKG_CONFIG openssl /PKG_CONFIG openssl11 /g' configure && ./configure --enable-optimizations && make altinstall
+    ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3
+    ln -sf /usr/local/lib/python3.11 /usr/lib/tf_python
 
     scl enable devtoolset-9 'bash'
     rm -f /usr/bin/ld && ln -s /opt/rh/devtoolset-9/root/usr/bin/ld /usr/bin/ld

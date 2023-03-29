@@ -95,8 +95,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);
   }
@@ -349,10 +347,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(limit))));
       result.push_back(std::make_pair(
-          "buffer_size",
-          size == -1 ? kTraceInfoUnavailable
-                     : strings::Printf("%lld", static_cast<long long>(size))));
-      result.push_back(std::make_pair(
           "autotune",
           dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));
       result.push_back(std::make_pair(
@@ -565,9 +559,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(absl::StrCat(prefix(), "::", index),

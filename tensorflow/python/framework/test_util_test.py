@@ -17,6 +17,7 @@
 import collections
 import copy
 import random
+import sys
 import threading
 import time
 import unittest
@@ -26,7 +27,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from google.protobuf import text_format
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python import pywrap_sanitizers
@@ -41,10 +41,10 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -53,6 +53,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.util.protobuf import compare_test_pb2
 
 
 class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -178,7 +179,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     graph_str = "node { name: 'w1' op: 'params' }"
     graph_def = graph_pb2.GraphDef()
-    text_format.Merge(graph_str, graph_def)
+    text_format.Parse(graph_str, graph_def)
 
     # test string based comparison
     self.assertProtoEquals(graph_str, graph_def)
@@ -213,6 +214,98 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # the inner proto.
     with self.assertRaisesRegex(AssertionError, r'meta_graph_version: "inner"'):
       self.assertProtoEquals("", meta_graph_def_outer)
+
+  def test_float_relative_tolerance(self):
+    pb1 = compare_test_pb2.Floats(float_=65061.0420, double_=164107.8938)
+    pb2 = compare_test_pb2.Floats(float_=65061.0322, double_=164107.9087)
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+
+  def test_float_relative_tolerance_nan(self):
+    pb1 = compare_test_pb2.Floats(float_=float("nan"))
+    pb2 = compare_test_pb2.Floats(float_=float("nan"))
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-7)
+    pb2 = compare_test_pb2.Floats(float_=2)
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+
+  def test_float_relative_tolerance_inf(self):
+    pb1 = compare_test_pb2.Floats(float_=float("inf"))
+    pb2 = compare_test_pb2.Floats(float_=float("inf"))
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
+    pb1 = compare_test_pb2.Floats(float_=1)
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+
+  def test_float_relative_tolerance_denormal(self):
+    pb1 = compare_test_pb2.Floats(
+        float_=sys.float_info.min * sys.float_info.epsilon
+    )
+    pb2 = compare_test_pb2.Floats(
+        float_=sys.float_info.min * sys.float_info.epsilon
+    )
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
+
+  def test_repeated_float_relative_tolerance(self):
+    pb1 = compare_test_pb2.RepeatedFloats(
+        float_=(x for x in [1.0, 2.0, 65061.042])
+    )
+    pb2 = compare_test_pb2.RepeatedFloats(
+        float_=(x for x in [1.0, 2.0, 65061.0322])
+    )
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
+
+  def test_nested_float_relative_tolerance(self):
+    pb1 = compare_test_pb2.NestedFloats()
+    pb2 = compare_test_pb2.NestedFloats()
+    pb1.floats.float_ = 65061.0420
+    pb2.floats.float_ = 65061.0322
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
+
+  def test_map_float_relative_tolerance(self):
+    pb1 = compare_test_pb2.MapFloats()
+    pb2 = compare_test_pb2.MapFloats()
+    pb1.int_to_floats[1].float_ = 65061.0420
+    pb2.int_to_floats[1].float_ = 65061.0322
+    pb1.int_to_floats[1].double_ = 164107.8938
+    pb2.int_to_floats[1].double_ = 164107.9087
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testNDArrayNear(self):
@@ -445,7 +538,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         # seems sensible
         x = constant_op.constant(True)
         y = [15]
-        control_flow_ops.Assert(x, y).run()
+        control_flow_assert.Assert(x, y).run()
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertAllCloseAccordingToType(self):

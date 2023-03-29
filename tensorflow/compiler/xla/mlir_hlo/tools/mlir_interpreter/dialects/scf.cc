@@ -64,6 +64,58 @@ llvm::SmallVector<InterpreterValue> scfFor(InterpreterState& state,
   return results;
 }
 
+llvm::SmallVector<InterpreterValue> forAll(
+    InterpreterState& state, scf::ForallOp op,
+    ArrayRef<InterpreterValue> dynamicLowerBounds,
+    ArrayRef<InterpreterValue> dynamicUpperBounds,
+    ArrayRef<InterpreterValue> dynamicSteps, ArrayRef<InterpreterValue> inits) {
+  bool isBufferized = op.getNumResults() == 0;
+
+  // Clone any tensors that are passed in `shared_outs`.
+  SmallVector<InterpreterValue> outs = llvm::to_vector(inits);
+  for (auto [type, out] : llvm::zip(op.getOutputs().getTypes(), outs)) {
+    if (type.isa<TensorType>()) {
+      out = out.clone();
+    }
+  }
+
+  auto lbs = replaceDynamicVals(op.getStaticLowerBound(), dynamicLowerBounds);
+  auto ubs = replaceDynamicVals(op.getStaticUpperBound(), dynamicUpperBounds);
+  auto steps = replaceDynamicVals(op.getStaticStep(), dynamicSteps);
+
+  SmallVector<int64_t> iterSizes;
+  for (auto [lb, ub, step] : llvm::zip(lbs, ubs, steps)) {
+    if (step == 0) {
+      state.addFailure("invalid step");
+      return {};
+    }
+    iterSizes.push_back((ub - lb + (step - 1)) / step);
+  }
+
+  // Make a fake buffer view to abuse its index iterator.
+  BufferView view{0, iterSizes, {}};
+  for (const auto& indices : view.indices()) {
+    SmallVector<InterpreterValue> args;
+    for (auto [i, lb, step] : llvm::zip(indices, lbs, steps)) {
+      args.push_back(InterpreterValue{i * step + lb});
+    }
+    llvm::copy(outs, std::back_inserter(args));
+
+    auto yielded = interpret(state, op->getRegion(0), args);
+    if (state.hasFailure()) break;
+    assert(yielded.empty() && "forall loop shouldn't have yielded anything");
+  }
+
+  if (isBufferized) {
+    return {};
+  }
+  return outs;
+}
+
+void inParallel(InterpreterState& state, scf::InParallelOp op) {
+  interpret(state, op.getRegion(), {});
+}
+
 llvm::SmallVector<InterpreterValue> scfIf(InterpreterState& state, scf::IfOp op,
                                           bool condition) {
   if (condition) {
@@ -148,6 +200,8 @@ llvm::SmallVector<InterpreterValue> scfWhile(
 REGISTER_MLIR_INTERPRETER_OP("scf.condition", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP("scf.reduce.return", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP("scf.yield", noOpTerminator);
+REGISTER_MLIR_INTERPRETER_OP(forAll);
+REGISTER_MLIR_INTERPRETER_OP(inParallel);
 REGISTER_MLIR_INTERPRETER_OP(parallel);
 REGISTER_MLIR_INTERPRETER_OP(reduce);
 REGISTER_MLIR_INTERPRETER_OP(scfFor);

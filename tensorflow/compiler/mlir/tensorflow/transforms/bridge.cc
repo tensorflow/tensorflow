@@ -178,8 +178,8 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   }
 
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
-  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
-  pm.addPass(CreateTPUExtractOutsideCompilationPass());
+  pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
+  pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -192,11 +192,13 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRewriteTPUEmbeddingOpsPass());
+  pm.addNestedPass<func::FuncOp>(CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<func::FuncOp>(
       TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addPass(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<func::FuncOp>(CreateExtractTPUCopyWithDynamicShapeOpPass());
   pm.addNestedPass<func::FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
@@ -397,6 +399,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
     pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+    pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
+    pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
   }
   // Outline clusters into cluster functions.
   pm.addPass(TFDevice::CreateClusterOutliningPass());

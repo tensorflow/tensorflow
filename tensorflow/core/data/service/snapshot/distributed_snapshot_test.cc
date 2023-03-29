@@ -214,8 +214,6 @@ INSTANTIATE_TEST_SUITE_P(
                                          tsl::io::compression::kSnappy,
                                          tsl::io::compression::kZlib)));
 
-// TODO(b/258691097): Add tests for multiple sources (e.g., zip, enumerate).
-
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -27,7 +27,7 @@ import org.json.JSONObject;
  * <p>TODO(b/267429312): use AutoValue here to simplify the source code.
  */
 final class MetricsEntry {
-  private final float value;
+  private final double value;
   // The test target delegate's performance regression compared against the reference delegate.
   // Example value: "5%".
   private final String regression;
@@ -40,13 +40,13 @@ final class MetricsEntry {
   // - FAIL: The regression breaches the threshold specified in the criteria.
   private final BenchmarkResultType result;
 
-  private MetricsEntry(float value, String regression, BenchmarkResultType result) {
+  private MetricsEntry(double value, String regression, BenchmarkResultType result) {
     this.value = value;
     this.regression = regression;
     this.result = result;
   }
 
-  float value() {
+  double value() {
     return value;
   }
 
@@ -66,7 +66,7 @@ final class MetricsEntry {
     return jsonObject;
   }
 
-  static MetricsEntry create(float value, String regression, BenchmarkResultType result) {
+  static MetricsEntry create(double value, String regression, BenchmarkResultType result) {
     return new MetricsEntry(value, regression, result);
   }
 }

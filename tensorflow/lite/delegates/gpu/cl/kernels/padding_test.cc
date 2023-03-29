@@ -32,6 +32,11 @@ TEST_F(OpenCLOperationTest, PaddingAppendWidth) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, PaddingAppendWidthConstValues) {
+  auto status = PaddingAppendWidthConstValuesTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 TEST_F(OpenCLOperationTest, PaddingPrependWidth) {
   auto status = PaddingPrependWidthTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();

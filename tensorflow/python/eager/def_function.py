@@ -17,9 +17,9 @@
 # pylint:disable=unused-import,g-bad-import-order
 
 # Config Options
+from tensorflow.python.eager.polymorphic_function.eager_function_run import run_functions_eagerly
+from tensorflow.python.eager.polymorphic_function.eager_function_run import functions_run_eagerly
 from tensorflow.python.eager.polymorphic_function.polymorphic_function import set_dynamic_variable_creation
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import run_functions_eagerly
-from tensorflow.python.eager.polymorphic_function.polymorphic_function import functions_run_eagerly
 
 # tf.function Classes
 from tensorflow.python.eager.polymorphic_function.polymorphic_function import Function

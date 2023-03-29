@@ -294,7 +294,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
         timeout_microseconds, [this, is_callback_called, done] {
           bool called = is_callback_called->exchange(true);
           if (!called) {
-            Status status(error::DEADLINE_EXCEEDED,
+            Status status(absl::StatusCode::kDeadlineExceeded,
                           "Collective has timed out during execution.");
             StartAbort(status);
             done(status);
@@ -393,7 +393,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
           bool called = is_callback_called->exchange(true);
           if (!called) {
             Status status(
-                error::DEADLINE_EXCEEDED,
+                absl::StatusCode::kDeadlineExceeded,
                 "Collective has timed out waiting for other workers.");
             StartAbort(status);
             done(status);

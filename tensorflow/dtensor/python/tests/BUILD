@@ -1,10 +1,12 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
     "ALL_BACKENDS",
     "GPU_2DEVS_BACKEND",
     "PATHWAYS",
+    "PATHWAYS_V3_DONUT_BACKEND",
     "TPU_V3_DONUT_BACKEND",
     "dtensor_test",
 )
@@ -84,8 +86,12 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
         PATHWAYS,
+        PATHWAYS_V3_DONUT_BACKEND,
     ],
-    disable = [PATHWAYS],
+    disable = [
+        PATHWAYS,
+        PATHWAYS_V3_DONUT_BACKEND,
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
@@ -132,6 +138,31 @@ dtensor_test(
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "input_util_test",
+    srcs = ["input_util_test.py"],
+    shard_count = 8,
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:input_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -196,7 +227,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
+        "NCCL_PROTO": "Simple,LL128",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
     },
     tags = [
         "no_rocm",
@@ -242,7 +273,7 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "DTENSOR_DO_NOT_FUSE_REDUCE_SCATTER": "1",  # FIXME(b/266609048): timeout if fused.
+        "NCCL_PROTO": "Simple,LL128",  # FIXME(b/272050398): Delete this when the Clang-16/NCCL incompatibility has been resolved.
     },
     tags = [
         "no_windows",
@@ -289,7 +320,7 @@ dtensor_test(
     name = "xla_spmd_test",
     srcs = ["spmd_test.py"],
     additional_backends = [
-        # TPU_V3_DONUT_BACKEND,  # FIXME(b/269177045): Failing due to RelayoutOp support.
+        TPU_V3_DONUT_BACKEND,
     ],
     disable = ALL_BACKENDS,
     env = {

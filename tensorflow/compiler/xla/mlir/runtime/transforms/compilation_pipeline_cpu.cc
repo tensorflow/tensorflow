@@ -136,20 +136,40 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
     pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
     // Convert async to LLVM once everything else is in the LLVM dialect.
-    pm.addPass(mlir::createConvertAsyncToLLVMPass());
+    // TODO(b/267828330): Migrate to opaque pointers.
+    mlir::ConvertAsyncToLLVMPassOptions async_to_llvm_opts;
+    async_to_llvm_opts.useOpaquePointers = false;
+    pm.addPass(mlir::createConvertAsyncToLLVMPass(async_to_llvm_opts));
   } else {
     pm.addPass(mlir::xla_framework::CreateLegalizeXLAFrameworkToLLVMPass());
   }
-  pm.addPass(mlir::createConvertLinalgToLLVMPass());
+  // TODO(b/267828330): Migrate to opaque pointers.
+  mlir::ConvertLinalgToLLVMPassOptions linalg_to_llvm_opts;
+  linalg_to_llvm_opts.useOpaquePointers = false;
+  pm.addPass(mlir::createConvertLinalgToLLVMPass(linalg_to_llvm_opts));
   pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addPass(xla::CreateMathLegalizationPass(/*enable_approximations=*/false));
+
+  // Lower math dialect to LLVM/Libm.
+  mlir::ConvertMathToLLVMPassOptions mathOpts;
+  mathOpts.approximateLog1p = false;
+  pm.addPass(mlir::createConvertMathToLLVMPass(mathOpts));
+  pm.addPass(mlir::createConvertMathToLibmPass());
 
   // Convert everything else to LLVM dialect.
   mlir::ConvertVectorToLLVMPassOptions vector_to_llvm_opts;
+  // TODO(b/267828330): Migrate to opaque pointers.
+  vector_to_llvm_opts.useOpaquePointers = false;
   if (opts.math_avx2) vector_to_llvm_opts.x86Vector = true;
   pm.addPass(mlir::createConvertVectorToLLVMPass(vector_to_llvm_opts));
-  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(mlir::createConvertFuncToLLVMPass());
+  // TODO(b/267828330): Migrate to opaque pointers.
+  mlir::FinalizeMemRefToLLVMConversionPassOptions memref_to_llvm_opts;
+  memref_to_llvm_opts.useOpaquePointers = false;
+  pm.addPass(
+      mlir::createFinalizeMemRefToLLVMConversionPass(memref_to_llvm_opts));
+  // TODO(b/267828330): Migrate to opaque pointers.
+  mlir::ConvertFuncToLLVMPassOptions func_to_llvm_opts;
+  func_to_llvm_opts.useOpaquePointers = false;
+  pm.addPass(mlir::createConvertFuncToLLVMPass(func_to_llvm_opts));
   pm.addPass(mlir::createConvertComplexToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 

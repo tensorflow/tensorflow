@@ -25,11 +25,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -88,7 +90,7 @@ def _op_in_graph_mode(tensor):
 
 def _assign_if_finite(var, value):
   """Assigns a value to a variable if the value is finite."""
-  return control_flow_ops.cond(
+  return cond.cond(
       math_ops.is_finite(value), lambda: _op_in_graph_mode(var.assign(value)),
       control_flow_ops.no_op)
 
@@ -207,7 +209,9 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self._current_loss_scale
+    )
 
   def update(self, grads):
     """Updates the value of the loss scale.
@@ -246,7 +250,7 @@ class _DynamicLossScaleState(trackable.Trackable):
             _assign_if_finite(self.current_loss_scale, new_loss_scale),
             self.counter.assign(0))
 
-      return control_flow_ops.cond(
+      return cond.cond(
           self.counter + 1 >= self.growth_steps,
           incr_loss_scale,
           lambda: _op_in_graph_mode(self.counter.assign_add(1)))
@@ -260,8 +264,8 @@ class _DynamicLossScaleState(trackable.Trackable):
           self.counter.assign(0),
           self.current_loss_scale.assign(new_loss_scale))
 
-    update_op = control_flow_ops.cond(is_finite, update_if_finite_grads,
-                                      update_if_not_finite_grads)
+    update_op = cond.cond(is_finite, update_if_finite_grads,
+                          update_if_not_finite_grads)
     should_apply_gradients = is_finite
     return update_op, should_apply_gradients
 
@@ -458,10 +462,13 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor_v2_with_dispatch(
-          self._loss_scale.current_loss_scale)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale
+      )
     else:
-      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale
+      )
 
   @property
   def dynamic_counter(self):

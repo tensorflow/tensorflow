@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -64,62 +65,50 @@ class EventMgr {
  public:
   virtual ~EventMgr();
 
-  // Execute `func` when all pending stream actions have completed.  func must
-  // be brief and non-blocking since it executes in the one thread used for all
-  // such callbacks and also buffer deletions.
-  void ThenExecute(se::Stream* stream, std::function<void()> func) {
-    mutex_lock l(mu_);
-    EnqueueCallback(stream, std::move(func));
-    PollEvents(stream);
-  }
+  // Executes `func` when all pending stream actions have completed.  func must
+  // be brief and non-blocking since it executes in a shared threadpool used for
+  // all such callbacks.
+  void ThenExecute(se::Stream* stream, std::function<void()> func);
 
  private:
   friend class TEST_EventMgr;
   friend class TEST_EventMgrHelper;
   friend class EventMgrFactory;
 
-  se::StreamExecutor* const exec_;
-  const int32 polling_active_delay_usecs_;
-  mutex mu_;
-  condition_variable events_pending_ TF_GUARDED_BY(mu_);
-
   EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options);
 
-  // Set up `func` to be called once `stream` completes all its outstanding
-  // work.
-  void EnqueueCallback(se::Stream* stream, std::function<void()> func)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // This function should be called at roughly the same tempo as QueueTensors()
-  // to check whether pending events have recorded, and then retire them.
-  //
-  // If `stream` is not null, we only poll events for that stream.  Otherwise we
-  // poll events for all streams.
-  void PollEvents(se::Stream* stream = nullptr)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // An internal polling loop that runs at a low frequency to clear straggler
-  // Events.
-  void PollLoop();
-
-  // Setup/Teardown functions for the polling loop.
-  void StartPollingLoop();
-  void StopPollingLoop();
-
-  // A stack of unused events
-  std::vector<std::unique_ptr<se::Event>> free_events_ TF_GUARDED_BY(mu_);
-
-  // Callbacks waiting on their events to complete.
-  absl::flat_hash_map<
-      se::Stream*,
-      std::deque<std::pair<std::unique_ptr<se::Event>, std::function<void()>>>>
-      callbacks_ TF_GUARDED_BY(mu_);
-
-  bool stop_polling_ TF_GUARDED_BY(mu_);
-  std::unique_ptr<Notification> polling_stopped_;
-
-  // The main PollLoop for the event manager runs in this threadpool.
+  mutex mu_;
+  se::StreamExecutor* const exec_;
   thread::ThreadPool threadpool_;
+
+  // Stacks of currently-unused events and streams.
+  std::vector<std::unique_ptr<se::Event>> free_events_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<se::Stream>> free_streams_ TF_GUARDED_BY(mu_);
+
+  // Logically, we want a call to ThenExecute(stream, func) to enqueue a CUDA
+  // host callback (StreamExecutor ThenDoHostCallback) that runs `func` onto
+  // `stream`.
+  //
+  // But CUDA host callbacks execute synchronously with respect to the GPU work
+  // on their stream -- in other words, they block the stream.  Blocking a
+  // stream is potentially very expensive to the GPU work there; it essentially
+  // flushes the work queue and can result in gaps in GPU execution.
+  //
+  // We therefore build an "asynchronous CUDA callback" as follows:
+  //  - A user calls ThenExecute(stream, func).
+  //  - We enqueue a CUDA event onto `stream`; this lets us find out when
+  //    `stream` completes all the work that's currently pending.
+  //  - A *separate* stream, managed by EventMgr, waits on the event and then
+  //    enqueues a synchronous CUDA callback that runs `func`.
+  //
+  // This way we're never blocking the stream that actually executes GPU work.
+  //
+  // callback_streams_ maps the first stream (that was passed to ThenExecute) to
+  // the second one (owned by EventMgr).
+  absl::flat_hash_map<se::Stream* /*user stream*/,
+                      std::pair<std::unique_ptr<se::Stream> /*callback stream*/,
+                                int64_t /*num_pending_events*/>>
+      callback_streams_ TF_GUARDED_BY(mu_);
 };
 
 // Manages all the EventMgr instances.

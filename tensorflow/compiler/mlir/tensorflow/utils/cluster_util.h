@@ -31,7 +31,7 @@ namespace mlir::TF {
 // Ops must follow same ordering in their parent block. We rely on this
 // assumption to perform analysis.
 struct Cluster {
-  SmallVector<Operation*, 4> ops;
+  llvm::SetVector<Operation*> ops;
   std::string target;
 };
 

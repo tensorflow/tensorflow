@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
-#include <array>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -46,6 +45,7 @@ enum class ResourceType {
   kSendHost = 6,
   kRecvHost = 7,
   kNumResources = 8,
+  kTargetDefinedResourcesBound = 10000,
 };
 
 enum class ResourceUsageType {
@@ -77,6 +77,7 @@ struct SchedulerConfig {
   bool force_send_recv_to_use_same_resource = false;
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
+  bool enable_release_start_policy = false;
   uint64_t memory_limit = UINT64_MAX;
 };
 
@@ -127,7 +128,7 @@ class AsyncTracker {
   // Returns if this is an Async op start that the scheduler supports.
   virtual bool IsSupportedAsyncStart(const HloInstruction& hlo) const;
 
-  // Returns resource used and if it occupies or releases a resource.
+  // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
 
@@ -139,10 +140,28 @@ class AsyncTracker {
 
   // Returns the number of resources (of type resource_type) that are used by
   // this instruction.
-  virtual int64_t ResourcesPerInstruction(ResourceType resource_type,
-                                          const HloInstruction& instr) const;
-  virtual int64_t ResourcesPerInstruction(int64_t resource_type,
-                                          const HloInstruction& instr) const;
+  virtual int64_t GetNumResourcesPerInstruction(
+      ResourceType resource_type, const HloInstruction& instr) const;
+  virtual int64_t GetNumResourcesPerInstruction(
+      int64_t resource_type, const HloInstruction& instr) const;
+
+  // Sets the maximum allowed number of instances for each resource
+  virtual void SetConcurrentResourceLimits(
+      absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const;
+
+  // Returns the name of the given resource
+  virtual absl::string_view GetResourceName(int64_t resource_type) const;
+
+  // Returns the first target defined resource's id, regardless of if it exits
+  static int64_t GetFirstTargetDefinedResource() {
+    return static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  }
+
+  // Returns the number of target defined resources
+  virtual int64_t GetNumTargetDefinedResources() const;
+
+  // Returns how many instructions using the given resource_type we can overlap
+  virtual int64_t GetNumAvailableResources(int64_t resource_type) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
 
@@ -213,6 +232,12 @@ class HloGraphNode {
   bool DoesReleaseAnyResource() const {
     return absl::c_any_of(resources_, [](const ResourcePair& resource) {
       return resource.second == ResourceUsageType::kResourceRelease;
+    });
+  }
+  bool DoesReleaseResource(ResourceType res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceRelease &&
+             resource.first == ResourceTypeToIndex(res);
     });
   }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
@@ -568,18 +593,6 @@ class DefaultSchedulerCore : public SchedulerCore {
     return std::nullopt;
   }
 
-  DefaultSchedulerCore(HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
-                       const AsyncTracker* async_tracker,
-                       const LatencyEstimator* latency_estimator,
-                       const SchedulerConfig& config)
-      : shape_size_bytes_(shape_size_bytes),
-        async_tracker_(async_tracker),
-        latency_estimator_(latency_estimator),
-        config_(config) {}
-  Status InitializeScheduler(const HloModule* module) override;
-  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) override;
-
   // The scheduling state contains everything that is required for the
   // bookkeeping of the scheduling algorithm. Functions that perform operations
   // over the scheduling state can directly operate on the state contained into
@@ -590,21 +603,20 @@ class DefaultSchedulerCore : public SchedulerCore {
     // Ready set for the nodes. Its ordered by our heuristic defined in
     // ReadySetLt.
     ReadyQueueSet ready_set;
-    // Map containing the maximum number of async ops per type that we allow can
-    // happen concurrently.
-    ResourceMap max_concurrent_async;
+    // Maximum allowed number of overlapping instructions using the key resource
+    // type.
+    ResourceMap max_concurrent_resource;
     // New scheduling sequence produced by the scheduler. This is in reversed
     // order (because we schedule bottom up). This will be required to be
     // reversed before assigning to the HloSchedule.
     std::vector<HloInstruction*> new_sequence_reversed;
     // Units of time passed in the schedule. To keep track of latency hiding.
     HloGraphNode::TimeCost current_time = 0;
-    // Number of async collectives in flight.
-    ResourceMap collectives_in_flight;
-    // Number of instructions using a certain resource in the set waiting to be
-    // scheduled.
-    std::array<int, ResourceTypeToIndex(ResourceType::kNumResources)>
-        resource_users_in_queue;
+    // Number of resources in flight.
+    ResourceMap resources_in_flight;
+    // Number of instructions using the key resource type in the set waiting to
+    // be scheduled.
+    ResourceMap resource_users_in_queue;
     // Number of nodes scheduled.
     int64_t scheduled_count = 0;
     // Class returning information about instruction cost and latency between
@@ -631,10 +643,28 @@ class DefaultSchedulerCore : public SchedulerCore {
           latency_estimator(latency_estimator),
           async_tracker(async_tracker),
           memory_pressure_tracker(memory_pressure_tracker),
-          config(config) {
-      absl::c_fill(resource_users_in_queue, 0);
-    }
+          config(config) {}
   };
+
+  using PostProcessingFn = std::function<void(SchedulingState&)>;
+
+  DefaultSchedulerCore(
+      HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
+      const AsyncTracker* async_tracker,
+      const LatencyEstimator* latency_estimator, const SchedulerConfig& config,
+      TargetSchedulingRule target_scheduling_rule = nullptr,
+      TargetSchedulingRule early_target_scheduling_rule = nullptr,
+      PostProcessingFn post_processing_fn = nullptr)
+      : shape_size_bytes_(shape_size_bytes),
+        async_tracker_(async_tracker),
+        latency_estimator_(latency_estimator),
+        config_(config),
+        target_scheduling_rule_(target_scheduling_rule),
+        early_target_scheduling_rule_(early_target_scheduling_rule),
+        post_processing_fn_(post_processing_fn) {}
+  Status InitializeScheduler(const HloModule* module) override;
+  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation) override;
 
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
@@ -656,10 +686,12 @@ class DefaultSchedulerCore : public SchedulerCore {
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  TargetSchedulingRule target_scheduling_rule_ = nullptr;
   const AsyncTracker* async_tracker_;
   const LatencyEstimator* latency_estimator_;
   SchedulerConfig config_;
+  TargetSchedulingRule target_scheduling_rule_ = nullptr;
+  TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
+  PostProcessingFn post_processing_fn_ = nullptr;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in
@@ -707,11 +739,6 @@ class LatencyHidingScheduler : public HloModulePass {
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
  private:
-  // Perform scheduling of the computation.
-  Status ScheduleAsyncComputation(HloComputation* comp,
-                                  const LatencyEstimator* latency_estimator,
-                                  HloAliasAnalysis* alias_analysis,
-                                  ModulePressureState* module_pressure_state);
   SchedulerConfig config_;
   std::unique_ptr<LatencyEstimator> latency_estimator_;
   std::unique_ptr<AsyncTracker> async_tracker_;

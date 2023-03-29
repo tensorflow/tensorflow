@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1504,14 +1509,13 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
-  std::optional<absl::string_view> async_execution_thread =
-      async_op->async_execution_thread();
+  absl::string_view async_execution_thread = async_op->async_execution_thread();
   if (async_execution_thread !=
       async_op->async_wrapped_computation()->execution_thread()) {
     return InternalError(
-        "async-start expects same async thread name as wrapped computation's "
+        "%s expects same async thread name as wrapped computation's "
         "thread name (%s vs %s).",
-        async_execution_thread ? absl::StrCat(*async_execution_thread) : "none",
+        HloOpcodeString(async_op->opcode()), async_execution_thread,
         async_op->async_wrapped_computation()->execution_thread());
   }
   return CheckNestedComputationThreadNameEqual(
@@ -2070,39 +2074,39 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
 Status VerifySingleUser(const HloInstruction* instruction,
                         const absl::flat_hash_set<HloOpcode>& expected_users) {
   TF_RET_CHECK(instruction->users().size() == 1)
-      << "The " << HloOpcodeString(instruction->opcode())
+      << "The " << instruction->opcode()
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* user = instruction->users().front();
   TF_RET_CHECK(expected_users.contains(user->opcode()))
-      << "The consumer of a " << HloOpcodeString(instruction->opcode())
+      << "The consumer of a " << instruction->opcode()
       << " instruction needs to be one of ("
       << absl::StrJoin(expected_users, ", ",
                        [](std::string* out, HloOpcode opcode) {
-                         out->append(HloOpcodeString(opcode));
+                         absl::StrAppend(out, HloOpcodeString(opcode));
                        })
-      << "), found " << HloOpcodeString(user->opcode());
+      << "), found " << user->opcode();
   return OkStatus();
 }
 
 Status VerifySingleOperand(const HloInstruction* instruction,
                            const std::vector<HloOpcode>& expected_operands) {
   TF_RET_CHECK(instruction->operands().size() == 1)
-      << "The " << HloOpcodeString(instruction->opcode())
+      << "The " << instruction->opcode()
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* operand = instruction->operand(0);
   TF_RET_CHECK(absl::c_find(expected_operands, operand->opcode()) !=
                expected_operands.end())
-      << "The operand of a " << HloOpcodeString(instruction->opcode())
+      << "The operand of a " << instruction->opcode()
       << " instruction needs to be "
       << absl::StrJoin(expected_operands, " or ",
                        [](std::string* out, HloOpcode opcode) {
-                         out->append(HloOpcodeString(opcode));
+                         absl::StrAppend(out, HloOpcodeString(opcode));
                        })
-      << ", found " << HloOpcodeString(operand->opcode());
+      << ", found " << operand->opcode();
   return OkStatus();
 }
 
@@ -2657,7 +2661,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
-    TF_RETURN_IF_ERROR(VerifyF8Usage(instruction));
+    TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
 
     return OkStatus();
   }
@@ -2676,7 +2680,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         continue;
       }
       TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
-          << "Inconsistent " << HloOpcodeString(parent->opcode())
+          << "Inconsistent " << parent->opcode()
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
@@ -2684,31 +2688,23 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  static Status VerifyF8Usage(HloInstruction* instruction) {
-    bool has_fp8_operand =
+  static Status VerifyS4U4Usage(HloInstruction* instruction) {
+    bool has_s4u4_operand =
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN);
+          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
         });
-    // TODO(b/259609697): Support FP8 operands in all instructions that support
-    // inputs of other floating-point dtypes. Currently the CPU and GPU backends
-    // only support FP8 operands in the convert, tuple, get-tuple-element and
-    // transpose instructions and FP8 Custom Calls.
-    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
-        instruction->opcode() != HloOpcode::kBitcast &&
-        instruction->opcode() != HloOpcode::kTuple &&
-        instruction->opcode() != HloOpcode::kGetTupleElement &&
-        instruction->opcode() != HloOpcode::kTranspose &&
-        instruction->opcode() != HloOpcode::kDot &&
+    // TODO(b/259306620): Support S4/U4 operands in all instructions that
+    // support inputs of other integer dtypes. Currently only aim to use it in
+    // matmul and convolution op.
+    if (has_s4u4_operand && instruction->opcode() != HloOpcode::kDot &&
+        instruction->opcode() != HloOpcode::kConvolution &&
+        instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kReshape &&
-        instruction->opcode() != HloOpcode::kCopy &&
-        instruction->opcode() != HloOpcode::kCustomCall) {
+        instruction->opcode() != HloOpcode::kBitcast) {
       return InvalidArgument(
-          "FP8 is currently only supported in convert, bitcast, tuple, "
-          "get-tuple-element, transpose, dot, fusion, reshape and copy "
-          "instructions as well as Custom Calls, but got instruction with FP8 "
-          "input: %s",
+          "S4/U4 is currently only supported in matmul and convolution, but "
+          "got instruction with S4/U4 input: %s",
           instruction->ToString());
     }
     return OkStatus();

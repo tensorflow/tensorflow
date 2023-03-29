@@ -523,7 +523,19 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     if ops.executing_eagerly_outside_functions() and getattr(
         strategy, "_enable_packed_variable_in_eager_mode", False):
       name = "%s/packed/" % self._common_name
-      self._packed_var = packed.PackedDistributedVariable(values, name=name)
+      if hasattr(values[0], "_vars"):
+        # Handle when the resource variables are "nested" underneath another
+        # layer of values, e.g., TPUReplicatedVariable, by packing all them
+        # together and pushing the packed var down a level
+        # pylint: disable=protected-access
+        packed_var = packed.PackedDistributedVariable(
+            sum((value._vars for value in values), []), name=name)
+        for value in values:
+          value._packed_var = packed_var
+        self._packed_var = None
+        # pylint: enable=protected-access
+      else:
+        self._packed_var = packed.PackedDistributedVariable(values, name=name)
     else:
       self._packed_var = None
 

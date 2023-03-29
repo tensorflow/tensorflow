@@ -34,7 +34,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # xla/mlir_hlo/tests/Dialect/gml_st tests disabled in 09/08/22 sync
 bazel test \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
+      --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
       --test_timeout 920,2400,7200,9600 \
@@ -51,4 +51,5 @@ bazel test \
       -//tensorflow/c/eager:c_api_distributed_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:local_workers_test \
       -//tensorflow/python/data/experimental/kernel_tests/service:worker_tags_test \
+      -//tensorflow/compiler/xla/service/gpu/tests:hlo_to_llvm_ir_build_test
       

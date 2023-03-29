@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "deallocation/IR/deallocation_ops.h"
 #include "gml_st/IR/gml_st_ops.h"
 #include "lhlo/IR/lhlo_ops.h"
 #include "lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -100,10 +101,12 @@ int main(int argc, char *argv[]) {
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::mhlo::registerAllMhloPasses();
   mlir::registerAllPasses();
-  registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
+  registry.insert<mlir::deallocation::DeallocationDialect,
+                  mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect>();
 
   mlir::MLIRContext context(registry);
+  context.allowUnregisteredDialects();
   auto parsedInput = parseMlirInput(options.inputFilename, &context);
   if (!parsedInput) {
     llvm::errs() << "Failed to parse module.\n";

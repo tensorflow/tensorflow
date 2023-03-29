@@ -88,7 +88,7 @@ func.func @transfer_read_2d()-> vector<2x2xi32> {
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: vector<2x2xi32>: [[4, 5], [8, 9]]
 
-func.func @transfer_read_2d_1d()-> vector<2xi32> {
+func.func @transfer_read_2d_1d() -> vector<2xi32> {
   %a = arith.constant dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : memref<2x4xi32>
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -101,3 +101,18 @@ func.func @transfer_read_2d_1d()-> vector<2xi32> {
 // CHECK-LABEL: @transfer_read_2d_1d
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: vector<2xi32>: [4, 5]
+
+func.func @transfer_read_i1() -> vector<2xi1> {
+  %a = arith.constant dense<[true, false]> : memref<2xi1>
+  %c0 = arith.constant 0 : index
+  %false = arith.constant false
+  // Note: this read is technically illegal, but it can occur in practice and
+  // persist for a while until it's lowered to something legal.
+  %ret = vector.transfer_read %a[%c0], %false {in_bounds = [true]}
+    : memref<2xi1>, vector<2xi1>
+  return %ret : vector<2xi1>
+}
+
+// CHECK-LABEL: @transfer_read_i1
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: [true, false]

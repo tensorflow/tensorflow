@@ -166,6 +166,22 @@ delegate.
     and can be appended to the `args` string (note that all args must be nested
     in the single quoted string that follows the args key).
 
+##### Recommendation Criteria
+
+The latency benchmark generates a `PASS`, `PASS_WITH_WARNING`, or `FAIL`
+recommendation by checking if the regressions of the below metrics for each pair
+of the test target delegate and a reference delegate breach the thresholds:
+
+1.  Startup overhead latency: the combined overhead start from initialization to
+    inferences with stable latency. It is calculated as `initialization time +
+    average warmup time - average inference time`.
+1.  Average inference latency: average time for the inferences after warmup in
+    the benchmark run.
+
+Please see
+[BenchmarkResultType.java](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java)
+for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
+
 ##### Steps
 
 1.  Run the latency benchmark by supplying the settings file via the required
@@ -260,6 +276,18 @@ delegate.
     The first path is the test target delegate and all other paths are treated
     as reference delegates. The test target delegate will be compared against
     each reference delegate.
+
+##### Recommendation Criteria
+
+The accuracy benchmark delegates the accuracy metric threshold checks to the
+metric scripts, which are embedded together with the test input inside the
+models. The metric scripts generate an "ok" result by aggregating the outcomes
+for every model and every delegate. The accuracy benchmark generates a `PASS`,
+`PASS_WITH_WARNING`, or `FAIL` recommendation by aggregating the "ok" results.
+
+Please see
+[BenchmarkResultType.java](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java)
+for the meanings of `PASS`, `PASS_WITH_WARNING` and `FAIL`.
 
 ##### Steps
 

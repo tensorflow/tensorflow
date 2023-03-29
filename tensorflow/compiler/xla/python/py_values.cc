@@ -27,8 +27,8 @@ limitations under the License.
 #include <utility>
 // NOLINTEND
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -284,27 +283,19 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
         "Only single-sharded Array is expected in device_put.");
   }
 
-  if (py_array.sharding().get_type() == jax::PmapSharding::type()) {
-    // We are only handling single device case for PmapSharding here. For other
-    // cases, it fallbacks to python.
-    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
-  }
-
   ifrt::Array* ifrt_array = py_array.ifrt_array();
   if (ifrt_array == nullptr) {
     return InvalidArgument("Array has been deleted.");
   }
+
+  // Fallback to python for non-matching clients or pmap sharding.
+  if (py_array.sharding().get_type() == jax::PmapSharding::type() ||
+      ifrt_array->sharding().devices().front()->client() !=
+          to_device->client()) {
+    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
+  }
+
   if (ifrt_array->sharding().devices().front() == to_device) {
-    if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
-      // Explode in order to ensure that arrays always are SingleDeviceArrays.
-      auto exploded_arrays = ifrt_array->DisassembleIntoSingleDeviceArrays(
-          ifrt::ArrayCopySemantics::kReuseInput);
-      TF_CHECK_OK(exploded_arrays.status());
-      CHECK_EQ(exploded_arrays->size(), 1);
-      return DevicePutResult(
-          std::move((*exploded_arrays)[0]), py_array.weak_type(),
-          /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
-    }
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
@@ -355,7 +346,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg,
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
             HandlePythonScalar<complex128, complex64>;
 
-        // Generic subclasses of DeviceArray, e.g., ShardedDeviceArray.
+        // Generic subclasses of DeviceArray
         (*p)[PyBuffer::base_type()] = HandleDeviceArray;
 
         try {
@@ -364,17 +355,6 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg,
               py::getattr(xla_module, "_DeviceArray", py::none());
           if (!device_array.is_none()) {
             (*p)[device_array.ptr()] = HandleDeviceArray;
-          }
-        } catch (const py::error_already_set& e) {
-          // Ignore; jax may not be present.
-        }
-
-        try {
-          py::object pxla_module = py::module::import("jax.interpreters.pxla");
-          py::object sda =
-              py::getattr(pxla_module, "ShardedDeviceArray", py::none());
-          if (!sda.is_none()) {
-            (*p)[sda.ptr()] = HandleDeviceArray;
           }
         } catch (const py::error_already_set& e) {
           // Ignore; jax may not be present.
@@ -540,17 +520,6 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
           // Ignore; jax may not be present.
         }
 
-        try {
-          py::object pxla_module = py::module::import("jax.interpreters.pxla");
-          py::object sda =
-              py::getattr(pxla_module, "ShardedDeviceArray", py::none());
-          if (!sda.is_none()) {
-            (*p)[sda.ptr()] = device_array_handler;
-          }
-        } catch (const py::error_already_set& e) {
-          // Ignore; jax may not be present.
-        }
-
         ToPyArgSignatureHandler numpy_handler =
             [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
           py::array numpy_array = py::cast<py::array>(h);
@@ -651,20 +620,6 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
                           weak_type);
   }
 
-  // Fast-path for ShardedDeviceArray.
-  if (jax::ShardedDeviceArray::IsShardedDeviceArray(arg)) {
-    jax::ShardedDeviceArray* sda =
-        jax::ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
-
-    // TODO(jblespiau): See if we can be faster not accessing the aval attribute
-    // and storing these directly.
-    py::handle aval = arg.attr("aval");
-    TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(aval.attr("dtype")));
-    return PyArgSignature(dtype,
-                          py::cast<std::vector<int64_t>>(aval.attr("shape")),
-                          sda->weak_type());
-  }
-
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
     // We attempt to look at the MRO classes
@@ -677,7 +632,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
     return InvalidArgument(
         "%s",
         absl::StrCat("Not supported: The C++ ToPyArgSignature only accepts "
-                     "Buffer/DeviceArray/ShardedDeviceArray, Numpy "
+                     "Buffer/DeviceArray, Numpy "
                      "arrays scalars of supported types "
                      "(see implementation), or Python scalars. Got type ",
                      py::cast<std::string>(py::str(arg.get_type()))));

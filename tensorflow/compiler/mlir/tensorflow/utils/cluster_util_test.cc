@@ -28,6 +28,8 @@ namespace mlir::TF {
 
 namespace {
 
+constexpr StringRef kTestClusterName = "tpu0";
+
 tsl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     StringRef string, MLIRContext* context) {
   DialectRegistry mlir_registry;
@@ -80,10 +82,9 @@ func.func @main(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       OwningOpRef<ModuleOp> module,
       GetMlirModuleFromString(module_with_single_cluster, &context));
   auto clusters = GetClusters(module.get());
-  constexpr StringRef kDeviceName = "tpu0";
-  EXPECT_EQ(clusters.count(kDeviceName), 1);
-  EXPECT_EQ(clusters.lookup(kDeviceName).size(), 1);
-  EXPECT_EQ(clusters.lookup(kDeviceName)[0].ops.size(), 2);
+  EXPECT_EQ(clusters.count(kTestClusterName), 1);
+  EXPECT_EQ(clusters.lookup(kTestClusterName).size(), 1);
+  EXPECT_EQ(clusters.lookup(kTestClusterName)[0].ops.size(), 2);
 }
 
 TEST(BuildClusters, TestMultipleClusters) {
@@ -106,11 +107,10 @@ func.func @main(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       OwningOpRef<ModuleOp> module,
       GetMlirModuleFromString(module_with_two_clusters, &context));
   auto clusters = GetClusters(module.get());
-  constexpr StringRef kDeviceName = "tpu0";
-  EXPECT_EQ(clusters.count(kDeviceName), 1);
-  EXPECT_EQ(clusters[kDeviceName].size(), 2);
-  EXPECT_EQ(clusters[kDeviceName][0].ops.size(), 2);
-  EXPECT_EQ(clusters[kDeviceName][1].ops.size(), 2);
+  EXPECT_EQ(clusters.count(kTestClusterName), 1);
+  EXPECT_EQ(clusters[kTestClusterName].size(), 2);
+  EXPECT_EQ(clusters[kTestClusterName][0].ops.size(), 2);
+  EXPECT_EQ(clusters[kTestClusterName][1].ops.size(), 2);
 }
 
 TEST(BuildClusters, TestMultipleTargets) {
@@ -164,10 +164,35 @@ func.func @main(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>) {
       OwningOpRef<ModuleOp> module,
       GetMlirModuleFromString(module_with_single_cluster, &context));
   auto clusters = GetClusters(module.get());
-  constexpr StringRef kDeviceName = "tpu0";
-  EXPECT_EQ(clusters.count(kDeviceName), 1);
-  EXPECT_EQ(clusters[kDeviceName].size(), 1);
-  EXPECT_EQ(clusters[kDeviceName][0].ops.size(), 4);
+  EXPECT_EQ(clusters.count(kTestClusterName), 1);
+  EXPECT_EQ(clusters[kTestClusterName].size(), 1);
+  EXPECT_EQ(clusters[kTestClusterName][0].ops.size(), 4);
+}
+
+TEST(BuildClusters, TestMergedClustersWithDataDependen) {
+  static const char* const module_with_single_cluster =
+      R"(module {
+func.func @main(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>) {
+    %0 = "tf.Relu"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf.Relu"(%0) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+    %2 = "tf.Add"(%0, %1) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %3 = "tf.Relu"(%arg1) {device = "tpu1"} : (tensor<?xi32>) -> tensor<?xi32>
+    %4 = "tf.Add"(%3, %arg1) {device = "tpu1"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %5 = "tf.Relu"(%4) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+    %6 = "tf.Add"(%4, %5) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+    func.return %3, %5 : tensor<?xi32>, tensor<?xi32>
+  }
+}
+)";
+
+  MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      OwningOpRef<ModuleOp> module,
+      GetMlirModuleFromString(module_with_single_cluster, &context));
+  auto clusters = GetClusters(module.get());
+  EXPECT_EQ(clusters.count(kTestClusterName), 1);
+  EXPECT_EQ(clusters[kTestClusterName].size(), 1);
+  EXPECT_EQ(clusters[kTestClusterName][0].ops.size(), 4);
 }
 
 }  // namespace

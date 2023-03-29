@@ -104,7 +104,7 @@ SE_DeviceMemoryAllocator ToC(
     if (!allocation.ok()) {
       auto status = allocation.status();
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.code(), status.error_message().data(),
+          se_status, status.raw_code(), status.error_message().data(),
           status.error_message().size());
     } else {
       auto& scoped_memory = allocation.value();
@@ -119,7 +119,7 @@ SE_DeviceMemoryAllocator ToC(
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
       stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.code(), status.error_message().data(),
+          se_status, status.raw_code(), status.error_message().data(),
           status.error_message().size());
     }
   };

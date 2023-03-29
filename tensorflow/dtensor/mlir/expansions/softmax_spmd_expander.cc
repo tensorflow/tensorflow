@@ -41,9 +41,10 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
     mlir::OpBuilder& builder, const mlir::Value& input,
     const Layout& input_layout, const absl::flat_hash_set<int>& reduced_dims,
     absl::string_view reduce_op, bool keep_dims) {
-  const Layout reduction_layout =
+  TF_ASSIGN_OR_RETURN(
+      const Layout reduction_layout,
       input_layout.GetLayoutWithReducedDims(reduced_dims,
-                                            /*keep_dims=*/true);
+                                            /*keep_dims=*/true));
   std::vector<int32> reduce_dim_array(reduced_dims.begin(), reduced_dims.end());
   const mlir::Value reduction_indices =
       IntConst(builder, input.getLoc(), reduce_dim_array);
@@ -469,7 +470,8 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::MaybeRelayoutOutputs(
     mlir::Operation* op, const mlir::Value& loss, const mlir::Value& backprop,
     const Layout& output_layout, const Layout& loss_layout,
     const Layout& backprop_layout) {
-  const Layout current_loss_layout = output_layout.Truncate(/*split_point=*/1);
+  TF_ASSIGN_OR_RETURN(const Layout current_loss_layout,
+                      output_layout.Truncate(/*split_point=*/1));
   const Layout& current_backprop_layout = output_layout;
 
   llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
@@ -668,7 +670,8 @@ SoftmaxLossOpSPMDExpander::ComputeLayoutForward(
 
   TF_ASSIGN_OR_RETURN(const Layout backprop_layout,
                       Layout::GetLayout(layout_specs, mesh));
-  const Layout loss_layout = backprop_layout.Truncate(/*split_point=*/1);
+  TF_ASSIGN_OR_RETURN(const Layout loss_layout,
+                      backprop_layout.Truncate(/*split_point=*/1));
 
   return llvm::DenseMap<int, Layout>({{0, loss_layout}, {1, backprop_layout}});
 }

@@ -530,11 +530,12 @@ def TFL_AddOp : TFL_Op<"add", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
+  let results = (outs
+    TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -1145,8 +1146,8 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
-    TFL_TensorOf<[I32, I64]>:$indices,
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
+    TFL_TensorOf<[I16, I32, I64]>:$indices,
     I32Attr:$axis,
     DefaultValuedOptionalAttr<I32Attr, "0">:$batch_dims
   );
@@ -1158,7 +1159,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -1185,7 +1186,7 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
-    TFL_I32OrI64Tensor:$indices
+    TFL_TensorOf<[I16, I32, I64]>:$indices
   );
 
   let results = (outs
@@ -1313,8 +1314,8 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, I64, QUI8, QI8]>:$rhs);
+      ins TFL_TensorOf<[F32, I16, I32, I64, QUI8, QI8]>:$lhs,
+      TFL_TensorOf<[F32, I16, I32, I64, QUI8, QI8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1641,8 +1642,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I16, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -1652,16 +1653,28 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
 def TFL_ExpOp: TFL_Op<"exp", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    QuantizableResult,
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
     Performs element-wise natural exponentiation operation on input.
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 
   let hasOptions = 0b1;
 
@@ -1817,9 +1830,10 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32]>:$lhs, TFL_TensorOf<[F32, I32]>:$rhs);
+    ins TFL_TensorOf<[F32, I8, I16, I32]>:$lhs,
+    TFL_TensorOf<[F32, I8, I16, I32]>:$rhs);
 
-  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I8, I16, I32]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -1849,10 +1863,10 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[I32, I64, F32]>:$lhs,
-    TFL_TensorOf<[I32, I64, F32]>:$rhs);
+    ins TFL_TensorOf<[I8, I16, I32, I64, F32]>:$lhs,
+    TFL_TensorOf<[I8, I16, I32, I64, F32]>:$rhs);
 
-  let results = (outs TFL_TensorOf<[I32, I64, F32]>:$output);
+  let results = (outs TFL_TensorOf<[I8, I16, I32, I64, F32]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
@@ -1981,8 +1995,8 @@ def TFL_LessOp : TFL_Op<"less", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
+    ins TFL_TensorOf<[F32, I16, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, I16, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -3926,13 +3940,13 @@ def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[I32, I64]>:$pad,
     TFL_MirrorPaddingAttr:$mode
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;

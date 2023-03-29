@@ -179,11 +179,12 @@ constexpr std::underlying_type_t<T> to_underlying(T value) noexcept {
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
-                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
                  int64_t count) {
-  for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
-    dest[dest_base] = static_cast<D>(src[src_base]);
+  const S* src_end = src + count * src_stride;
+  DCHECK_LT(src, src_end);
+  for (; src < src_end; dest += dest_stride, src += src_stride) {
+    *dest = static_cast<D>(*src);
   }
 }
 
@@ -254,22 +255,25 @@ Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
-  return InvalidArgument("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::InvalidArgument(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status UnimplementedStrCat(Args&&... concat) {
-  return Unimplemented("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::Unimplemented(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
-  return InternalError("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
 }
 
 template <typename... Args>
 Status ResourceExhaustedStrCat(Args&&... concat) {
-  return ResourceExhausted("%s", absl::StrCat(std::forward<Args>(concat)...));
+  return WithLogBacktrace(
+      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
 }
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
@@ -672,9 +676,11 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 std::pair<float, float> SplitF64ToF32(double x);
 
 class HloInstruction;
+class HloModule;
 
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
+using HloModulePredicate = std::function<bool(const HloModule*)>;
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;

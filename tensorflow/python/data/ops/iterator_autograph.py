@@ -22,7 +22,7 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.util import nest
 
 
@@ -105,7 +105,7 @@ def _next_tf_iterator(iterator, default=py_builtins.UNSPECIFIED):
   _verify_structure_compatible(
       "the default argument", "the iterate", default, iterator.element_spec
   )
-  return control_flow_ops.cond(
+  return cond.cond(
       opt_iterate.has_value(), opt_iterate.get_value, lambda: default
   )
 

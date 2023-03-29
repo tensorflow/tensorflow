@@ -48,16 +48,16 @@ class TaskIterator {
   // Reports the cardinality of the dataset that created this iterator.
   virtual int64_t Cardinality() const = 0;
 
-  // Returns a serialized representation of the iterator. This is used to write
-  // iterator checkpoints.
-  virtual StatusOr<Tensor> Save() {
+  // Saves a checkpoint of the iterator. Returns Tensors that can be called with
+  // `Restore()`.
+  virtual StatusOr<std::vector<Tensor>> Save() {
     return errors::Unimplemented(
         "Serializing a tf.data service task iterator is unsupported.");
   }
 
-  // Restores the iterator from a serialized representation. `serialized` is a
-  // Tensor produced by `Serialize()`.
-  virtual Status Restore(const Tensor& saved_iterator) {
+  // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
+  // iterator saved by calling `Save()`.
+  virtual Status Restore(const std::vector<Tensor>& saved_iterator) {
     return errors::Unimplemented(
         "Restoring from a tf.data service task iterator is unsupported.");
   }
@@ -73,8 +73,8 @@ class StandaloneTaskIterator : public TaskIterator {
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
   int64_t Cardinality() const override;
-  StatusOr<Tensor> Save() override;
-  Status Restore(const Tensor& saved_iterator) override;
+  StatusOr<std::vector<Tensor>> Save() override;
+  Status Restore(const std::vector<Tensor>& saved_iterator) override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;

@@ -25,7 +25,7 @@ from tensorflow.python.eager.polymorphic_function.monomorphic_function import _I
 # Function Classes
 from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunction
 from tensorflow.python.eager.polymorphic_function.tracing_compiler import TracingCompiler as Function
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _EagerDefinedFunction
+from tensorflow.python.eager.polymorphic_function.atomic_function import EagerDefinedFunction as _EagerDefinedFunction
 
 # Utilities
 from tensorflow.python.eager.polymorphic_function.tracing_compiler import TfMethodTarget
@@ -36,7 +36,7 @@ from tensorflow.python.eager.polymorphic_function.monomorphic_function import _i
 from tensorflow.python.eager.polymorphic_function.quarantine import add_function_callback
 from tensorflow.python.eager.polymorphic_function.quarantine import clear_function_callbacks
 from tensorflow.python.eager.polymorphic_function.quarantine import remove_function_callback
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _function_callbacks
+from tensorflow.python.eager.polymorphic_function.atomic_function import function_callbacks as _function_callbacks
 
 # TODO(b/258247871): Remove in favor of tf.function.
 # QUARANTINED - Defun API

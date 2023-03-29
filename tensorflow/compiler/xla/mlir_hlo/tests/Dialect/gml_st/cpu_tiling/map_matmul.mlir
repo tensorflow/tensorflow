@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file \
+// RUN:   --gml-st-cpu-tiling-pipeline=matmul-tile-sizes=4,4,4 | FileCheck %s
 
 func.func @map_matmul(%arg0: tensor<?x?xf32>,
     %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -26,28 +27,26 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 
 // CHECK-LABEL: @map_matmul
 
-// CHECK:      gml_st.parallel
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK:             vector.transpose
-// CHECK-COUNT-4:     vector.outerproduct
+// CHECK:             vector.contract
 // CHECK:          scf.yield
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
 // CHECK:        scf.for
 // CHECK-COUNT-2:     vector.transfer_read
-// CHECK:             vector.transpose
-// CHECK-COUNT-4:     vector.outerproduct
+// CHECK:             vector.contract
 // CHECK:          scf.yield
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
 // CHECK:        math.absf %{{.*}} : vector<4x4xf32>
 // CHECK:        arith.addf %{{.*}} : vector<4x4xf32>
-// CHECK:        gml_st.set_yield
+// CHECK:        vector.transfer_write
 
-// CHECK:      gml_st.parallel
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
@@ -60,9 +59,9 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            arith.addf
-// CHECK:        gml_st.set_yield
+// CHECK:        tensor.insert
 
-// CHECK:      gml_st.parallel
+// CHECK:      scf.for
 // CHECK:        scf.for
 // CHECK:          linalg.matmul
 // CHECK:          scf.yield
@@ -75,4 +74,4 @@ func.func @map_matmul(%arg0: tensor<?x?xf32>,
 // CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            arith.addf
-// CHECK:        gml_st.set_yield
+// CHECK:        tensor.insert

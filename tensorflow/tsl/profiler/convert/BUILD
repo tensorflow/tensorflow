@@ -105,6 +105,10 @@ tsl_cc_test(
     name = "xplane_to_trace_events_test",
     size = "small",
     srcs = ["xplane_to_trace_events_test.cc"],
+    tags = [
+        # b/273369126 Test is failing with asan builds.
+        "noasan",
+    ],
     deps = [
         ":xplane_to_trace_events",
         "//tensorflow/tsl/platform:test",

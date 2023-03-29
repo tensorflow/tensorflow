@@ -106,9 +106,6 @@ cc_library_with_tflite_with_c_headers_test(
 
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api_experimental",
-    srcs = [
-        "c_api_opaque.cc",
-    ],
     hdrs = [
         "c_api_experimental.h",
         "c_api_opaque.h",
@@ -133,9 +130,6 @@ cc_library_with_tflite_with_c_headers_test(
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api_experimental_without_op_resolver",
-    srcs = [
-        "c_api_opaque.cc",
-    ],
     hdrs = [
         "c_api_experimental.h",
         "c_api_opaque.h",
@@ -159,9 +153,6 @@ cc_library_with_tflite_with_c_headers_test(
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api_experimental_without_op_resolver_without_alwayslink",
-    srcs = [
-        "c_api_opaque.cc",
-    ],
     hdrs = [
         "c_api_experimental.h",
         "c_api_opaque.h",
@@ -186,6 +177,7 @@ cc_library_with_tflite_with_c_headers_test(
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     deps = ["//tensorflow/lite/core/c:c_api_types"],
 )
 
@@ -195,6 +187,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
+        "//tensorflow/lite/core/async/c:__subpackages__",
         "//tensorflow/lite/core/c:__subpackages__",
         "//tensorflow/lite/delegates/utils:__pkg__",
     ],
@@ -277,6 +270,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     tflite_deps = [
         ":c_api_types",
     ],
@@ -314,7 +308,7 @@ cc_library(
     hdrs = ["c_api_opaque_internal.h"],
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
-        "//visibility:private",
+        "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":c_api_types",
@@ -333,7 +327,7 @@ cc_library(
     hdrs = ["c_api_opaque_internal.h"],
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
-        "//visibility:private",
+        "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":c_api_types",
@@ -407,20 +401,11 @@ cc_test(
     ],
 )
 
-package_group(
-    name = "tflite_test_util_visibility",
-    packages = [
-        "//tensorflow/lite/...",
-        "//tensorflow_lite_support/...",
-    ],
-)
-
 cc_library_with_tflite_with_c_headers_test(
     name = "test_util",
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    visibility = [":tflite_test_util_visibility"],
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")

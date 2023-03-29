@@ -25,7 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
@@ -597,7 +597,7 @@ def cond(pred, true_fn, false_fn):
   """A version of tf.cond that tries to evaluate the condition."""
   v = get_static_value(pred)
   if v is None:
-    return control_flow_ops.cond(pred, true_fn, false_fn)
+    return tf_cond.cond(pred, true_fn, false_fn)
   if v:
     return true_fn()
   else:

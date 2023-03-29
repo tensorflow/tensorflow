@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -83,8 +85,8 @@ class ConvertLmhloToGpuLaunchPass
 // not want to define a separate `HloOpcode`. These operations emitted as device
 // kernels (similar to fusions), and we detect such custom calls by name, and
 // handle them similar to how we handle fusions.
-static std::array<std::string_view, 3> kCustomCallIntrinsics = {
-    "SliceToDynamic", "PadToStatic", "__triton"};
+static std::array<std::string_view, 2> kCustomCallIntrinsics = {
+    "SliceToDynamic", "PadToStatic"};
 
 //===-----------------------------------------------------------------------===/
 
@@ -235,6 +237,43 @@ static void Rewrite(Operation* op, OpBuilder& b, SymbolTable& symbol_table,
   op->erase();
 }
 
+static void LowerKernelThunkToGpuOp(Operation* op, OpBuilder& b,
+                                    GPUModuleOp gpu_module,
+                                    const std::string& kernel_name,
+                                    const SmallVector<Value>& kernel_args,
+                                    const LaunchDimensions& launch_dims) {
+  mlir::Location loc = op->getLoc();
+  b.setInsertionPointToStart(gpu_module.getBody());
+
+  auto func_type =
+      b.getType<FunctionType>(TypeRange(ValueRange(kernel_args)), TypeRange());
+
+  gpu::GPUFuncOp kernel_func =
+      b.create<gpu::GPUFuncOp>(loc, kernel_name, func_type);
+  kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
+  b.setInsertionPointToEnd(&kernel_func.getBody().back());
+  b.create<ReturnOp>(loc);
+
+  auto make_const_idx = [&](int64_t value) {
+    auto attr = b.getIndexAttr(value);
+    return b.create<arith::ConstantOp>(loc, attr).getResult();
+  };
+
+  auto make_kernel_dim3 = [&](const auto& dim3) {
+    return KernelDim3{make_const_idx(dim3.x), make_const_idx(dim3.y),
+                      make_const_idx(dim3.z)};
+  };
+
+  b.setInsertionPoint(op);
+  auto grid_size = make_kernel_dim3(launch_dims.block_counts());
+  auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
+  auto shmem_size = b.create<arith::ConstantOp>(
+      loc, b.getI32IntegerAttr(launch_dims.SharedMemBytes()));
+
+  b.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size, shmem_size,
+                         kernel_args);
+}
+
 static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
                               GPUModuleOp gpu_module, Thunk* thunk) {
   auto loc = op->getLoc();
@@ -278,43 +317,19 @@ static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
     return;
   }
 
-  const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk);
-  b.setInsertionPointToStart(gpu_module.getBody());
+  if (thunk->kind() == Thunk::kKernel) {
+    const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk);
 
-  SmallVector<Value> kernel_args;
-  for (auto kernel_arg : kernel_thunk->values())
-    kernel_args.push_back(kernel_arg);
+    SmallVector<Value> kernel_args;
+    for (auto kernel_arg : kernel_thunk->values())
+      kernel_args.push_back(kernel_arg);
 
-  auto func_type =
-      b.getType<FunctionType>(TypeRange(ValueRange(kernel_args)), TypeRange());
+    LowerKernelThunkToGpuOp(op, b, gpu_module, kernel_thunk->kernel_name(),
+                            kernel_args, kernel_thunk->launch_dimensions());
+    return;
+  }
 
-  gpu::GPUFuncOp kernel_func =
-      b.create<gpu::GPUFuncOp>(loc, kernel_thunk->kernel_name(), func_type);
-  kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
-  b.setInsertionPointToEnd(&kernel_func.getBody().back());
-  b.create<ReturnOp>(loc);
-
-  auto make_const_idx = [&](int64_t value) {
-    auto attr = b.getIndexAttr(value);
-    return b.create<arith::ConstantOp>(loc, attr).getResult();
-  };
-
-  auto make_kernel_dim3 = [&](const auto& dim3) {
-    return KernelDim3{make_const_idx(dim3.x), make_const_idx(dim3.y),
-                      make_const_idx(dim3.z)};
-  };
-
-  const auto& launch_dims = kernel_thunk->launch_dimensions();
-
-  b.setInsertionPoint(op);
-  auto grid_size = make_kernel_dim3(launch_dims.block_counts());
-  auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
-  auto shmem_size = b.create<arith::ConstantOp>(
-      loc,
-      b.getI32IntegerAttr(kernel_thunk->launch_dimensions().SharedMemBytes()));
-
-  b.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size, shmem_size,
-                         kernel_args);
+  CHECK(false) << "Thunk kind not handled: " << thunk->kind();
 }
 
 // An overload set for defining predicates for operations that should

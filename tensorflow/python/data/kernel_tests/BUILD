@@ -19,6 +19,8 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
@@ -307,9 +309,6 @@ tf_py_test(
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
-    tags = [
-        "noasan",  # TODO(b/235095716): Test timing out.
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -350,7 +349,6 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:from_generator_op",
         "//third_party/py/numpy",
     ],
 )
@@ -479,7 +477,6 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:ignore_errors_op",
         "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
     ],
@@ -515,7 +512,6 @@ tf_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
-        "nomsan",  # b/180655981
     ],
     deps = [
         ":test_base",
@@ -574,7 +570,6 @@ cuda_py_test(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
@@ -623,8 +618,9 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_case",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -655,7 +651,6 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "no_cuda_asan",  # TODO(b/183963686)
-        "notsan",  # TODO(b/144706539)
     ],
     xla_tags = [
         "no_cuda_asan",  # TODO(b/183963686)
@@ -691,7 +686,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:cancellation",
@@ -767,8 +761,8 @@ cuda_py_test(
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
@@ -793,7 +787,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
-        "//tensorflow/python/data/ops:prefetch_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -954,6 +947,7 @@ cuda_py_test(
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",

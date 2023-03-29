@@ -17,6 +17,9 @@ from typing import Collection, Dict, Mapping, Optional, Sequence
 
 from absl import logging
 
+# pylint: disable=g-importing-member
+from google.protobuf.any_pb2 import Any
+# pylint: enable=g-importing-member
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
@@ -29,7 +32,6 @@ from tensorflow.python.saved_model import constants as saved_model_constants
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
-from tensorflow.python.types import core
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -226,30 +228,6 @@ def _find_op(
   return init_op
 
 
-def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
-  """Finds the "file_prefix" tensor used for identifying the checkpoint path.
-
-  File prefix tensor can be identified as the output of an `_Arg` node which has
-  the value "__tf_file_prefix" in its "tf_saved_model.index_path" attribute.
-  This attribute should have been set to the file prefix argument by the
-  `InsertRestoreOpPass` when creating the `RestoreV2Op` for the variables.
-
-  Args:
-    graph: The graph to find the file_prefix tensor from.
-
-  Returns:
-    None if not found. True if a "file_prefix" tensor is found.
-  """
-  for op in graph.get_operations():
-    if op.type == '_Arg' and (
-        b'__tf_file_prefix' in op.get_attr('tf_saved_model.index_path')
-    ):
-      candidate_tensor = op.outputs[0]
-      return candidate_tensor
-
-  return None
-
-
 def _save_function_alias(
     saved_model_dir: str,
     tags: Collection[str],
@@ -289,10 +267,10 @@ def save_model_v1(
     signature_def_map: _SignatureDefMap,
     tags: Collection[str],
     init_op_name: Optional[str] = None,
-    restore_op_name: Optional[str] = None,
-    save_op_name: Optional[str] = None,
+    saver_def: Optional[saver_pb2.SaverDef] = None,
     checkpoint_dir: Optional[str] = None,
     function_aliases: Optional[Mapping[str, str]] = None,
+    asset_file_defs: Sequence[meta_graph_pb2.AssetFileDef] = (),
 ) -> None:
   """Saves the model.
 
@@ -305,10 +283,15 @@ def save_model_v1(
     signature_def_map: Mapping of signature def key -> SignatureDef.
     tags: Tags for the meta graph def.
     init_op_name: Name of the node for initialization.
-    restore_op_name: Name of the node for restoration.
-    save_op_name: Name of the node for saving variables.
+    saver_def: `saver_pb2.SaverDef` to create a `saver.Saver` from. The created
+      saver will be used to save and load variables. This may be `None` if no
+      variables exist in the graph.
     checkpoint_dir: Path to checkpoint file where variable values are saved.
     function_aliases: Function name -> function alias mapping.
+    asset_file_defs: `AssetFileDef`s that associates the asset files and the
+      name of the tensors to which the asset file names should be fed. The
+      caller should make sure the asset files exist in the output saved model
+      directory.
 
   Raises:
     ValueError iff the graph does not contain a valid signature or the file
@@ -325,25 +308,19 @@ def save_model_v1(
         signature_def_map, ops.get_default_graph()
     )
 
-    # `restore_op_name` and `save_op_name` are non-empty & non-None when
-    # variables should be restored / saved.
-    model_saver = None
-    if restore_op_name and save_op_name:
-      file_prefix_tensor = _find_file_prefix_tensor(sess.graph)
-      if file_prefix_tensor is None:
-        raise ValueError('Failed to find file prefix tensor.')
-
-      # TODO(b/268594921): Create SaverDef from the c++ side and pass it along
-      # to the python side.
-      saver_def = saver_pb2.SaverDef(
-          filename_tensor_name=file_prefix_tensor.name,
-          restore_op_name=restore_op_name,
-          # :0 attached to indicate the first result tensor, which should be
-          # the file prefix string tensor.
-          save_tensor_name=f'{save_op_name}:0',
-          version=saver_pb2.SaverDef.V2,
+    # Add `AssetFileDef`s to the collection so that correct values are fed to
+    # the tensors that accept asset file paths.
+    for asset_file_def in asset_file_defs:
+      asset_any_proto = Any()
+      asset_any_proto.Pack(asset_file_def)
+      ops.add_to_collection(
+          saved_model_constants.ASSETS_KEY,
+          asset_any_proto,
       )
 
+    model_saver = None
+    # If `saver_def` is not None, it means there are variables in the graph.
+    if saver_def:
       model_saver = saver.Saver(saver_def=saver_def)
       logging.info('Saver created with SaverDef: %s', saver_def)
 

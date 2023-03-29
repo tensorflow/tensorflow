@@ -230,6 +230,28 @@ def initialize_rbe_configs():
         python_install_path = "/usr/local",
     )
 
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-clang_manylinux2014-cuda12.0.1-cudnn8.8",
+        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
+        cuda_version = "12.0.1",
+        cudnn_version = "8.8",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.8", "3.9", "3.10", "3.11"],
+        sysroot = "/dt9",
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-gcc9_manylinux2014-cuda12.0.1-cudnn8.8",
+        compiler = "/dt9/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        cuda_version = "12.0.1",
+        cudnn_version = "8.8",
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.8", "3.9", "3.10", "3.11"],
+        python_install_path = "/usr/local",
+    )
+
     tensorflow_rbe_win_config(
         name = "windows_py37",
         python_bin_path = "C:/Python37/python.exe",

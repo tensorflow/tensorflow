@@ -19,6 +19,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.linalg import linear_operator
@@ -244,7 +245,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     # Don't check the matrix dimensions.  That would add unnecessary Asserts to
     # the graph.  Things will fail at runtime naturally if shapes are
     # incompatible.
-    matrix_shape = array_ops.stack([
+    matrix_shape = array_ops_stack.stack([
         self.operators[0].range_dimension_tensor(),
         self.operators[-1].domain_dimension_tensor()
     ])

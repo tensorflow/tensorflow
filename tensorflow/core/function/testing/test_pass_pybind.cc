@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <string>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/function/testing/test_pass.h"
 
 PYBIND11_MODULE(test_pass_pybind, m) {

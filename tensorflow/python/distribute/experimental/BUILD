@@ -98,6 +98,7 @@ dtensor_test(
         "//tensorflow/dtensor/python/tests:test_util",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//third_party/py/numpy",

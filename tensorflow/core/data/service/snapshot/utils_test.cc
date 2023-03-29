@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace tensorflow {
@@ -64,6 +66,16 @@ TEST(UtilsTest, EstimatedMixedElementsSizeBytes) {
 }
 
 TEST(UtilsTest, EmptyTensor) { EXPECT_GT(EstimatedSizeBytes({Tensor()}), 0); }
+
+TEST(UtilsTest, StreamAssignmentChanged) {
+  Status stream_assignment_changed =
+      StreamAssignmentChanged("worker_address", /*stream_index=*/0);
+  EXPECT_TRUE(IsStreamAssignmentChanged(stream_assignment_changed));
+  EXPECT_FALSE(IsStreamAssignmentChanged(OkStatus()));
+  EXPECT_FALSE(IsStreamAssignmentChanged(
+      errors::FailedPrecondition("Not stream assignment changed.")));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

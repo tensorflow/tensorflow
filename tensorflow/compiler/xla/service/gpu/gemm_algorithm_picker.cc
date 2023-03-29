@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"

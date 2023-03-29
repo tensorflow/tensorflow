@@ -59,6 +59,8 @@ struct OpData {
   // Parameters used in all quantized paths
   int32_t output_multiplier;
   int output_shift;
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -70,9 +72,16 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
+template <KernelType kernel_type>
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, OpData* data,
+                      TfLiteMulParams* params, const TfLiteTensor* input1,
+                      const TfLiteTensor* input2, TfLiteTensor* output);
+
+template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMulParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  data->noop = false;
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -89,6 +98,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
+  if (output->type == kTfLiteComplex64 && params->activation) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Activation is not allowed for COMPLEX64 input.");
+    return kTfLiteError;
+  }
   const bool requires_broadcast = !HaveSameShapes(input1, input2);
 
   TfLiteIntArray* output_size = nullptr;
@@ -110,6 +124,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                        &data->output_shift);
   }
 
+  if (IsConstantOrPersistentTensor(input1) &&
+      IsConstantOrPersistentTensor(input2)) {
+    SetTensorToPersistentRo(output);
+    data->noop = true;
+    context->ResizeTensor(context, output, output_size);
+    return EvalImpl<kernel_type>(context, node, data, params, input1, input2,
+                                 output);
+  }
   return context->ResizeTensor(context, output, output_size);
 }
 
@@ -283,24 +305,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteMulParams*>(node->builtin_data);
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
-
-  const TfLiteTensor* input1;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kInputTensor1, &input1));
-  const TfLiteTensor* input2;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kInputTensor2, &input2));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-  if (output->type == kTfLiteComplex64 && params->activation) {
-    TF_LITE_KERNEL_LOG(context,
-                       "Activation is not allowed for COMPLEX64 input.");
-    return kTfLiteError;
-  }
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, OpData* data,
+                      TfLiteMulParams* params, const TfLiteTensor* input1,
+                      const TfLiteTensor* input2, TfLiteTensor* output) {
   if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
       output->type == kTfLiteInt64 || output->type == kTfLiteComplex64) {
     EvalMul<kernel_type>(context, node, params, data, input1, input2, output);
@@ -319,22 +326,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <KernelType kernel_type>
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  auto* params = reinterpret_cast<TfLiteMulParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  if (data->noop) {
+    return kTfLiteOk;
+  }
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  return EvalImpl<kernel_type>(context, node, data, params, input1, input2,
+                               output);
+}
 }  // namespace mul
 
 TfLiteRegistration* Register_MUL_REF() {
-  static TfLiteRegistration r = {mul::Init, mul::Free, mul::Prepare,
+  static TfLiteRegistration r = {mul::Init, mul::Free,
+                                 mul::Prepare<mul::kReference>,
                                  mul::Eval<mul::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_MUL_GENERIC_OPT() {
-  static TfLiteRegistration r = {mul::Init, mul::Free, mul::Prepare,
+  static TfLiteRegistration r = {mul::Init, mul::Free,
+                                 mul::Prepare<mul::kGenericOptimized>,
                                  mul::Eval<mul::kGenericOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_MUL_NEON_OPT() {
-  static TfLiteRegistration r = {mul::Init, mul::Free, mul::Prepare,
+  static TfLiteRegistration r = {mul::Init, mul::Free,
+                                 mul::Prepare<mul::kNeonOptimized>,
                                  mul::Eval<mul::kNeonOptimized>};
   return &r;
 }

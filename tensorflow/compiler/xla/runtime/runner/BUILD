@@ -68,8 +68,8 @@ py_library(
 #     srcs_version = "PY3",
 #     deps = [
 #         ":runner",
-#         "//third_party/py/numpy",
 #         "@absl_py//absl/testing:absltest",
+#         "//third_party/py/numpy",
 #     ],
 # )
 #

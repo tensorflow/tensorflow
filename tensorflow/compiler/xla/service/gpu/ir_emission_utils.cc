@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -110,7 +111,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
        output_primitive_type == F32 || output_primitive_type == F64 ||
        output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       lhs_shape.element_type() == S8);
+       rhs_shape.element_type() == S8);
   bool shapes_are_valid =
       type_is_allowed &&
       IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
@@ -141,22 +142,6 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
 
   // Column reduction.
   return {1, 128, 1};
-}
-
-const char* const kSoftmaxCallTarget = "__softmax_fusion";
-
-bool IsSoftmaxCustomCall(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  return hlo.custom_call_target() == kSoftmaxCallTarget;
-}
-
-bool IsTritonCustomCall(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  return hlo.custom_call_target() == kTritonCallTarget;
 }
 
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
@@ -472,7 +457,7 @@ llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op) {
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
     return op->getOperands();
   }
-  LOG(FATAL) << "Unexpected op: " << MlirToString(op);
+  LOG(FATAL) << "Unexpected op: " << llvm_ir::DumpToString(op);
 }
 
 llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
@@ -490,7 +475,7 @@ llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
     return op->getResults();
   }
-  LOG(FATAL) << "Unexpected op: " << MlirToString(op);
+  LOG(FATAL) << "Unexpected op: " << llvm_ir::DumpToString(op);
 }
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
@@ -773,11 +758,7 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
 
 void LogAndVerify(const llvm::Module* m) {
   if (VLOG_IS_ON(5)) {
-    std::string llir_str;
-    llvm::raw_string_ostream llir_stream(llir_str);
-    llir_stream << *m;
-    llir_stream.flush();
-    XLA_VLOG_LINES(5, llir_str);
+    XLA_VLOG_LINES(5, llvm_ir::DumpToString(m));
   }
 
   std::string llir_str;

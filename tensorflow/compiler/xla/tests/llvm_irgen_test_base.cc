@@ -110,7 +110,7 @@ LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
 }
 
 Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
-  ir_ = llvm_ir::DumpModuleToString(module);
+  ir_ = llvm_ir::DumpToString(&module);
   return OkStatus();
 }
 

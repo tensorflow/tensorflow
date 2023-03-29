@@ -21,6 +21,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -171,7 +172,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_verifier",
@@ -191,20 +192,15 @@ xla_cc_test(
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_query",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
 
 xla_cc_test(
     name = "gemm_rewrite_test",
-    srcs = [
-        "gemm_rewrite_test.cc",
-    ],
+    srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],
@@ -782,6 +778,13 @@ xla_cc_test(
     ],
 )
 
+build_test(
+    name = "hlo_to_llvm_ir_build_test",
+    targets = [
+        ":hlo_to_llvm_ir",
+    ],
+)
+
 xla_cc_binary(
     name = "hlo_to_llvm_ir",
     srcs = ["hlo_to_llvm_ir.cc"],
@@ -794,13 +797,13 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc_impl",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
-        "//tensorflow/compiler/xla/stream_executor:device_description_proto_cc_impl",
-        "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-        "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_is_configured([
@@ -824,6 +827,7 @@ glob_lit_tests(
     tags_override = {
         "add_preds.hlo": ["no_rocm"],
         "concat.hlo": ["no_rocm"],
+        "calling_convention.hlo": ["no_rocm"],
         "copy.hlo": ["no_rocm"],
         "dynamic_update_slice_inplace.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
@@ -831,6 +835,7 @@ glob_lit_tests(
         "fused_slice.hlo": ["no_rocm"],
         "fused_slice_different_operands.hlo": ["no_rocm"],
         "fusion.hlo": ["no_rocm"],
+        "kernel_reuse.hlo": ["no_rocm"],
         "launch_dimensions.hlo": ["no_rocm"],
         "pad_to_static.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
@@ -840,10 +845,12 @@ glob_lit_tests(
         "select_and_scatter.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
         "slice_to_dynamic.hlo": ["no_rocm"],
+	"triton_naming.hlo": ["no_rocm"],
         "copy_nested.hlo": ["no_rocm"],
         "sorting.hlo": ["no_rocm"],
         "add_preds_amdgcn.hlo": ["no_cuda_asan"],
         "concat_amdgcn.hlo": ["no_cuda_asan"],
+        "calling_convention_amdgcn.hlo": ["no_cuda_asan"],
         "copy_amdgcn.hlo": ["no_cuda_asan"],
         "copy_nested_amdgcn.hlo": ["no_cuda_asan"],
         "dynamic_update_slice_inplace_amdgcn.hlo": ["no_cuda_asan"],
@@ -859,6 +866,7 @@ glob_lit_tests(
         "select_and_scatter_amdgcn.hlo": ["no_cuda_asan"],
         "single_instruction_amdgcn.hlo": ["no_cuda_asan"],
         "slice_to_dynamic_amdgcn.hlo": ["no_cuda_asan"],
+	"triton_naming_amdgcn.hlo": ["no_cuda_asan"],
         "sorting_amdgcn.hlo": ["no_cuda_asan"],
     },
     test_file_exts = ["hlo"],
@@ -904,12 +912,12 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         "@com_google_absl//absl/strings",
-        "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/compiler/xla:xla_proto_cc",
-        "//tensorflow/tsl/platform:test_main",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",

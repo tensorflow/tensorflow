@@ -48,6 +48,7 @@ pytype_strict_library(
         ":layout",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -302,6 +303,9 @@ pytype_strict_library(
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],

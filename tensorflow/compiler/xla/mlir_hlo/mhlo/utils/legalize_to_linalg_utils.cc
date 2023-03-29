@@ -81,7 +81,7 @@ Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
     (void)shapeSource.reifyReturnTypeShapes(b, operands, reifiedShapes);
     assert(reifiedShapes.size() == 1 && "Expected one reified result");
     // Construct sizes for the required dimensions.
-    for (auto& en : llvm::enumerate(resultType.getShape())) {
+    for (const auto& en : llvm::enumerate(resultType.getShape())) {
       if (en.value() != ShapedType::kDynamic) continue;
       sizes.push_back(b.create<tensor::ExtractOp>(
           loc, reifiedShapes[0],
@@ -95,8 +95,10 @@ Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
 Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
                   OpBuilder* b) {
   // Apply for semi-ring operations that lower to elaborate code
-  // (any sign-op, any elt-wise conversion, or an integral abs-op).
-  if (isa<mhlo::SignOp>(op) || isa<mhlo::ConvertOp>(op) ||
+  // (any sign-op, or an integral abs-op).
+  // TODO(peiming, ajcbik): these all can potentially be optimized by applying
+  // value transform on sparse_tenosr.value memref
+  if (isa<mhlo::SignOp>(op) ||
       (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
       isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
       isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||

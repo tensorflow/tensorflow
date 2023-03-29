@@ -13,36 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/gpus/cuda/include/cublas_v2.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-
-#define SE_CUDA_DATA_HALF CUDA_R_16F
-
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas.h"
-
-// Both Eigen Half.h and CUDA cuda_fp16.h provide similar typedef for __half. As
-// such, there are two ways to get the typedef for __half:
-//
-// (1) Includes cuda_fp16.h and defines EIGEN_HAS_CUDA_FP16.
-// (2) Neither includes cuda_fp16.h nor defines EIGEN_HAS_CUDA_FP16.
-//
-// Due to issue b/73793421, when the first approach is used and NVCC is used to
-// compile this file, NVCC will complain duplicated definition for
-// EIGEN_HAS_CUDA_FP16. On the other hand, when the second approach is used and
-// clang is used to compile this file, clang will not understand __half
-// due to missing the definition and macro EIGEN_HAS_CUDA_FP16.
-//
-// Because this file may be compiled with CLANG but will never be compiled with
-// NVCC, we choose the first approach for CUDA < 9.0. For CUDA >= 9.0, we have
-// to use the second approach because the data member in the __half defined
-// by CUDA > 9.0 is `__x` while Eigen expects it to be `x`.
-//
-// TODO(b/73793421): Remove the following code block to switch to the second
-// approach when the issue is fixed.
-#if CUDA_VERSION < 9000
-#include "third_party/gpus/cuda/include/cuda_fp16.h"
-#define EIGEN_HAS_CUDA_FP16
-#endif
 
 #include <complex>
 #include <cstdint>
@@ -50,6 +21,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
@@ -148,7 +121,6 @@ class ScopedCublasPointerMode {
   bool ok_;                       // Whether the change was successful.
 };
 
-#if CUDA_VERSION >= 9000
 // cuBLAS has interfaces that permit computations to use the Volta hardware.
 // This must be enabled via the cublasGet/SetMathMode APIs.
 //
@@ -204,7 +176,6 @@ class ScopedCublasMathMode {
   cublasMath_t old_mode_;  // Prior cuBLAS math mode, to be restored.
   bool ok_;                // Whether the change was successful.
 };
-#endif  // CUDA_VERSION >= 9000
 
 static const char *const kCublasNotInitializedExplanation =
     "Failure to initialize cublas may be due to OOM (cublas needs some free "
@@ -319,7 +290,7 @@ struct CUDADataType;
 
 template <>
 struct CUDADataType<Eigen::half> {
-  static constexpr cudaDataType_t type = SE_CUDA_DATA_HALF;
+  static constexpr cudaDataType_t type = CUDA_R_16F;  // NOLINT
 };
 
 #if CUDA_VERSION >= 11000
@@ -392,7 +363,6 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
     return tsl::errors::Internal("Failed setting stream");
   }
 
-#if CUDA_VERSION >= 9000
   ScopedCublasMathMode math_mode{blas_};
 #if CUBLAS_VER_MAJOR >= 11
   if (math_type == CUBLAS_TF32_TENSOR_OP_MATH &&
@@ -404,7 +374,6 @@ tsl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
       return tsl::errors::Internal("Failed initializing math mode");
     }
   }
-#endif
 
   gpu::ScopedActivateExecutorContext sac{parent_};
   ScopedCublasPointerMode pointer_mode{blas_};
@@ -681,18 +650,12 @@ tsl::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
 
   switch (dtype) {
     case blas::DataType::kHalf: {
-#if CUDA_VERSION < 7050
-      return tsl::errors::Internal(
-          "fp16 sgemm is not implemented in this cuBLAS version "
-          "(need at least CUDA 7.5)");
-#endif
-
       return DoBlasInternalImpl(
           cublasSgemmEx, stream, true /* = pointer_mode_host */, math_type,
           AsCublasOperation(transa), AsCublasOperation(transb), m, n, k,
-          static_cast<const float *>(alpha), a.opaque(), SE_CUDA_DATA_HALF, lda,
-          b.opaque(), SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
-          c->opaque(), SE_CUDA_DATA_HALF, ldc);
+          static_cast<const float *>(alpha), a.opaque(), CUDA_R_16F, lda,
+          b.opaque(), CUDA_R_16F, ldb, static_cast<const float *>(beta),
+          c->opaque(), CUDA_R_16F, ldc);
     }
 #if CUDA_VERSION > 11000
     case blas::DataType::kBF16: {
@@ -917,12 +880,8 @@ bool CUDABlas::DoBlasGemmWithProfilingImpl(
 }
 
 static bool UsesTensorOps(blas::AlgorithmType algo) {
-#if CUDA_VERSION >= 9000
   cublasGemmAlgo_t cublas_algo = static_cast<cublasGemmAlgo_t>(algo);
   return cublas_algo >= CUBLAS_GEMM_DEFAULT_TENSOR_OP;
-#else
-  return false;
-#endif
 }
 
 static tsl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
@@ -979,16 +938,6 @@ static tsl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
     math_type = CUBLAS_DEFAULT_MATH;
   }
 
-  // Return false if we might be hitting a cuBLAS bug that produces the wrong
-  // result. See nvbugs/2156201, b/79126339.
-#if CUDA_VERSION >= 9000 && CUDA_VERSION < 9020
-  if ((algorithm == CUBLAS_GEMM_DEFAULT || algorithm >= CUBLAS_GEMM_ALGO13) &&
-      std::max({m, n, k}) >= 2097153 && cc_major < 7) {
-    return tsl::errors::Internal(
-        "DoBlasGemmWithAlgorithm returning false to work around cudnn "
-        "<9.2 bug with m, n, or k >= 2097153.  See b/79126339.");
-  }
-#endif
   return math_type;
 }
 
@@ -1128,52 +1077,48 @@ bool CUDABlas::GetBlasGemmAlgorithms(
     };
   } else {
     *out_algorithms = {
-      CUBLAS_GEMM_DFALT,
-      CUBLAS_GEMM_ALGO0,
-      CUBLAS_GEMM_ALGO1,
-      CUBLAS_GEMM_ALGO2,
-      CUBLAS_GEMM_ALGO3,
-      CUBLAS_GEMM_ALGO4,
-      CUBLAS_GEMM_ALGO5,
-      CUBLAS_GEMM_ALGO6,
-      CUBLAS_GEMM_ALGO7,
-#if CUDA_VERSION >= 9000
-      CUBLAS_GEMM_ALGO8,
-      CUBLAS_GEMM_ALGO9,
-      CUBLAS_GEMM_ALGO10,
-      CUBLAS_GEMM_ALGO11,
-      CUBLAS_GEMM_ALGO12,
-      CUBLAS_GEMM_ALGO13,
-      CUBLAS_GEMM_ALGO14,
-      CUBLAS_GEMM_ALGO15,
-      CUBLAS_GEMM_ALGO16,
-      CUBLAS_GEMM_ALGO17,
-      CUBLAS_GEMM_DFALT_TENSOR_OP,
-      CUBLAS_GEMM_ALGO0_TENSOR_OP,
-      CUBLAS_GEMM_ALGO1_TENSOR_OP,
-      CUBLAS_GEMM_ALGO2_TENSOR_OP,
-      CUBLAS_GEMM_ALGO3_TENSOR_OP,
-      CUBLAS_GEMM_ALGO4_TENSOR_OP,
-#endif
-#if CUDA_VERSION >= 9020
-      CUBLAS_GEMM_ALGO18,
-      CUBLAS_GEMM_ALGO19,
-      CUBLAS_GEMM_ALGO20,
-      CUBLAS_GEMM_ALGO21,
-      CUBLAS_GEMM_ALGO22,
-      CUBLAS_GEMM_ALGO23,
-      CUBLAS_GEMM_ALGO5_TENSOR_OP,
-      CUBLAS_GEMM_ALGO6_TENSOR_OP,
-      CUBLAS_GEMM_ALGO7_TENSOR_OP,
-      CUBLAS_GEMM_ALGO8_TENSOR_OP,
-      CUBLAS_GEMM_ALGO9_TENSOR_OP,
-      CUBLAS_GEMM_ALGO10_TENSOR_OP,
-      CUBLAS_GEMM_ALGO11_TENSOR_OP,
-      CUBLAS_GEMM_ALGO12_TENSOR_OP,
-      CUBLAS_GEMM_ALGO13_TENSOR_OP,
-      CUBLAS_GEMM_ALGO14_TENSOR_OP,
-      CUBLAS_GEMM_ALGO15_TENSOR_OP,
-#endif
+        CUBLAS_GEMM_DFALT,
+        CUBLAS_GEMM_ALGO0,
+        CUBLAS_GEMM_ALGO1,
+        CUBLAS_GEMM_ALGO2,
+        CUBLAS_GEMM_ALGO3,
+        CUBLAS_GEMM_ALGO4,
+        CUBLAS_GEMM_ALGO5,
+        CUBLAS_GEMM_ALGO6,
+        CUBLAS_GEMM_ALGO7,
+        CUBLAS_GEMM_ALGO8,
+        CUBLAS_GEMM_ALGO9,
+        CUBLAS_GEMM_ALGO10,
+        CUBLAS_GEMM_ALGO11,
+        CUBLAS_GEMM_ALGO12,
+        CUBLAS_GEMM_ALGO13,
+        CUBLAS_GEMM_ALGO14,
+        CUBLAS_GEMM_ALGO15,
+        CUBLAS_GEMM_ALGO16,
+        CUBLAS_GEMM_ALGO17,
+        CUBLAS_GEMM_DFALT_TENSOR_OP,
+        CUBLAS_GEMM_ALGO0_TENSOR_OP,
+        CUBLAS_GEMM_ALGO1_TENSOR_OP,
+        CUBLAS_GEMM_ALGO2_TENSOR_OP,
+        CUBLAS_GEMM_ALGO3_TENSOR_OP,
+        CUBLAS_GEMM_ALGO4_TENSOR_OP,
+        CUBLAS_GEMM_ALGO18,
+        CUBLAS_GEMM_ALGO19,
+        CUBLAS_GEMM_ALGO20,
+        CUBLAS_GEMM_ALGO21,
+        CUBLAS_GEMM_ALGO22,
+        CUBLAS_GEMM_ALGO23,
+        CUBLAS_GEMM_ALGO5_TENSOR_OP,
+        CUBLAS_GEMM_ALGO6_TENSOR_OP,
+        CUBLAS_GEMM_ALGO7_TENSOR_OP,
+        CUBLAS_GEMM_ALGO8_TENSOR_OP,
+        CUBLAS_GEMM_ALGO9_TENSOR_OP,
+        CUBLAS_GEMM_ALGO10_TENSOR_OP,
+        CUBLAS_GEMM_ALGO11_TENSOR_OP,
+        CUBLAS_GEMM_ALGO12_TENSOR_OP,
+        CUBLAS_GEMM_ALGO13_TENSOR_OP,
+        CUBLAS_GEMM_ALGO14_TENSOR_OP,
+        CUBLAS_GEMM_ALGO15_TENSOR_OP,
     };
   }
   return true;
@@ -1265,14 +1210,13 @@ tsl::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
       !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
       !stream->ThenMemcpy(&c, c_raw_ptrs.data(), size).ok()) {
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "failed to copy memory from host to device in "
                        "CUDABlas::DoBlasGemmBatched");
   }
 
   cudaDataType_t data_type = CUDADataType<T>::type;
 
-#if CUDA_VERSION >= 9010
   if (stream->GetCudaComputeCapability().IsAtLeast(5)) {
     cublasMath_t math_type;
     cublasGemmAlgo_t algo;
@@ -1316,8 +1260,7 @@ tsl::Status CUDABlas::DoBlasGemmBatchedInternal(
         k, &alpha, a_void_ptrs, data_type, lda, b_void_ptrs, data_type, ldb,
         &beta, c_void_ptrs, data_type, ldc, batch_count, compute_type, algo);
   }
-#endif
-  // either CUDA_VERSION < 9.1 or SM < 5.0
+  // SM < 5.0
   if (data_type != CUDA_R_16F) {
     auto cb_alpha = GpuComplexValue(alpha);
     auto cb_beta = GpuComplexValue(beta);
@@ -1330,7 +1273,7 @@ tsl::Status CUDABlas::DoBlasGemmBatchedInternal(
     if (ok) {
       return ::tsl::OkStatus();
     }
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "failed BLAS call, see log for details");
   } else {
     // Fall back to a loop for fp16
@@ -1507,7 +1450,6 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatched(
     }
 #endif
     case dnn::kHalf: {
-#if CUDA_VERSION >= 9010
       CudaComputeCapability cc = stream->GetCudaComputeCapability();
       if (cc.major >= 5) {
         cublasGemmAlgo_t algo =
@@ -1520,8 +1462,7 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatched(
             CUDA_R_16F, ldb, stride_b, beta, c->opaque(), CUDA_R_16F, ldc,
             stride_c, batch_count, CUDA_R_32F, algo);
       }
-#endif
-      // Either CUDA_VERSION < 9.1 or SM < 5.0. Fall back to a loop.
+      // SM < 5.0. Fall back to a loop.
       for (int batch = 0; batch < batch_count; ++batch) {
         const auto *a_matrix = reinterpret_cast<const __half *>(
             static_cast<const Eigen::half *>(a.opaque()) + batch * stride_a);
@@ -1533,9 +1474,9 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatched(
             cublasSgemmEx, stream, true /* = pointer_mode_host */,
             CUBLAS_DEFAULT_MATH, AsCublasOperation(transa),
             AsCublasOperation(transb), m, n, k,
-            static_cast<const float *>(alpha), a_matrix, SE_CUDA_DATA_HALF, lda,
-            b_matrix, SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
-            c_matrix, SE_CUDA_DATA_HALF, ldc));
+            static_cast<const float *>(alpha), a_matrix, CUDA_R_16F, lda,
+            b_matrix, CUDA_R_16F, ldb, static_cast<const float *>(beta),
+            c_matrix, CUDA_R_16F, ldc));
       }
       return ::tsl::OkStatus();
     }

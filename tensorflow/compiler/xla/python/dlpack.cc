@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "pybind11/pytypes.h"
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
@@ -371,7 +371,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
 
 StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
-    std::shared_ptr<PyClient> gpu_client, bool make_jax_array) {
+    std::shared_ptr<PyClient> gpu_client) {
   // TODO(hyeontaek): This is a potential target for an IFRT client to multiplex
   // multiple PjRt clients. Devices from these PjRt clients could be expressed
   // as a unified set of IFRT devices.
@@ -449,13 +449,8 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   }
   TF_ASSIGN_OR_RETURN(auto ifrt_array,
                       ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
-  if (make_jax_array) {
-    return PyArray::MakeFromSingleDevice(std::move(client), Traceback::Get(),
-                                         std::move(ifrt_array), false, true);
-  } else {
-    return PyBuffer::Make(std::move(client), std::move(ifrt_array),
-                          Traceback::Get());
-  }
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
 }
 
 }  // namespace xla

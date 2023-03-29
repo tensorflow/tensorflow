@@ -15,12 +15,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -63,11 +65,13 @@ class FullTypeGraphUtilsTest : public ::testing::Test {
   void AddArgFullType(Node *arg, FullTypeId out_id, FullTypeId data_id) {
     FullTypeDef *t = arg->mutable_def()->mutable_experimental_type();
     t->set_type_id(TFT_PRODUCT);
-    FullTypeDef data_t;
-    data_t.set_type_id(data_id);
     FullTypeDef out_t;
     out_t.set_type_id(out_id);
-    (*out_t.add_args()) = data_t;
+    if (data_id != TFT_UNSET) {
+      FullTypeDef data_t;
+      data_t.set_type_id(data_id);
+      (*out_t.add_args()) = data_t;
+    }
     (*t->add_args()) = out_t;
   }
 
@@ -245,7 +249,7 @@ TEST_F(FullTypeGraphUtilsTest, WeakAllocAttrsRetIgnore) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithFTSingleDevice) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  std::vector<std::pair<Node *, FunctionArgIndex>> arg_nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
@@ -253,15 +257,33 @@ TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithFTSingleDevice) {
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
   AddArgFullType(arg, TFT_TENSOR, TFT_INT32);  // numeric INT32
 
-  nodes.push_back(arg);
+  arg_nodes.push_back(std::make_pair(arg, FunctionArgIndex(0, 0)));
   dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::SingleDeviceSetAllocAttrsForArgs(
-      nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
+      arg_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
+  ASSERT_EQ(alloc_attrs.size(), 1);
+  ASSERT_FALSE(alloc_attrs[0].on_host());
+}
+
+TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithUnsetFTSingleDevice) {
+  std::vector<std::pair<Node *, FunctionArgIndex>> arg_nodes;
+  DataTypeVector dtypes;
+  std::vector<AllocatorAttributes> alloc_attrs;
+
+  Node *arg, *ret;
+  TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
+  AddArgFullType(arg, TFT_UNSET, TFT_UNSET);  // numeric INT32
+
+  arg_nodes.push_back(std::make_pair(arg, FunctionArgIndex(0, 0)));
+  dtypes.push_back(DT_INT32);
+  TF_ASSERT_OK(full_type::SingleDeviceSetAllocAttrsForArgs(
+      arg_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_FALSE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, WeakAllocatorAttrsArgWithFTSingleDevice) {
+  std::vector<std::pair<Node *, FunctionArgIndex>> arg_nodes;
   gtl::InlinedVector<Node *, 4> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
@@ -270,16 +292,16 @@ TEST_F(FullTypeGraphUtilsTest, WeakAllocatorAttrsArgWithFTSingleDevice) {
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
   AddArgFullType(arg, TFT_SHAPE_TENSOR, TFT_INT32);
 
-  nodes.push_back(arg);
+  arg_nodes.push_back(std::make_pair(arg, FunctionArgIndex(0, 0)));
   dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::WeakSingleDeviceSetAllocAttrsForArgs(
-      nodes, dtypes, /*ints_on_device=*/false, alloc_attrs));
+      arg_nodes, dtypes, /*ints_on_device=*/false, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_TRUE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsRetError) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  std::vector<std::pair<Node *, int>> ret_nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
@@ -287,42 +309,96 @@ TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsRetError) {
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
   // test TFT_SHAPE_TENSOR and ints_on_device=true mismatch
   AddArgFullType(arg, TFT_SHAPE_TENSOR, TFT_INT32);
-  nodes.push_back(ret);
+  ret_nodes.push_back(std::make_pair(ret, 0));
   dtypes.push_back(DT_INT32);
   Status status = full_type::SingleDeviceSetAllocAttrsForRets(
-      nodes, dtypes, /*ints_on_device=*/true, alloc_attrs);
+      ret_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs);
   EXPECT_FALSE(status.ok());
 }
 
 TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsNotInt32) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  std::vector<std::pair<Node *, int>> ret_nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_STRING));
   // If dtype is not DT_UINT32, then OK to not have full type information
-  nodes.push_back(ret);
+  ret_nodes.push_back(std::make_pair(ret, 0));
   dtypes.push_back(DT_STRING);
   TF_ASSERT_OK(full_type::SingleDeviceSetAllocAttrsForRets(
-      nodes, dtypes, /*ints_on_device=*/false, alloc_attrs));
+      ret_nodes, dtypes, /*ints_on_device=*/false, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_TRUE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, SingleDeviceWeakAllocAttrsRetIgnore) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  std::vector<std::pair<Node *, int>> ret_nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
-  nodes.push_back(ret);
+  ret_nodes.push_back(std::make_pair(ret, 0));
   dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::WeakSingleDeviceSetAllocAttrsForRets(
-      nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
+      ret_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_FALSE(alloc_attrs[0].on_host());
+}
+
+TEST_F(FullTypeGraphUtilsTest, CheckMemoryTypeOK) {
+  Node *node;
+  TF_ASSERT_OK(MakeArg(&node, DT_INT32));
+  AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
+  const FullTypeDef &ft = node->def().experimental_type().args()[0];
+  TF_ASSERT_OK(full_type::CheckMemoryType(true, ft));
+}
+
+TEST_F(FullTypeGraphUtilsTest, CheckMemoryTypeBadFT) {
+  Node *node;
+  TF_ASSERT_OK(MakeArg(&node, DT_INT32));
+  AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
+  // full type information for the whole node, not for one tensor / one output
+  const FullTypeDef &ft = node->def().experimental_type();
+  Status status = full_type::CheckMemoryType(true, ft);
+  EXPECT_FALSE(status.ok());
+}
+
+TEST_F(FullTypeGraphUtilsTest, CheckMemoryTypeWrongFT) {
+  Node *node;
+  TF_ASSERT_OK(MakeArg(&node, DT_INT32));
+  AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
+  const FullTypeDef &ft = node->def().experimental_type().args()[0];
+  // use_host_memory=false does not match TFT_SHAPE_TENSOR
+  Status status = full_type::CheckMemoryType(false, ft);
+  EXPECT_FALSE(status.ok());
+}
+
+TEST_F(FullTypeGraphUtilsTest, LogMemoryTypeMismatchOK) {
+  Node *node;
+  TF_ASSERT_OK(MakeArg(&node, DT_INT32));
+  AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
+  const FullTypeDef &ft = node->def().experimental_type().args()[0];
+  EXPECT_TRUE(full_type::LogMemoryTypeMismatch(true, ft));
+}
+
+TEST_F(FullTypeGraphUtilsTest, LogMemoryTypeMismatchBadFT) {
+  Node *node;
+  TF_ASSERT_OK(MakeArg(&node, DT_INT32));
+  AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
+  // full type information for the whole node, not for one tensor / one output
+  const FullTypeDef &ft = node->def().experimental_type();
+  EXPECT_FALSE(full_type::LogMemoryTypeMismatch(true, ft));
+}
+
+TEST_F(FullTypeGraphUtilsTest, LogMemoryTypeMismatchWrongFT) {
+  Node *node;
+  TF_ASSERT_OK(MakeArg(&node, DT_INT32));
+  AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
+  const FullTypeDef &ft = node->def().experimental_type().args()[0];
+  // use_host_memory=false does not match TFT_SHAPE_TENSOR
+  EXPECT_FALSE(full_type::LogMemoryTypeMismatch(false, ft));
 }
 
 }  // namespace tensorflow

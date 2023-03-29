@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
@@ -45,17 +47,21 @@ namespace acceleration {
 namespace {
 using ::flatbuffers::FlatBufferBuilder;
 
-std::unique_ptr<FlatBufferBuilder> CopyModel(
-    const flatbuffers::FlatBufferBuilder* input) {
+// If input is not null, make a copy of the data pointed by input, and create a
+// new Allocation pointing to the copied data.
+std::pair<std::unique_ptr<Allocation>, std::vector<uint8_t>> CopyModel(
+    const Allocation* input, ErrorReporter* error_reporter) {
+  std::vector<uint8_t> copy;
   if (!input) {
-    return nullptr;
+    return {nullptr, copy};
   }
-  ModelT model_obj;
-  GetModel(input->GetBufferPointer())->UnPackTo(&model_obj);
-  auto copy = std::make_unique<FlatBufferBuilder>();
-  copy->Finish(CreateModel(*copy, &model_obj));
 
-  return copy;
+  copy.resize(input->bytes());
+  memcpy(copy.data(), input->base(), input->bytes());
+
+  return {std::make_unique<MemoryAllocation>(copy.data(), copy.size(),
+                                             error_reporter),
+          std::move(copy)};
 }
 
 // A simple holder for file descriptor that will close the file descriptor at
@@ -125,10 +131,9 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
   }
   MinibenchmarkStatus status = storage_.Read();
   if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed.");
     return status;
   }
-
   std::unique_ptr<tools::ModelLoader> model_loader =
       tools::CreateModelLoaderFromPath(fd_or_model_path_);
   if (!model_loader) {
@@ -137,21 +142,35 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
   }
 
   // Check that the model can be loaded from disk.
-  if (!model_loader->Init()) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model");
+  if (!model_loader->Init() || !model_loader->GetModel()) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model.");
     return kMinibenchmarkModelInitFailed;
   }
 
   if (custom_validation_embedder_) {
-    model_with_custom_input_ = std::make_unique<FlatBufferBuilder>();
     status = custom_validation_embedder_->BuildModel(
-        *model_loader->GetModel()->GetModel(), *model_with_custom_input_);
+        *model_loader->GetModel()->GetModel(), model_with_custom_input_);
     if (status != kMinibenchmarkSuccess) {
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Failed to embed golden input to model: %d",
                            static_cast<int>(status));
       return status;
     }
+    model_allocation_ = std::make_unique<MemoryAllocation>(
+        model_with_custom_input_.GetBufferPointer(),
+        model_with_custom_input_.GetSize(), error_reporter_);
+  } else if (dynamic_cast<tools::BufferModelLoader*>(model_loader.get())) {
+    // If model is already loaded, it needs to be copied to the detached thread.
+    const Allocation* alloc = model_loader->GetModel()->allocation();
+    if (!alloc || !alloc->valid() || !alloc->base() || alloc->bytes() <= 0) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Internal error: BufferModelLoader doesn't have a "
+                           "valid allocation.");
+      return kMinibenchmarkPreconditionNotMet;
+    }
+
+    model_allocation_ = std::make_unique<MemoryAllocation>(
+        alloc->base(), alloc->bytes(), error_reporter_);
   }
 
   status = nnapi_helper_.Load();
@@ -187,17 +206,22 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
 }
 
 void ValidatorRunnerImpl::TriggerValidationAsync(
-    std::unique_ptr<std::vector<FlatBufferBuilder>> tflite_settings) {
+    std::unique_ptr<std::vector<FlatBufferBuilder>> tflite_settings,
+    absl::string_view storage_path) {
   if (!tflite_settings || tflite_settings->empty()) {
     return;
   }
 
+  storage_ = FlatbufferStorage<BenchmarkEvent>(storage_path, error_reporter_);
+
   // We purposefully detach the thread and have it own all the data. The
   // runner may potentially hang, so we can't wait for it to terminate.
   // error_reporter is not passed in because the ownership cannot be passed to
+  // the thread. Model data is copied from model_allocation_ if set and owned by
   // the thread.
   std::thread detached_thread(
-      [original_model_path = fd_or_model_path_, storage_path = storage_path_,
+      [original_model_path = fd_or_model_path_,
+       storage_path = std::string(storage_path),
        data_directory_path = data_directory_path_,
        tflite_settings = std::move(tflite_settings),
        validation_entrypoint_name =
@@ -205,9 +229,10 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
        validation_entrypoint = validation_entrypoint_helper_.LoadEntrypoint(),
        nnapi_sl_path = nnapi_helper_.nnapi_sl_path(),
        gpu_so_path = gpu_helper_.gpu_so_path(),
-       model_with_custom_input = CopyModel(model_with_custom_input_.get()),
+       allocation_and_model =
+           CopyModel(model_allocation_.get(), error_reporter_),
        timeout_ms = timeout_ms_]() {
-        FileLock lock(storage_path + ".parent_lock");
+        FileLock lock(absl::StrCat(storage_path, ".parent_lock"));
         if (!lock.TryLock()) {
           return;
         }
@@ -221,8 +246,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
           flatbuffers::GetRoot<TFLiteSettings>(one_setting.GetBufferPointer())
               ->UnPackTo(&tflite_settings_obj);
           TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                          "Run validation with entry point '%s'",
-                          validation_entrypoint_name);
+                          "Run validation with entry point '%s' %s",
+                          validation_entrypoint_name, storage_path.c_str());
           ProcessRunner runner(data_directory_path, validation_entrypoint_name,
                                validation_entrypoint, timeout_ms);
           int exitcode = 0;
@@ -252,7 +277,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
             continue;
           }
           std::vector<std::string> args;
-          if (!model_with_custom_input) {
+          if (!allocation_and_model.first) {
             args.push_back(model_path);
           }
           args.push_back(storage_path);
@@ -276,7 +301,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
           }
 
           std::string output;
-          status = runner.Run(model_with_custom_input.get(), args, &output,
+          status = runner.Run(allocation_and_model.first.get(), args, &output,
                               &exitcode, &signal);
           if (status != kMinibenchmarkSuccess) {
             std::cout << "Run() returned " << status << std::endl;

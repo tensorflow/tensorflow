@@ -237,7 +237,13 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
         // called by a TPUPartitionedCall op and will be compiled in
         // TPUPartitionedCall op via FunctionLibraryRuntime and not be processed
         // by BEFExecutor.
-        is_tpu_op) {
+        //
+        // We also avoid creating tfrt_fallback_async.createop for all GPU ops
+        // except for tf.XlaLaunch. This is correct as long as we only run XLA
+        // clusters on GPU and all other ops on CPU.
+        is_tpu_op ||
+        (parsed_device_name->device_type == DEVICE_GPU &&
+         op->getName().getStringRef().str() != "tf.XlaLaunch")) {
       return ConvertToCoreRTExecuteOp(
           op, operands, parsed_device_name->op_handler_name, op_attrs,
           op_func_attrs, op_name, rewriter);

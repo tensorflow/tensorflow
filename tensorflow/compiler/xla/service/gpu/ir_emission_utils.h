@@ -50,15 +50,9 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// Returns true if `hlo` is a matched softmax fusion.
-bool IsSoftmaxCustomCall(const HloInstruction& hlo);
-
-// Identifies Triton GEMM fusions.
-bool IsTritonCustomCall(const HloInstruction& hlo);
-
-extern const char* const kSoftmaxCallTarget;
-
-inline constexpr absl::string_view kTritonCallTarget = "__triton";
+// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
+// this string. TritonAutotuner replaces it with TritonGemmKey proto.
+inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -128,24 +122,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
-
-inline std::string MlirToString(mlir::Operation* op) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    op->print(os);
-  }
-  return s;
-}
-
-inline std::string MlirToString(const mlir::Location& loc) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    loc.print(os);
-  }
-  return s;
-}
 
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -50,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
@@ -538,7 +539,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Failed to build a RequestContext: ", req_ctx.takeError()));
     return nullptr;
   }
@@ -552,7 +553,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   }
   if (target_av->IsError()) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }
@@ -560,7 +561,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   return new TensorInterface(std::move(host_tensor_ref));
 }
 
-llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
+std::optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsMetadataAvailable()) {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
@@ -1011,11 +1012,10 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
-    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table, int64_t step_id,
     RCReference<tfrt::RequestContext>* request_context) {
-  auto* step_container = GetEagerContext()->StepContainer();
-  RequestContextBuilder request_context_builder(
-      GetHostContext(), GetResourceContext(), step_container->StepId());
+  RequestContextBuilder request_context_builder(GetHostContext(),
+                                                GetResourceContext(), step_id);
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, runner_table, GetEagerContext()));
@@ -1030,7 +1030,8 @@ tensorflow::Status ContextInterface::BuildFunctionRequestContext(
 
 tensorflow::Status ContextInterface::BuildOpRequestContext(
     RCReference<tfrt::RequestContext>* request_context) {
-  return BuildFunctionRequestContext(/*runner_table=*/nullptr, request_context);
+  return BuildFunctionRequestContext(/*runner_table=*/nullptr, /*step_id=*/0,
+                                     request_context);
 }
 
 tensorflow::ImmediateExecutionTensorHandle*
@@ -1100,11 +1101,21 @@ std::vector<std::string> ContextInterface::ListFunctionNames() {
   return GetEagerContext()->ListFunctionNames();
 }
 
+tensorflow::ImmediateExecutionContext::CacheStats
+ContextInterface::GetCacheStats() {
+  return GetEagerContext()->GetCacheStats();
+}
+
 tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   // TODO(tfrt-devs): We need to ensure all invocations of this function is
   // finished before removing it.
   function_cache_.RemoveFunction(func);
   return GetEagerContext()->RemoveFunction(func);
+}
+
+tensorflow::Status ContextInterface::AddRemoveFunctionNotifier(
+    const std::string& func, std::function<void()> notifier) {
+  return GetEagerContext()->AddRemoveFunctionNotifier(func, notifier);
 }
 
 const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(
@@ -1353,7 +1364,7 @@ tensorflow::Status OperationInterface::Execute(
 
     RCReference<RequestContext> request_ctx;
     TF_RETURN_IF_ERROR(context_->BuildFunctionRequestContext(
-        function_state_->GetRunnerTable(), &request_ctx));
+        function_state_->GetRunnerTable(), step_id(), &request_ctx));
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
@@ -1527,7 +1538,8 @@ tensorflow::Status OperationInterface::Initialize() {
       /*request_ctx_fn=*/
       [this](tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
              RCReference<RequestContext>* request_ctx) {
-        return context_->BuildFunctionRequestContext(runner_table, request_ctx);
+        return context_->BuildFunctionRequestContext(runner_table, step_id(),
+                                                     request_ctx);
       },
       abort_location_handler_.GetCurrentLocation(), compile_options,
       input_devices, &result));

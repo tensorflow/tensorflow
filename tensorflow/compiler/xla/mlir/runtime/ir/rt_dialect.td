@@ -43,7 +43,6 @@ def RuntimeDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
 
   let hasOperationAttrVerify = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 def RT_Ordinal : SignlessIntegerAttrBase<I32, "ordinal value">;

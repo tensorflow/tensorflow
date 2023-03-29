@@ -173,6 +173,27 @@ HloComputation* HloModule::AddEmbeddedComputation(
                                 /*preserve_entry_layouts=*/false);
 }
 
+void HloModule::MarkFusionDuplications(
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
+  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        auto rep =
+            replacements.find(instruction->fused_instructions_computation());
+        if (rep != replacements.end()) {
+          xla::HloComputation* new_comp = rep->second;
+          if (new_comp->IsFusionComputation()) {
+            auto& dedup_name = new_comp->FusionInstruction()->name();
+            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
+                dedup_name);
+            instruction->set_metadata_deduplicated_name(dedup_name);
+          }
+        }
+      }
+    }
+  }
+}
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
@@ -271,16 +292,12 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   }
   if (config_.allow_spmd_sharding_propagation_to_output().size() != 1 ||
       config_.allow_spmd_sharding_propagation_to_output().back()) {
-    struct BoolFormatter {
-      void operator()(std::string* out, bool i) const {
-        out->append(i ? "true" : "false");
-      }
-    };
-    printer->Append(absl::StrCat(
-        ", allow_spmd_sharding_propagation_to_output={",
-        absl::StrJoin(config_.allow_spmd_sharding_propagation_to_output(), ",",
-                      BoolFormatter()),
-        "}"));
+    printer->Append(", allow_spmd_sharding_propagation_to_output={");
+    AppendJoin(printer, config_.allow_spmd_sharding_propagation_to_output(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
   }
   printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()

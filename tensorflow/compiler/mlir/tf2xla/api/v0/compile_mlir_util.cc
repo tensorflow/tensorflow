@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -54,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -327,14 +330,15 @@ bool CanInlineFunctionsPostLegalization(llvm::StringRef device_type) {
 
 // These passes are grouped together and must run in this specific order.
 void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
-                           llvm::StringRef device_type, bool prefer_tf2xla) {
+                           llvm::StringRef device_type,
+                           bool enable_op_fallback) {
   // Run LegalizeTFPass with allow_partial_conversion = true as we verify
   // in VerifyTFXLALegalization that full conversion happened.
   // TODO(b/188389290): Cleanup allow_partial_conversion as a legalization
   // parameter.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, legalize_chlo,
-      /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
+      /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
 
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -352,10 +356,40 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 }
 
+// The default LLVM MLIR Inliner always runs canonicalization, however there
+// is a bug where dumping the pass pipeline and recreating it in offline
+// tools doesn't run canonicalization. To ensure prod and offline tools
+// inlining are equal, explicitly create the Inliner with canonicalization so
+// that the canonicalizer is dumped as part of pipeline passes.
+// See https://github.com/llvm/llvm-project/issues/60960.
+ABSL_CONST_INIT absl::Mutex pass_registration_lock(absl::kConstInit);
+std::unique_ptr<mlir::Pass> CreateInlinerWithCanonicalization() {
+  // This is really wonky. Pass Registration isn't thread safe in LLVM, so we
+  // need a mutex to guard pass registration. Pass registration also needs
+  // to happen once per thread, so make this thread local.
+  // TODO(b/268509024): Delete this whole function once the upstream LLVM issue
+  // is resolved.
+  static thread_local bool pass_registered = false;
+  if (!pass_registered) {
+    absl::MutexLock lock(&pass_registration_lock);
+    mlir::registerCanonicalizerPass();
+    pass_registered = true;
+  }
+
+  auto inliner = mlir::createInlinerPass(/*opPipelines=*/{},
+                                         /*defaultPipelineBuilder=*/{});
+  if (inliner->initializeOptions("default-pipeline=canonicalize").failed()) {
+    return nullptr;
+  }
+
+  return inliner;
+}
+
 }  //  namespace
 
 void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
+    mlir::OpPassManager& pm, llvm::StringRef device_type,
+    bool enable_op_fallback,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes,
     bool allow_partial_conversion) {
@@ -367,7 +401,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(CreateInlinerWithCanonicalization());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateDropWhileShapeInvariantPass());
   // Create a replicated TensorList initialization ops for all of its uses. This
@@ -434,7 +468,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // These passes are grouped together as they have to run in specific order.
   // Passes before this can run relativley in any order, as long as they happen
   // before legalization.
-  AddLegalizationPasses(pm, legalize_chlo, device_type, prefer_tf2xla);
+  AddLegalizationPasses(pm, legalize_chlo, device_type, enable_op_fallback);
 
   // This pass operates on MHLO control flow ops so it should be legalized after
   // the control flow ops are legalized.
@@ -446,8 +480,9 @@ void CreateConvertMlirToXlaHloPipeline(
         mlir::mhlo::CreateVerifyTFXLALegalizationPass(legalize_chlo));
   }
 
-  if (CanInlineFunctionsPostLegalization(device_type))
-    pm.addPass(mlir::createInlinerPass());
+  if (CanInlineFunctionsPostLegalization(device_type)) {
+    pm.addPass(CreateInlinerWithCanonicalization());
+  }
 
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.
@@ -506,12 +541,12 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 }
 
 Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
-                     bool prefer_tf2xla,
+                     bool enable_op_fallback,
                      llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                          custom_legalization_passes) {
   mlir::PassManager tf2xla(module_op.getContext());
   applyTensorflowAndCLOptions(tf2xla);
-  CreateConvertMlirToXlaHloPipeline(tf2xla, device_type, prefer_tf2xla,
+  CreateConvertMlirToXlaHloPipeline(tf2xla, device_type, enable_op_fallback,
                                     custom_legalization_passes);
 
   if (VLOG_IS_ON(1))
@@ -553,7 +588,7 @@ Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                            llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
                                custom_legalization_passes) {
   TF_RETURN_IF_ERROR(LegalizeToHlo(module_op, device_type,
-                                   /*prefer_tf2xla=*/false,
+                                   /*enable_op_fallback=*/false,
                                    custom_legalization_passes));
 
   mlir::Block& block =
@@ -564,11 +599,11 @@ Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
-    bool prefer_tf2xla, bool return_tuple,
+    bool enable_op_fallback, bool return_tuple,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
-  TF_RETURN_IF_ERROR(LegalizeToHlo(module_op, device_type, prefer_tf2xla,
+  TF_RETURN_IF_ERROR(LegalizeToHlo(module_op, device_type, enable_op_fallback,
                                    custom_legalization_passes));
 
   mlir::MlirToHloConversionOptions options;
@@ -682,13 +717,13 @@ Status PopulateResultIOInfo(
 
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
-  if (analyse_graph &&
+  if (enable_op_fallback &&
       GetMlirBridge2ndPhaseRolloutPolicy(module_op) ==
           MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis) {
     return CompileToHloGraphAnalysisFailedError();
@@ -700,8 +735,8 @@ Status CompileMlirToXlaHlo(
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
       module_op, device_type, compilation_result->computation.get(),
-      use_tuple_args, analyse_graph, use_return_tuple, shape_determination_fns,
-      custom_legalization_passes));
+      use_tuple_args, enable_op_fallback, use_return_tuple,
+      shape_determination_fns, custom_legalization_passes));
 
   TF_RETURN_IF_ERROR(PopulateCollectiveInfo(module_op, compilation_result));
 
@@ -712,7 +747,7 @@ Status CompileMlirToXlaHlo(
 
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -730,7 +765,7 @@ Status CompileSerializedMlirToXlaHlo(
     tensor_or_resource_shapes.push_back({arg_shape});
   return CompileMlirToXlaHlo(
       mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
-      analyse_graph, /*use_return_tuple=*/true,
+      enable_op_fallback, /*use_return_tuple=*/true,
       /*use_resource_updates_for_aliases=*/false, shape_determination_fns,
       compilation_result, custom_legalization_passes);
 }
@@ -866,7 +901,7 @@ Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
 
 Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
@@ -878,7 +913,7 @@ Status CompileGraphToXlaHlo(
       CompileGraphSetup(module_op, args, &remaining_params, arg_shapes));
 
   auto status = CompileMlirToXlaHlo(
-      module_op, arg_shapes, device_type, use_tuple_args, analyse_graph,
+      module_op, arg_shapes, device_type, use_tuple_args, enable_op_fallback,
       use_return_tuple,
       /*use_resource_updates_for_aliases=*/true, shape_determination_fns,
       compilation_result, custom_legalization_passes);
@@ -923,7 +958,7 @@ Status BuildHloFromGraph(
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, bool analyse_graph,
+    bool use_tuple_args, bool enable_op_fallback,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
@@ -934,7 +969,7 @@ Status CompileGraphToXlaHlo(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return CompileGraphToXlaHlo(
-      module.get(), args, device_type, use_tuple_args, analyse_graph,
+      module.get(), args, device_type, use_tuple_args, enable_op_fallback,
       /*use_return_tuple=*/true, shape_determination_fns, compilation_result,
       custom_legalization_passes);
 }
@@ -945,7 +980,7 @@ void RegisterConvertMlirToXlaHloPipelineWithDefaults() {
       "Convert TF dialect to HLO dialect (used for compilation in bridge).",
       [](mlir::OpPassManager& pm) {
         tensorflow::CreateConvertMlirToXlaHloPipeline(
-            pm, /*device_type=*/"XLA_CPU_JIT", /*prefer_tf2xla=*/false,
+            pm, /*device_type=*/"XLA_CPU_JIT", /*enable_op_fallback=*/false,
             /*custom_legalization_passes=*/{});
       });
 }

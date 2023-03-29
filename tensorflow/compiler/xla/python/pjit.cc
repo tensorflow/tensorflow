@@ -348,13 +348,13 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
 
     xla::PyArray py_array = arg;
     const auto& sharding = py_array.sharding();
-    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
+    int sharding_num_devices = jax::Sharding::SafeNumDevices(sharding);
 
     // Currently only committed PyArray inputs or uncommitted PyArray on a
     // single device inputs are allowed. This is checked previously in the entry
     // point of PjitFunction::Call().
     DCHECK(py_array.committed() ||
-           (!py_array.committed() && cpp_sharding->num_devices() == 1));
+           (!py_array.committed() && sharding_num_devices == 1));
 
     if (sharding.get_type() == jax::PmapSharding::type()) {
       return xla::Unimplemented(
@@ -373,9 +373,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     // `PjitFunction::UpdateArgsSignature()`.
     DCHECK(ifrt_array != nullptr) << "PyArray has been unexpectedly deleted.";
 
-    if (cpp_sharding->num_devices() == 1 &&
-        ifrt_array->sharding().devices().front() !=
-            addressable_devices[0].get()) {
+    if (sharding_num_devices == 1 && ifrt_array->sharding().devices().front() !=
+                                         addressable_devices[0].get()) {
       xla::ifrt::DeviceList::Devices ifrt_devices;
       ifrt_devices.push_back(addressable_devices[0].get());
       auto sharding = xla::ifrt::OpaqueSharding::Create(
@@ -471,8 +470,8 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
     //
     // TODO(chky): Consider support uncommitted PyArray in cpp when the python
     // side stablizes.
-    auto* cpp_sharding = py_array.sharding().cast<jax::Sharding*>();
-    if (!py_array.committed() && cpp_sharding->num_devices() > 1) {
+    if (!py_array.committed() &&
+        jax::Sharding::SafeNumDevices(py_array.sharding()) > 1) {
       VLOG(2) << "PyArray argument is not committed and number of global "
                  "devices is more than 1; fallback to python.";
       return fallback_to_cache_miss();

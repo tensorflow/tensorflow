@@ -613,7 +613,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
           col_params->group.group_size);
     }
     col_params->group.group_key = group_key.unaligned_flat<int32>()(0);
-    // FIXME(b/269333905): TFRT hostruntime doesn't forward node names.
+    // FIXME(b/270426314): TFRT hostruntime doesn't forward node names.
     // A more proper way of checking DTensor provenance is to add a new attr
     // to all V2 ops. Or perhaps use an ordering_token based heuristics
     // (DTensor never emits an ordering_token, but MWMS always do).
@@ -1283,12 +1283,14 @@ class CollectiveAllToAllV2OpKernel : public CollectiveOpV2Kernel {
             << col_params->group.group_size << " group_key "
             << col_params->group.group_key << " instance_key "
             << col_params->instance.instance_key;
-    // Allocate the output tensor.
+    // Allocate the output tensor. NCCL does not support in-place all-to-all, so
+    // don't reuse the input tensor. We could potentially use
+    // forward_input_or_allocate_output and allocate a temporary buffer inside
+    // the NCCL backend only when the input is reused.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c,
-                         c->forward_input_or_allocate_output(
-                             {0}, 0, col_params->instance.shape, &output),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_output(0, col_params->instance.shape, &output),
+        done_with_cleanup);
     Run(c, col_params, std::move(done_with_cleanup));
   }
 };

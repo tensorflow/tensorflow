@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import numpy
 
@@ -24,7 +24,6 @@ from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
 from .xla_extension import Buffer as Buffer
-from .xla_extension import ShardedBuffer as ShardedBuffer
 from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
@@ -59,6 +58,8 @@ float8_e4m3fn: numpy.dtype
 float8_e5m2: numpy.dtype
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
+
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
@@ -92,7 +93,7 @@ def make_interpreter_client() -> Client:
   ...
 
 
-def make_tfrt_tpu_c_api_client() -> Client:
+def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
 
@@ -100,7 +101,7 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_c_api_client(plugin_name: str) -> Client:
+def make_c_api_client(plugin_name: str, options: Optional[_NameValueMapping] = None) -> Client:
   ...
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
@@ -206,4 +207,21 @@ def make_replica_groups(
   ...
 
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
+  ...
+
+def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
+
+def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
+def array_result_handler(
+               aval: Any,
+               sharding: Any,
+               committed: bool,
+               _skip_checks: bool = ...) -> Callable:
+  ...
+
+
+def register_custom_call_target(
+    name: str, fn: Callable, platform: str = ...
+) -> None:
   ...

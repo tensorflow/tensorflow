@@ -181,6 +181,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -864,7 +865,7 @@ class _WithSpaceToBatch:
       input_spatial_shape = [input_shape_list[i] for i in spatial_dims]
     if input_spatial_shape is None or None in input_spatial_shape:
       input_shape_tensor = array_ops.shape(inp)
-      input_spatial_shape = array_ops.stack(
+      input_spatial_shape = array_ops_stack.stack(
           [input_shape_tensor[i] for i in spatial_dims])
 
     base_paddings = self.base_paddings
@@ -917,7 +918,7 @@ def _with_space_to_batch_base_paddings(filter_shape, num_spatial_dims,
   # convention as conv2d.
   pad_extra_start = pad_extra_shape // 2
   pad_extra_end = pad_extra_shape - pad_extra_start
-  base_paddings = array_ops.stack(
+  base_paddings = array_ops_stack.stack(
       [[pad_extra_start[i], pad_extra_end[i]] for i in range(num_spatial_dims)])
   return base_paddings
 

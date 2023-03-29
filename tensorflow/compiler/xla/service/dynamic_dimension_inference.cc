@@ -91,6 +91,10 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
                         DynamicDimensionInference::ShapeCheckMode::kIgnore,
                     const DynamicDimensionInference::AssertionGenerator&
                         assertion_generator = nullptr) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          parent->execution_threads_)) {
+      return OkStatus();
+    }
     DynamicDimensionInferenceVisitor visitor(param_bindings, parent,
                                              std::move(custom_call_handler),
                                              shape_check_mode);
@@ -168,6 +172,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleMap(HloInstruction* hlo) override;
 
   Status HandleDomain(HloInstruction* hlo) override;
+
+  Status HandleAsyncStart(HloInstruction* hlo) override;
 
  private:
   using OperandDynamicDimensionFn = absl::FunctionRef<Status(
@@ -830,6 +836,17 @@ Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
 
 Status DynamicDimensionInferenceVisitor::HandleDomain(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
+}
+
+Status DynamicDimensionInferenceVisitor::HandleAsyncStart(HloInstruction* hlo) {
+  if (!HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                        parent_->execution_threads_)) {
+    // Async-start not included in specificed execution thread set will use
+    // metadata-prefix version of dynamic shapes (result of slice-to-dynamic) so
+    // there is no need to propagate dynamic dimension info.
+    return OkStatus();
+  }
+  return DefaultAction(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseUnary(
@@ -2046,10 +2063,12 @@ void DynamicDimensionInference::CopyMapping(HloInstruction* from,
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     HloModule* module, CustomCallInferenceHandler custom_call_handler,
     ShapeCheckMode shape_check_mode,
-    const AssertionGenerator& assertion_generator) {
+    const AssertionGenerator& assertion_generator,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
   DynamicDimensionInference inference(module, std::move(custom_call_handler),
-                                      shape_check_mode, assertion_generator);
+                                      shape_check_mode, assertion_generator,
+                                      execution_threads);
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;
 }
@@ -2070,11 +2089,13 @@ std::string DynamicDimensionInference::ToString() const {
 
 DynamicDimensionInference::DynamicDimensionInference(
     HloModule* module, CustomCallInferenceHandler custom_call_handler,
-    ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator)
+    ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator,
+    const absl::flat_hash_set<absl::string_view>& execution_threads)
     : module_(module),
       custom_call_handler_(std::move(custom_call_handler)),
       shape_check_mode_(shape_check_mode),
-      assertion_generator_(assertion_generator) {}
+      assertion_generator_(assertion_generator),
+      execution_threads_(execution_threads) {}
 
 Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   return DynamicDimensionInferenceVisitor::Run(

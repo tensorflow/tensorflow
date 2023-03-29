@@ -53,7 +53,8 @@ namespace tensorflow {
 //   "XLA_GPU_JIT" or "XLA_TPU_JIT".
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.
-// prefer_tf2xla: when this is true, prefer tf2xla fallback kernels over MLIR
+// enable_op_fallback: when this is true, prefer tf2xla fallback kernels over
+// MLIR
 //   native kernels for legalization to HLO.
 // return_tuple: when this is true, always create a tuple result for the
 //   entry computation.
@@ -67,7 +68,7 @@ namespace tensorflow {
 Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
-    bool prefer_tf2xla, bool return_tuple,
+    bool enable_op_fallback, bool return_tuple,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns =
         {},
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -87,14 +88,16 @@ Status ConvertMLIRToXlaComputation(
 //
 // device_type: XLA JIT device to use for compilation such as "XLA_CPU_JIT",
 //   "XLA_GPU_JIT" or "XLA_TPU_JIT".
-// prefer_tf2xla: when this is true, prefer tf2xla fallback kernels over MLIR
+// enable_op_fallback: when this is true, prefer tf2xla fallback kernels over
+// MLIR
 //   native kernels for legalization to HLO.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
 // allow_partial_conversion: when this is true, allow operations that can't be
 // legalized.
 void CreateConvertMlirToXlaHloPipeline(
-    mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
+    mlir::OpPassManager& pm, llvm::StringRef device_type,
+    bool enable_op_fallback,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes,
     bool allow_partial_conversion = false);
@@ -132,11 +135,11 @@ Status PopulateResultIOInfo(
 // Compiles a MLIR module into XLA HLO, generates all accompanying metadata and
 // stores them in CompilationResult.
 //
-// If analyse_graph is set to true, graph is legalized only if the graph
+// If enable_op_fallback is set to false, graph is legalized only if the graph
 // analysis for the graph is successful. Otherwise, an error is returned.
 Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
@@ -147,7 +150,7 @@ Status CompileMlirToXlaHlo(
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -160,7 +163,7 @@ Status CompileSerializedMlirToXlaHlo(
 // `CompileMlirToXlaHlo`.
 Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
@@ -172,7 +175,7 @@ Status CompileGraphToXlaHlo(
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
-    bool use_tuple_args, bool analyse_graph,
+    bool use_tuple_args, bool enable_op_fallback,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,

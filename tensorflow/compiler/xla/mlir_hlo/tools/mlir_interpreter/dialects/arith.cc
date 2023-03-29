@@ -30,6 +30,29 @@ namespace mlir {
 namespace interpreter {
 namespace {
 
+InterpreterValue bitcast(InterpreterState&, arith::BitcastOp op,
+                         const InterpreterValue& in) {
+  Type ty = op->getResultTypes()[0];
+  auto shapedTy = ty.dyn_cast<ShapedType>();
+  auto result = dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
+    TensorOrMemref<decltype(dummy)> result;
+    result.view = {};
+    if (shapedTy) {
+      result.buffer = in.clone().buffer();
+    } else {
+      result.buffer = in.asUnitTensor().buffer();
+    }
+    return {result};
+  });
+  if (!shapedTy) {
+    return result.extractElement({});
+  }
+  auto& outView = result.view();
+  outView.strides = BufferView::getDefaultStrides(shapedTy.getShape());
+  outView.sizes = llvm::to_vector(shapedTy.getShape());
+  return result;
+}
+
 InterpreterValue constant(InterpreterState&, arith::ConstantOp constant) {
   auto ty = constant->getResultTypes()[0];
   auto shapedType = ty.dyn_cast<ShapedType>();
@@ -79,6 +102,27 @@ InterpreterValue intCast(InterpreterState&, Op op,
   return dispatchScalarType(
       op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
         return {static_cast<decltype(dummy)>(arg.asInt())};
+      });
+}
+
+template <typename Op>
+InterpreterValue floatCast(InterpreterState&, Op op,
+                           const InterpreterValue& arg) {
+  if (arg.isTensor()) {
+    return dispatchScalarType(
+        op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
+          auto result = TensorOrMemref<decltype(dummy)>::emptyLike(arg.view());
+          for (const auto& index : result.view.indices()) {
+            result.at(index) = static_cast<decltype(dummy)>(
+                arg.extractElement(index).asDouble());
+          }
+          return {result};
+        });
+  }
+
+  return dispatchScalarType(
+      op->getResultTypes()[0], [&](auto dummy) -> InterpreterValue {
+        return {static_cast<decltype(dummy)>(arg.asDouble())};
       });
 }
 
@@ -231,6 +275,9 @@ REGISTER_MLIR_INTERPRETER_OP("arith.remf", applyCwiseBinaryMap<Remainder>);
 REGISTER_MLIR_INTERPRETER_OP("arith.subf", applyCwiseBinaryMap<Minus>);
 REGISTER_MLIR_INTERPRETER_OP("arith.uitofp", uiToFP);
 REGISTER_MLIR_INTERPRETER_OP("arith.xori", applyCwiseBinaryMap<BitXor>);
+REGISTER_MLIR_INTERPRETER_OP("arith.shrui",
+                             applyCwiseBinaryMap<ShiftRightLogical>);
+REGISTER_MLIR_INTERPRETER_OP("arith.shli", applyCwiseBinaryMap<ShiftLeft>);
 
 // The float implementations support ints too.
 REGISTER_MLIR_INTERPRETER_OP("arith.addi", "arith.addf");
@@ -240,13 +287,16 @@ REGISTER_MLIR_INTERPRETER_OP("arith.minsi", "arith.minf");
 REGISTER_MLIR_INTERPRETER_OP("arith.muli", "arith.mulf");
 REGISTER_MLIR_INTERPRETER_OP("arith.subi", "arith.subf");
 
+REGISTER_MLIR_INTERPRETER_OP(bitcast);
 REGISTER_MLIR_INTERPRETER_OP(cmpF);
 REGISTER_MLIR_INTERPRETER_OP(cmpI);
 REGISTER_MLIR_INTERPRETER_OP(constant);
 REGISTER_MLIR_INTERPRETER_OP(extF);
+REGISTER_MLIR_INTERPRETER_OP(floatCast<arith::FPToSIOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::ExtSIOp>);
 REGISTER_MLIR_INTERPRETER_OP(intCast<arith::IndexCastOp>);
-REGISTER_MLIR_INTERPRETER_OP(intCast<arith::TruncIOp>);
 REGISTER_MLIR_INTERPRETER_OP(intCast<arith::SIToFPOp>);
+REGISTER_MLIR_INTERPRETER_OP(intCast<arith::TruncIOp>);
 REGISTER_MLIR_INTERPRETER_OP(select);
 
 }  // namespace

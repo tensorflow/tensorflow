@@ -205,7 +205,10 @@ StatusOr<std::vector<int64_t>> ComputeTileAssignmentDevices(
 StatusOr<::xla::OpSharding> ConvertLayoutToXlaOpSharding(const Layout& layout) {
   ::xla::OpSharding xla_sharding;
 
-  if (layout.IsFullyReplicated()) {
+  if (layout.IsSingleDevice()) {
+    xla_sharding.set_type(::xla::OpSharding::MAXIMAL);
+    return xla_sharding;
+  } else if (layout.IsFullyReplicated()) {
     xla_sharding.set_type(::xla::OpSharding::REPLICATED);
     return xla_sharding;
   }

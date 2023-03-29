@@ -843,7 +843,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   Status status = CompileToExecutable(std::move(hlo_module)).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::FAILED_PRECONDITION);
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
   EXPECT_THAT(
       status.error_message(),
       ::testing::HasSubstr(

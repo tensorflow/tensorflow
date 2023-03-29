@@ -170,8 +170,14 @@ llvm::SmallVector<InterpreterValue> collapseShape(
   return {out};
 }
 
-template <typename Op>
-InterpreterValue cast(InterpreterState& state, Op op, InterpreterValue memref) {
+InterpreterValue cast(InterpreterState&, memref::CastOp,
+                      InterpreterValue memref) {
+  return memref;
+}
+
+// TODO(jreiffers): Implement full expand_shape support.
+InterpreterValue expandShape(InterpreterState& state, memref::ExpandShapeOp op,
+                             InterpreterValue memref) {
   BufferView inputView = memref.view();
   auto outTy = op->getResultTypes()[0].template cast<MemRefType>();
   if (outTy.getNumDynamicDims() > 0) {
@@ -223,13 +229,12 @@ int64_t dim(InterpreterState& state, memref::DimOp,
 
 REGISTER_MLIR_INTERPRETER_OP(alloc);
 REGISTER_MLIR_INTERPRETER_OP(allocA);
+REGISTER_MLIR_INTERPRETER_OP(cast);
 REGISTER_MLIR_INTERPRETER_OP(collapseShape);
-REGISTER_MLIR_INTERPRETER_OP(cast<memref::CastOp>);
 REGISTER_MLIR_INTERPRETER_OP(copy);
 REGISTER_MLIR_INTERPRETER_OP(dealloc);
 REGISTER_MLIR_INTERPRETER_OP(dim);
-// TODO(jreiffers): Implement full expand_shape support.
-REGISTER_MLIR_INTERPRETER_OP(cast<memref::ExpandShapeOp>);
+REGISTER_MLIR_INTERPRETER_OP(expandShape);
 REGISTER_MLIR_INTERPRETER_OP(getGlobal);
 REGISTER_MLIR_INTERPRETER_OP(load);
 REGISTER_MLIR_INTERPRETER_OP(store);

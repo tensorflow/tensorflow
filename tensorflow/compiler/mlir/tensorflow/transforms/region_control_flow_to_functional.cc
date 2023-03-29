@@ -197,8 +197,8 @@ StringRef ExtractSingleBlockRegion(
 // terminator of the region. if `allow_to_bool` is true, also allows a single
 // ToBoolOp between the region yield and the call. Returns none if the region
 // does not conform to this pattern.
-llvm::Optional<func::CallOp> IsSingleCallRegion(Region& region,
-                                                bool allow_to_bool = false) {
+std::optional<func::CallOp> IsSingleCallRegion(Region& region,
+                                               bool allow_to_bool = false) {
   if (!llvm::hasSingleElement(region)) return std::nullopt;
 
   Block& block = region.front();
@@ -295,8 +295,8 @@ struct TrivialTransformInfo {
   // If such a trivial transformation is possible, stash the relevant
   // information needed for the transformation, else indicate that a trivial
   // transformation is not possible by setting `can_transform` to false.
-  TrivialTransformInfo(llvm::Optional<func::CallOp> first_call,
-                       llvm::Optional<func::CallOp> second_call,
+  TrivialTransformInfo(std::optional<func::CallOp> first_call,
+                       std::optional<func::CallOp> second_call,
                        ArgMatcherFn arg_matcher) {
     if (!first_call || !second_call) return;
 

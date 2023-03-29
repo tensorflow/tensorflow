@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 
+#include <functional>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -118,6 +120,10 @@ class ImmediateExecutionContext : public AbstractContext {
   // be executed as an op. Return error if the function with the same name
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
+
+  // Notifies about the function removal.
+  virtual Status AddRemoveFunctionNotifier(const string& func,
+                                           std::function<void()> notifier) = 0;
 
   // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
   // the key of the function definition name (to be retrieved during function
@@ -238,6 +244,13 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Get a list of the names of functions that have been registered.
   virtual std::vector<string> ListFunctionNames() = 0;
+
+  struct CacheStats {
+    int64_t kernel_cache_size;
+    int64_t device_cache_size;
+    std::map<std::string, int64_t> func_kernel_cache_entries;
+  };
+  virtual CacheStats GetCacheStats() = 0;
 
   //===--------------------------------------------------------------------===//
   // Distributed runtime related functions.

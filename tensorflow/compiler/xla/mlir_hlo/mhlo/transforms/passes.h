@@ -182,6 +182,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();
 // Legalizes from the StableHLO dialect to the MHLO dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
 
+// Legalizes from the Shape dialect to the MHLO dialect.
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeLegalizeToHloPass();
+
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();

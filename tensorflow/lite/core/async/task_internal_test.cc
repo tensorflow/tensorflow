@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 
 namespace tflite::async {
@@ -35,17 +35,17 @@ TEST(TfLiteExecutionTaskTest, BasicTest) {
 
   auto* sync = TfLiteSynchronizationCreate();
 
-  EXPECT_EQ(kTfLiteOk, task.SetBufferHandle(kTfLiteIoInput, "x", 42));
-  EXPECT_EQ(kTfLiteOk, task.SetBufferHandle(kTfLiteIoInput, "y", 43));
-  EXPECT_EQ(kTfLiteOk, task.SetBufferHandle(kTfLiteIoOutput, "a", 44));
-  EXPECT_EQ(kTfLiteOk, task.SetSynchronization(kTfLiteIoInput, "x", sync));
+  EXPECT_EQ(kTfLiteOk, task.SetBufferHandle(kTfLiteIoTypeInput, "x", 42));
+  EXPECT_EQ(kTfLiteOk, task.SetBufferHandle(kTfLiteIoTypeInput, "y", 43));
+  EXPECT_EQ(kTfLiteOk, task.SetBufferHandle(kTfLiteIoTypeOutput, "a", 44));
+  EXPECT_EQ(kTfLiteOk, task.SetSynchronization(kTfLiteIoTypeInput, "x", sync));
 
-  EXPECT_EQ(42, task.GetBufferHandle(kTfLiteIoInput, "x"));
-  EXPECT_EQ(43, task.GetBufferHandle(kTfLiteIoInput, "y"));
-  EXPECT_EQ(44, task.GetBufferHandle(kTfLiteIoOutput, "a"));
-  EXPECT_EQ(sync, task.GetSynchronization(kTfLiteIoInput, "x"));
-  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoInput, "y"));
-  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoOutput, "a"));
+  EXPECT_EQ(42, task.GetBufferHandle(kTfLiteIoTypeInput, "x"));
+  EXPECT_EQ(43, task.GetBufferHandle(kTfLiteIoTypeInput, "y"));
+  EXPECT_EQ(44, task.GetBufferHandle(kTfLiteIoTypeOutput, "a"));
+  EXPECT_EQ(sync, task.GetSynchronization(kTfLiteIoTypeInput, "x"));
+  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoTypeInput, "y"));
+  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoTypeOutput, "a"));
 
   TfLiteSynchronizationDelete(sync);
 }
@@ -54,11 +54,11 @@ TEST(TfLiteExecutionTaskTest, NameMapUninitialized) {
   tflite::async::ExecutionTask task;
 
   EXPECT_EQ(kTfLiteNullBufferHandle,
-            task.GetBufferHandle(kTfLiteIoInput, "foo"));
+            task.GetBufferHandle(kTfLiteIoTypeInput, "foo"));
   EXPECT_EQ(kTfLiteNullBufferHandle,
-            task.GetBufferHandle(kTfLiteIoOutput, "foo"));
-  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoOutput, "foo"));
-  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoOutput, "foo"));
+            task.GetBufferHandle(kTfLiteIoTypeOutput, "foo"));
+  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoTypeOutput, "foo"));
+  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoTypeOutput, "foo"));
 }
 
 TEST(TfLiteExecutionTaskTest, NoMatchingName) {
@@ -73,17 +73,19 @@ TEST(TfLiteExecutionTaskTest, NoMatchingName) {
 
   auto* sync = TfLiteSynchronizationCreate();
 
-  EXPECT_EQ(kTfLiteError, task.SetBufferHandle(kTfLiteIoInput, "xx", 42));
-  EXPECT_EQ(kTfLiteError, task.SetBufferHandle(kTfLiteIoOutput, "aa", 44));
-  EXPECT_EQ(kTfLiteError, task.SetSynchronization(kTfLiteIoInput, "xx", sync));
-  EXPECT_EQ(kTfLiteError, task.SetSynchronization(kTfLiteIoOutput, "aa", sync));
+  EXPECT_EQ(kTfLiteError, task.SetBufferHandle(kTfLiteIoTypeInput, "xx", 42));
+  EXPECT_EQ(kTfLiteError, task.SetBufferHandle(kTfLiteIoTypeOutput, "aa", 44));
+  EXPECT_EQ(kTfLiteError,
+            task.SetSynchronization(kTfLiteIoTypeInput, "xx", sync));
+  EXPECT_EQ(kTfLiteError,
+            task.SetSynchronization(kTfLiteIoTypeOutput, "aa", sync));
 
   EXPECT_EQ(kTfLiteNullBufferHandle,
-            task.GetBufferHandle(kTfLiteIoInput, "xx"));
+            task.GetBufferHandle(kTfLiteIoTypeInput, "xx"));
   EXPECT_EQ(kTfLiteNullBufferHandle,
-            task.GetBufferHandle(kTfLiteIoOutput, "aa"));
-  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoInput, "xx"));
-  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoOutput, "aa"));
+            task.GetBufferHandle(kTfLiteIoTypeOutput, "aa"));
+  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoTypeInput, "xx"));
+  EXPECT_EQ(nullptr, task.GetSynchronization(kTfLiteIoTypeOutput, "aa"));
 
   TfLiteSynchronizationDelete(sync);
 }
