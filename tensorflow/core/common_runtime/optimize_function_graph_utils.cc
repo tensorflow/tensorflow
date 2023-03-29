@@ -554,8 +554,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.debug_filename_prefix = function_name;
 
   if (cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
-    // Pass to the optimisation pass number of intra threads that are used to
-    // parallelise operations
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
     session_options.config.set_intra_op_parallelism_threads(
         cpu_device->tensorflow_cpu_worker_threads()->num_threads);
   }

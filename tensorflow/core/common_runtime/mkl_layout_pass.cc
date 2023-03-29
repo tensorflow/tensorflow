@@ -51,8 +51,8 @@ limitations under the License.
 namespace tensorflow {
 
 /// This table contains for each node name descriptors on which
-/// hardware  to check whether we should rewrite the operations
-/// to use MKL based on the parameters for heuristic
+/// hardware to check whether we should rewrite the operations
+/// to use oneDNN based on the parameters for heuristic.
 static const RewriteThreshold rewrite_thresholds[] = {
 #ifdef DNNL_AARCH64_USE_ACL
     {"Conv2D", 0x41, 0xd40, {0.9349, 22.603}},
@@ -252,7 +252,7 @@ static const RewriteThreshold rewrite_thresholds[] = {
 //
 class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
-  MklLayoutRewritePass() : num_intra_threads_(0) {
+  MklLayoutRewritePass() : num_intra_threads_(port::MaxParallelism()) {
     // NOTE: names are alphabetically sorted.
     csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
@@ -765,7 +765,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     wsinfo_.push_back(
         {csinfo_.max_pool3d, csinfo_.max_pool3d_grad, 0, 1, 1, 3});
 
-    // Rule for merging sigmoid and multiplication to swish
+    // Rule for merging sigmoid and multiplication to oneDNN swish.
     minfo_.push_back(
         {csinfo_.sigmoid, csinfo_.mul, csinfo_.swish, GetSigmoidAndMul});
     // Add a rule for merging nodes
@@ -836,7 +836,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure that carries the original rewrite info, but
   /// in this case it is using the function that can accept
   /// what is number of threads that will be used to run
-  /// the operation in parallel
+  /// the operation in parallel.
   typedef struct {
     RewriteInfo rinfo;
     std::function<bool(const Node*, const int)> rewrite_rule;
@@ -1027,10 +1027,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  private:
   /// Maintain info about nodes to rewrite
   std::vector<RewriteInfo> rinfo_;
-  /// Mantain info about nodes to rewrite with additional
+  /// Maintain info about nodes to rewrite with additional
   /// information that holds number of threads that should
-  /// be used to run kernel on so that we can decide
-  /// whether it is worth rewriting op to run with MKL
+  /// be used to parallelise the kernel so that we can decide
+  /// whether it is worth rewriting op to run with oneDNN.
   std::vector<RewriteInfoThreadCount> rinfothr_;
 
   /// Maintain info about nodes to add workspace edge
@@ -1045,7 +1045,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Maintain structure of constant strings
   static ConstStringsInfo csinfo_;
 
-  /// Number of threads used for intra-parallelism
+  /// Number of threads used for intra-parallelism.
   int num_intra_threads_;
 
  private:
@@ -1140,10 +1140,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                                   Node* m, Node* n);
 
   static Node* GetSigmoidAndMul(const Node* m) {
-    DCHECK(m);
     Node* n = nullptr;
 
-    if (m->type_string() == csinfo_.sigmoid) {
+    if (m && m->type_string() == csinfo_.sigmoid) {
       for (const Edge* e : m->out_edges()) {
         if (!e->IsControlEdge() && e->dst()->type_string() == csinfo_.mul &&
             e->dst_input() == 0) {
@@ -1868,11 +1867,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static double CalculateNodeMFlops(const Node* n) {
-    // Check if we can obtained dimensions for this node
+    // Check if we can obtained dimensions for this node.
     std::vector<const TensorShapeProto*> shape_attrs;
     if (!TryGetNodeAttr(n->attrs(), "_input_shapes", &shape_attrs)) {
       // We can't obtain shape so we will revert to default behaviour
-      // to rewrite node
+      // to rewrite node.
       return -1;
     }
 
@@ -1909,11 +1908,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static bool Conv2DRewrite(const Node* n, int threads) {
-    // Find out what are dimensions of the convolution
-    // If dimensions are small we will not rewrite node
-    // to use MKL operations as overhead to call into MKL
-    // data set up is higher then actual useful work we
-    // might end up doing
+    // Find out what are dimensions of the convolution,
+    // if dimensions are small we will not rewrite node
+    // to use oneDNN operations as overhead to call into oneDNN
+    // as data setup is higher then actual useful work we
+    // might end up doing.
     double total_mflops = CalculateNodeMFlops(n);
     double thr = FindRewriteThreshold(n, threads);
 
@@ -1921,8 +1920,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static bool FusedConv2DRewrite(const Node* n, int threads) {
-    // Decide whether it is worth rewriting it to MKL operation
-    // due to overheads as they will dominate for small shapes
+    // Decide whether it is worth rewriting it to oneDNN operation
+    // due to overheads as they will dominate for small shapes.
     if (!Conv2DRewrite(n, threads)) {
       return false;
     }
@@ -3150,20 +3149,23 @@ Node* MklLayoutRewritePass::CheckForNodeMerge(const Node* a) const {
 
 Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
                                                  Node* m, Node* n) {
-  CHECK_EQ(
-      (m->type_string() == csinfo_.sigmoid && n->type_string() == csinfo_.mul),
-      true);
+  if (!(m->type_string() == csinfo_.sigmoid &&
+        n->type_string() == csinfo_.mul)) {
+    return Status(absl::StatusCode::kCancelled,
+                  "Mul doesn't follow Sigmoid. "
+                  "Will skip node merge optimization");
+  }
 
   // Decide whether it is worth optimizing SigMoid+Mul to
-  // call to _MklSiwsh
+  // call to _MklSwish.
   double total_mflops = CalculateNodeMFlops(m);
   double thr = FindRewriteThreshold(m, num_intra_threads_);
 
   if (total_mflops != -1 && total_mflops < thr) {
-    // Do not merge and execute them as they are
-    // because overhead of going to MKL will dominate
-    // any benefits from accelerating compute
-    return Status(error::Code::CANCELLED,
+    // Do not merge and execute them as they are,
+    // because overheads of going to oneDNN will dominate
+    // any benefits from accelerating compute.
+    return Status(absl::StatusCode::kCancelled,
                   "Sigmoid and Mul operate on small shapes, "
                   "so there is no benefit in optimizing to Swish. "
                   "Will skip node merge optimization");
@@ -3186,14 +3188,25 @@ Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
   gtl::InlinedVector<std::pair<Node*, int>, 4> sigmoid_in(sigmoid_num);
   FillInputs(sigmoid, &sigmoid_control_edges, &sigmoid_in);
 
-  CHECK_EQ(sigmoid->in_edges().size(), 1);  // Sigmoid has 1 input
-  CHECK_EQ(mul->in_edges().size(), 2);      // Mul has 2 inputs
+  // Sigmoid has 1 input.
+  if (sigmoid->in_edges().size() != 1) {
+    return Status(absl::StatusCode::kCancelled,
+                  "Sigmoid must have only one input edge."
+                  "Will skip node merge optimization");
+  }
+  // Mul has 2 inputs.
+  if (mul->in_edges().size() != 2) {
+    return Status(absl::StatusCode::kCancelled,
+                  "Mul must have only two input edges."
+                  "Will skip node merge optimization");
+  }
+
   for (const Edge* e : mul->in_edges()) {
-    const int kFirstInputSlot = 0;  // this should be sigmoid
+    const int kFirstInputSlot = 0;  // This should be sigmoid.
     const int kSecondInputSlot =
-        1;  // this should be thae same input as in sigmoid
+        1;  // This should be the same input as in sigmoid.
     if (e->dst_input() == kFirstInputSlot && e->src() != sigmoid) {
-      return Status(error::Code::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Sigmoid doesn't feed to Mul. "
                     "Will skip node merge optimization");
     }
@@ -3201,7 +3214,7 @@ Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
     TF_CHECK_OK(sigmoid->input_edge(kFirstInputSlot, &kSigmoidInputEdge));
     if (e->dst_input() == kSecondInputSlot &&
         e->src() != kSigmoidInputEdge->src()) {
-      return Status(error::Code::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "Input to Sigmoid and Mul is not the same. "
                     "Will skip node merge optimization");
     }
@@ -3209,10 +3222,10 @@ Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
 
   NodeBuilder nb(mul->name(), csinfo_.swish);
   nb.Input(sigmoid_in[0].first, sigmoid_in[0].second);
-  nb.Attr("T", T_mul);  // copy type attribute
+  nb.Attr("T", T_mul);  // Copy type attribute.
   nb.Device(mul->def().device());
 
-  // Create new node
+  // Create new node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
 
@@ -3256,7 +3269,11 @@ Status MklLayoutRewritePass::MergeSigmoidWithMul(std::unique_ptr<Graph>* g,
       const int kMulOutputSlot = 0;
       auto new_edge =
           (*g)->AddEdge(new_node, kMulOutputSlot, e->dst(), e->dst_input());
-      DCHECK(new_edge);
+      if (!new_edge) {
+        return Status(absl::StatusCode::kCancelled,
+                      "Failed to create a new edge from new node to output."
+                      "Will skip node merge optimization");
+      }
     }
   }
 

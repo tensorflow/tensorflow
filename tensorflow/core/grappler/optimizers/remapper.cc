@@ -2736,7 +2736,7 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
   // When copying attributes check whether this convolution has
-  // attribute that describes the shapes on which it is working
+  // attribute that describes the shapes on which it is working.
   if (IsMKLEnabled()) {
     (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
   }
@@ -4409,7 +4409,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
     // Store dimensions so that they can be retrieved later in
-    // mkl_layout_rewrite_pass when deciding whether to rewrite node
+    // mkl_layout_rewrite_pass when deciding whether to rewrite node.
     if (IsConv2D(ctx.graph_view.graph()->node(i)) ||
         IsFusedBatchNorm(ctx.graph_view.graph()->node(i)) ||
         IsDepthwiseConv2dNative(ctx.graph_view.graph()->node(i)) ||

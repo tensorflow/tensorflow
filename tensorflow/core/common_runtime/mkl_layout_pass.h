@@ -32,8 +32,10 @@ struct RewriteThreshold {
   int cpu_model_num;
   // The model that is used to decide whether it is worth
   // accelerating operations using oneDNN is:
+  //
   // threshold = thread_synchronisation*thread_num + framework_tax
-  // which finds threshold when framework overhead and thread synchronisations
+  //
+  // This finds threshold when framework overhead and thread synchronisations
   // are amortized with amount of computation that has to be performed.
   // If we are below this threshold then we will not rewrite the operation to
   // to be run using oneDNN primitive.
