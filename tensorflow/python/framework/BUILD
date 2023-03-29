@@ -2417,6 +2417,7 @@ tf_py_test(
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:while_loop",
     ],
 )

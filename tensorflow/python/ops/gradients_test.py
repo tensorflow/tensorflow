@@ -50,6 +50,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
@@ -1030,7 +1031,7 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
     with context.graph_mode():
       init = constant_op.constant(100.0)
       var = variable_scope.variable(init, name="a/replica_1")
-      if isinstance(var, variables.RefVariable):
+      if isinstance(var, ref_variable.RefVariable):
         var._variable = array_ops.identity(var, name="a")
       else:
         var._handle = array_ops.identity(var, name="a")

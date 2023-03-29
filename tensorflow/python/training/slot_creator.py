@@ -40,6 +40,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -64,7 +65,7 @@ def _create_slot_var(primary,
   shape = shape if callable(val) else None
   if resource_variable_ops.is_resource_variable(primary):
     use_resource = True
-  elif isinstance(primary, variables.RefVariable):
+  elif isinstance(primary, ref_variable.RefVariable):
     use_resource = False
   else:
     use_resource = None

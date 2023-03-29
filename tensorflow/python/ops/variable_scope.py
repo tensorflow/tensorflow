@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
@@ -2780,7 +2781,7 @@ def default_variable_creator(next_creator=None, **kwargs):
         aggregation=aggregation,
         shape=shape)
   else:
-    return variables.RefVariable(
+    return ref_variable.RefVariable(
         initial_value=initial_value,
         trainable=trainable,
         collections=collections,

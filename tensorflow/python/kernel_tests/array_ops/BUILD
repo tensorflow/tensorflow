@@ -274,6 +274,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -292,6 +293,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:tensor_spec",
     ] + tf_additional_xla_deps_py(),
@@ -534,6 +536,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",

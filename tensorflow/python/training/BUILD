@@ -500,6 +500,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -1068,6 +1069,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
