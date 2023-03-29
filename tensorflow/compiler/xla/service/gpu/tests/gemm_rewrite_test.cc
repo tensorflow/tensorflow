@@ -4232,27 +4232,27 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
           )");
 }
 
-TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedShapes) {
-  // Test with shapes unsupported by cuBLAS LT when FP8 is used. cuBLAS LT with
-  // FP8 requires each non-batch dimension to be a multiple of 16.
+TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
+  // Test with types unsupported by cuBLAS LT when FP8 is used. cuBLAS LT with
+  // FP8 requires one of the operands to be F8E4M3FN.
   const char* hlo_text = R"(
     HloModule test
 
-    ENTRY unsupported_shapes {
-      x = f8e4m3fn[8,16] parameter(0)
-      y = f8e4m3fn[16,8] parameter(1)
-      ROOT out = f8e4m3fn[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ENTRY unsupported_types {
+      x = f8e5m2[16,16] parameter(0)
+      y = f8e5m2[16,16] parameter(1)
+      ROOT out = f8e5m2[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
           }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(GetCudaComputeCapability()),
                             absl::StrReplaceAll(R"(
-; CHECK-LABEL: ENTRY %unsupported_shapes (x: f8e4m3fn[8,16], y: f8e4m3fn[16,8]) -> f8e4m3fn[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P0_CONVERT:%[^ ]+]] = f16[8,16]{1,0} convert([[P0]])
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_CONVERT:%[^ ]+]] = f16[16,8]{1,0} convert([[P1]])
-; CHECK-NEXT:    [[DOT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_CONVERT]], [[P1_CONVERT]]),
+; CHECK-LABEL: ENTRY %unsupported_types (x: f8e5m2[16,16], y: f8e5m2[16,16]) -> f8e5m2[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e5m2[16,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P0_CONVERT:%[^ ]+]] = f16[16,16]{1,0} convert([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e5m2[16,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_CONVERT:%[^ ]+]] = f16[16,16]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0_CONVERT]], [[P1_CONVERT]]),
 ; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4269,7 +4269,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedShapes) {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[8,8]{1,0} convert([[DOT]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e5m2[16,16]{1,0} convert([[DOT]])
       )",
                                                 replacements_));
 }
