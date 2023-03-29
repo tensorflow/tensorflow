@@ -2690,6 +2690,139 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
   EXPECT_EQ(5, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
 }
 
+TEST_F(ModelTimingTest, OptimizeStageBased_ParallelInterleaveMaxParallelism) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 60000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          state_value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "ParallelInterleaveV4"
+        autotune: true
+        num_elements: 100
+        processing_time: 40000
+        bytes_produced: 10000
+        node_class: ASYNC_INTERLEAVE_MANY
+        inputs: 3
+        inputs: 4
+        inputs: 5
+        parameters: {
+          name: "parallelism"
+          value: 4
+          state_value: 4
+          min: 1
+          max: 20
+          tunable: true
+        }
+        parameters: { name: "cycle_length" value: 10 tunable: false }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "TensorSlice"
+        autotune: true
+        num_elements: 2
+        processing_time: 2
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+      }
+    }
+    nodes: {
+      key: 5
+      value: {
+        id: 5
+        name: "ParallelInterleaveV4"
+        autotune: true
+        num_elements: 100
+        processing_time: 4000
+        bytes_produced: 10000
+        node_class: ASYNC_INTERLEAVE_MANY
+        inputs: 6
+        inputs: 7
+        parameters: {
+          name: "parallelism"
+          value: 4
+          state_value: 4
+          min: 1
+          max: 20
+          tunable: true
+        }
+        parameters: { name: "cycle_length" value: 10 tunable: false }
+      }
+    }
+    nodes: {
+      key: 6
+      value: {
+        id: 6
+        name: "TensorSlice"
+        autotune: true
+        num_elements: 2
+        processing_time: 2
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    nodes: {
+      key: 7
+      value: {
+        id: 7
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+      }
+    }
+    output: 1
+  )pb");
+
+  CellReader<int64_t> cell_reader(
+      "/tensorflow/data/autotune_stopping_criteria");
+  CancellationManager cancellation_manager;
+  // Not enough RAM, the original `parallelism` should not change.
+  model_->AddExperiment("stage_based_autotune_v2");
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/10000,
+                   /*ram_budget=*/10000, /*model_input_time=*/60,
+                   &cancellation_manager);
+  EXPECT_EQ(10, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(20, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  EXPECT_EQ(20, GetNode(/*node_id=*/5)->parameter_value("parallelism"));
+}
+
 TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
   BuildModelFromProto(R"pb(
     nodes: {
