@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_expensive_invariant_code_motion.h"
 
+#include <iterator>
+#include <string>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -294,7 +297,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
       continue;
     }
 
-    if (!worth_hoisting_individually_(*instruction)) {
+    if (!worth_hoisting_individually_(instruction)) {
       continue;
     }
 
