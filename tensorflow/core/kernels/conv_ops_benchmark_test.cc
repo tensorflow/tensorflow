@@ -29,10 +29,8 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
+#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
-#define MKL_OP_LABEL mkl_op_registry::kMklNameChangeOpLabel
-#else
-#define MKL_OP_LABEL ""
 #endif  // INTEL_MKL
 
 namespace tensorflow {
@@ -97,18 +95,44 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
   Node* images = test::graph::Constant(graph, images_t, "images");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
 
+  graph->AddEdge(graph->source_node(), 0, images, 0);
+  graph->AddEdge(graph->source_node(), 1, filter, 0);
+
+  // Add shape sizes to images and filter.
+  AttrValue attr_input_shape;
+  TensorShapeProto* proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(batch);
+  proto->add_dim()->set_size(height);
+  proto->add_dim()->set_size(width);
+  proto->add_dim()->set_size(in_depth);
+  proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(filter_h);
+  proto->add_dim()->set_size(filter_w);
+  proto->add_dim()->set_size(in_depth);
+  proto->add_dim()->set_size(out_depth);
+
   Node* conv2d;
-  auto builder = IsMKLEnabled()
-                     ? NodeBuilder(graph->NewName("conv"), "_MklNativeConv2D")
-                           .Attr("_kernel", MKL_OP_LABEL)
-                     : NodeBuilder(graph->NewName("conv"), "Conv2D");
+  auto builder = NodeBuilder(graph->NewName("conv"), "Conv2D");
   TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("data_format", ToString(data_format))
+                  .Attr("_input_shapes", attr_input_shape)
                   .Finalize(graph, &conv2d));
+
+  int conv2d_node_id = conv2d->id();
+  if (IsMKLEnabled()) {
+    std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(graph);
+    RunMklLayoutRewritePass(ug);
+    // After we ran the pass conv2d node might be overwritten
+    // so we need to make sure that it is pointing to the one
+    // that exists
+    if (!graph->FindNodeId(conv2d_node_id)) {
+      conv2d = graph->FindNodeId(conv2d_node_id + 1);
+    }
+  }
 
   return {graph, conv2d};
 }
@@ -125,7 +149,7 @@ static Conv2DWithBiasGraph Conv2DWithBias(
   Node* conv2d = conv_graph.conv2d;
 
   Tensor bias_t = MakeRandomTensor<T>({out_depth});
-  Node* bias = test::graph::Constant(graph, bias_t, "bias");
+  Node* bias = test::graph::Constant(graph, bias_t, "bias_constant");
 
   Node* out;
   TF_CHECK_OK(NodeBuilder(graph->NewName("bias"), "BiasAdd")
@@ -243,31 +267,47 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
 
   Node* images = test::graph::Constant(graph, images_t, "images");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
+
+  graph->AddEdge(graph->source_node(), 0, images, 0);
+  graph->AddEdge(graph->source_node(), 1, filter, 0);
+
+  // Add shape sizes to images and filter.
+  AttrValue attr_input_shape;
+  TensorShapeProto* proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(batch);
+  proto->add_dim()->set_size(height);
+  proto->add_dim()->set_size(width);
+  proto->add_dim()->set_size(in_depth);
+  proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(filter_h);
+  proto->add_dim()->set_size(filter_w);
+  proto->add_dim()->set_size(in_depth);
+  proto->add_dim()->set_size(out_depth);
+
   Node* bias = test::graph::Constant(graph, bias_t, "bias");
 
   std::vector<NodeBuilder::NodeOut> args = {bias};
   std::vector<NodeBuilder::NodeOut> host_args = {};
 
   Node* conv;
-  auto builder =
-      NodeBuilder(graph->NewName("conv"),
-                  IsMKLEnabled() ? "_MklNativeFusedConv2D" : "_FusedConv2D")
-          .Input(images)
-          .Input(filter)
-          .Attr("num_args", 1)
-          .Input(args);
-
-  if (IsMKLEnabled()) {
-    builder.Attr("_kernel", MKL_OP_LABEL);
-  } else {
-    builder.Input(host_args);
-  }
+  auto builder = NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
+                     .Input(images)
+                     .Input(filter)
+                     .Attr("num_args", 1)
+                     .Attr("_input_shapes", attr_input_shape)
+                     .Input(args)
+                     .Input(host_args);
 
   TF_CHECK_OK(builder.Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("fused_ops", fused_ops)
                   .Finalize(graph, &conv));
+
+  if (IsMKLEnabled()) {
+    std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(graph);
+    RunMklLayoutRewritePass(ug);
+  }
 
   return graph;
 }
@@ -295,6 +335,23 @@ static Graph* FusedConv2DWithBatchNorm(
 
   Node* images = test::graph::Constant(graph, images_t, "images");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
+
+  graph->AddEdge(graph->source_node(), 0, images, 0);
+  graph->AddEdge(graph->source_node(), 1, filter, 0);
+
+  // Add shape sizes to images and filter.
+  AttrValue attr_input_shape;
+  TensorShapeProto* proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(batch);
+  proto->add_dim()->set_size(height);
+  proto->add_dim()->set_size(width);
+  proto->add_dim()->set_size(in_depth);
+  proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(filter_h);
+  proto->add_dim()->set_size(filter_w);
+  proto->add_dim()->set_size(in_depth);
+  proto->add_dim()->set_size(out_depth);
+
   Node* scale = test::graph::Constant(graph, scale_t, "scale");
   Node* offset = test::graph::Constant(graph, offset_t, "offset");
   Node* mean = test::graph::Constant(graph, mean_t, "mean");
@@ -304,25 +361,23 @@ static Graph* FusedConv2DWithBatchNorm(
   std::vector<NodeBuilder::NodeOut> host_args = {};
 
   Node* conv;
-  auto builder =
-      NodeBuilder(graph->NewName("conv"),
-                  IsMKLEnabled() ? "_MklNativeFusedConv2D" : "_FusedConv2D")
-          .Input(images)
-          .Input(filter)
-          .Attr("num_args", 4)
-          .Input(args);
-
-  if (IsMKLEnabled()) {
-    builder.Attr("_kernel", MKL_OP_LABEL);
-  } else {
-    builder.Input(host_args);
-  }
+  auto builder = NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
+                     .Input(images)
+                     .Input(filter)
+                     .Attr("num_args", 4)
+                     .Attr("_input_shapes", attr_input_shape)
+                     .Input(args) >.Input(host_args);
 
   TF_CHECK_OK(builder.Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("fused_ops", fused_ops)
                   .Finalize(graph, &conv));
+
+  if (IsMKLEnabled()) {
+    std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(graph);
+    RunMklLayoutRewritePass(ug);
+  }
 
   return graph;
 }
