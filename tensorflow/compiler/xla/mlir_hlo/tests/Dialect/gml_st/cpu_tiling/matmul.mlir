@@ -114,9 +114,11 @@ func.func @matmul_narrow_static(%lhs: tensor<2x16xf32>, %rhs: tensor<16x64xf32>,
 // CHECK-LABEL: @matmul_narrow_static
 
 // CHECK:         scf.for
-// CHECK:           scf.for
-// CHECK:             linalg.matmul
-// CHECK:             scf.yield {{.*}} : tensor<2x5xf32>
+// CHECK-NEXT:      vector.transfer_read
+// CHECK-NEXT:      scf.for
+// CHECK-COUNT-2:     vector.transfer_read
+// CHECK:             vector.contract
+// CHECK:             scf.yield {{.*}} : vector<2x5xf32>
 
 // PACKED-LABEL: @matmul_narrow_static
 
@@ -175,6 +177,9 @@ func.func @matvec_static(%lhs: tensor<1x16xf32>, %arg1: tensor<16x64xf32>,
 // CHECK-LABEL: @matvec_static
 
 // CHECK:         scf.for
-// CHECK:           scf.for
-// CHECK:             linalg.matmul
-// CHECK:             scf.yield {{.*}} : tensor<1x5xf32>
+// CHECK:           vector.transfer_read
+// CHECK-NEXT:      scf.for
+// CHECK-COUNT-2:     vector.transfer_read
+// CHECK:             vector.contract
+// CHECK:             scf.yield {{.*}} : vector<1x5xf32>
+// CHECK:           vector.transfer_write
