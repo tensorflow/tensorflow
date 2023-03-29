@@ -377,10 +377,12 @@ class HloComputation {
   // of the async done instruction so that can be accessed using that. If
   // present, `async_execution_thread` will be attached to the
   // async-start/update/done instructions as well as wrapped computations.
+  // If `replace` is true, replace instruction with the async done instruction.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
       absl::string_view async_execution_thread =
-          HloInstruction::kMainExecutionThread);
+          HloInstruction::kMainExecutionThread,
+      bool replace = true);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
