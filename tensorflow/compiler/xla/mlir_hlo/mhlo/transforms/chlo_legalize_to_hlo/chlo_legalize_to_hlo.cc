@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -553,7 +554,10 @@ Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
   Value betaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
                                                       llvm::ArrayRef(kBeta));
   Value xMulAlphaPoly = rewriter.create<mhlo::MulOp>(loc, x, alphaPoly);
-  return rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value erf = rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value lbErf = chlo::getConstantLike(rewriter, loc, -1.0, x);
+  Value ubErf = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  return rewriter.create<mhlo::ClampOp>(loc, erf.getType(), lbErf, erf, ubErf);
 }
 
 Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,

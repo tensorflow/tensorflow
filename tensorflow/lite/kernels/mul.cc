@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include <complex>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -124,7 +125,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      output->type == kTfLiteInt16) {
+      (output->quantization.type != kTfLiteNoQuantization &&
+       output->type == kTfLiteInt16)) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
@@ -176,6 +178,12 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
       } else {
         TF_LITE_MUL(optimized_ops, Mul, int32_t);
       }
+    }
+  } else if (output->type == kTfLiteUInt32) {
+    if (need_broadcast) {
+      TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, uint32_t);
+    } else {
+      TF_LITE_MUL(reference_ops, Mul, uint32_t);
     }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
@@ -234,6 +242,23 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
       } else {
         TF_LITE_MUL(optimized_ops, Mul, float);
       }
+    }
+  } else if (output->type == kTfLiteInt16) {
+    int16_t output_activation_min, output_activation_max;
+    CalculateActivationRange(params->activation, &output_activation_min,
+                             &output_activation_max);
+    SetActivationParams(output_activation_min, output_activation_max,
+                        &op_params);
+    if (need_broadcast) {
+      reference_ops::BroadcastMul4DSlow<int16_t, true>(
+          op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+          GetTensorShape(input2), GetTensorData<int16_t>(input2),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    } else {
+      reference_ops::Mul<int16_t>(
+          op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+          GetTensorShape(input2), GetTensorData<int16_t>(input2),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
     }
   } else if (output->type == kTfLiteInt64) {
     if (need_broadcast) {
@@ -362,8 +387,11 @@ template <KernelType kernel_type>
 TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, OpData* data,
                       TfLiteMulParams* params, const TfLiteTensor* input1,
                       const TfLiteTensor* input2, TfLiteTensor* output) {
+  bool output_quantized = output->quantization.type != kTfLiteNoQuantization;
   if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
-      output->type == kTfLiteInt64 || output->type == kTfLiteComplex64) {
+      output->type == kTfLiteInt64 || output->type == kTfLiteComplex64 ||
+      (!output_quantized && output->type == kTfLiteInt16) ||
+      output->type == kTfLiteUInt32) {
     EvalMul<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {

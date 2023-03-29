@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -282,6 +282,11 @@ bool IsI32Type(Type element_type) {
   return element_type.isInteger(32) && !element_type.isUnsignedInteger();
 }
 
+// Return true when the given element_type is UI32.
+bool IsUI32Type(Type element_type) {
+  return element_type.isInteger(32) && element_type.isUnsignedInteger();
+}
+
 // Return true when the given element_type is I64.
 bool IsI64Type(Type element_type) {
   return element_type.isInteger(64) && !element_type.isUnsignedInteger();
@@ -389,8 +394,9 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
 
   // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsI64Type(element_type) ||
-      IsQI16Type(element_type) || element_type.isa<ComplexType>() ||
+  if (IsI32Type(element_type) || IsUI32Type(element_type) ||
+      IsI64Type(element_type) || IsQI16Type(element_type) ||
+      IsI16Type(element_type) || element_type.isa<ComplexType>() ||
       element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
@@ -3328,9 +3334,12 @@ namespace {
 // The function recursively traverses the dimensions of the output tensor in
 // a row-major order and writes the value in the output tensor into
 // `new_values`.
-void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
-                        ArrayRef<int64_t> output_shape, int num_dimensions,
-                        int output_axis, std::vector<uint64_t>* input_indices,
+void ComputePermutation(mlir::detail::ElementsAttrRange<
+                            mlir::detail::ElementsAttrIterator<mlir::Attribute>>
+                            input_tensor_values,
+                        ArrayRef<int32_t> perm, ArrayRef<int64_t> output_shape,
+                        const int num_dimensions, const int output_axis,
+                        std::vector<uint64_t>* input_indices,
                         std::vector<Attribute>* new_values) {
   // Refer to the implementation of `Transpose` function in
   // tensorflow/lite/kernels/internal/reference/reference_ops.h
@@ -3343,11 +3352,11 @@ void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
     // recurse into the next axis.
     const bool is_last_axis = output_axis == num_dimensions - 1;
     if (is_last_axis) {
-      new_values->push_back(
-          input_tensor.getValues<Attribute>()[*input_indices]);
+      new_values->push_back(input_tensor_values[*input_indices]);
     } else {
-      ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
-                         output_axis + 1, input_indices, new_values);
+      ComputePermutation(input_tensor_values, perm, output_shape,
+                         num_dimensions, output_axis + 1, input_indices,
+                         new_values);
     }
   }
 }
@@ -3387,7 +3396,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   std::vector<Attribute> new_values;
   new_values.reserve(input_tensor.getType().getNumElements());
   std::vector<uint64_t> input_indices(num_dimensions);
-  ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+  auto input_tensor_values = input_tensor.getValues<Attribute>();
+  ComputePermutation(input_tensor_values, perm, output_shape, num_dimensions,
                      /*output_axis=*/0, &input_indices, &new_values);
   auto result_type = tensorflow::GetTypeFromTFTensorShape(
       output_shape, output_type.getElementType());
@@ -4087,6 +4097,87 @@ Attribute ConstBytesAttr::parse(AsmParser& parser, Type type) {
 void ConstBytesAttr::print(mlir::AsmPrinter& printer) const {
   StringRef bytes_str = getValue();
   printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
+}
+
+//===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+int64_t GetTypeBitWidth(mlir::Type type) {
+  if (auto quant_type = type.dyn_cast<mlir::quant::QuantizedType>()) {
+    return quant_type.getStorageTypeIntegralWidth();
+  }
+  if (type.isIntOrFloat()) {
+    return std::max(type.getIntOrFloatBitWidth(),
+                    static_cast<unsigned>(CHAR_BIT));
+  }
+  return -1;
+}
+
+LogicalResult BitcastOp::verify() {
+  BitcastOp op = *this;
+  auto input_type = op.getInput().getType().cast<ShapedType>();
+  auto output_type = op.getOutput().getType().cast<ShapedType>();
+
+  auto input_element_type = input_type.getElementType();
+  auto output_element_type = output_type.getElementType();
+
+  if (input_type.hasStaticShape()) {
+    const int input_element_type_bitwidth = GetTypeBitWidth(input_element_type);
+    const int output_element_type_bitwidth =
+        GetTypeBitWidth(output_element_type);
+
+    if (input_element_type_bitwidth < 0 || output_element_type_bitwidth < 0) {
+      // Only supports quantized type, int and float types.
+      return op.emitOpError("Unsupported element type.");
+    }
+
+    if (input_element_type_bitwidth < output_element_type_bitwidth) {
+      if (output_element_type_bitwidth % input_element_type_bitwidth != 0) {
+        return op.emitOpError(
+            "output element bitwidth is not multiple of input element "
+            "bitwidth");
+      }
+      if (input_type.getShape().empty() ||
+          input_type.getShape().back() % (output_element_type_bitwidth /
+                                          input_element_type_bitwidth) !=
+              0) {
+        return op.emitOpError(
+            "input rightmost dimension size is not multiple of the divisor");
+      }
+    } else if (input_element_type_bitwidth > output_element_type_bitwidth) {
+      if (input_element_type_bitwidth % output_element_type_bitwidth != 0) {
+        return op.emitOpError(
+            "input element bitwidth is not multiple of output element "
+            "bitwidth");
+      }
+    }
+  }
+  return success();
+}
+
+OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
+  if (getType() == getInput().getType()) return getInput();
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicUpdateSliceOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult DynamicUpdateSliceOp::fold(FoldAdaptor) {
+  // Check if update replaces the whole tensor, meaning operand and update has
+  // the same shape and all start indices are zero.
+  DenseIntElementsAttr indices_attr;
+  if (matchPattern(getStartIndices(), m_Constant(&indices_attr)) &&
+      indices_attr.isSplat() && indices_attr.getSplatValue<int>() == 0 &&
+      getOperand().getType().hasStaticShape() &&
+      getUpdate().getType().hasStaticShape() &&
+      getOperand().getType() == getUpdate().getType()) {
+    return getUpdate();
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

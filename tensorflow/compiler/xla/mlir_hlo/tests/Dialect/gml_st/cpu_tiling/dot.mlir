@@ -1,5 +1,7 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:   --gml-st-cpu-tiling-pipeline=matmul-tile-sizes=4,5,6 | FileCheck %s
+// RUN:   --gml-st-cpu-tiling-pipeline="matmul-tile-sizes=4,5,6 \
+// RUN:                                 vectorization-size-threshold=1" | \
+// RUN: FileCheck %s
 
 func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
                   %output: tensor<33xf32>) -> tensor<33xf32> {
@@ -18,7 +20,7 @@ func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C32]] step %[[C4]]
 // CHECK:           scf.for {{.*}} %[[C0]] to %[[C12]] step %[[C6]]
 // CHECK:             vector.contract {{.*}} vector<4x6xf32>
-// CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<4xf32>
+// CHECK-NEXT:        scf.yield %{{.*}} : vector<4xf32>
 // CHECK:           vector.contract
 // CHECK:           vector.transfer_write
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C17]] step %[[C6]]
@@ -43,7 +45,7 @@ func.func @vecmat(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C30]] step %[[C5]]
 // CHECK:           scf.for {{.*}} %[[C0]] to %[[C12]] step %[[C6]]
 // CHECK:             vector.contract {{.*}} vector<6x5xf32>
-// CHECK-NEXT:        scf.yield %{{.*}} : {{.*}}, vector<5xf32>
+// CHECK-NEXT:        scf.yield %{{.*}} : vector<5xf32>
 // CHECK:           vector.contract
 // CHECK:           vector.transfer_write
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C17]] step %[[C6]]
@@ -65,7 +67,7 @@ func.func @dot(%lhs: tensor<19xf32>, %rhs: tensor<19xf32>,
 // CHECK:         scf.for {{.*}} %[[C0]] to %[[C18]] step %[[C6]]
 // CHECK:           vector.contract {{.*}} vector<6xf32>
 // CHECK-NEXT:      vector.broadcast
-// CHECK-NEXT:      scf.yield %{{.*}} : {{.*}}, vector<f32>
+// CHECK-NEXT:      scf.yield %{{.*}} : vector<f32>
 // CHECK:         arith.mulf
 // CHECK:         arith.addf
 

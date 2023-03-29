@@ -1002,7 +1002,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*matmul.*',
@@ -1018,17 +1018,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
         # Check the forward and backward function has the correct attributes.
         self.assertEqual(
-            functions[1].definition.attr['backward_function_name'].s,
+            functions[1].cached_definition.attr['backward_function_name'].s,
             functions[2].name)
         self.assertEqual(
-            functions[2].definition.attr['forward_function_name'].s,
+            functions[2].cached_definition.attr['forward_function_name'].s,
             functions[1].name)
 
         self.assertEqual(
-            functions[4].definition.attr['backward_function_name'].s,
+            functions[4].cached_definition.attr['backward_function_name'].s,
             functions[5].name)
         self.assertEqual(
-            functions[5].definition.attr['forward_function_name'].s,
+            functions[5].cached_definition.attr['forward_function_name'].s,
             functions[4].name)
 
         sq = defun_matmul(t, t)
@@ -1041,7 +1041,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         functions = list(graph._functions.values())
         for i in range(len(functions)):
           self.assertEqual(captured_function_names[i],
-                           functions[i].definition.signature.name)
+                           functions[i].cached_definition.signature.name)
 
   def testRegisterConcreteFunction(self):
 
@@ -1075,7 +1075,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*py_composite.*',

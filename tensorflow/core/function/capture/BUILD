@@ -1,4 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -15,7 +16,12 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:inspect_utils",
+        "//tensorflow/python/autograph/pyct:naming",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
     ],
 )
@@ -50,7 +56,7 @@ py_strict_test(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "capture_container",
     srcs = [
         "capture_container.py",
@@ -59,12 +65,9 @@ py_library(
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:object_identity",
     ],
 )
 
@@ -74,15 +77,11 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":capture_container",
-        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

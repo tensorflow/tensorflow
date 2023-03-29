@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -202,7 +203,7 @@ LogicalResult fuseTensorReshape(PatternRewriter& rewriter,
       "each reassociation indices");
   for (const auto& [enumIdx, indices] : llvm::enumerate(reassociation)) {
     auto findIt =
-        llvm::find_if(indices, [&](int64_t idx) { return shape[idx] != -1; });
+        llvm::find_if(indices, [&](int64_t idx) { return shape[idx] != 1; });
     // No non-unit dimension, which means the source shape already has some
     // unit-dimensions. The default values for offset/size/stride (0/1/1) should
     // be usable. Skip updating offset/size/stride for this dimension.
@@ -251,6 +252,12 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     // Filter candidates that we don't want to fuse.
     if (filterFn && !filterFn(fusionCandidate)) return;
 
+    // `linalg.fill` after tiling mostly becomes a scalar or a vector constant.
+    // It is beneficial to fuse it.
+    if (isa<linalg::FillOp>(fusionCandidate)) {
+      fusionCandidates.insert(fusionCandidate);
+      return;
+    }
     // Check that the candidate doesn't have users that will block fusion.
     if (!llvm::all_of(fusionCandidate->getUsers(), [](Operation* op) {
           // Fusion candidates can only be fused into tensor.extract_slice or
@@ -260,9 +267,9 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
                  isa<tensor::DimOp>(op) ||
                  // Trivially dead ops will be removed.
                  isOpTriviallyDead(op);
-        }))
+        })) {
       return;
-
+    }
     fusionCandidates.insert(fusionCandidate);
   });
 
@@ -279,9 +286,13 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
     reifyDimOpsUsers(rewriter, fusionCandidate);
 
     // After the previous steps, extractSliceOp should be only one user of the
-    // fusion candidate. Otherwise this candidate should not be fused.
+    // fusion candidate. Otherwise this candidate should not be fused. We always
+    // want to fuse linalg.fill.
     auto fusionCandidateUsers = llvm::to_vector(fusionCandidate->getUsers());
-    if (fusionCandidateUsers.size() != 1) continue;
+    if (fusionCandidateUsers.size() != 1 &&
+        !isa<linalg::FillOp>(fusionCandidate)) {
+      continue;
+    }
 
     Operation* candidateUser = fusionCandidateUsers.front();
 
@@ -311,7 +322,9 @@ LogicalResult fuseGreedilyOneOpIntoBlock(
         }
         continue;
       }
-      if (succeeded(fuse(rewriter, extractSliceOp))) {
+      auto fusedOp = fuse(rewriter, extractSliceOp);
+      if (succeeded(fusedOp)) {
+        setLabel(*fusedOp, kTransformedLabel);
         return success();
       }
       continue;
@@ -376,6 +389,7 @@ void fuseFillOpsIntoForallOp(PatternRewriter& rewriter,
                     {fillOp.value(), regionOutputArg}));
 
     output.set(fillOp.output());
+    setLabel(clonedFill, kTransformedLabel);
 
     SmallVector<tensor::ExtractSliceOp> sliceOps;
     regionOutputArg.replaceUsesWithIf(
@@ -473,41 +487,40 @@ void fuseGreedily(PatternRewriter& rewriter, Block& block,
     ;
 }
 
-FusionCluster findMapFusionCluster(Operation* op) {
-  // Find the root operation in the chain of elementwise ops. Current approach
-  // doesn't work well if maps don't form a chain.
+// Cluster producers and consumers around the root op.
+FusionCluster getFusionCluster(
+    Operation* op, llvm::function_ref<bool(Operation*)> producerFilterFn,
+    llvm::function_ref<bool(Operation*)> consumerFilterFn) {
+  // Find a chain of users and use the last one as a root of cluster.
+  SetVector<Operation*> resultOps;
+
   Operation* rootOp = op;
   while (true) {
     auto users = llvm::to_vector(rootOp->getUsers());
 
     if (users.size() != 1) break;
-    if (!isa<linalg::MapOp>(users[0])) break;
+
+    if (!consumerFilterFn(users[0])) break;
+    resultOps.insert(rootOp);
 
     rootOp = users[0];
   }
 
-  // Run a graph search to find all linalg.map and that can be fused in
-  // the root op.
-  SetVector<Operation*> resultOps;
-  SmallVector<Operation*> remainingProducers{rootOp};
+  // Run DFS to find all ops that satisfy producerFilterFn.
+  SmallVector<Operation*> remainingProducers;
+  for (Value operand : op->getOperands())
+    remainingProducers.push_back(operand.getDefiningOp());
 
   while (!remainingProducers.empty()) {
     Operation* curOp = remainingProducers.pop_back_val();
-    if (!curOp) continue;
-
-    if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
+    if (!curOp || resultOps.contains(curOp)) continue;
+    if (curOp == op || producerFilterFn(curOp)) {
       resultOps.insert(curOp);
-      for (auto* operand : mapOp.getDpsInputOperands())
-        remainingProducers.push_back(operand->get().getDefiningOp());
-    } else if (curOp->getName() == op->getName()) {
-      for (auto* u : curOp->getUsers()) {
-        // Do not fuse curOp that is used by another op of the same type.
-        if (u->getName() == op->getName()) continue;
-      }
-      resultOps.insert(curOp);
+      for (Value operand : curOp->getOperands())
+        remainingProducers.push_back(operand.getDefiningOp());
     }
   }
-  return {resultOps, rootOp};
+  return {resultOps, rootOp, {}};
 }
 
 FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
@@ -516,13 +529,13 @@ FailureOr<GMLSTTilingResult> tileUsingSCFForallOpAndFuseGreedily(
   auto tilingResult =
       tileUsingSCFForallOp(rewriter, cast<TilingInterface>(op), opts);
   if (failed(tilingResult)) return failure();
-  rewriter.replaceOp(op, tilingResult->loop->getResults());
 
   for (Operation* tiledOp : tilingResult->tiledOps)
     setLabel(tiledOp, kTransformedLabel);
 
   // If tiling created an `scf.forall` loop, we fuse.
   if (tilingResult->loop != nullptr) {
+    rewriter.replaceOp(op, tilingResult->loop->getResults());
     // Fuse ops into the loop.
     fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
                  fuseFilterFn);

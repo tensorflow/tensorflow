@@ -755,6 +755,11 @@ class PjRtClient {
   // Defragment device memory.
   virtual Status Defragment() = 0;
 
+  // If false, this client does not support send/recv host callbacks, and
+  // callers should not set the `send_callbacks` and `recv_callbacks` arguments
+  // in ExecuteOptions.
+  virtual bool SupportsSendRecvCallbacks() const { return false; }
+
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
   virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
@@ -1088,6 +1093,9 @@ class ExecuteContext {
 };
 
 struct PjRtTransferMetadata {
+  // May be invalid if
+  // ExecuteOptions::use_major_to_minor_data_layout_for_callbacks is true for
+  // this execution.
   Shape device_shape;
 };
 
@@ -1158,6 +1166,15 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
+
+  // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
+  // recv functions should pass major-to-minor chunks to
+  // CopyToDeviceStream::AddChunk.
+  //
+  // If false, send callbacks are passed PjRtChunks in the on-device layout
+  // specified in the PjRtTransferMetadata, and recv functions should similarly
+  // pass device-layout chunks to CopyToDeviceStream::AddChunk.
+  bool use_major_to_minor_data_layout_for_callbacks = false;
 
   // The `execution_mode` decides whether the execution will be invoked in the
   // caller thread or launched to a separate thread. By default, the

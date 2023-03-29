@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -70,7 +72,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
   absl::Span<const std::string> local_devices = target_mesh.local_devices();
   const int num_local_devices = local_devices.size();
 
-  std::vector<parallel_device::TensorHandlePtr> components;
+  std::vector<TensorHandlePtr> components;
   components.reserve(num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
     // Create tensor copies to each local devices specifie by `target_mesh`.
@@ -278,6 +280,16 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 
 char TensorWithLayoutTf::ID = 0;
 
+TF_DataType TensorWithLayoutTf::dtype() const {
+  if (dtype_.has_value()) {
+    return dtype_.value();
+  }
+  if (single_tensor_) {
+    return TFE_TensorHandleDataType(single_tensor_.get());
+  }
+  return tensor_->dtype();
+}
+
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
@@ -353,8 +365,8 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
-    parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
-    const Layout& layout, TF_Status* status) {
+    TensorHandlePtr single_tensor, const Mesh& mesh, const Layout& layout,
+    TF_Status* status) {
   if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "Input mesh or layout is not for single device.");
@@ -380,7 +392,10 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
 std::string TensorWithLayoutTf::SummarizeValue() const {
   std::string value_summary;
   Status status;
-  if (layout().IsFullyReplicated()) {
+  if (layout_.IsSingleDevice()) {
+    status =
+        tensorflow::unwrap(single_tensor_.get())->SummarizeValue(value_summary);
+  } else if (layout_.IsFullyReplicated()) {
     status =
         tensorflow::unwrap(tensor_->tensor(0))->SummarizeValue(value_summary);
   } else {
@@ -395,7 +410,8 @@ std::string TensorWithLayoutTf::SummarizeValue() const {
 }
 
 std::string TensorWithLayoutTf::DebugString() const {
-  auto dtype = static_cast<DataType>(tensor_->dtype());
+  TF_DataType tf_dtype = dtype();
+  auto dtype = static_cast<DataType>(tf_dtype);
 
   const auto& shape_vector = global_shape();
   return absl::StrCat("DTensor(", SummarizeValue(),
@@ -547,7 +563,7 @@ TF_DataType SparseTensorWithLayout::dtype() const {
 }
 
 TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
-  int num_sparse_tensors = num_tensors() / 3;
+  int num_sparse_tensors = num_tensors() / kSparseTensorNum;
   if (index < num_sparse_tensors) {
     return indices_->tensor(index);
   } else if (index < 2 * num_sparse_tensors) {
@@ -1043,7 +1059,6 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
                    status.error_message().c_str());
-      // TODO(b/256016071): Try finding a way to append source locations.
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           status.error_message());

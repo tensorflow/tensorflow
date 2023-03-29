@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
@@ -94,11 +95,6 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (hasLabel(reduceOp, kTransformedLabel)) {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
-    }
-
-    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          reduceOp, "has already been tiled by another pass.");
     }
 
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
@@ -277,10 +273,13 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (reduceOp.getDimensions().size() != 1) return failure();
     int64_t reductionDim = reduceOp.getDimensions()[0];
 
-    if (reduceOp->getParentOfType<scf::ForallOp>()) return failure();
     if (hasLabel(reduceOp, kTransformedLabel)) {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
+    }
+    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
+      return rewriter.notifyMatchFailure(
+          reduceOp, "has already been tiled by another pass.");
     }
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/2)))
       return failure();
@@ -289,10 +288,14 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
                  linalg::TransposeOp, tensor::CastOp>(op);
     };
+    auto consumerFilterFn = [](Operation *op) {
+      return isa<linalg::MapOp, thlo::ReverseOp>(op);
+    };
     auto fusionClusterFn = [&](Operation *op) {
       return producerFilterFn(op) || isa<linalg::ReduceOp>(op);
     };
-    auto cluster = getFusionCluster(reduceOp, producerFilterFn);
+    auto cluster =
+        getFusionCluster(reduceOp, producerFilterFn, consumerFilterFn);
     auto fusionCluster = cluster.operations;
     auto *tilingRoot = cluster.root;
 
@@ -357,46 +360,6 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
   }
 
  private:
-  // Find a cluster of operations that can be tiled and fused together around
-  // the root op.
-  FusionCluster getFusionCluster(
-      linalg::ReduceOp reduceOp,
-      llvm::function_ref<bool(Operation *)> filterFn) const {
-    // Find a chain of MapOp users and use the last one as a root of cluster.
-    SetVector<Operation *> resultOps;
-    Operation *rootOp = reduceOp.getOperation();
-
-    while (true) {
-      auto users = llvm::to_vector(rootOp->getUsers());
-
-      if (users.size() != 1) break;
-      if (!isa<linalg::MapOp, thlo::ReverseOp>(users[0])) break;
-      resultOps.insert(rootOp);
-
-      rootOp = users[0];
-    }
-
-    // Run DFS to find all MapOps, TransposeOps, BroadcastOps that can be
-    // fused in the root op.
-    SmallVector<Operation *> remainingProducers;
-    remainingProducers.reserve(reduceOp.getDpsInputOperands().size());
-    resultOps.insert(reduceOp.getOperation());
-    for (Value operand : reduceOp.getOperands())
-      remainingProducers.push_back(operand.getDefiningOp());
-
-    while (!remainingProducers.empty()) {
-      Operation *curOp = remainingProducers.pop_back_val();
-      if (!curOp || resultOps.contains(curOp)) continue;
-      auto linalgOp = dyn_cast<linalg::LinalgOp>(curOp);
-      if (linalgOp && !isa<linalg::ReduceOp>(curOp) && filterFn(curOp)) {
-        resultOps.insert(curOp);
-        for (Value operand : reduceOp.getOperands())
-          remainingProducers.push_back(operand.getDefiningOp());
-      }
-    }
-    return {resultOps, rootOp};
-  }
-
   LogicalResult tileAndPeelReductionDim(
       PatternRewriter &rewriter, linalg::ReduceOp reduceOp,
       int64_t reductionDim,
@@ -480,16 +443,8 @@ struct TransformReduceForCpuPass
     RewritePatternSet patterns(ctx);
     patterns.add<Reduce1DTransformPattern>(ctx, vectorSize, tileSize1D);
     patterns.add<Reduce2DTransformPattern>(ctx, tileSizes2D[0], tileSizes2D[1]);
-    populateCollapseForallOpDimensionsPattern(patterns);
-
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
-
-    // Ensure we drop the marker in the end.
-    f.walk([](linalg::ReduceOp reduceOp) {
-      removeLabel(reduceOp, kTransformedLabel);
-    });
   }
 };
 

@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -46,6 +48,15 @@ class PjRtDeviceTopology {
 
   // If non-null, overrides the compiler for this topology.
   virtual std::optional<PjRtCompiler*> compiler() const { return std::nullopt; }
+
+  // If not-null, returns vendor specific attributes about each device. For
+  // example, the model number of a GPU, or the mesh coordinates of a TPU
+  // device.
+  virtual std::optional<
+      std::vector<absl::flat_hash_map<std::string, PjRtDeviceAttribute>>>
+  DeviceAttributes() const {
+    return std::nullopt;
+  }
 };
 
 // Abstract interface that all registered compilers must implement.
@@ -76,7 +87,7 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // registered for the platform using PjRtRegisterCompiler. The returned
 // PjRtExecutable must be loaded by a compatible client before execution.
 //
-// The actual compiler used may be overriden by Topology::compiler().
+// The actual compiler used may be overridden by Topology::compiler().
 //
 // Returns error::NotFound if a compiler has not been registered for the
 // platform. Forwards errors returned from the registered compiler in case of a

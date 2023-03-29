@@ -40,8 +40,8 @@ TEST(DeathStatus, CheckOK) {
 
 TEST(Status, Set) {
   Status status;
-  status = Status(error::CANCELLED, "Error message");
-  EXPECT_EQ(status.code(), error::CANCELLED);
+  status = Status(absl::StatusCode::kCancelled, "Error message");
+  EXPECT_EQ(status.code(), absl::StatusCode::kCancelled);
   EXPECT_EQ(status.error_message(), "Error message");
 }
 

@@ -355,7 +355,11 @@ py_library(
         "//tensorflow/python/autograph/converters:control_flow",
         "//tensorflow/python/autograph/converters:return_statements",
         "//tensorflow/python/autograph/impl:api",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:cfg",
+        "//tensorflow/python/autograph/pyct:qual_names",
+        "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/autograph/pyct:transpiler",
         "//tensorflow/python/autograph/pyct/static_analysis:activity",
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
@@ -392,6 +396,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/autograph/pyct:transpiler",
     ],
 )
 

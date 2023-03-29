@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -22,6 +27,7 @@ limitations under the License.
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 using ::testing::Eq;
+using ::testing::HasSubstr;
 
 namespace xla {
 namespace {
@@ -348,5 +354,19 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   EXPECT_THAT(all_to_all.get(), op::ReplicaGroups({{0, 2}, {1, 3}}));
 }
 
+TEST_F(HloMatchersTest, SourceTargetPairsMatcher) {
+  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "param");
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
+      {0, 1}, {2, 3}, {1, 2}};
+  std::unique_ptr<HloInstruction> cp = HloInstruction::CreateCollectivePermute(
+      shape, p0.get(), source_target_pairs, std::nullopt);
+  EXPECT_THAT(Explain(p0.get(), op::SourceTargetPairs({{0, 1}})),
+              HasSubstr("not a collective permute"));
+  EXPECT_THAT(Explain(cp.get(), op::SourceTargetPairs({{0, 1}, {2, 3}})),
+              HasSubstr("source_target_pairs (expected: {{0,1},{2,3}}"));
+  EXPECT_THAT(cp.get(), op::SourceTargetPairs({{0, 1}, {2, 3}, {1, 2}}));
+}
 }  // namespace
 }  // namespace xla

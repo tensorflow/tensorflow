@@ -2360,8 +2360,8 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )

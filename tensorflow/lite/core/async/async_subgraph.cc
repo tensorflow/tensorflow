@@ -28,32 +28,58 @@ limitations under the License.
 namespace tflite {
 namespace async {
 
+namespace {
+
+TfLiteAsyncKernel* GetAsyncKernel(TfLiteContext* context,
+                                  const TfLiteRegistration& op_reg,
+                                  TfLiteNode& node) {
+  if (op_reg.registration_external &&
+      op_reg.registration_external->async_kernel) {
+    return op_reg.registration_external->async_kernel(
+        // The casts here are only safe because this code is part of TFLite
+        // runtime. Applications should not rely on TfLiteContext / TfLiteNode
+        // being equivalent to TfLiteOpaqueContext / TfLiteOpaqueNode.
+        reinterpret_cast<TfLiteOpaqueContext*>(context),
+        reinterpret_cast<TfLiteOpaqueNode*>(&node));
+  }
+  if (op_reg.async_kernel) {
+    return op_reg.async_kernel(context, &node);
+  }
+  return nullptr;
+}
+
+}  // namespace
+
 Subgraph* AsyncSubgraph::subgraph() const { return subgraph_; }
 
 TfLiteContext* AsyncSubgraph::context() const { return subgraph_->context(); }
 
 TfLiteOpaqueContext* AsyncSubgraph::opaque_context() const {
+  // The casts here are only safe because this code is part of TFLite
+  // runtime. Applications should not rely on TfLiteContext
+  // being equivalent to TfLiteOpaqueContext.
   return reinterpret_cast<TfLiteOpaqueContext*>(context());
 }
 
-TfLiteAsyncKernel* AsyncSubgraph::async_kernel() const {
-  if (async_kernel_ == nullptr) {
-    auto* node = reinterpret_cast<TfLiteNode*>(opaque_node_);
-    async_kernel_ = reinterpret_cast<TfLiteAsyncKernel*>(node->user_data);
-  }
-  return async_kernel_;
-}
+TfLiteAsyncKernel* AsyncSubgraph::async_kernel() const { return async_kernel_; }
 
 AsyncSubgraph::AsyncSubgraph(Subgraph* subgraph) : subgraph_(subgraph) {
-  // Currently we only support one delegate and fully delegated subgph.
+  // Currently we only support one delegate and fully delegated subgraph.
   if (!IsFullyDelegated()) {
     subgraph->ReportError("Model is not fully delegated by 1 backend.");
     return;
   }
-  // TODO(b/191883048): Add/Check delegate flag to indicate kernel support.
-  const TfLiteNode& node =
-      subgraph->nodes_and_registration()[subgraph_->execution_plan()[0]].first;
-  async_kernel_ = reinterpret_cast<TfLiteAsyncKernel*>(node.user_data);
+
+  // Ensured by `IsFullyDelegated`, there's only 1 node in execution plan.
+  auto node_index = subgraph_->execution_plan()[0];
+  TfLiteNode& node = subgraph_->nodes_and_registration_[node_index].first;
+  const TfLiteRegistration& registration =
+      subgraph_->nodes_and_registration_[node_index].second;
+  async_kernel_ = GetAsyncKernel(context(), registration, node);
+  if (!async_kernel_) {
+    subgraph->ReportError("Backend does not support asynchronous execution.");
+    return;
+  }
   // TODO(b/191883048): Add AsyncSubgraph as friend class of Subgraph and
   // remove the const cast.
   opaque_node_ =

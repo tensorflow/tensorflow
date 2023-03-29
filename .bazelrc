@@ -184,6 +184,10 @@ build:android_x86_64 --config=android
 build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
 
+# Build everything statically for Android since all static libs are later
+# bundled together into a single .so for deployment.
+build:android --dynamic_mode=off
+
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
 

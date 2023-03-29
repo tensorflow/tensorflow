@@ -366,9 +366,6 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   DUMP_OP_CREATION_STACKTRACES(function_name, "op_stacktraces", graph.get());
 
-  // Dump the initial graph.
-  DUMP_GRAPH(function_name, "initial", graph.get());
-
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
   FunctionLibraryDefinition reachable_lib_def =
@@ -377,6 +374,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   if (options.graph_collector != nullptr) {
     options.graph_collector->CollectRawGraph(graph_def);
   }
+
+  // Dump the initial graph.
+  DUMP_GRAPH(function_name, "initial", graph.get(), &reachable_lib_def);
 
   // Mark and assign device for each node in the graph to be compiled by
   // specified device.
@@ -454,7 +454,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.debug_filename_prefix = "pflr_optmz_";
   env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
-  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get());
+  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get(),
+             &reachable_lib_def);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -462,21 +463,23 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  DUMP_GRAPH(function_name, "before_placer", graph.get());
+  DUMP_GRAPH(function_name, "before_placer", graph.get(), &reachable_lib_def);
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
-  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get());
+  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get(),
+             &reachable_lib_def);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
 
   if (options.optimize_graph_fn) {
-    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get());
+    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get(),
+               &reachable_lib_def);
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
         &reachable_lib_def, dev_set, cpu_device, &graph);
@@ -484,14 +487,18 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
     }
-    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get());
+    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get(),
+               &reachable_lib_def);
   }
 
-  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get());
+  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get(),
+             &reachable_lib_def);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   }
+  DUMP_GRAPH(function_name, "after_post_rewrite_for_exec_passes", graph.get(),
+             &reachable_lib_def);
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();

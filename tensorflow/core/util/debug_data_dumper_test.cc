@@ -83,7 +83,7 @@ TEST(DebugDataDumper, DumpGraphToFileTest) {
   setenv("TF_DUMP_GRAPH_PREFIX", dir.c_str(), 1);
   setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
 
-  DUMP_GRAPH("DumpGraphToFileTest", "tag", &graph);
+  DUMP_GRAPH("DumpGraphToFileTest", "tag", &graph, nullptr);
 
   std::string dumpFilename =
       io::JoinPath(dir, "DumpGraphToFileTest.0000.tag.pbtxt");
@@ -101,7 +101,7 @@ TEST(DebugDataDumper, DumpGraphLongFileNameCrashTest) {
 
   // Make sure long file name does not crash.
   std::string name = std::string(256, 'x');
-  DUMP_GRAPH(name, "tag", &graph);
+  DUMP_GRAPH(name, "tag", &graph, nullptr);
 
   std::string dumpFilename =
       io::JoinPath(dir, absl::StrFormat("%s.0000.tag.pbtxt", name.c_str()));

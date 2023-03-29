@@ -36,14 +36,52 @@ limitations under the License.
 namespace mlir {
 namespace {
 
+class DataDumperLoggerConfig : public ::tensorflow::BridgeLoggerConfig {
+ public:
+  explicit DataDumperLoggerConfig(const std::string &module_name,
+                                  bool print_module_scope = false,
+                                  bool print_after_only_on_change = true)
+      : ::tensorflow::BridgeLoggerConfig(print_module_scope,
+                                         print_after_only_on_change),
+        module_name_(module_name) {}
+
+  void printBeforeIfEnabled(mlir::Pass *pass, mlir::Operation *op,
+                            PrintCallbackFn print_callback) {
+    std::string pass_name = pass->getName().str();
+    DUMP_MLIR_MODULE(module_name_, "mlir_bridge_before_" + pass_name,
+                     GetPrintText(print_callback), VLOG_IS_ON(2));
+  }
+
+  void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *op,
+                           PrintCallbackFn print_callback) {
+    std::string pass_name = pass->getName().str();
+    DUMP_MLIR_MODULE(module_name_, "mlir_bridge_after_" + pass_name,
+                     GetPrintText(print_callback), VLOG_IS_ON(2));
+  }
+
+ private:
+  std::string GetPrintText(
+      BridgeLoggerConfig::PrintCallbackFn print_callback) const {
+    std::string txt;
+    llvm::raw_string_ostream os(txt);
+    print_callback(os);
+    return os.str();
+  }
+
+  // The name of the module. This is used to in the MLIR dump file name.
+  const std::string module_name_;
+};
+
 // Add logger to bridge passmanager.
 // Enable timing statistics per pass for the bridge passmanager.
-void EnableDetailedLogging(PassManager *pm) {
+void EnableDetailedLogging(PassManager *pm,
+                           const std::string &module_name = "anonymous") {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
-  pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
-      /*print_module_scope=*/true));
+  pm->enableIRPrinting(
+      std::make_unique<DataDumperLoggerConfig>(module_name,
+                                               /*print_module_scope=*/true));
   pm->enableTiming();
 }
 }  // namespace
@@ -94,8 +132,8 @@ tensorflow::Status RunTFXLABridge(
                    GetMLIRModuleText(module, &bridge),
                    enable_logging || VLOG_IS_ON(1));
 
-  if (enable_logging || VLOG_IS_ON(1)) {
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
+  if (enable_logging || VLOG_IS_ON(2) || SHOULD_DUMP(module_name)) {
+    EnableDetailedLogging(&bridge, module_name);
   }
 
   LogicalResult result = bridge.run(module);

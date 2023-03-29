@@ -32,6 +32,9 @@ limitations under the License.
 // In the above code, GetModuleTxt is not called if ShouldDump returns false.
 ////////////////////////////////////////////////////////////////////////////////
 
+#define SHOULD_DUMP(name) \
+  ::tensorflow::DebugDataDumper::Global()->ShouldDump(name)
+
 #define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                    \
   do {                                                                    \
     if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))        \
@@ -39,10 +42,11 @@ limitations under the License.
           name, tag, graph);                                              \
   } while (false)
 
-#define DUMP_GRAPH(name, tag, graph)                                        \
-  do {                                                                      \
-    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))          \
-      ::tensorflow::DebugDataDumper::Global()->DumpGraph(name, tag, graph); \
+#define DUMP_GRAPH(name, tag, graph, func_lib_def)                         \
+  do {                                                                     \
+    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))         \
+      ::tensorflow::DebugDataDumper::Global()->DumpGraph(name, tag, graph, \
+                                                         func_lib_def);    \
   } while (false)
 
 #define DUMP_MLIR_MODULE(name, tag, module_txt, bypass_name_filter)        \
@@ -55,6 +59,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+class FunctionLibraryDefinition;
 class Graph;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,7 +112,8 @@ class DebugDataDumper {
 
   // Dump a graph, if ShouldDump returns true.
   void DumpGraph(const std::string& name, const std::string& tag,
-                 const Graph* graph);
+                 const Graph* graph,
+                 const FunctionLibraryDefinition* func_lib_def);
 
   // Dump a MLIR module, if ShouldDump returns true.
   void DumpMLIRModule(const std::string& name, const std::string& tag,

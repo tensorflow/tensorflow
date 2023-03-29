@@ -55,6 +55,11 @@ enum class ResourceUsageType {
   kResourceRelease,
 };
 
+enum class ResourceHazardType {
+  kShareable = 0,
+  kUnshareable = 1,
+};
+
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
   return static_cast<int64_t>(resource_type);
 }
@@ -173,6 +178,11 @@ class AsyncTracker {
 
   // Returns how many instructions using the given resource_type we can overlap
   virtual int64_t GetNumAvailableResources(int64_t resource_type) const;
+
+  // Returns the hazard type that describes how to resolve the conflicts when
+  // multiple instructions attempt to use the given resource type concurrently.
+  // Default resources have a hazard type of kSerial.
+  virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
 

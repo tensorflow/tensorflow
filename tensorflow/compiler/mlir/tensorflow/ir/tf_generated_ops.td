@@ -21123,8 +21123,8 @@ def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [Pure]> {
   let summary = "Invokes a StableHLO module.";
 
   let description = [{
-This op is experimental and is intended for use with JAX native serialization
-in a TensorFlow context.
+This op is used with JAX native serialization in a TensorFlow context with
+stability guarantees.
   }];
 
   let arguments = (ins

@@ -5,18 +5,6 @@ package(
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
-)
-
 py_library(
     name = "operators",
     srcs = [

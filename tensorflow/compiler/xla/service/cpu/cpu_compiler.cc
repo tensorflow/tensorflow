@@ -69,6 +69,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
@@ -203,6 +204,7 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
                       mlir::func::FuncDialect, mlir::AffineDialect,
                       mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
+  mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
 }
 
@@ -678,10 +680,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //     accumulation happens in f32.
   if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
     pipeline.AddPass<ChangeOpDataType>(
-        F16, F32, [](const HloInstruction* instr) {
-          return instr->opcode() == HloOpcode::kDot ||
-                 instr->opcode() == HloOpcode::kConvolution;
-        });
+        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
   // Run the following passes to a fixed point.

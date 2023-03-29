@@ -932,8 +932,18 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             }
             // Set resharding cost to be 0 because there is only one choice and
             // the cost do not matter.
-            resharding_costs.push_back(std::vector<double>(
-                strategy_map.at(operand)->leaf_vector.size(), 0.0));
+            size_t resharding_costs_length;
+            if (ins->opcode() == HloOpcode::kGetTupleElement) {
+              CHECK(strategy_map.at(operand)->is_tuple);
+              resharding_costs_length = strategy_map.at(operand)
+                                            ->childs[ins->tuple_index()]
+                                            ->leaf_vector.size();
+            } else {
+              resharding_costs_length =
+                  strategy_map.at(operand)->leaf_vector.size();
+            }
+            resharding_costs.push_back(
+                std::vector<double>(resharding_costs_length, 0.0));
           }
         }
         double memory_cost =

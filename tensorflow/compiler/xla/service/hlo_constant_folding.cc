@@ -106,9 +106,7 @@ StatusOr<bool> HloConstantFolding::Run(
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
       if (!absl::c_any_of(instruction->operands(),
-                          [](const HloInstruction* operand) {
-                            return operand->opcode() == HloOpcode::kConstant;
-                          }) ||
+                          HloPredicateIsOp<HloOpcode::kConstant>) ||
           !absl::c_all_of(
               instruction->operands(), [](const HloInstruction* operand) {
                 return operand->opcode() == HloOpcode::kConstant ||

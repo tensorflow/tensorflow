@@ -57545,8 +57545,8 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 
 // Invokes a StableHLO module.
 //
-// This op is experimental and is intended for use with JAX native serialization
-// in a TensorFlow context.
+// This op is used with JAX native serialization in a TensorFlow context with
+// stability guarantees.
 //
 // Arguments:
 //
@@ -57560,7 +57560,8 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 //
 // compatibility. Minimum supported version is 2. From
 // version 2, the op carries a StableHLO text or bytecode `module`. From
-// version 3, the op also supports the `platforms` attribute.
+// version 3, the op also supports the `platforms` attribute. From version 4,
+// the op carries a StableHLO module with compatibility guarantees.
 //
 //	module: A serialized computation, a text or bytecode representation of
 //

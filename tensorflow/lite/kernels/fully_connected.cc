@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -348,7 +349,8 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   // quantized values prior to multiplication by the scaling factor.
   const bool is_hybrid =
       (input->type == kTfLiteFloat32 &&
-       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8));
+       (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
+        filter->type == kTfLiteInt4));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
     TfLiteIntArrayFree(node->temporaries);
@@ -566,7 +568,17 @@ TfLiteStatus EvalHybridDense(
     row_sums_ptr = GetTensorData<int32_t>(row_sums);
   }
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
-  const int8_t* filter_data = GetTensorData<int8_t>(filter);
+  const int8_t* filter_data = nullptr;
+  const size_t bytes_unpacked = filter->bytes * 2;
+  auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+  if (filter->type == kTfLiteInt4) {
+    tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else {
+    filter_data = GetTensorData<int8_t>(filter);
+  }
   const float* input_ptr = GetTensorData<float>(input);
   tensor_utils::BatchQuantizeFloats(
       input_ptr, batch_size, input_size, quant_data, scaling_factors_ptr,

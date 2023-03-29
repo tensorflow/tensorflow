@@ -57,6 +57,14 @@ auto* mlir_graph_optimization_pass_fallback_count = monitoring::Counter<1>::New(
     "used",
     /* metric field */ "status");
 
+auto* mlir_function_pass_graph_conversion_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_function_pass_graph_conversion_count",
+    /* metric description */
+    "Track success/failure of Graph to MLIR conversions in function "
+    "optimization pass",
+    /* metric field */ "status");
+
 // The status metric field is used to record success/failure of mlir
 // function/graph optimization passes.
 constexpr char kSuccess[] = "kSuccess";
@@ -217,6 +225,9 @@ Status MlirFunctionOptimizationPass::Run(
 
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
+  mlir_function_pass_graph_conversion_count
+      ->GetCell(tsl::error_name(module_ref_status.status().code()))
+      ->IncrementBy(1);
   timings.ReportAndStop();
 
   if (!module_ref_status.ok()) {

@@ -58,6 +58,7 @@ cc_library_with_tflite_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_without_op_resolver",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -135,7 +136,6 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
@@ -159,7 +159,6 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [

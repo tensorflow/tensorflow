@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import numpy
 
@@ -53,9 +53,9 @@ _version: int
 
 mlir_api_version: int
 
-bfloat16: numpy.dtype
-float8_e4m3fn: numpy.dtype
-float8_e5m2: numpy.dtype
+bfloat16: Type[numpy.generic]
+float8_e4m3fn: Type[numpy.generic]
+float8_e5m2: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 _NameValueMapping = Mapping[str, Union[str, int, List[int], float]]

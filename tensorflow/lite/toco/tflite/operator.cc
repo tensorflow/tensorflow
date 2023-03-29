@@ -662,11 +662,13 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
     const float input1_scale = input1_quant ? input1_quant->scale : 0.0f;
     const float input2_scale = input2_quant ? input2_quant->scale : 0.0f;
     const float output_scale = output_quant ? output_quant->scale : 0.0f;
+    const bool input_quantized = input1_quant || input2_quant;
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
     op_sig.ext_options.mul.input1_scale = input1_scale;
     op_sig.ext_options.mul.input2_scale = input2_scale;
     op_sig.ext_options.mul.output_scale = output_scale;
+    op_sig.ext_options.mul.input_quantized = input_quantized;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

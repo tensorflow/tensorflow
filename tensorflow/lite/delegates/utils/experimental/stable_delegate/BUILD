@@ -22,6 +22,10 @@ cc_library_with_tflite(
     name = "delegate_loader",
     srcs = ["delegate_loader.cc"],
     hdrs = ["delegate_loader.h"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
     deps = [

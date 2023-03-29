@@ -92,25 +92,33 @@ namespace dtensor {
 
 class DTensorDevice {
  public:
-  static StatusOr<DTensorDevice*> Create(absl::string_view name) {
+  static StatusOr<DTensorDevice*> Create(absl::string_view name, bool is_async,
+                                         int in_flight_nodes_limit) {
     std::string use_parallel_executor;
     TF_RETURN_IF_ERROR(tsl::ReadStringFromEnvVar(
         "DTENSOR_USE_PARALLEL_EXECUTOR", "", &use_parallel_executor));
-    if (use_parallel_executor.empty()) {
-      return new DTensorDevice(name, nullptr);
-    } else {
-      TF_ASSIGN_OR_RETURN(auto parallel_executor,
-                          CreateDefaultParallelExecutor());
-      return new DTensorDevice(name, std::move(parallel_executor));
+    std::unique_ptr<ParallelExecutor> parallel_executor;
+    if (!use_parallel_executor.empty()) {
+      TF_ASSIGN_OR_RETURN(parallel_executor, CreateDefaultParallelExecutor());
     }
+    return new DTensorDevice(name, std::move(parallel_executor), is_async,
+                             in_flight_nodes_limit);
   }
 
   bool use_parallel_executor() const { return parallel_executor_ != nullptr; }
 
-  void AddMesh(
-      Mesh mesh_config,
-      std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel,
-      bool is_host_mesh) {
+  void AddMesh(Mesh mesh_config, bool is_host_mesh) {
+    std::vector<std::string> underlying_devices;
+    underlying_devices.insert(underlying_devices.end(),
+                              mesh_config.local_devices().begin(),
+                              mesh_config.local_devices().end());
+
+    // DTensor uses multi-client setup which doesn't use remote eager, so we can
+    // enable eager async execution in ParallelDevice.
+    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
+        new tensorflow::parallel_device::ParallelDevice(
+            underlying_devices, is_async_, in_flight_nodes_limit_));
+
     auto mesh = std::make_unique<MeshWithParallelDevice>(std::move(mesh_config),
                                                          std::move(parallel));
     if (is_host_mesh) {
@@ -282,9 +290,8 @@ class DTensorDevice {
                                         TFE_TensorHandle* input,
                                         TF_Status* status);
 
-  TFE_TensorHandle* ToHostTensorHandle(TFE_Context* context,
-                                       TensorWithLayout* input,
-                                       TF_Status* status);
+  TFE_TensorHandle* ToTensorHandle(TFE_Context* context,
+                                   TensorWithLayout* input, TF_Status* status);
 
   // Return the layout for the input tensor.
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
@@ -316,8 +323,11 @@ class DTensorDevice {
 
  private:
   DTensorDevice(absl::string_view name,
-                std::unique_ptr<ParallelExecutor> parallel_executor)
+                std::unique_ptr<ParallelExecutor> parallel_executor,
+                bool is_async, int in_flight_nodes_limit)
       : name_(name),
+        is_async_(is_async),
+        in_flight_nodes_limit_(in_flight_nodes_limit),
         module_manager_(
             new ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>()),
         function_manager_(new ExecutableManager<ExecutionFunctions>()),
@@ -410,7 +420,6 @@ class DTensorDevice {
 
   // Broadcasts `tensor` to `mesh` using replicated sharding. Returns `nullptr`
   // if it fails.
-  // TODO(b/256016071): Unify this and the one in `TensorWithLayoutTf`.
   std::unique_ptr<TensorWithLayout> Broadcast(TFE_Context* context,
                                               TFE_TensorHandle* input,
                                               const Mesh& mesh,
@@ -418,6 +427,14 @@ class DTensorDevice {
 
   // The name of the device (the custom device)
   std::string name_;
+
+  // True if the nested eager executors shall run with EagerAsync mode.
+  bool is_async_;
+
+  // If nonzero, limit the number of in-flight EagerAsync nodes in nested
+  // Eager executors.
+  int in_flight_nodes_limit_;
+
   // Mesh configs with matching parallel devices.
   //
   // For now we just consider the first entry added to dtensor_device as the
@@ -754,66 +771,50 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
     return outputs;
   }
 
-  if (parallel_executor_) {
-    StatusOr<
-        std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
-        tensor_with_layouts = parallel_executor_->Disassemble(t);
-    if (!tensor_with_layouts.ok()) {
-      TF_SetStatus(status, TF_INTERNAL,
-                   "Failed to disassemble the TensorWithLayout.");
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+      tensor_with_layouts = Disassemble(t, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return outputs;
+  }
+  outputs.reserve(tensor_with_layouts.size());
+  for (auto& tensor_with_layout : tensor_with_layouts) {
+    // TODO(b/256016071): Eventually we may still support producing single
+    // device tensors with layouts instead of eager tensors, either in this API
+    // or in a new API.
+    outputs.push_back(
+        ToTensorHandle(context, tensor_with_layout.get(), status));
+    if (TF_GetCode(status) != TF_OK) {
       return outputs;
-    }
-    outputs.reserve(tensor_with_layouts->size());
-    for (auto& tensor_with_layout : *tensor_with_layouts) {
-      TFE_TensorHandle* output = MakeLayoutTensorHandle(
-          context, std::move(tensor_with_layout), status);
-      if (TF_GetCode(status) != TF_OK) {
-        return outputs;
-      }
-      outputs.push_back(output);
-    }
-  } else {
-    const int output_size = t->num_tensors();
-    outputs.resize(output_size);
-
-    for (int output_index = 0; output_index < output_size; ++output_index) {
-      outputs[output_index] = TFE_TensorHandleCopySharingTensor(
-          t->get_tensor(output_index), status);
-      if (TF_GetCode(status) != TF_OK) {
-        return outputs;
-      }
     }
   }
   return outputs;
 }
 
-TFE_TensorHandle* DTensorDevice::ToHostTensorHandle(TFE_Context* context,
-                                                    TensorWithLayout* input,
-                                                    TF_Status* status) {
-  if (!parallel_executor_) {
-    TF_SetStatus(
-        status, TF_UNIMPLEMENTED,
-        "ToHostTensorHandle has not been implemented for the case of not "
-        "using parallel executor.");
-    return nullptr;
-  }
-  StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
-  if (!tensor.ok()) {
-    TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
-    return nullptr;
-  }
-  Status tf_tensor_from_tensor_status;
-  TF_Tensor* tf_tensor =
-      TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
-  if (!tf_tensor_from_tensor_status.ok()) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 tf_tensor_from_tensor_status.ToString().c_str());
-    return nullptr;
-  }
-  TFE_TensorHandle* tensor_handle =
-      TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
-  if (TF_GetCode(status) != TF_OK) {
-    return nullptr;
+TFE_TensorHandle* DTensorDevice::ToTensorHandle(TFE_Context* context,
+                                                TensorWithLayout* input,
+                                                TF_Status* status) {
+  TFE_TensorHandle* tensor_handle = nullptr;
+  if (parallel_executor_) {
+    StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
+    if (!tensor.ok()) {
+      TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
+      return tensor_handle;
+    }
+    Status tf_tensor_from_tensor_status;
+    TF_Tensor* tf_tensor =
+        TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
+    if (!tf_tensor_from_tensor_status.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   tf_tensor_from_tensor_status.ToString().c_str());
+      return tensor_handle;
+    }
+    tensor_handle = TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return tensor_handle;
+    }
+  } else {
+    tensor_handle = TFE_TensorHandleCopySharingTensor(
+        llvm::cast<TensorWithLayoutTf>(input)->single_tensor(), status);
   }
   return tensor_handle;
 }
@@ -846,9 +847,9 @@ namespace {
 
 // Verifies that all components have the same dtype and shape.
 // The component shape will be set upon success.
-void VerifyPackTensorShapeAndDtype(
-    std::vector<parallel_device::TensorHandlePtr>& components,
-    std::vector<int64_t>* component_shape, TF_Status* status) {
+void VerifyPackTensorShapeAndDtype(std::vector<TensorHandlePtr>& components,
+                                   std::vector<int64_t>* component_shape,
+                                   TF_Status* status) {
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
   auto size = TFE_TensorHandleNumDims(components[0].get(), status);
   if (TF_GetCode(status) != TF_OK) return;
@@ -957,7 +958,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    std::vector<parallel_device::TensorHandlePtr> components;
+    std::vector<TensorHandlePtr> components;
     components.reserve(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       TFE_TensorHandle* input = inputs[i];
@@ -1098,13 +1099,13 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
     auto local_devices = target_parallel_device->mesh_config().local_devices();
 
-    std::vector<parallel_device::TensorHandlePtr> indices_components;
-    std::vector<parallel_device::TensorHandlePtr> values_components;
-    std::vector<parallel_device::TensorHandlePtr> dense_shapes_components;
+    std::vector<TensorHandlePtr> indices_components;
+    std::vector<TensorHandlePtr> values_components;
+    std::vector<TensorHandlePtr> dense_shapes_components;
 
     // Just a nice trick to make code cleaner to pack each of indices, values,
     // shapes.
-    std::vector<std::vector<parallel_device::TensorHandlePtr>*> components{
+    std::vector<std::vector<TensorHandlePtr>*> components{
         &indices_components, &values_components, &dense_shapes_components};
     std::vector<TFE_TensorHandle**> input_vectors{indices, values, shapes};
     for (int component_index = 0; component_index < 3; ++component_index) {
@@ -1186,6 +1187,8 @@ std::unordered_map<std::string, int> DTensorDevice::GetFunctionCacheStats(
       {"size", stats.size},
       {"device_cache.size", eager_stats.device_cache_size},
       {"kernel_cache.size", eager_stats.kernel_cache_size},
+      {"local_rendezvous_cache.active.size",
+       eager_stats.local_rendezvous_cache_active_size},
   };
   for (const auto& iter : eager_stats.func_kernel_cache_entries) {
     result[absl::StrCat("kernel_cache.", iter.first, ".size")] = iter.second;
@@ -1225,7 +1228,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
     StatusOr<
         std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
         tensor_with_layouts = parallel_executor_->Disassemble(t);
-    if (tensor_with_layouts.ok()) {
+    if (!tensor_with_layouts.ok()) {
       TF_SetStatus(status, TF_INTERNAL,
                    absl::StrCat("Failed in Disassemble of parallel executor ",
                                 tensor_with_layouts.status().ToString())
@@ -1248,11 +1251,13 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
   const int output_size = t->num_tensors();
   const parallel_device::ParallelDevice& parallel_device =
       mesh_with_parallel_device->parallel_device();
-  if (output_size != parallel_device.num_underlying_devices()) {
+  const int num_underlying_devices = parallel_device.num_underlying_devices();
+  if (output_size != num_underlying_devices &&
+      output_size != kSparseTensorNum * num_underlying_devices) {
     TF_SetStatus(status, TF_INTERNAL,
                  absl::StrCat("The output size is ", output_size,
                               " but the number of underlying devices is ",
-                              parallel_device.num_underlying_devices())
+                              num_underlying_devices)
                      .c_str());
     return tensor_with_layouts;
   }
@@ -1260,7 +1265,8 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
   tensor_with_layouts.reserve(output_size);
   for (int output_index = 0; output_index < output_size; ++output_index) {
     const std::string& underlying_device =
-        parallel_device.underlying_devices()[output_index];
+        parallel_device
+            .underlying_devices()[output_index % num_underlying_devices];
     TFE_TensorHandle* copied_tensor =
         TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
     if (TF_GetCode(status) != TF_OK) {
@@ -1284,7 +1290,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
                        .c_str());
       return tensor_with_layouts;
     }
-    parallel_device::TensorHandlePtr single_tensor(copied_tensor);
+    TensorHandlePtr single_tensor(copied_tensor);
     std::unique_ptr<TensorWithLayoutTf> tensor_with_layout =
         TensorWithLayoutTf::Wrap(std::move(single_tensor), *single_device_mesh,
                                  *single_device_layout, status);
@@ -1709,8 +1715,7 @@ void DTensorDevice::ParallelExecuteRegularOperation(
     TF_Status* status) {
   ASSIGN_OR_RETURN_C_STATUS(
       ParallelExecutor::ExecutionResult execution_result,
-      parallel_executor_->Execute(context, inputs, mlir_module,
-                                  /*entry_function_name=*/"main", attributes),
+      parallel_executor_->Execute(context, inputs, mlir_module, attributes),
       status);
   RETURN_C_STATUS_IF_NOT_OK(execution_result.status.Await(), status);
 
@@ -2066,14 +2071,11 @@ void DTensorDevice::ExecuteRegularOperation(
       RETURN_STATUS(status, TF_INTERNAL,
                     "Expected one output from VarHandleOp");
     }
-    NameAttrList name_and_attrs;
-    ASSIGN_OR_RETURN_C_STATUS(name_and_attrs, FetchAttributes(attributes),
-                              status);
 
     RETURN_C_STATUS_IF_NOT_OK(
         llvm::cast<ResourceHandleWithLayout>(typed_outputs[0].get())
-            ->UpdateShapeAndDType(name_and_attrs.attr().at("shape").shape(),
-                                  name_and_attrs.attr().at("dtype").type()),
+            ->UpdateShapeAndDType(eager_attributes.attr().at("shape").shape(),
+                                  eager_attributes.attr().at("dtype").type()),
         status);
   }
 
@@ -2303,7 +2305,7 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   }
   if (dev->use_parallel_executor()) {
     TFE_TensorHandle* handle =
-        dev->ToHostTensorHandle(context, typed_input, status);
+        dev->ToTensorHandle(context, typed_input, status);
     if (TF_GetCode(status) != TF_OK) {
       return nullptr;
     }
@@ -2363,7 +2365,7 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
   if (has_non_dtensor_resource && broadcast_mesh &&
       !broadcast_mesh->is_cpu_mesh()) {
     LOG(WARNING)
-        << "DTensor Function has been pinned back to a physical device because"
+        << "DTensor Function has been pinned back to a physical device because "
         << "a regular TF Variable is an input along with dtensor inputs and "
         << "was unable to be upcasted to a DVariable. This "
         << "may be unintended and signify an error in the way the user is "
@@ -2376,14 +2378,18 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
 
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info,
+                           bool is_async, int in_flight_nodes_limit,
                            TF_Status* status) {
   DTensorDevice* dtensor_device = nullptr;
   if (status) {
-    ASSIGN_OR_RETURN_C_STATUS(dtensor_device,
-                              DTensorDevice::Create(device_name), status);
+    ASSIGN_OR_RETURN_C_STATUS(
+        dtensor_device,
+        DTensorDevice::Create(device_name, is_async, in_flight_nodes_limit),
+        status);
   } else {
     // TODO(b/268241383): Remove this branch.
-    auto device_status = DTensorDevice::Create(device_name);
+    auto device_status =
+        DTensorDevice::Create(device_name, is_async, in_flight_nodes_limit);
     TF_CHECK_OK(device_status.status());
     dtensor_device = device_status.value();
   }
@@ -2397,8 +2403,7 @@ void AllocateDTensorDevice(absl::string_view device_name,
 }
 
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
-             TF_Status* status) {
+             bool is_host_mesh, TF_Status* status) {
   auto mesh_config_or_status = Mesh::FromString(serialized_mesh);
   if (!mesh_config_or_status.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
@@ -2408,18 +2413,9 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
     return;
   }
   auto mesh_config = mesh_config_or_status.value();
-  std::vector<std::string> underlying_devices;
-  underlying_devices.insert(underlying_devices.end(),
-                            mesh_config.local_devices().begin(),
-                            mesh_config.local_devices().end());
-  // DTensor uses multi-client setup which doesn't use remote eager, so we can
-  // enable eager async execution in ParallelDevice.
-  std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-      new tensorflow::parallel_device::ParallelDevice(
-          underlying_devices, is_async, in_flight_nodes_limit));
 
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->AddMesh(std::move(mesh_config), std::move(parallel), is_host_mesh);
+  device->AddMesh(std::move(mesh_config), is_host_mesh);
 }
 
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,

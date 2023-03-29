@@ -168,7 +168,7 @@ def get_function_def(fname, graph):
     # Graph mode: use outer graphs as the single source of truth.
     while graph is not None:
       if graph._is_function(fname):  # pylint: disable=protected-access
-        return graph._get_function(fname).definition  # pylint: disable=protected-access
+        return graph._get_function(fname).cached_definition  # pylint: disable=protected-access
       graph = getattr(graph, "outer_graph", None)
 
 
@@ -267,7 +267,7 @@ def function_def_to_graph_def(
       graph = graph.outer_graph
 
     if f is not None:
-      fdef = f.definition
+      fdef = f.cached_definition
       op_def = fdef.signature
       if node_def.op not in copied_functions:
         # Since this function is referenced as an op type, we have no choice but

@@ -332,7 +332,6 @@ py_strict_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/logging",
     ],
 )
@@ -432,6 +431,7 @@ tf_py_test(
         "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -534,6 +534,7 @@ cuda_py_test(
         ":save",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
@@ -546,6 +547,7 @@ cuda_py_test(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python:array_ops",
     ] + if_google([
         "//tensorflow/cc/experimental/tf2:runtime_pybind",
     ]),
@@ -636,6 +638,7 @@ py_strict_library(
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:default_gradient",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
@@ -644,7 +647,6 @@ py_strict_library(
         "//tensorflow/python:op_def_registry",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:tf_decorator",
         "//tensorflow/python:type_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
@@ -652,7 +654,6 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/logging",
     ],
 )
@@ -723,6 +724,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/util:compat",
     ],
 )
 

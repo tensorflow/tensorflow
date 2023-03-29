@@ -36,18 +36,15 @@ add_mlir_library(GmlStPasses
   cpu_tiling/fusion_outlining.cc
   cpu_tiling/fusion_planning_for_cpu.cc
   cpu_tiling/pack_matmul.cc
+  cpu_tiling/remove_label.cc
   cpu_tiling/transform_conv_for_cpu.cc
   cpu_tiling/transform_dot_for_cpu.cc
-  cpu_tiling/transform_map_for_cpu.cc
-  cpu_tiling/transform_matmul_for_cpu.cc
+  cpu_tiling/transform_elementwise_for_cpu.cc
   cpu_tiling/transform_mmt4d_for_cpu.cc
   cpu_tiling/transform_pack_for_cpu.cc
   cpu_tiling/transform_reduce_for_cpu.cc
-  cpu_tiling/transform_reverse_for_cpu.cc
   cpu_tiling/transform_scatter_for_cpu.cc
-  cpu_tiling/transform_transpose_for_cpu.cc
   fusion/fusion.cc
-  passes.cc
   peeling/peeling.cc
   rewrite_from_elements_op/rewrite_from_elements_op.cc
   rewrite_scf_forall/rewrite_scf_forall.cc
@@ -62,7 +59,6 @@ add_mlir_library(GmlStPasses
 
   DEPENDS
   MLIRGmlStPassIncGen
-  MLIRGmlStUtils
 
   LINK_COMPONENTS
   Core
@@ -73,6 +69,7 @@ add_mlir_library(GmlStPasses
   MLIRDestinationStyleOpInterface
   MLIRDialectUtils
   MLIRFuncDialect
+  MLIRGmlStUtils
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms

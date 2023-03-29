@@ -1,6 +1,7 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -253,7 +254,7 @@ py_test(
         ":lite_v2_test_util",
         ":test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_py_pb2",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
@@ -376,7 +377,7 @@ py_library(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "convert",
     srcs = ["convert.py"],
     srcs_version = "PY3",
@@ -386,6 +387,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
@@ -394,7 +396,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -402,7 +404,6 @@ py_library(
 py_library(
     name = "op_hint",
     srcs = ["op_hint.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -412,20 +413,26 @@ py_library(
     ],
 )
 
-py_test(
+pytype_strict_contrib_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":convert",
         ":interpreter",
         ":op_hint",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
+        "//tensorflow/lite/python/metrics:metrics_wrapper",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
     ],
 )
 

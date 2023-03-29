@@ -37,9 +37,9 @@ Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
         return Status(
             absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", node->name(), "' (op='",
-                         node->op_def().name(), "') has TFT_TENSOR output ",
-                         output_idx, " which has ", tensor_t->args_size(),
-                         " args instead of 1.\n got:\n",
+                         node->op_def().name(), "') in '", debug_location_,
+                         "' has TFT_TENSOR output ", output_idx, " which has ",
+                         tensor_t->args_size(), " args instead of 1.\n got:\n",
                          tensor_t->DebugString()));
       } else {
         return Status(absl::StatusCode::kInvalidArgument,

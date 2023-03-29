@@ -386,6 +386,37 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "convert_async_collectives_to_sync",
+    srcs = ["convert_async_collectives_to_sync.cc"],
+    hdrs = ["convert_async_collectives_to_sync.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "convert_async_collectives_to_sync_test",
+    srcs = ["convert_async_collectives_to_sync_test.cc"],
+    deps = [
+        ":convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "dump",
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],
@@ -1063,8 +1094,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

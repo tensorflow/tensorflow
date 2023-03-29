@@ -103,7 +103,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
-        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -119,6 +118,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
     ] + tf_grpc_cc_dependencies(),
 )
 

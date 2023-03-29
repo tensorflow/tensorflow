@@ -1,4 +1,6 @@
-// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline | FileCheck %s
+// RUN: mlir-hlo-opt %s \
+// RUN: --gml-st-cpu-tiling-pipeline="fuse-degenerate-reshapes=true" \
+// RUN: | FileCheck %s
 
 func.func @fuse_reshape_map(%arg0: tensor<10x16xf32>,
     %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
@@ -66,11 +68,11 @@ func.func @fuse_reshape_map(%arg0: tensor<10x16xf32>,
 // CHECK:         scf.for
 // CHECK:           scf.for
 // CHECK:             %[[EXTRACT0:.*]] = tensor.extract_slice %[[COLLAPSE]]
-// CHECK:             %[[EXPAND0:.*]] = tensor.expand_shape %[[EXTRACT0]] {{.*}} tensor<1x8xf32> into tensor<1x8x1xf32>
+// CHECK:             %[[EXPAND0:.*]] = tensor.expand_shape %[[EXTRACT0]] {{.*}} tensor<1x8xf32> into tensor<1x1x8xf32>
 // CHECK:             %[[READ0:.*]] = vector.transfer_read %[[EXPAND0]]
 // CHECK:             %[[ABS0:.*]] = math.absf %[[READ0]]
 // CHECK:             %[[WRITE0:.*]] = vector.transfer_write %[[ABS0]]
-// CHECK:             %[[COLLAPSE0:.*]] = tensor.collapse_shape %[[WRITE0]] {{.*}} tensor<1x8x1xf32> into tensor<1x8xf32>
+// CHECK:             %[[COLLAPSE0:.*]] = tensor.collapse_shape %[[WRITE0]] {{.*}} tensor<1x1x8xf32> into tensor<1x8xf32>
 
 // CHECK:             %[[EXPAND1:.*]] = tensor.expand_shape %[[COLLAPSE0]] {{.*}} tensor<1x8xf32> into tensor<1x8x1x1x1xf32>
 // CHECK:             %[[READ1:.*]] = vector.transfer_read %[[EXPAND1]]

@@ -1,5 +1,6 @@
 // RUN: tac-opt-all-backends -tfl-raise-target-subgraphs %s -split-input-file | FileCheck %s
 // RUN: tac-opt-all-backends -tfl-raise-target-subgraphs="skip-raise-cpu-ops=true" %s -split-input-file | FileCheck %s --check-prefixes=CHECK-SKIP-CPU
+// RUN: tac-opt-all-backends -tfl-raise-target-subgraphs="ignore-inference-type=true" %s -split-input-file | FileCheck %s --check-prefixes=CHECK-IGNORE-INFERENCE-TYPE
 
 module {
 func.func @simpleWhile(%arg0: tensor<i32>) -> tensor<i32> {
@@ -550,3 +551,22 @@ func.func @testSkipCpuOpsWithinLoop(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-SKIP-CPU:   %[[RES1:.*]] = tfl.add %[[ARG2]], %[[ARG3]] {fused_activation_function = "RELU6", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<i32>
 // CHECK-SKIP-CPU:   return %[[RES1]] : tensor<i32>
 // CHECK-SKIP-CPU: }
+
+// -----
+
+// CHECK-IGNORE-INFERENCE-TYPE-LABEL: testIgnoreInferenceType
+func.func @testIgnoreInferenceType(%arg0: tensor<1x384x384xf32>, %arg1: tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>) -> (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>) {
+  // These 2 ops are clustered together when `ignore-inference-type` sets to true.
+  %0 = "tfl.add"(%arg0, %arg0) {tac.device = "GPU", tac.inference_type = "FLOAT", fused_activation_function = "NONE"} : (tensor<1x384x384xf32>, tensor<1x384x384xf32>) -> tensor<1x384x384xf32>
+  %1 = "tfl.mul"(%arg1, %arg1) {tac.device = "GPU", tac.inference_type = "QUANTIZED_INT8", fused_activation_function = "NONE"} : (tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>, tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>) -> tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>
+  func.return %0, %1: tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>
+}
+
+// CHECK-IGNORE-INFERENCE-TYPE:   %[[RES0:.*]]:2 = call @[[FUNC_NAME:.*]](%arg0, %arg1) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>)
+// CHECK-IGNORE-INFERENCE-TYPE:   return %[[RES0]]#0, %[[RES0]]#1 : tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK-IGNORE-INFERENCE-TYPE: }
+// CHECK-IGNORE-INFERENCE-TYPE: func.func private @[[FUNC_NAME]](%arg0: tensor<1x384x384xf32>, %arg1: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
+// CHECK-IGNORE-INFERENCE-TYPE:   %[[RES1:.*]] = tfl.add %arg0, %arg0 {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<1x384x384xf32>
+// CHECK-IGNORE-INFERENCE-TYPE:   %[[RES2:.*]] = tfl.mul %arg1, %arg1 {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "QUANTIZED_INT8"} : tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK-IGNORE-INFERENCE-TYPE:   return %[[RES1]], %[[RES2]] : tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK-IGNORE-INFERENCE-TYPE: }

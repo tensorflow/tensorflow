@@ -51,6 +51,10 @@ constexpr double kOutlierSigmas = 2.0;
 // processing time. For example, a value of 1 would mean that the target time is
 // faster than 84% of the gap times.
 constexpr double kTargetTimeSigmas = 1.0;
+// The scaling factors to apply to buffer optimization when upsizing or
+// downsizing a buffer.
+constexpr double kBufferUpsizeMultiplier = 2.0;
+constexpr double kBufferDownsizeMultipliter = 0.9;
 
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
@@ -260,6 +264,21 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
 // Helper function for node traversal that returns only asynchronous nodes.
 inline bool IsAsyncNode(const std::shared_ptr<Node> node) {
   return node->IsAsync();
+}
+
+// Helper function for node traversal that returns only asynchronous interleave
+// many nodes.
+inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
+  return absl::StartsWith(node->name(), kParallelInterleave);
+}
+inline bool IsAsyncInterleaveManyNode(const Node* node) {
+  return absl::StartsWith(node->name(), kParallelInterleave);
+}
+
+// Helper function for node traversal that returns nodes other than asynchronous
+// interleave many nodes.
+inline bool IsNotAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
+  return !absl::StartsWith(node->name(), kParallelInterleave);
 }
 
 // Wrapper for the square function to reduce verbosity.
@@ -1858,12 +1877,12 @@ bool Node::TryDownsizeBuffer() {
           (buffered_elements_high_ - buffered_elements_low_ + 1) <
               parameter->value) {
         double old_value = parameter->value;
-        // By default, we double buffer sizes if there is enough RAM in
-        // upsize. We cap the downsize by 1/4 of the current size to avoid
-        // undoing the previous upsize.
-        parameter->value =
-            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
-                     static_cast<int64_t>(old_value * 0.75));
+        // By default, we increase the buffer sizes by `kBufferUpsizeMultiplier`
+        // if there is enough RAM in upsize. We cap the downsize by
+        // `kBufferDownsizeMultipliter` of the current size.
+        parameter->value = std::max(
+            buffered_elements_high_ - buffered_elements_low_ + 1,
+            static_cast<int64_t>(old_value * kBufferDownsizeMultipliter));
         if (old_value != parameter->value) {
           VLOG(2) << "Downsize buffer " << long_name()
                   << "::" << parameter->name << " from " << old_value << " to "
@@ -2586,19 +2605,105 @@ double Model::ComputeTargetTimeNsec() {
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager) {
-  return OptimizeStageBasedParallelism(
+  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
+             "optimization with a target time of "
+          << optimization_params.model_input_time() << " nanoseconds.";
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    OptimizeStageBasedAsyncInterleaveManyNodes(snapshot, optimization_params,
+                                               cancellation_manager);
+  }
+  OptimizeStageBasedNonAsyncInterleaveManyNodes(
       snapshot, optimization_params.model_input_time(), optimization_params,
       cancellation_manager);
 }
 
-void Model::OptimizeStageBasedParallelism(
+void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  VLOG(2) << "Optimizing async interleave many nodes.";
+  Node::NodeVector interleave_many_nodes =
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncInterleaveManyNode);
+  if (IsAsyncInterleaveManyNode(snapshot)) {
+    interleave_many_nodes.push_back(snapshot);
+  }
+  Node::ModelParameters tunable_parameters;
+  for (auto node : interleave_many_nodes) {
+    Node::ModelParameters node_tunable_parameters =
+        node->CollectNodeTunableParameters();
+    tunable_parameters.insert(tunable_parameters.end(),
+                              node_tunable_parameters.begin(),
+                              node_tunable_parameters.end());
+  }
+  ModelTiming model_timing(snapshot);
+  ModelTimingPriorityQueue priority_queue(model_timing);
+  NodeParallelismParameters node_parallelism;
+  while (!cancellation_manager->IsCancelled()) {
+    StatusOr<std::pair<double, Node*>> critical_root_status =
+        priority_queue.PopSlowestStageRoot();
+    if (!critical_root_status.ok()) {
+      // All async interleave many nodes have been processed.
+      break;
+    }
+    std::pair<double, Node*> critical_root = critical_root_status.value();
+    if (!IsAsyncInterleaveManyNode(critical_root.second)) {
+      continue;
+    }
+    Parameter* parallelism_parameter =
+        node_parallelism.Get(critical_root.second);
+    if (parallelism_parameter == nullptr ||
+        parallelism_parameter->value >= parallelism_parameter->max) {
+      continue;
+    }
+    parallelism_parameter->value += 1.0;
+    if (TotalMaximumBufferedBytes(snapshot) >
+        optimization_params.ram_budget()) {
+      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
+      // stop optimization because we cannot improve the most critical stage.
+      // There is also a decent chance that the current optimization iteration
+      // is under-optimized. For that reason, return immediately without
+      // updating the parameter state values.
+      parallelism_parameter->value -= 1.0;
+      // Removes the `<index>` of `[<index>]` to reduce the number of labels.
+      metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
+          "ram_budget_exceeded:",
+          RemoveArrayIndices(critical_root.second->long_name())));
+      return;
+    }
+    model_timing.ComputeNodeTotalTime(*critical_root.second);
+    // This async interleave many node has not reached its max parallelism
+    // value. Push it back to the priority queue.
+    const ModelTiming::NodeTiming* root_timing =
+        model_timing.GetTiming(critical_root.second);
+    priority_queue.Push(critical_root.second, *root_timing);
+  }
+  UpdateStateValues(&tunable_parameters);
+}
+
+void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
     std::shared_ptr<Node> snapshot, double target_time_nsec,
     const OptimizationParams& optimization_params,
     CancellationManager* cancellation_manager) {
-  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
-             "optimization with a target time of "
-          << optimization_params.model_input_time() << " nanoseconds.";
-  Node::ModelParameters tunable_parameters = CollectTunableParameters(snapshot);
+  VLOG(2) << "Optimizing nodes other than async interleave many nodes.";
+  Node::NodeVector all_nodes;
+  if (experiments_.contains("stage_based_autotune_v2")) {
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS,
+                                       IsNotAsyncInterleaveManyNode);
+    if (!IsAsyncInterleaveManyNode(snapshot)) {
+      all_nodes.push_back(snapshot);
+    }
+  } else {
+    all_nodes = snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
+    all_nodes.push_back(snapshot);
+  }
+  Node::ModelParameters tunable_parameters;
+  for (auto node : all_nodes) {
+    Node::ModelParameters node_tunable_parameters =
+        node->CollectNodeTunableParameters();
+    tunable_parameters.insert(tunable_parameters.end(),
+                              node_tunable_parameters.begin(),
+                              node_tunable_parameters.end());
+  }
   // Initialize the parallelism parameter values to minimal before tuning.
   for (std::pair<string, std::shared_ptr<Parameter>>& pair :
        tunable_parameters) {
@@ -2637,14 +2742,15 @@ void Model::OptimizeStageBasedParallelism(
       break;
     }
     parallelism_parameter->value += 1.0;
-    if (TotalMaximumBufferedBytes(snapshot) >
-        optimization_params.ram_budget()) {
-      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
-      // stop optimization because we cannot improve the most critical stage.
-      // There is also a decent chance that the current optimization iteration
-      // is under-optimized. For that reason, return immediately without
-      // updating the parameter state values.
-      parallelism_parameter->value -= 1.0;
+    if (cancellation_manager->IsCancelled() ||
+        TotalMaximumBufferedBytes(snapshot) >
+            optimization_params.ram_budget()) {
+      // Either the optimization thread is cancelled or increasing the
+      // parallelism by 1 exceeded ram budget. There is a decent chance that the
+      // current optimization iteration is under-optimized. For that reason,
+      // return immediately without updating the parameter state values after
+      // recording the stopping criteria.
+
       // Removes the `<index>` of `[<index>]` to reduce the number of labels.
       metrics::RecordTFDataAutotuneStoppingCriteria(strings::StrCat(
           "ram_budget_exceeded:",
@@ -2719,7 +2825,7 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   }
 
   // Compute a uniform scaling factor for all buffers. Cap the factor at 2.
-  double scaling_factor = 2.0;
+  double scaling_factor = kBufferUpsizeMultiplier;
   if (max_buffered_bytes > 0) {
     scaling_factor =
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);

@@ -298,6 +298,7 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
@@ -377,6 +378,7 @@ cc_library(
         ":gpu_device_info",
         ":ir_emission_utils",
         ":launch_dimensions",
+        ":matmul_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
@@ -441,6 +443,7 @@ cc_library(
     hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
     deps = if_cuda_is_configured([
         ":buffer_comparator",
+        ":gemm_rewriter_triton",
         ":gpu_asm_opts_util",
         ":gpu_device_info",
         ":ir_emission_utils",
@@ -462,7 +465,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/util/proto:proto_utils",
-    ]),
+    ]) + ["//tensorflow/compiler/xla/stream_executor:device_memory"],
 )
 
 xla_test(
@@ -1015,15 +1018,20 @@ cc_library(
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
         ":ir_emission_utils",
+        ":matmul_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -1035,10 +1043,15 @@ xla_cc_test(
     deps = [
         ":gemm_rewriter_triton",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -1954,6 +1967,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convert_mover",
+        "//tensorflow/compiler/xla/service:convert_async_collectives_to_sync",
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
         "//tensorflow/compiler/xla/service:convolution_pred_expander",
         "//tensorflow/compiler/xla/service:copy_insertion",

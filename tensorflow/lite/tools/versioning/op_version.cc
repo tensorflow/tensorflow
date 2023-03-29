@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -290,6 +290,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_MUL:
+      // Version 7 supports int16 and uint32 inputs
+      if ((op_sig.inputs.at(0).type == kTfLiteInt16 &&
+           !op_sig.ext_options.mul.input_quantized) ||
+          op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 7;
+      }
       // Version 6 supports complex32 inputs
       if (op_sig.inputs.at(0).type == kTfLiteComplex64) {
         return 6;

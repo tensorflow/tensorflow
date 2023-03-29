@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
@@ -901,18 +902,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-  GpuFloatSupport bf16_support(BF16);
-  pipeline.AddPass<FloatNormalization>(&bf16_support);
-  GpuFloatSupport f8e5m2_support(F8E5M2);
-  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
-  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
-  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
-
-  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-    pipeline.AddPass<SimplifyFPConversions>();
-  }
-
   AutotuningConfig autotune_config =
       stream_exec
           ? AutotuningConfig{DeviceConfig{stream_exec, device_allocator}}
@@ -954,6 +943,18 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           ? debug_options.xla_gpu_force_compilation_parallelism()
           : tsl::port::MaxParallelism());
 #endif  // GOOGLE_CUDA
+
+  GpuFloatSupport bf16_support(BF16);
+  pipeline.AddPass<FloatNormalization>(&bf16_support);
+  GpuFloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+
+  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+    pipeline.AddPass<SimplifyFPConversions>();
+  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
@@ -1075,7 +1076,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
   GpuPipelineOpts opts;
-  opts.enable_cuda_graphs = debug_options.xla_gpu_enable_cuda_graphs();
+  opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
@@ -1223,7 +1224,12 @@ static Status CompileModuleToLlvmIrImpl(
   TF_RETURN_IF_ERROR(
       ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
   {
-    HloPassPipeline pipeline("opt-barrier-expander");
+    HloPassPipeline pipeline("post-scheduling-passes");
+
+    HloPredicate is_nop =
+        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
+                         HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
+    pipeline.AddPass<ConvertAsyncCollectivesToSync>(is_nop);
     pipeline.AddPass<OptimizationBarrierExpander>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());

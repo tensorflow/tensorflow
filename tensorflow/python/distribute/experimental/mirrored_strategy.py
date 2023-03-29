@@ -19,6 +19,7 @@ any potential feature gaps between the current API and the need.
 """
 import functools
 
+from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import config as d_config
 from tensorflow.dtensor.python import d_variable
@@ -34,6 +35,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -93,6 +95,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   @classmethod
   def _build_mesh_from_device_list(cls, devices):
     if devices:
+      device_type = tf_device.DeviceSpec.from_string(devices[0]).device_type
+      cls._initialize_accelerator_system_once(device_type)
       mesh = mesh_util.create_mesh(
           mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           devices=devices)
@@ -100,10 +104,21 @@ class MirroredStrategy(distribute_lib.Strategy):
       # Trying to detect if there is any GPU/TPUs attached.
       device_type = d_config.preferred_device_type()
       devices = d_config.local_devices(device_type)
+      cls._initialize_accelerator_system_once(device_type)
       mesh = mesh_util.create_mesh(
           mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           device_type=device_type)
     return mesh
+
+  @classmethod
+  def _initialize_accelerator_system_once(cls, device_type):
+    # Initialize the GPU/TPU before creating the mesh.
+    # Note that this method will also trigger the creation of the pairing
+    # virtual host CPUs, which is needed by dataset and checkpoint.
+    if not accelerator_util.is_initialized():
+      # TODO(feyu): Add a method in accelerator_util to check the initialized
+      # mesh device types.
+      accelerator_util.initialize_accelerator_system(device_type)
 
   def reduce(self, reduce_op, value, axis):
     # Due to the limitation of using scalar in DTensor (e.g. the rank 0 tensor

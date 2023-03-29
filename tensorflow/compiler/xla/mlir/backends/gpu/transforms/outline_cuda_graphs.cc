@@ -53,11 +53,19 @@ using mlir::gpu::LaunchFuncOp;
 
 class OutlineCudaGraphsPass
     : public impl::OutlineCudaGraphsPassBase<OutlineCudaGraphsPass> {
+ public:
+  OutlineCudaGraphsPass() = default;
+  explicit OutlineCudaGraphsPass(int cuda_graph_level)
+      : cuda_graph_level_(cuda_graph_level) {}
+
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<func::FuncDialect, runtime::RuntimeDialect>();
   }
+
+ private:
+  int cuda_graph_level_ = 3;
 };
 
 //===----------------------------------------------------------------------===//
@@ -140,6 +148,30 @@ struct GemmOpCapture : public OpCapturePattern {
       if (!gemm.getAlgorithm().has_value() ||
           gemm.getAlgorithm().value() !=
               stream_executor::blas::kRuntimeAutotuning) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
+
+struct MemrefOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
+      // We use a heuristic to identify the direction of the memcpy operation,
+      // if the operand was allocated by alloca op or is a global memref, then
+      // it must be a memref on the host.
+      auto IsHostMemRef = [](Value value) {
+        auto* op = value.getDefiningOp();
+        return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
+      };
+
+      auto IsDeviceToDevice = [&](mlir::gpu::MemcpyOp op) {
+        return !IsHostMemRef(op.getDst()) && !IsHostMemRef(op.getSrc());
+      };
+
+      // Device-to-host Memcpy cannot be captured by CUDA graphs.
+      if (IsDeviceToDevice(memcpy)) {
         return kMove;
       }
     }
@@ -380,15 +412,24 @@ void OutlineCudaGraphsPass::runOnOperation() {
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
   OpCapturePatternSet patterns;
-  patterns.emplace_back(new LaunchFuncOpCapture());
-  patterns.emplace_back(new ConvForwardOpCapture());
-  patterns.emplace_back(new ConvBackwardInputOpCapture());
-  patterns.emplace_back(new ConvBackwardFilterOpCapture());
-  patterns.emplace_back(new ConvForwardFusedOpCapture());
-  patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
-  patterns.emplace_back(new ConstantOpCapture());
-  patterns.emplace_back(new GemmOpCapture());
-  patterns.emplace_back(new ViewOpCapture());
+
+  if (cuda_graph_level_ >= 1) {
+    // Enable capturing fusions and memcpies.
+    patterns.emplace_back(new LaunchFuncOpCapture());
+    patterns.emplace_back(new ConstantOpCapture());
+    patterns.emplace_back(new ViewOpCapture());
+    patterns.emplace_back(new MemrefOpCapture());
+  }
+
+  if (cuda_graph_level_ >= 2) {
+    // Enable capturing conv/gemms.
+    patterns.emplace_back(new ConvForwardOpCapture());
+    patterns.emplace_back(new ConvBackwardInputOpCapture());
+    patterns.emplace_back(new ConvBackwardFilterOpCapture());
+    patterns.emplace_back(new ConvForwardFusedOpCapture());
+    patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
+    patterns.emplace_back(new GemmOpCapture());
+  }
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
@@ -399,6 +440,11 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass() {
   return std::make_unique<OutlineCudaGraphsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass(
+    int cuda_graph_level) {
+  return std::make_unique<OutlineCudaGraphsPass>(cuda_graph_level);
 }
 
 }  // namespace gpu

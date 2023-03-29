@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/python/mlir.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
 
 PYBIND11_MODULE(_pywrap_mlir, m) {
   m.def("ImportGraphDef",

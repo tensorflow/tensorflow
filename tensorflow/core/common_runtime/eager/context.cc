@@ -98,55 +98,61 @@ const int64_t EagerContext::kGlobalRendezvousId = -1;
 
 // Find the rendezvous instance corresponding to the step id, or create a
 // new instance if not existing.
-IntraProcessRendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
-    int64_t step_id, DeviceMgr* device_mgr) {
+tsl::core::RefCountPtr<IntraProcessRendezvous>
+EagerContext::LocalRendezvousCache::FindOrCreate(int64_t step_id,
+                                                 DeviceMgr* device_mgr) {
   mutex_lock l(table_lock_);
+  tsl::core::RefCountPtr<IntraProcessRendezvous> rendz = nullptr;
   auto iter = table_.find(step_id);
-  if (iter == table_.end()) {
-    iter =
-        table_.insert({step_id, new IntraProcessRendezvous(device_mgr)}).first;
-    // Global rendezvous: ref-count should be 1 upon creation.
-    if (step_id == EagerContext::kGlobalRendezvousId) {
-      return iter->second;
+  if (iter != table_.end()) {
+    rendz = iter->second.GetNewRef();
+    VLOG(5) << "step_id:" << step_id << " "
+            << "WeakPtr returned:" << rendz.get();
+    if (!rendz) {
+      table_.erase(iter);
     }
   }
-  iter->second->Ref();
-  return iter->second;
+  if (!rendz) {  // Deleted or not found
+    rendz.reset(new IntraProcessRendezvous(device_mgr));
+    VLOG(5) << "step_id:" << step_id << " "
+            << "Rendezvous not found, inserting a new one." << rendz.get();
+    // TODO(b/274793840): The WeakPtr still leaks, albeit slower than
+    // leaking entire Rendezvous objects.
+    table_.insert(
+        {step_id, tsl::core::WeakPtr<IntraProcessRendezvous>{rendz.get()}});
+  }
+  return rendz;
 }
 
-IntraProcessRendezvous* EagerContext::LocalRendezvousTable::Find(
-    int64_t step_id) {
+tsl::core::RefCountPtr<IntraProcessRendezvous>
+EagerContext::LocalRendezvousCache::Find(int64_t step_id) {
   mutex_lock l(table_lock_);
   auto iter = table_.find(step_id);
   if (iter == table_.end()) return nullptr;
-  iter->second->Ref();
-  return iter->second;
+  return iter->second.GetNewRef();
 }
 
-void EagerContext::LocalRendezvousTable::Remove(int64_t step_id) {
+std::vector<int64_t> EagerContext::LocalRendezvousCache::GetActiveStepIds() {
+  mutex_lock l(table_lock_);
+  std::vector<int64_t> list;
+  list.reserve(table_.size());
+  for (const auto& iter : table_) {
+    if (iter.second.GetNewRef()) {
+      list.push_back(iter.first);
+    }
+  }
+  return list;
+}
+
+void EagerContext::LocalRendezvousCache::Remove(int64_t step_id) {
   mutex_lock l(table_lock_);
   auto iter = table_.find(step_id);
   if (iter != table_.end()) {
-    if (step_id != EagerContext::kGlobalRendezvousId) {
-      iter->second->Unref();
-    }
     table_.erase(iter);
   }
 }
 
-void EagerContext::LocalRendezvousTable::CleanUpAll() {
-  mutex_lock l(table_lock_);
-  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
-    // Unref all redezvous instance, except for global rendezvous,
-    // which is cleaned up elsewhere when necessary.
-    if (iter->first == -1) {
-      continue;
-    }
-    iter->second->Unref();
-  }
-}
-
-EagerContext::LocalRendezvousTable::~LocalRendezvousTable() { CleanUpAll(); }
+EagerContext::LocalRendezvousCache::~LocalRendezvousCache() = default;
 
 EagerContext::EagerContext(
     const SessionOptions& opts,
@@ -204,10 +210,10 @@ EagerContext::EagerContext(
         MaybeCreateNcclCommunicator(opts.config)));
   }
 
-  // Initialization of local_rendezvous_table_ needs to happen before the
+  // Initialization of local_rendezvous_cache_ needs to happen before the
   // initialization of global_rendezvous_for_functions_ because the latter
   // depends on the former.
-  local_rendezvous_table_ = std::make_unique<LocalRendezvousTable>();
+  local_rendezvous_cache_ = std::make_unique<LocalRendezvousCache>();
   ResetGlobalRendezvousForFunction();
 }
 
@@ -688,7 +694,7 @@ EagerContext::~EagerContext() {
   // Currently there are 3 cases in which a rendezvous instances is created:
   // (1). Created through a rendezvous_creator passed to EagerContext.
   // (2). Created through rendezvous_mgr.
-  // (3). Created within EagerContext using LocalRendezvousTable.
+  // (3). Created within EagerContext using LocalRendezvousCache.
   //
   // Currently case-(3) is taken care of automatically when an EagerContext
   // instance is deleted. The following code takes care of case-(2). Case-(1)
@@ -1068,6 +1074,10 @@ EagerContext::GetCacheStats() {
     mutex_lock dl(device_cache_mu_);
     stats.device_cache_size = device_cache_.size();
   }
+  {
+    stats.local_rendezvous_cache_active_size =
+        local_rendezvous_cache_->GetActiveStepIds().size();
+  }
   return stats;
 }
 
@@ -1331,7 +1341,7 @@ void EagerContext::ClearResourceContainer(const string& name) {
 Status EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
   mutex_lock l(global_rendezvous_mu_);
   IntraProcessRendezvous* rendezvous =
-      local_rendezvous_table_->Find(kGlobalRendezvousId);
+      local_rendezvous_cache_->Find(kGlobalRendezvousId).release();
   if (rendezvous == nullptr) return OkStatus();
   Status s = rendezvous->GetLocalRendezvousStatus();
   rendezvous->Unref();
@@ -1342,7 +1352,7 @@ void EagerContext::UpdateGlobalRendezvousDeviceManager(
     tensorflow::DeviceMgr* device_mgr) {
   mutex_lock l(global_rendezvous_mu_);
   IntraProcessRendezvous* rendezvous =
-      local_rendezvous_table_->Find(kGlobalRendezvousId);
+      local_rendezvous_cache_->Find(kGlobalRendezvousId).release();
   if (rendezvous == nullptr) return;
   rendezvous->UpdateDeviceManager(device_mgr);
   rendezvous->Unref();

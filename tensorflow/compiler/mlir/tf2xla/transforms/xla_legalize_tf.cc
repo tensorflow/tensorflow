@@ -750,7 +750,7 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 /// used.
 LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
                          std::optional<StringRef> tf2xla_fallback_device_type,
-                         bool prefer_tf2xla) {
+                         bool prefer_tf2xla, bool use_tf2xla_hlo_importer) {
   MLIRContext *context = op->getContext();
   RewritePatternSet legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
@@ -791,9 +791,9 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   Tf2XlaTypeConverter converter;
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
-    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
-                                         patterns, context, converter,
-                                         prefer_tf2xla);
+    PopulateLegalizeTfWithTf2XlaPatterns(
+        tf2xla_fallback_device_type.value(), patterns, context, converter,
+        prefer_tf2xla, /*is_module_pass=*/false, use_tf2xla_hlo_importer);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -817,7 +817,8 @@ void LegalizeTF::runOnOperation() {
     tf2xla_fallback_device_type = device_type_;
   }
   if (failed(legalizeTF(getOperation(), legalize_chlo_,
-                        tf2xla_fallback_device_type, prefer_tf2xla_))) {
+                        tf2xla_fallback_device_type, prefer_tf2xla_,
+                        use_tf2xla_hlo_importer_))) {
     signalPassFailure();
   }
 }

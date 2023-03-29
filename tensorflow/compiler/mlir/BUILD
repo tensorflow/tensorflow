@@ -249,6 +249,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -426,6 +426,49 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     result = strategy.reduce(reduce_util.ReduceOp.MEAN, tensor_input, axis=None)
     self.assertIn('CPU:0', result.device)
 
+  def test_experimental_local_results(self):
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([3.0])
+
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    result = strategy.run(replica_fn)
+    local_result = strategy.experimental_local_results(result)
+
+    self.assertIsInstance(local_result, tuple)
+    self.assertLen(local_result, 2)
+    self.assertEqual(local_result[0], constant_op.constant([3.0]))
+    self.assertEqual(local_result[1], constant_op.constant([3.0]))
+
+  def test_experimental_local_results_with_inputs(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    array_value = np.array([3., 2.])
+    def value_fn(ctx):
+      value = array_value[ctx.replica_id_in_sync_group]
+      return {'a': value,
+              'b': constant_op.constant([value + 1.0, value + 2.0])}
+    distributed_values = (
+        strategy.experimental_distribute_values_from_function(
+            value_fn))
+
+    @def_function.function
+    def replica_fn(inputs):
+      result = {}
+      for key in inputs:
+        result[key] = inputs[key] * 2.0
+      return result
+
+    result = strategy.run(replica_fn, args=(distributed_values,))
+    local_result = strategy.experimental_local_results(result)
+    self.assertIsInstance(local_result, tuple)
+    self.assertLen(local_result, 2)
+    self.assertDictEqual(local_result[0],
+                         {'a': constant_op.constant([6.0]),
+                          'b': constant_op.constant([8.0, 10.0])})
+    self.assertDictEqual(local_result[1],
+                         {'a': constant_op.constant([4.0]),
+                          'b': constant_op.constant([6.0, 8.0])})
+
 
 class InvalidMeshTest(test_util.DTensorBaseTest):
 
@@ -456,7 +499,6 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.device_type = device_type
 
   def test_explicit_device_list(self):
-
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]
     strategy = mirrored_strategy.MirroredStrategy(devices=device_list)
     mesh = strategy._mesh
@@ -469,6 +511,8 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.assertIn(
         f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
         mesh.local_devices()[1])
+    # Also make sure the host mesh works since it is required by dataset
+    self.assertIsNotNone(mesh.host_mesh())
 
   def test_implicit_device_list(self):
     strategy = mirrored_strategy.MirroredStrategy()
@@ -481,6 +525,8 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.assertIn(
         f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
         mesh.local_devices()[1])
+    # Also make sure the host mesh works since it is required by dataset
+    self.assertIsNotNone(mesh.host_mesh())
 
   def test_mesh_with_device_list(self):
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]

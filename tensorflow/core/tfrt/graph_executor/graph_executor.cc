@@ -561,12 +561,20 @@ GraphExecutor::ImportAndCompileClientGraph(
   mlrt::bc::Buffer bytecode_buffer;
   std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer, tfrt::CompileTfMlirModuleToBytecode(module.get()));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
   } else if (options_.enable_mlrt) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer,
         CompileMlirModuleToByteCode(options_.compile_options, module.get()));
@@ -670,6 +678,9 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
         // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
+        pm.addPass(
+            mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(
+                options));
         pm.addPass(mlrt_compiler::CreateParallelizationPass(
             options.cost_threshold, options.merge_inter_dependent_streams));
         pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
@@ -826,11 +837,13 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<mlrt::Value> outputs) {
-  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
-                      GetOrCreateLoadedClientGraph(
-                          /*run_options=*/{}, input_names, input_dtypes,
-                          output_tensor_names, target_tensor_names,
-                          /*work_queue=*/nullptr, graph_name));
+  TF_ASSIGN_OR_RETURN(
+      LoadedClientGraph & loaded_client_graph,
+      GetOrCreateLoadedClientGraph(
+          /*run_options=*/{}, input_names, input_dtypes, output_tensor_names,
+          target_tensor_names,
+          /*work_queue=*/nullptr,
+          graph_name.empty() ? output_tensor_names[0] : graph_name));
 
   TF_ASSIGN_OR_RETURN(
       auto request_info,

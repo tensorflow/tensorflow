@@ -16,10 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 
-#include <functional>
-#include <iterator>
-#include <memory>
-#include <vector>
+#include <utility>
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -30,24 +27,13 @@ namespace xla {
 class AsyncCollectiveCreator : public HloModulePass {
  public:
   struct CollectiveCreatorConfig {
-    HloPredicate convert_all_reduce = [](const HloInstruction*) {
-      return false;
-    };
-    HloPredicate convert_all_gather = [](const HloInstruction*) {
-      return false;
-    };
-    HloPredicate convert_collective_permute = [](const HloInstruction*) {
-      return false;
-    };
-    HloPredicate convert_all_to_all = [](const HloInstruction*) {
-      return false;
-    };
+    HloPredicate convert_all_reduce = HloPredicateFalse;
+    HloPredicate convert_all_gather = HloPredicateFalse;
+    HloPredicate convert_collective_permute = HloPredicateFalse;
+    HloPredicate convert_all_to_all = HloPredicateFalse;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
-      : convert_all_reduce_(creator_config.convert_all_reduce),
-        convert_all_gather_(creator_config.convert_all_gather),
-        convert_collective_permute_(creator_config.convert_collective_permute),
-        convert_all_to_all_(creator_config.convert_all_to_all) {}
+      : config_(std::move(creator_config)) {}
   absl::string_view name() const override { return "async-collective-creator"; }
 
   using HloPassInterface::Run;
@@ -56,12 +42,9 @@ class AsyncCollectiveCreator : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  HloPredicate convert_all_reduce_;
-  HloPredicate convert_all_gather_;
-  HloPredicate convert_collective_permute_;
-  HloPredicate convert_all_to_all_;
+  CollectiveCreatorConfig config_;
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_ALL_REDUCE_CREATOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_

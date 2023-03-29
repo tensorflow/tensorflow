@@ -246,7 +246,7 @@ TEST_F(GraphExecutorTest, DisableCompilation) {
                                     /*target_tensor_names=*/{}, &outputs);
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.ToString(),
       ::testing::HasSubstr("GraphExecutor: compilation is disabled in "
                            "execution but the compiled graph is not found"));
 
