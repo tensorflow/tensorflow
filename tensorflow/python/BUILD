@@ -3063,6 +3063,15 @@ py_library(
 )
 
 py_library(
+    name = "variable_v1",
+    srcs = ["ops/variable_v1.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":variables",
+    ],
+)
+
+py_library(
     name = "gradient_checker",
     srcs = ["ops/gradient_checker.py"],
     srcs_version = "PY3",
@@ -3930,9 +3939,9 @@ filegroup(
         ":ndarray_tensor",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         ":safe_pyobject_ptr",  # checkpoint_reader
-        "//tensorflow/c:safe_ptr",  # checkpoint_reader
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
+        "//tensorflow/c:safe_ptr",  # checkpoint_reader
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
         "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
