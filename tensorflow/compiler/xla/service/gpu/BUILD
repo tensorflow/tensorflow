@@ -443,6 +443,7 @@ cc_library(
     hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
     deps = if_cuda_is_configured([
         ":buffer_comparator",
+        ":gemm_rewriter_triton",
         ":gpu_asm_opts_util",
         ":gpu_device_info",
         ":ir_emission_utils",
@@ -464,7 +465,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/util/proto:proto_utils",
-    ]),
+    ]) + ["//tensorflow/compiler/xla/stream_executor:device_memory"],
 )
 
 xla_test(
@@ -1023,10 +1024,14 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -1044,6 +1049,9 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test",
     ],
 )
