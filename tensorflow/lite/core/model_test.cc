@@ -572,7 +572,9 @@ TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
 
   // Read a model that has minimum runtime string populated.
   auto model2 = FlatBufferModel::BuildFromFile(
-      "third_party/tensorflow/lite/testdata/test_min_runtime.bin");
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/lite/testdata/test_min_runtime.bin")
+          .c_str());
   ASSERT_TRUE(model2);
   // Check that we have read the runtime string correctly.
   ASSERT_EQ(model2->GetMinimumRuntime(), "1.5.0");

@@ -412,6 +412,9 @@ cc_test(
     name = "model_loader_test",
     srcs = ["model_loader_test.cc"],
     data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
+    tags = [
+        "no_oss",  # TODO(b/275623299): Enable when fixed.
+    ],
     deps = [
         ":model_loader",
         "//tensorflow/lite:model_builder",
