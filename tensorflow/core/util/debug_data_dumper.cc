@@ -27,31 +27,27 @@ DebugDataDumper* DebugDataDumper::Global() {
   return global_instance_;
 }
 
-bool DebugDataDumper::ShouldDump(const std::string& name,
-                                 bool bypass_name_filter) const {
+bool DebugDataDumper::ShouldDump(const std::string& name) const {
   // Do not dump data for the wrapped functions.
   if (absl::StartsWith(name, "__wrapped__")) return false;
 
-  // Do name filter check if bypass_name_filter is false.
-  if (!bypass_name_filter) {
-    // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
-    const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
-    if (name_filter == nullptr) {
-      VLOG(1) << "Skip dumping graph '" << name
-              << "', because TF_DUMP_GRAPH_NAME_FILTER is not set";
-      return false;
-    }
+  // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
+  const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
+  if (name_filter == nullptr) {
+    VLOG(1) << "Skip dumping graph '" << name
+            << "', because TF_DUMP_GRAPH_NAME_FILTER is not set";
+    return false;
+  }
 
-    // If name_filter is not '*' or name doesn't contain the name_filter,
-    // skip the dump.
-    std::string str_name_filter = std::string(name_filter);
-    if (str_name_filter != "*" &&
-        name.find(str_name_filter) == std::string::npos) {
-      VLOG(1) << "Skip dumping graph '" << name
-              << "', because TF_DUMP_GRAPH_NAME_FILTER is not '*' and "
-              << "it is not contained by the graph name";
-      return false;
-    }
+  // If name_filter is not '*' or name doesn't contain the name_filter,
+  // skip the dump.
+  std::string str_name_filter = std::string(name_filter);
+  if (str_name_filter != "*" &&
+      name.find(str_name_filter) == std::string::npos) {
+    VLOG(1) << "Skip dumping graph '" << name
+            << "', because TF_DUMP_GRAPH_NAME_FILTER is not '*' and "
+            << "it is not contained by the graph name";
+    return false;
   }
 
   // If all conditions are met, return true to allow the dump.
