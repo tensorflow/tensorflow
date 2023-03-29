@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
 
@@ -116,7 +117,8 @@ class _DumpingCallback(object):
     # Used only under V1 graph mode, where we can't rely on auto control
     # dependency to execute the debug tensors and hence need to attach the debug
     # tensors as control dependencies of the ops that consume the Placeholder.
-    self._placeholder_to_debug_tensor = dict()
+    self._placeholder_to_debug_tensor = (
+        object_identity.ObjectIdentityDictionary())
     self._writer = None
 
   def function_callback(self, function, name, graph, inputs, outputs):
