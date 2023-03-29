@@ -84,7 +84,6 @@ py_library(
     ],
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )

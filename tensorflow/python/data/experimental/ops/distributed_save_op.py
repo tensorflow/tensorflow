@@ -15,7 +15,6 @@
 """Distributed saving of a dataset to disk."""
 
 from tensorflow.core.protobuf import snapshot_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.ops import gen_experimental_dataset_ops
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
 from tensorflow.python.saved_model import nested_structure_coder
@@ -42,14 +41,8 @@ def distributed_save(dataset,
     `None`.
 
   Raises:
-    RuntimeError: If not in eager mode.
     ValueError: If `dispatcher_address` is invalid.
   """
-  if not context.executing_eagerly():
-    raise RuntimeError(
-        "tf.data `distributed_save` API must be run in the eager mode."
-    )
-
   if not isinstance(dispatcher_address, str):
     raise ValueError("`dispatcher_address` must be a string, but is a "
                      f"{type(dispatcher_address)} ({dispatcher_address}")
@@ -62,7 +55,7 @@ def distributed_save(dataset,
       compression=compression,
   )
 
-  gen_experimental_dataset_ops.distributed_save(
+  return gen_experimental_dataset_ops.distributed_save(
       dataset._variant_tensor,  # pylint: disable=protected-access
       directory=directory,
       address=dispatcher_address,

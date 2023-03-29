@@ -68,6 +68,17 @@ class DistributedSaveTest(
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, list(range(10)))
 
+  @combinations.generate(test_base.graph_only_combinations())
+  def testSaveLoadGraphMode(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.session() as sess:
+      dataset = dataset_ops.Dataset.range(10)
+      sess.run(distributed_save_op.distributed_save(
+          dataset, self._test_dir, cluster.dispatcher_address()
+      ))
+    self._wait_for_snapshot(cluster)
+    # TODO(b/250921378): Support the graph mode for `load`.
+
   @combinations.generate(
       combinations.times(
           test_base.eager_only_combinations(),
