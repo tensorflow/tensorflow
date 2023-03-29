@@ -5076,14 +5076,10 @@ struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   int32_t dilation_h_factor() const {
     return GetField<int32_t>(VT_DILATION_H_FACTOR, 1);
   }
-<<<<<<< HEAD
   tflite::TensorType quantized_bias_type() const {
     return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-=======
   bool Verify(::flatbuffers::Verifier &verifier) const {
->>>>>>> origin/master
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
@@ -5121,14 +5117,10 @@ struct Conv2DOptionsBuilder {
   void add_dilation_h_factor(int32_t dilation_h_factor) {
     fbb_.AddElement<int32_t>(Conv2DOptions::VT_DILATION_H_FACTOR, dilation_h_factor, 1);
   }
-<<<<<<< HEAD
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
     fbb_.AddElement<int8_t>(Conv2DOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
   }
-  explicit Conv2DOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-=======
   explicit Conv2DOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
->>>>>>> origin/master
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
@@ -5984,14 +5976,10 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Ta
   bool asymmetric_quantize_inputs() const {
     return GetField<uint8_t>(VT_ASYMMETRIC_QUANTIZE_INPUTS, 0) != 0;
   }
-<<<<<<< HEAD
   tflite::TensorType quantized_bias_type() const {
     return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-=======
   bool Verify(::flatbuffers::Verifier &verifier) const {
->>>>>>> origin/master
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT, 1) &&
@@ -6021,14 +6009,10 @@ struct FullyConnectedOptionsBuilder {
   void add_asymmetric_quantize_inputs(bool asymmetric_quantize_inputs) {
     fbb_.AddElement<uint8_t>(FullyConnectedOptions::VT_ASYMMETRIC_QUANTIZE_INPUTS, static_cast<uint8_t>(asymmetric_quantize_inputs), 0);
   }
-<<<<<<< HEAD
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
     fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
   }
-  explicit FullyConnectedOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-=======
   explicit FullyConnectedOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
->>>>>>> origin/master
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
@@ -8636,14 +8620,10 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tab
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
-<<<<<<< HEAD
   tflite::TensorType quantized_bias_type() const {
     return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-=======
   bool Verify(::flatbuffers::Verifier &verifier) const {
->>>>>>> origin/master
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
@@ -8673,14 +8653,10 @@ struct TransposeConvOptionsBuilder {
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(TransposeConvOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
-<<<<<<< HEAD
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
     fbb_.AddElement<int8_t>(TransposeConvOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
   }
-  explicit TransposeConvOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-=======
   explicit TransposeConvOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
->>>>>>> origin/master
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
