@@ -103,6 +103,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",

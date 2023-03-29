@@ -459,3 +459,31 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
     ],
 )
+
+tf_cc_test(
+    name = "xla_legalize_tf_test",
+    srcs = [
+        "xla_legalize_tf_test.cc",
+    ],
+    deps = [
+        ":tf_xla_passes",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_expression",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
