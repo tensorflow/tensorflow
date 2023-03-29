@@ -2532,6 +2532,38 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 
 // -----
 
+// CHECK-LABEL:   @dyn_top_k
+// CHECK-SAME: ([[ARG_0:%.*]]: tensor<i64>, [[ARG_1:%.*]]: tensor<?x5x3xi1>
+// CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
+// CHECK-DAG:     [[VAL_0:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 0 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
+// CHECK-DAG:     [[VAL_1:%.*]] = mhlo.reshape [[VAL_0]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_2:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 1 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
+// CHECK-DAG:     [[VAL_3:%.*]] = mhlo.reshape [[VAL_2]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_4:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 2 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
+// CHECK-DAG:     [[VAL_5:%.*]] = mhlo.reshape [[VAL_4]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_6:%.*]] = "mhlo.concatenate"([[VAL_1]], [[VAL_3]], [[VAL_5]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK-DAG:     [[VAL_7:%.*]] = "mhlo.dynamic_iota"([[VAL_6]]) {iota_dimension = 2 : i64} : (tensor<3xi32>) -> tensor<?x5x3xi32>
+// CHECK-DAG:     [[VAL_8:%.*]]:2 = "mhlo.sort"([[ARG_1]], [[VAL_7]]) ({
+// CHECK-DAG:     ^bb0([[ARG_2:%.*]]: tensor<i1>, [[ARG_3:%.*]]: tensor<i1>, [[ARG_4:%.*]]: tensor<i32>, [[ARG_5:%.*]]: tensor<i32>):
+// CHECK-DAG:       [[VAL_14:%.*]] = mhlo.compare  GT, [[ARG_2]], [[ARG_3]],  NOTYPE : (tensor<i1>, tensor<i1>) -> tensor<i1>
+// CHECK-DAG:       mhlo.return [[VAL_14]] : tensor<i1>
+// CHECK-DAG:     }) {dimension = 2 : i64, is_stable = true} : (tensor<?x5x3xi1>, tensor<?x5x3xi32>) -> (tensor<?x5x3xi1>, tensor<?x5x3xi32>)
+// CHECK-DAG:     [[VAL_9:%.*]] = mhlo.constant dense<0> : tensor<3xi64>
+// CHECK-DAG:     [[VAL_10:%.*]] = mhlo.convert [[VAL_6]] : (tensor<3xi32>) -> tensor<3xi64>
+// CHECK-DAG:     [[VAL_11:%.*]] = mhlo.constant dense<1> : tensor<3xi64>
+// CHECK-DAG:     [[VAL_12:%.*]] = mhlo.real_dynamic_slice [[VAL_8]]#0, [[VAL_9]], [[VAL_10]], [[VAL_11]] : (tensor<?x5x3xi1>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi1>
+// CHECK-DAG:     [[VAL_13:%.*]] = mhlo.real_dynamic_slice [[VAL_8]]#1, [[VAL_9]], [[VAL_10]], [[VAL_11]] : (tensor<?x5x3xi32>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi32>
+// CHECK-DAG:     return [[VAL_12]], [[VAL_13]] : tensor<?x5x2xi1>, tensor<?x5x2xi32>
+// CHECK-DAG:   }
+// CHECK-DAG: }
+
+func.func @dyn_top_k(%arg0: tensor<i64>, %arg1: tensor<?x5x3xi1> {mhlo.sharding = ""}) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
+  %values, %indices = chlo.top_k(%arg1, k = 2) : tensor<?x5x3xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
+  return %values, %indices : tensor<?x5x2xi1>, tensor<?x5x2xi32>
+}
+
+// -----
+
 // Verify bessel_i1e operator for f16, f32, f64 separately as they use
 // different coefficients.
 
