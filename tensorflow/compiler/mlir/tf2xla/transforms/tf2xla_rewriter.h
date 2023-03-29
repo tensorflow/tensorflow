@@ -26,11 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 
 namespace mlir {
 namespace mhlo {
+
+class Tf2XlaRewriterTestPeer;
 
 class Tf2XlaRewriter {
  public:
@@ -41,11 +44,20 @@ class Tf2XlaRewriter {
                                        bool use_tf2xla_hlo_importer);
 
  private:
+  friend class Tf2XlaRewriterTestPeer;
+
   Tf2XlaRewriter(mlir::Operation* op, mlir::PatternRewriter& rewriter,
                  const std::string& device_type, bool is_module_pass,
                  bool use_tf2xla_hlo_importer);
 
   ~Tf2XlaRewriter();
+
+  LogicalResult LegalizeWithHloModuleImporter();
+
+  // Given the XlaComputation, return a new ModuleOp with MHLO that contains
+  // the translated XlaComputation HLO.
+  tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+  CreateModuleFromXlaComputation(xla::XlaComputation& computation);
 
   // Prepares OpKernelContext params common to all the ops.
   // Emits an error on failure.
@@ -80,6 +92,7 @@ class Tf2XlaRewriter {
   tensorflow::OpKernelContext::Params params_;
 
   bool use_tf2xla_hlo_importer_;
+  xla::XlaBuilder xla_builder_;
 };
 
 }  // namespace mhlo

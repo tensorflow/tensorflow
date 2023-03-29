@@ -57,6 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -70,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -112,18 +115,41 @@ Tf2XlaRewriter::Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
       hlo_builder_(op->getName().getStringRef().str(), rewriter_, op->getLoc(),
                    /*build_functions=*/is_module_pass),
       context_(nullptr),
-      use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer) {}
+      use_tf2xla_hlo_importer_(use_tf2xla_hlo_importer),
+      xla_builder_(op_->getName().getStringRef().str()) {}
 
 Tf2XlaRewriter::~Tf2XlaRewriter() {
   if (context_) context_->Unref();
+}
+
+LogicalResult Tf2XlaRewriter::LegalizeWithHloModuleImporter() {
+  return failure();
+}
+
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+Tf2XlaRewriter::CreateModuleFromXlaComputation(
+    xla::XlaComputation& computation) {
+  mlir::OwningOpRef<mlir::ModuleOp> temp_module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(op_->getContext()));
+
+  TF_RETURN_IF_ERROR(
+      xla::ConvertHloToMlirHlo(temp_module.get(), &computation.proto(),
+                               /*import_all_computations=*/true));
+
+  return temp_module;
 }
 
 LogicalResult Tf2XlaRewriter::PrepareParams() {
   // XlaCompiler within the context is only used by the functional ops to
   // compile functions. We are not handling those at the moment so
   // XlaCompiler is not required.
-  context_ = new tensorflow::XlaContext(/*compiler=*/nullptr, &hlo_builder_,
-                                        /*graph=*/nullptr);
+  if (use_tf2xla_hlo_importer_) {
+    context_ = new tensorflow::XlaContext(/*compiler=*/nullptr, &xla_builder_,
+                                          /*graph=*/nullptr);
+  } else {
+    context_ = new tensorflow::XlaContext(/*compiler=*/nullptr, &hlo_builder_,
+                                          /*graph=*/nullptr);
+  }
   context_->Ref();
 
   device_mgr_ = CreateDeviceMgr(device_type_);
