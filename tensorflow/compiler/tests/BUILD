@@ -2144,6 +2144,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
@@ -2163,6 +2164,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
         "@absl_py//absl/testing:parameterized",
     ],

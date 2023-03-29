@@ -292,6 +292,7 @@ cuda_py_test(
     deps = [
         ":check_numerics_callback",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",

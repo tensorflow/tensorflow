@@ -392,6 +392,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:cond",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
@@ -414,6 +415,7 @@ cuda_py_test(
         ":forwardprop",
         ":forwardprop_util",
         ":test",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
 )

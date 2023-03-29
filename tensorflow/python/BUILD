@@ -72,6 +72,7 @@ py_library(
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
+        ":gradient_checker_v2",
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/tpu:tpu_estimator",
@@ -1048,6 +1049,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":gradient_checker_v2",
         ":gradients",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -3208,6 +3210,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":gradient_checker_v2",
         ":math_ops",
         ":nn_grad",
         ":nn_ops",
@@ -3235,6 +3238,7 @@ cuda_py_test(
         ":data_flow_grad",
         ":data_flow_ops",
         ":functional_ops",
+        ":gradient_checker_v2",
         ":gradients",
         ":init_ops",
         ":list_ops",
@@ -3296,6 +3300,7 @@ py_library(
     deps = [
         ":client_testlib",
         ":errors",
+        ":gradient_checker_v2",
         ":gradients",
         ":image_ops",
         "//tensorflow/python/framework:config",
@@ -3395,6 +3400,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":gradient_checker_v2",
         ":math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -3539,6 +3545,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":gradient_checker_v2",
         ":nn",
         ":nn_grad",
         ":nn_ops",
@@ -3645,6 +3652,7 @@ cuda_py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":gradient_checker_v2",
         ":math_ops",
         ":special_math_ops",
         "//tensorflow/python/client",
@@ -4434,6 +4442,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":client_testlib",
+        ":gradient_checker_v2",
         ":nn_grad",
         ":nn_ops",
         "//tensorflow/python/framework:constant_op",
@@ -4800,6 +4809,7 @@ py_library(
 alias(
     name = "platform",
     actual = "//tensorflow/python/platform:platform",
+    deprecation = "This target has been split. Depend on the sub-targets instead.",
     visibility = ["//visibility:public"],
 )
 

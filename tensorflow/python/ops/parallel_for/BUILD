@@ -136,6 +136,7 @@ cuda_py_test(
         "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:parsing_ops",
