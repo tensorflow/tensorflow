@@ -88,6 +88,9 @@ dtensor_test(
         PATHWAYS,
         PATHWAYS_V3_DONUT_BACKEND,
     ],
+    tags = [
+        "nosan",  # FIXME(b/275600764): Reenable after flakiness is fixed.
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
