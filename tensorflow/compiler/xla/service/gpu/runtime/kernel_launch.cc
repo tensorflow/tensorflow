@@ -50,7 +50,9 @@ StreamExecutorKernels* GpuExecutableKernels::operator()(
 static absl::Status LaunchImpl(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+#if GOOGLE_CUDA
     CapturingCudaGraph* capturing_cuda_graph,
+#endif
     State<std::unique_ptr<se::KernelBase>> device_kernel,
     int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
     int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
@@ -75,12 +77,16 @@ static absl::Status LaunchImpl(
   if (!kernel.ok()) return kernel.status();
   assert((**kernel)->name() == name && "unexpected loaded kernel");
 
+#if GOOGLE_CUDA
   if (capturing_cuda_graph->capturing()) {
     VLOG(3) << "Launching " << (**kernel)->name()
             << "during CUDA graph capture";
   } else {
     VLOG(3) << "Launching " << (**kernel)->name();
   }
+#else
+  VLOG(3) << "Launching " << (**kernel)->name();
+#endif
 
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffer_args(
       args_size_including_temp_buffer);
@@ -119,7 +125,9 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<const std::string*>()
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
+#if GOOGLE_CUDA
         .UserData<CapturingCudaGraph*>()
+#endif
         .State<std::unique_ptr<se::KernelBase>>("uid")
         .Arg<int32_t>()   // shared_memory_bytes
         .Arg<int32_t>()   // grid_size_x
