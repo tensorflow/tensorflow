@@ -1076,7 +1076,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
   GpuPipelineOpts opts;
-  opts.enable_cuda_graphs = debug_options.xla_gpu_enable_cuda_graphs();
+  opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
