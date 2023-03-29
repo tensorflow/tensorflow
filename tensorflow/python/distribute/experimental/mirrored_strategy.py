@@ -118,7 +118,9 @@ class MirroredStrategy(distribute_lib.Strategy):
     if not accelerator_util.is_initialized():
       # TODO(feyu): Add a method in accelerator_util to check the initialized
       # mesh device types.
-      accelerator_util.initialize_accelerator_system(device_type)
+      accelerator_util.initialize_accelerator_system(
+          device_type,
+          experimental_reset_context=True)
 
   def reduce(self, reduce_op, value, axis):
     # Due to the limitation of using scalar in DTensor (e.g. the rank 0 tensor
