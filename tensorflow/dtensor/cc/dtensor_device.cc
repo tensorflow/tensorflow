@@ -1292,7 +1292,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
     }
     TensorHandlePtr single_tensor(copied_tensor);
     std::unique_ptr<TensorWithLayoutTf> tensor_with_layout =
-        TensorWithLayoutTf::Wrap(std::move(single_tensor), *single_device_mesh,
+        TensorWithLayoutTf::Wrap(std::move(single_tensor),
                                  *single_device_layout, status);
     if (TF_GetCode(status) != TF_OK) {
       return tensor_with_layouts;

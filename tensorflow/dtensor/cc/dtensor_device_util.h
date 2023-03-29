@@ -191,10 +191,8 @@ class TensorWithLayoutTf
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
 
-  // Given a single tensor, wraps it with a single device mesh and a single
-  // device layout.
+  // Given a single tensor, wraps it with a single device layout.
   static std::unique_ptr<TensorWithLayoutTf> Wrap(TensorHandlePtr single_tensor,
-                                                  const Mesh& mesh,
                                                   const Layout& layout,
                                                   TF_Status* status);
 

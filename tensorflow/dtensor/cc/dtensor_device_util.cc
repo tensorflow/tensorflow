@@ -365,11 +365,10 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
-    TensorHandlePtr single_tensor, const Mesh& mesh, const Layout& layout,
-    TF_Status* status) {
-  if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
+    TensorHandlePtr single_tensor, const Layout& layout, TF_Status* status) {
+  if (!layout.IsSingleDevice()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Input mesh or layout is not for single device.");
+                 "Input layout is not for single device.");
     return nullptr;
   }
   std::vector<int64_t> shape = TensorShapeAsVector(single_tensor.get(), status);
@@ -377,8 +376,8 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
     return nullptr;
   }
 
-  return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(single_tensor), mesh, layout, shape));
+  return absl::WrapUnique(new TensorWithLayoutTf(std::move(single_tensor),
+                                                 layout.mesh(), layout, shape));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(

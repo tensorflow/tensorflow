@@ -40,7 +40,8 @@ class ParallelExecutor {
   virtual ~ParallelExecutor() = default;
 
   // Broadcasts `tensor` to `mesh` using replicated sharding and returns a
-  // DTensor representation.
+  // DTensor representation. `mesh` can be a single device mesh and in that case
+  // `const_value` is useless.
   virtual StatusOr<std::unique_ptr<TensorWithLayout>> Broadcast(
       const Tensor& tensor, const Mesh& mesh,
       std::optional<NodeDef> const_value) = 0;
