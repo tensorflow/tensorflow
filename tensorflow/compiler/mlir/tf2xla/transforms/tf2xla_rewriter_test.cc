@@ -43,6 +43,9 @@ namespace mhlo {
 
 using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
+using ::mlir::OpBuilder;
+using ::mlir::Operation;
+using ::mlir::func::FuncOp;
 using ::tsl::Status;
 using ::tsl::StatusOr;
 using ::xla::XlaBuilder;
@@ -56,6 +59,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 })";
 
+XlaComputation GetTestXlaComputation() {
+  XlaBuilder xla_builder("test_builder");
+  xla::Add(xla::ConstantR0<float>(&xla_builder, 1.0),
+           xla::ConstantR0<float>(&xla_builder, 2.0));
+
+  return xla_builder.Build().value();
+}
+
 class EmptyPatternRewriter : public mlir::PatternRewriter {
  public:
   explicit EmptyPatternRewriter(const OpBuilder& other_builder)
@@ -66,18 +77,26 @@ class EmptyPatternRewriter : public mlir::PatternRewriter {
 class Tf2XlaRewriterTestPeer {
  public:
   explicit Tf2XlaRewriterTestPeer() = delete;
-  Tf2XlaRewriterTestPeer(mlir::Operation* op, mlir::PatternRewriter& rewriter)
-      : tf2xla_rewriter_(op, rewriter,
+  explicit Tf2XlaRewriterTestPeer(mlir::Operation* op)
+      : op_builder_(op),
+        empty_rewriter_(op_builder_),
+        tf2xla_rewriter_(op, empty_rewriter_,
                          /*device_type=*/"XLA_CPU_JIT",
                          /*is_module_pass=*/false,
-                         /*use_tf2xla_hlo_importer=*/false) {}
+                         /*use_tf2xla_hlo_importer=*/true) {}
 
   StatusOr<mlir::OwningOpRef<ModuleOp>> GetModuleFromXlaComputation(
-      xla::XlaComputation& computation) {
+      XlaComputation& computation) {
     return tf2xla_rewriter_.CreateModuleFromXlaComputation(computation);
   }
 
+  StatusOr<FuncOp> ImportXlaComputationIntoModule(XlaComputation& computation) {
+    return tf2xla_rewriter_.ImportXlaComputation(computation);
+  }
+
  private:
+  OpBuilder op_builder_;
+  EmptyPatternRewriter empty_rewriter_;
   Tf2XlaRewriter tf2xla_rewriter_;
 };
 
@@ -99,12 +118,8 @@ class Tf2XlaRewriterTest : public ::testing::Test {
   Status LegalizeOp() {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
-    mlir::func::FuncOp main_func =
-        module_->lookupSymbol<mlir::func::FuncOp>("main");
-    EXPECT_TRUE(main_func);
-
-    mlir::Operation& first_op = main_func.getBody().front().front();
-    mlir::OpBuilder op_builder(&first_op);
+    Operation& first_op = GetFirstOpFromMain();
+    OpBuilder op_builder(&first_op);
     EmptyPatternRewriter pattern_rewriter(op_builder);
 
     LogicalResult result =
@@ -119,20 +134,31 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  StatusOr<mlir::OwningOpRef<ModuleOp>> GetModuleFromXlaComputation(
-      XlaComputation& computation) {
-    SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
-
+  mlir::Operation& GetFirstOpFromMain() {
     mlir::func::FuncOp main_func =
         module_->lookupSymbol<mlir::func::FuncOp>("main");
     EXPECT_TRUE(main_func);
 
-    mlir::Operation& first_op = main_func.getBody().front().front();
-    mlir::OpBuilder op_builder(&first_op);
-    EmptyPatternRewriter pattern_rewriter(op_builder);
+    return main_func.getBody().front().front();
+  }
 
-    Tf2XlaRewriterTestPeer test_peer(&first_op, pattern_rewriter);
+  StatusOr<mlir::OwningOpRef<ModuleOp>> GetModuleFromXlaComputation(
+      XlaComputation& computation) {
+    SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
+
+    mlir::Operation& first_op = GetFirstOpFromMain();
+
+    Tf2XlaRewriterTestPeer test_peer(&first_op);
     return test_peer.GetModuleFromXlaComputation(computation);
+  }
+
+  StatusOr<FuncOp> ImportXlaComputationIntoModule(XlaComputation& computation) {
+    SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
+
+    mlir::Operation& first_op = GetFirstOpFromMain();
+
+    Tf2XlaRewriterTestPeer test_peer(&first_op);
+    return test_peer.ImportXlaComputationIntoModule(computation);
   }
 
  private:
@@ -144,16 +170,30 @@ class Tf2XlaRewriterTest : public ::testing::Test {
 TEST_F(Tf2XlaRewriterTest, LegalizesOp) { TF_EXPECT_OK(LegalizeOp()); }
 
 TEST_F(Tf2XlaRewriterTest, CreatesModuleFromXla) {
-  XlaBuilder xla_builder("test_builder");
-  xla::Add(xla::ConstantR0<float>(&xla_builder, 1.0),
-           xla::ConstantR0<float>(&xla_builder, 2.0));
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, xla_builder.Build());
+  XlaComputation computation = GetTestXlaComputation();
 
   StatusOr<mlir::OwningOpRef<ModuleOp>> generated_module =
       GetModuleFromXlaComputation(computation);
 
   EXPECT_TRUE(generated_module.ok());
   EXPECT_TRUE(generated_module.value()->lookupSymbol("main"));
+}
+
+TEST_F(Tf2XlaRewriterTest, ImportsXlaModule) {
+  XlaComputation computation = GetTestXlaComputation();
+
+  StatusOr<FuncOp> generated_function =
+      ImportXlaComputationIntoModule(computation);
+
+  TF_EXPECT_OK(generated_function.status());
+
+  ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
+
+  FuncOp expected_generated_function =
+      parent_module.lookupSymbol<mlir::func::FuncOp>("hlo_module_imported");
+
+  EXPECT_TRUE(expected_generated_function);
+  EXPECT_EQ(generated_function.value(), expected_generated_function);
 }
 
 }  // namespace mhlo
