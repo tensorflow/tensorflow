@@ -201,5 +201,37 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllToAll) {
   EXPECT_THAT(start->async_wrapped_opcode(), HloOpcode::kAllToAll);
 }
 
+TEST_F(AsyncAllReduceCreatorTest, SplitsSingleReduceScatter) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[8,16] parameter(0)
+    ROOT ata = f32[1,16] reduce-scatter(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=add
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_reduce_scatter = HloPredicateTrue;
+  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  XLA_VLOG_LINES(0, hlo_module->ToString());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
+  ASSERT_THAT(start->async_wrapped_instruction(), NotNull());
+  EXPECT_THAT(start->async_wrapped_opcode(), HloOpcode::kReduceScatter);
+}
 }  // namespace
 }  // namespace xla

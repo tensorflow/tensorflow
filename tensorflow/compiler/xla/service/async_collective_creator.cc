@@ -43,14 +43,17 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
     // instructions while iterating through them.
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
-      if ((instruction->opcode() == HloOpcode::kAllReduce &&
+      const HloOpcode op = instruction->opcode();
+      if ((op == HloOpcode::kAllReduce &&
            config_.convert_all_reduce(instruction)) ||
-          (instruction->opcode() == HloOpcode::kAllGather &&
+          (op == HloOpcode::kAllGather &&
            config_.convert_all_gather(instruction)) ||
-          (instruction->opcode() == HloOpcode::kCollectivePermute &&
+          (op == HloOpcode::kCollectivePermute &&
            config_.convert_collective_permute(instruction)) ||
-          (instruction->opcode() == HloOpcode::kAllToAll &&
-           config_.convert_all_to_all(instruction))) {
+          (op == HloOpcode::kAllToAll &&
+           config_.convert_all_to_all(instruction)) ||
+          (op == HloOpcode::kReduceScatter &&
+           config_.convert_reduce_scatter(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }
@@ -59,7 +62,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
     }
 
     absl::flat_hash_map<HloInstruction*, ReplacedAsync> replaced_pairs;
-    bool should_update_schedule =
+    const bool should_update_schedule =
         module->has_schedule() &&
         module->schedule().is_computation_scheduled(computation);
     for (HloInstruction* instruction : supported_collectives) {
@@ -159,15 +162,15 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
         changed = true;
         continue;
       }
-      if (HloAllToAllInstruction* ata =
-              DynCast<HloAllToAllInstruction>(instruction)) {
+      const HloOpcode op = instruction->opcode();
+      if (op == HloOpcode::kAllToAll || op == HloOpcode::kReduceScatter) {
         Shape sync_shape = ShapeUtil::MakeScalarShape(U32);
         TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
                             computation->CreateAsyncInstructions(
-                                ata, {sync_shape, sync_shape}));
+                                instruction, {sync_shape, sync_shape}));
         if (should_update_schedule) {
           HloInstruction* async_start = async_done->mutable_operand(0);
-          replaced_pairs[ata] = ReplacedAsync{async_start, async_done};
+          replaced_pairs[instruction] = ReplacedAsync{async_start, async_done};
         }
         changed = true;
         continue;
