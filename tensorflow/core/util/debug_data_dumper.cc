@@ -111,7 +111,8 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
 }
 
 void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
-                                const Graph* graph) {
+                                const Graph* graph,
+                                const FunctionLibraryDefinition* func_lib_def) {
   // Construct the dump filename.
   std::string dump_filename = GetDumpFileBasename(name, tag);
 
@@ -123,8 +124,14 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
     return;
   }
 
+  // Construct a graph def.
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
+
+  if (func_lib_def) *graph_def.mutable_library() = func_lib_def->ToProto();
+
   // Now dump the graph into the target file.
-  DumpGraphToFile(dump_filename, *graph);
+  DumpGraphDefToFile(dump_filename, graph_def);
 }
 
 void DebugDataDumper::DumpMLIRModule(const std::string& name,
