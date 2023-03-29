@@ -2356,7 +2356,7 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   EXPECT_EQ(5, node_2->parameter_value(kBufferSize));
   EXPECT_EQ(10, node_3->parameter_value(kBufferSize));
   EXPECT_EQ(8, node_4->parameter_value(kBufferSize));
-  EXPECT_EQ(6, node_5->parameter_value(kBufferSize));
+  EXPECT_EQ(7, node_5->parameter_value(kBufferSize));
   EXPECT_EQ(2, node_1->buffered_elements_low());
   EXPECT_EQ(2, node_1->buffered_elements_high());
   EXPECT_EQ(4, node_2->buffered_elements_low());

@@ -51,6 +51,10 @@ constexpr double kOutlierSigmas = 2.0;
 // processing time. For example, a value of 1 would mean that the target time is
 // faster than 84% of the gap times.
 constexpr double kTargetTimeSigmas = 1.0;
+// The scaling factors to apply to buffer optimization when upsizing or
+// downsizing a buffer.
+constexpr double kBufferUpsizeMultiplier = 2.0;
+constexpr double kBufferDownsizeMultipliter = 0.9;
 
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
@@ -1873,12 +1877,12 @@ bool Node::TryDownsizeBuffer() {
           (buffered_elements_high_ - buffered_elements_low_ + 1) <
               parameter->value) {
         double old_value = parameter->value;
-        // By default, we double buffer sizes if there is enough RAM in
-        // upsize. We cap the downsize by 1/4 of the current size to avoid
-        // undoing the previous upsize.
-        parameter->value =
-            std::max(buffered_elements_high_ - buffered_elements_low_ + 1,
-                     static_cast<int64_t>(old_value * 0.75));
+        // By default, we increase the buffer sizes by `kBufferUpsizeMultiplier`
+        // if there is enough RAM in upsize. We cap the downsize by
+        // `kBufferDownsizeMultipliter` of the current size.
+        parameter->value = std::max(
+            buffered_elements_high_ - buffered_elements_low_ + 1,
+            static_cast<int64_t>(old_value * kBufferDownsizeMultipliter));
         if (old_value != parameter->value) {
           VLOG(2) << "Downsize buffer " << long_name()
                   << "::" << parameter->name << " from " << old_value << " to "
@@ -2821,7 +2825,7 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
   }
 
   // Compute a uniform scaling factor for all buffers. Cap the factor at 2.
-  double scaling_factor = 2.0;
+  double scaling_factor = kBufferUpsizeMultiplier;
   if (max_buffered_bytes > 0) {
     scaling_factor =
         1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
