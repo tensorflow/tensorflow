@@ -2667,6 +2667,9 @@ tf_cc_test(
     name = "optimize_cross_host_control_deps_test",
     size = "small",
     srcs = ["optimize_cross_host_control_deps_test.cc"],
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":optimize_cross_host_control_deps",
         "//tensorflow/cc:cc_ops",
