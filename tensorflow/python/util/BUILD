@@ -233,7 +233,7 @@ tf_py_test(
     srcs = ["decorator_utils_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":decorator_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],
@@ -248,7 +248,8 @@ tf_py_test(
     ],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":deprecation",
+        ":tf_decorator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],
@@ -259,7 +260,10 @@ tf_py_test(
     srcs = ["dispatch_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":deprecation",
+        ":dispatch",
+        ":nest",
+        ":tf_export",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
         "//tensorflow/python/framework:tensor_conversion",
@@ -271,7 +275,7 @@ tf_py_test(
     srcs = ["keyword_args_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":keyword_args",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -295,7 +299,8 @@ tf_py_test(
     srcs = ["tf_export_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":tf_decorator",
+        ":tf_export",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],
@@ -379,7 +384,6 @@ tf_py_test(
     srcs = ["tf_stack_test.py"],
     python_version = "PY3",
     deps = [
-        ":tf_export",
         ":tf_stack",
         "//tensorflow/python:client_testlib",
     ],
@@ -496,6 +500,7 @@ tf_py_test(
     srcs = ["traceback_utils_test.py"],
     python_version = "PY3",
     deps = [
+        ":traceback_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
@@ -507,6 +512,10 @@ tf_py_test(
     size = "small",
     srcs = ["object_identity_test.py"],
     python_version = "PY3",
+    deps = [
+        ":nest",
+        ":object_identity",
+    ],
 )
 
 # Placeholder for intenal nest_test comments.
@@ -546,7 +555,7 @@ tf_py_test(
     main = "serialization_test.py",
     python_version = "PY3",
     deps = [
-        ":util",
+        ":serialization",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -556,7 +565,7 @@ tf_py_test(
     srcs = ["function_utils_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":function_utils",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -567,7 +576,7 @@ tf_py_test(
     srcs = ["tf_contextlib_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":tf_decorator",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -578,7 +587,7 @@ tf_py_test(
     srcs = ["tf_decorator_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":tf_decorator",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -612,7 +621,7 @@ tf_py_test(
     srcs = ["tf_inspect_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":tf_decorator",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -1010,7 +1019,7 @@ tf_py_test(
     main = "lock_util_test.py",
     python_version = "PY3",
     deps = [
-        ":util",
+        ":lock_util",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1044,7 +1053,8 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":fast_module_type",
-        ":util",
+        ":module_wrapper",
+        ":tf_decorator",
         "//tensorflow/python:client_testlib",
         "//tensorflow/tools/compatibility:all_renames_v2",
         "@six_archive//:six",
@@ -1073,6 +1083,7 @@ tf_py_test(
     srcs = ["type_annotations_test.py"],
     python_version = "PY3",
     deps = [
+        ":type_annotations",
     ],
 )
 
@@ -1086,7 +1097,7 @@ tf_py_test(
     srcs = ["compat_test.py"],
     python_version = "PY3",
     deps = [
-        ":util",
+        ":compat",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],
@@ -1096,7 +1107,8 @@ tf_py_test(
     name = "variable_utils_test",
     srcs = ["variable_utils_test.py"],
     deps = [
-        ":util",
+        ":nest",
+        ":variable_utils",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",

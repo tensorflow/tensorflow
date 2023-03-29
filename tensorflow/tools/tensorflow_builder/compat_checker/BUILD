@@ -22,7 +22,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )
