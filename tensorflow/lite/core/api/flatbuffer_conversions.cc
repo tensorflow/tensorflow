@@ -256,6 +256,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseElu(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      return ParseEmbeddingLookup(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_EXP: {
       return ParseExp(op, error_reporter, allocator, builtin_data);
     }
@@ -855,7 +859,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-    case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
     case BuiltinOperator_HASHTABLE_FIND:
     case BuiltinOperator_HASHTABLE_IMPORT:
@@ -1333,6 +1336,14 @@ TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseElu(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                       void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseEmbeddingLookup(const Operator*, ErrorReporter*,
+                                  BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 
