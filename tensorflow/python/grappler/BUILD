@@ -17,12 +17,12 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler/costs:analytical_cost_estimator",
-        "//tensorflow/core/grappler/costs:measuring_cost_estimator",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",
         "//tensorflow/core/grappler/costs:cost_estimator",
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",
         "//tensorflow/core/grappler/costs:utils",
     ] + tf_protos_grappler(),
     alwayslink = 1,
@@ -114,12 +114,12 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
     deps = [
-        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/python/lib/core:pybind11_status",
     ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
 )
 

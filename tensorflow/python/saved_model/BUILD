@@ -533,12 +533,12 @@ cuda_py_test(
         ":load",
         ":save",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:while_loop",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python:while_v2",  # b/118513001
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/eager:def_function",
