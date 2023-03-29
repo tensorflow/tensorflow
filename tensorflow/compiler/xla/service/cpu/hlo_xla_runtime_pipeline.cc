@@ -121,6 +121,14 @@ static Status CreateHloXlaPipeline(
   // Some early sparse rewriting rules.
   if (options.sparse_bufferization) {
     pm.addNestedPass<FuncOp>(createSparseCustomCallRewritingPass());
+    // We wrap some CHLO unary operations with custom calls to preserve the
+    // sparsity information for those operations during the roundtrip. We now
+    // invoke the needed passes to lower such CHLO operations to HLO after we
+    // rewrite the custom calls back to such CHLO unary operations.
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createSparseRewritingPass());
   }

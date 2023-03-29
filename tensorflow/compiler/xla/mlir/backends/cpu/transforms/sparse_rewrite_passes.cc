@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -151,6 +152,19 @@ struct SparseBroadcastInDimCallRewriter {
   }
 };
 
+template <typename unaryChlo>
+struct SparseUnaryChloCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 1 && "Need one argument");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Reconstruct the unary chlo operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<unaryChlo>(op, ret_sp_tensor.getType(),
+                                           op.getInputs()[0]);
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -164,6 +178,20 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
                      SparseBroadcastInDimCallRewriter()),
       std::make_pair("sparse_tensor_concatenate",
                      SparseConcatenateCallRewriter()),
+      std::make_pair("sparse_tensor_asin",
+                     SparseUnaryChloCallRewriter<chlo::AsinOp>()),
+      std::make_pair("sparse_tensor_asinh",
+                     SparseUnaryChloCallRewriter<chlo::AsinhOp>()),
+      std::make_pair("sparse_tensor_atan",
+                     SparseUnaryChloCallRewriter<chlo::AtanOp>()),
+      std::make_pair("sparse_tensor_atanh",
+                     SparseUnaryChloCallRewriter<chlo::AtanhOp>()),
+      std::make_pair("sparse_tensor_bessel_i1e",
+                     SparseUnaryChloCallRewriter<chlo::BesselI1eOp>()),
+      std::make_pair("sparse_tensor_sinh",
+                     SparseUnaryChloCallRewriter<chlo::SinhOp>()),
+      std::make_pair("sparse_tensor_tan",
+                     SparseUnaryChloCallRewriter<chlo::TanOp>()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
