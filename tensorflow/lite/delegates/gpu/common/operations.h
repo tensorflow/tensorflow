@@ -636,6 +636,7 @@ struct OneHotAttributes {
 struct SelectV2Attributes {
   bool broadcast_true = false;
   bool broadcast_false = false;
+  bool scalar_cond = false;
 };
 
 struct CumsumAttributes {

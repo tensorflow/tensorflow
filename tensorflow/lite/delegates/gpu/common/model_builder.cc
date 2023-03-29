@@ -2090,7 +2090,12 @@ class SelectV2OperationParser : public TFLiteOperationParser {
     const bool is_else_constant =
         false_tensor->allocation_type == kTfLiteMmapRo;
     BHWC cond_shape, true_shape, false_shape;
-    RETURN_IF_ERROR(ExtractTensorShape(*cond_tensor, &cond_shape));
+    if (cond_tensor->dims->size == 0) {
+      attr.scalar_cond = true;
+    } else {
+      RETURN_IF_ERROR(ExtractTensorShape(*cond_tensor, &cond_shape));
+      attr.scalar_cond = cond_shape.DimensionsProduct() == 1;
+    }
     if (true_tensor->dims->size == 0) {
       attr.broadcast_true = true;
     } else {
