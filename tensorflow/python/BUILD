@@ -2269,7 +2269,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
-        ":cond",
         ":handle_data_util",
         ":list_ops_gen",
         "//third_party/py/numpy",
