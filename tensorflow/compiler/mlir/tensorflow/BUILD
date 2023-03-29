@@ -459,8 +459,8 @@ cc_library(
     srcs = [
                "ir/tf_dialect.h",
                "ir/tf_ops.h",
-               "ir/tfrt_ops.h",
                "ir/tf_remaining_ops.h",
+               "ir/tfrt_ops.h",
            ] + ["ir/tf_" + target["name"] + ".cc" for target in tf_ops_category_list] +
            ["ir/tf_" + target["name"] + ".cc.inc" for target in tf_ops_category_list] +
            ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
@@ -475,8 +475,8 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":dynamic_shape_utils",
-        ":tensorflow_attributes",
         ":rewrite_util",
+        ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
         ":tensorflow_op_interfaces_inc_gen",
@@ -484,21 +484,21 @@ cc_library(
         ":tensorflow_structs",
         ":tensorflow_traits",
         ":tensorflow_types",
+        ":tf_arith_ops_folder",
         ":tf_ops_canonicalization_helper",
         ":tf_ops_device_helper",
         ":tf_ops_layout_helper",
         ":tf_ops_tensor_helper",
-        ":tf_arith_ops_folder",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SideEffectInterfaces",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Support",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -510,8 +510,8 @@ cc_library(
     srcs = [
         "ir/tf_dialect.h",
         "ir/tf_ops.h",
-        "ir/tf_remaining_ops.h",
         "ir/tf_remaining_ops.cc",
+        "ir/tf_remaining_ops.h",
         "ir/tfrt_ops.h",
     ] + ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
     hdrs = [
@@ -555,9 +555,9 @@ cc_library(
     srcs = [
         "ir/tf_dialect.h",
         "ir/tf_ops.h",
-        "ir/tfrt_ops.h",
-        "ir/tfrt_ops.cc",
         "ir/tf_remaining_ops.h",
+        "ir/tfrt_ops.cc",
+        "ir/tfrt_ops.h",
     ] + ["ir/tf_" + target["name"] + ".h" for target in tf_ops_category_list],
     hdrs = [
     ],
