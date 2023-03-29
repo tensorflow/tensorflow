@@ -218,6 +218,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/core/c:c_api_types",

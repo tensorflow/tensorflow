@@ -61,6 +61,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/async/c:types",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -95,6 +96,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -116,6 +118,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/async/c:types",
     ],
 )
 
@@ -135,6 +138,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:kernel_util",
