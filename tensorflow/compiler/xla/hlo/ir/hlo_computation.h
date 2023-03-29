@@ -74,8 +74,7 @@ class HloComputation {
    public:
     explicit Builder(absl::string_view name,
                      HloInstruction* fusion_instruction = nullptr)
-        : name_(name),
-          fusion_instruction_(fusion_instruction) {}
+        : name_(name), fusion_instruction_(fusion_instruction) {}
     Builder(Builder&& b) = default;
     virtual ~Builder() = default;
 
@@ -95,6 +94,12 @@ class HloComputation {
       auto* added_instruction = instruction.get();
       instructions_.push_back(std::move(instruction));
       return added_instruction;
+    }
+
+    HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
+                                   std::optional<absl::string_view> new_name) {
+      instruction->SetAndSanitizeName(new_name.value());
+      return AddInstruction(std::move(instruction));
     }
 
     Status ForEachInstruction(
