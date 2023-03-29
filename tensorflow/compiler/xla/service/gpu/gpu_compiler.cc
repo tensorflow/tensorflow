@@ -1226,11 +1226,9 @@ static Status CompileModuleToLlvmIrImpl(
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 
-    auto is_nop = [](const HloInstruction* instr) {
-      HloOpcode op = instr->opcode();
-      return op == HloOpcode::kParameter || op == HloOpcode::kConstant ||
-             op == HloOpcode::kBitcast || op == HloOpcode::kGetTupleElement;
-    };
+    HloPredicate is_nop =
+        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
+                         HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
     pipeline.AddPass<ConvertAsyncCollectivesToSync>(is_nop);
     pipeline.AddPass<OptimizationBarrierExpander>();
 

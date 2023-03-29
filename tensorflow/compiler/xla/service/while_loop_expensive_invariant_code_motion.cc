@@ -344,9 +344,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->computations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kWhile;
-                    });
+                    HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
   for (HloInstruction* while_instr : while_instrs) {

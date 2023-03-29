@@ -4645,11 +4645,9 @@ TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
               kAlternateMemorySpace);
     const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
     EXPECT_EQ(gte1->user_count(), 2);
-    EXPECT_NE(absl::c_find_if(gte1->users(),
-                              [](const HloInstruction* use) {
-                                return use->opcode() == HloOpcode::kCopyStart;
-                              }),
-              gte1->users().end());
+    EXPECT_NE(
+        absl::c_find_if(gte1->users(), HloPredicateIsOp<HloOpcode::kCopyStart>),
+        gte1->users().end());
   }
 }
 

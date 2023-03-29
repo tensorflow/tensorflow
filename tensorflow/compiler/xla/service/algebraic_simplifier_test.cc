@@ -8398,10 +8398,9 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  int64_t reduce_count = absl::c_count_if(
-      m->entry_computation()->instructions(), [](const HloInstruction* hlo) {
-        return hlo->opcode() == HloOpcode::kReduce;
-      });
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
   // Expect one Reduce operation after simplification.
   EXPECT_EQ(1, reduce_count);
   auto variadic_reduce = m::Reduce().WithShape(m::Shape().IsTuple());
@@ -8459,10 +8458,9 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  int64_t reduce_count = absl::c_count_if(
-      m->entry_computation()->instructions(), [](const HloInstruction* hlo) {
-        return hlo->opcode() == HloOpcode::kReduce;
-      });
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
   // Expect one Reduce operation after simplification.
   EXPECT_EQ(1, reduce_count);
   auto variadic_reduce = m::Reduce().WithShape(m::Shape().IsTuple());

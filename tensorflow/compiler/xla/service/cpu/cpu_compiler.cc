@@ -680,10 +680,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //     accumulation happens in f32.
   if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
     pipeline.AddPass<ChangeOpDataType>(
-        F16, F32, [](const HloInstruction* instr) {
-          return instr->opcode() == HloOpcode::kDot ||
-                 instr->opcode() == HloOpcode::kConvolution;
-        });
+        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
   // Run the following passes to a fixed point.
