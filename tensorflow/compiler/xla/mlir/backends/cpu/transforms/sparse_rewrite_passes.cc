@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
@@ -222,6 +223,64 @@ struct SparseSliceCallRewriter {
   }
 };
 
+struct SparseDynSliceCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    auto ctx = op.getContext();
+    auto loc = op.getLoc();
+    auto retTp = op.getResults().getTypes()[0].cast<RankedTensorType>();
+    // Strips the tensor operand at the front and the static_size array at
+    // the end. Inputs in between specify the dynamic offsets.
+    auto dyn_off_tensors = op.getInputs().drop_front().drop_back();
+    auto sizes =
+        getAttrFromConstant<DenseIntElementsAttr>(op.getInputs().back());
+
+    assert(sizes.getNumElements() == retTp.getRank() &&
+           dyn_off_tensors.size() == retTp.getRank());
+
+    SmallVector<sparse_tensor::SparseTensorDimSliceAttr> slice_attrs;
+    SmallVector<int64_t> static_offsets, static_sizes, static_strides;
+    SmallVector<Value> dyn_offsets;
+    constexpr auto dyn_v = sparse_tensor::SparseTensorDimSliceAttr::kDynamic;
+    for (auto em : llvm::enumerate(sizes)) {
+      // Populates sparse tensor slice attribute
+      uint64_t sz = em.value().getZExtValue();
+      slice_attrs.push_back(
+          sparse_tensor::SparseTensorDimSliceAttr::get(ctx, dyn_v, sz, 1));
+      // Populates arrays used for ExtractSliceOp.
+      static_offsets.push_back(ShapedType::kDynamic);
+      static_strides.push_back(1);  // dynamic_slice always uses stride == 1
+      static_sizes.push_back(sz);
+      // Populates dynamic offset value arrays for ExtractSliceOp.
+      Value dyn_off = rewriter.create<tensor::ExtractOp>(
+          loc, dyn_off_tensors[em.index()], ValueRange{});
+      Value dyn_off_idx = rewriter.create<arith::IndexCastOp>(
+          loc, rewriter.getIndexType(), dyn_off);
+      dyn_offsets.push_back(dyn_off_idx);
+    }
+
+    auto srcEnc =
+        retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
+    auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
+        ctx, srcEnc.getDimLevelType(), srcEnc.getDimOrdering(),
+        srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
+        slice_attrs);
+    auto sliceTp = RankedTensorType::get(retTp.getShape(),
+                                         retTp.getElementType(), sliceEnc);
+
+    auto slice = rewriter.create<tensor::ExtractSliceOp>(
+        loc, sliceTp, op.getInputs()[0], dyn_offsets, /*sizes=*/ValueRange{},
+        /*strides=*/ValueRange{}, static_offsets, static_sizes, static_strides);
+
+    // TODO(peiming): This weakens the performance benefit we get from the
+    // sparse compiler by forcing every slice to be materizalized while the
+    // sparse compiler supports view-based slice.
+    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(op, retTp, slice);
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -250,6 +309,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_tan",
                      SparseUnaryChloCallRewriter<chlo::TanOp>()),
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
+      std::make_pair("sparse_tensor_dynamic_slice",
+                     SparseDynSliceCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
