@@ -416,6 +416,7 @@ enum BuiltinOperator : int32 {
   SIGN = 158,
   BITCAST = 159,
   BITWISE_XOR = 160,
+  RIGHT_SHIFT = 161,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -546,6 +547,7 @@ union BuiltinOptions {
   SignOptions,
   BitcastOptions,
   BitwiseXorOptions,
+  RightShiftOptions,
 }
 
 // LINT.IfChange
@@ -1186,6 +1188,9 @@ table BitcastOptions {
 }
 
 table BitwiseXorOptions {
+}
+
+table RightShiftOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

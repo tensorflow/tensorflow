@@ -150,6 +150,7 @@ from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_seque
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
 from tensorflow.lite.testing.op_tests.rfft import make_rfft_tests
 from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
+from tensorflow.lite.testing.op_tests.right_shift import make_right_shift_tests
 from tensorflow.lite.testing.op_tests.roll import make_roll_tests
 from tensorflow.lite.testing.op_tests.roll import make_roll_with_constant_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests

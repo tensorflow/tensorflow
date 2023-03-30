@@ -137,6 +137,7 @@ def generated_test_models():
         "reverse_v2",
         "rfft",
         "rfft2d",
+        "right_shift",
         "roll",
         "roll_with_constant",
         "round",

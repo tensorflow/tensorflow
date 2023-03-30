@@ -3158,3 +3158,13 @@ func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tenso
   func.return %0 : tensor<8xui32>
   // CHECK: return %0 : tensor<8xui32>
 }
+
+// -----
+
+// CHECK-LABEL: testRightShift
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.right_shift"(%arg0, %arg1)
+  %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
+}

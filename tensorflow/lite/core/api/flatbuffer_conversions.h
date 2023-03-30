@@ -416,6 +416,10 @@ TfLiteStatus ParseBitwiseXor(const Operator* op, ErrorReporter* error_reporter,
                              BuiltinDataAllocator* allocator,
                              void** builtin_data);
 
+TfLiteStatus ParseRightShift(const Operator* op, ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_CORE_API_FLATBUFFER_CONVERSIONS_H_

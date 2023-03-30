@@ -550,6 +550,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseBitwiseXor(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_RIGHT_SHIFT: {
+      return ParseRightShift(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_CAST: {
       return ParseCast(op, error_reporter, allocator, builtin_data);
     }
@@ -2462,6 +2466,14 @@ TfLiteStatus ParseZerosLike(const Operator*, ErrorReporter*,
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseBitwiseXor(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseRightShift(const Operator*, ErrorReporter*,
                              BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
