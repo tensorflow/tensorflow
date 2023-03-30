@@ -32,7 +32,8 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.reduction1DTileSize = 32;
   opts.reduction2DTileSizes = {4, 4};
   opts.matmulTileSizes = {};
-  opts.vectorizationSizeThreshold = 128;
+  // TODO(vuson): Re-enable or remove this:
+  opts.vectorizationSizeThreshold = 0;
   opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
   opts.enableFusionClusters = false;
