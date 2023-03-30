@@ -190,7 +190,8 @@ TEST_F(Tf2XlaRewriterTest, ImportsXlaModule) {
   ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
 
   FuncOp expected_generated_function =
-      parent_module.lookupSymbol<mlir::func::FuncOp>("hlo_module_imported");
+      parent_module.lookupSymbol<mlir::func::FuncOp>(
+          "translated_tf2xla_kernel_tf.Unpack_0");
 
   EXPECT_TRUE(expected_generated_function);
   EXPECT_EQ(generated_function.value(), expected_generated_function);

@@ -130,6 +130,26 @@ Tf2XlaRewriter::~Tf2XlaRewriter() {
   if (context_) context_->Unref();
 }
 
+tsl::StatusOr<std::string>
+Tf2XlaRewriter::CreateUniqueTranslatedFunctionName() {
+  ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
+  for (int i = 0; i < INT_MAX; i++) {
+    std::string renamed_kernel =
+        absl::StrCat("translated_tf2xla_kernel_",
+                     op_->getName().getStringRef().str(), "_", i);
+
+    mlir::func::FuncOp candidate_func =
+        parent_module.lookupSymbol<mlir::func::FuncOp>(renamed_kernel);
+    if (!candidate_func) {
+      return renamed_kernel;
+    }
+  }
+
+  return tsl::errors::AlreadyExists(
+      absl::StrCat("Could not create a unique function name for op ",
+                   op_->getName().getStringRef().str()));
+}
+
 tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::ImportXlaComputation(
     xla::XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> computed_module,
@@ -143,7 +163,11 @@ tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::ImportXlaComputation(
   ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
   mlir::func::FuncOp translated_function =
       llvm::dyn_cast<func::FuncOp>(main.clone());
-  translated_function.setName("hlo_module_imported");
+
+  TF_ASSIGN_OR_RETURN(std::string translated_function_name,
+                      CreateUniqueTranslatedFunctionName());
+
+  translated_function.setName(translated_function_name);
   parent_module.push_back(translated_function);
 
   return translated_function;
