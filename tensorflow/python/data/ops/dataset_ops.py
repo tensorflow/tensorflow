@@ -4688,6 +4688,14 @@ class _NumpyIterator(tracking_base.Trackable):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
 
+  def _save(self):
+    # pylint: disable=protected-access
+    return self._iterator._save()
+
+  def _restore(self, state):
+    # pylint: disable=protected-access
+    return self._iterator._restore(state)
+
 
 class _VariantTracker(resource_lib.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
