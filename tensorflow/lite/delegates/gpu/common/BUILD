@@ -247,15 +247,15 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates:utils",
-        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/tools/versioning:gpu_compatibility",
     ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 

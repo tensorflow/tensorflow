@@ -43,9 +43,9 @@ cc_library(
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_session",
     ] + if_not_android([
         ":profiler_interface",
@@ -65,8 +65,8 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -136,8 +136,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
