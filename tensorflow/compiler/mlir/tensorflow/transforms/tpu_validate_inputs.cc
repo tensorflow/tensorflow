@@ -77,9 +77,6 @@ bool IsIntersectionXlaNonXlaOps(Operation* op) {
             TypeID::get<TF::ConstOp>(),
             TypeID::get<TF::WhileOp>(),
             TypeID::get<TF::AssertOp>(),
-            TypeID::get<TF::IdentityOp>(),
-            TypeID::get<TF::StatefulPartitionedCallOp>(),
-            TypeID::get<TF::TensorArrayV3Op>(),
             TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
         };
     return ops_set;
@@ -88,6 +85,22 @@ bool IsIntersectionXlaNonXlaOps(Operation* op) {
   if (!abstractOp) return true;
   return ops->count(abstractOp->getTypeID()) == 0;
 }
+
+bool IsPartitionedOp(Operation* op) {
+  static auto* ops = [] {
+    llvm::SmallDenseSet<mlir::TypeID, 32>* ops_set =
+        new llvm::SmallDenseSet<mlir::TypeID, 32>{
+            TypeID::get<TF::StatefulPartitionedCallOp>(),
+            TypeID::get<TF::PartitionedCallOp>(),
+            TypeID::get<TF::TPUPartitionedCallOp>(),
+        };
+    return ops_set;
+  }();
+  auto abstractOp = op->getRegisteredInfo();
+  if (!abstractOp) return false;
+  return ops->count(abstractOp->getTypeID()) != 0;
+}
+
 // Gets the successors of an op wrapped in a tf_executor.island.
 llvm::SmallVector<Operation*> GetSuccessors(Operation* op) {
   llvm::SmallVector<Operation*> successors;
@@ -344,7 +357,7 @@ bool CheckOpsClusterIO(Operation* op, MetadataMap& metadata_map) {
   return true;
 }
 
-bool InTypeMustBeNonXLA(const Type& type) {
+bool TypeMustBeNonXLA(const Type& type) {
   const Type elem = getElementTypeOrSelf(type);
   return !elem.isa<TF::ResourceType>() && !tensorflow::TypeValidForXLA(type);
 }
@@ -354,10 +367,10 @@ bool InTypeMustBeNonXLA(const Type& type) {
 // function specifically checks if the op must be non-xla.
 bool IsMustNotBeXlaOp(Operation* op) {
   for (auto& input : op->getOpOperands()) {
-    if (InTypeMustBeNonXLA(input.get().getType())) return true;
+    if (TypeMustBeNonXLA(input.get().getType())) return true;
   }
   for (auto output_types : op->getResultTypes()) {
-    if (!tensorflow::TypeValidForXLA(output_types)) return true;
+    if (TypeMustBeNonXLA(output_types)) return true;
   }
   return false;
 }
@@ -367,6 +380,9 @@ bool IsMustNotBeXlaOp(Operation* op) {
 // and non-xla as well. But below function specifically checks for the op to be
 // only XLA op.
 bool IsMustBeXlaOp(Operation* op, MetadataMap metadata_map) {
+  // All PartitionedCall are inlined-out before XLA.
+  // So MustBeXLA should return false
+  if (IsPartitionedOp(op)) return false;
   if (!op->hasAttr(TF::kTpuReplicateAttr)) return false;
   auto cluster = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
   if (metadata_map.find(cluster) == metadata_map.end()) return false;
@@ -391,6 +407,14 @@ bool ValidateIntersectionXlaNonXlaOps(Operation* op, MetadataMap metadata_map) {
       isa<TF::TPUPartitionedOutputV2Op>(op))
     return true;
   if (IsMustBeXlaOp(op, metadata_map) && IsMustNotBeXlaOp(op)) {
+    // TODO(b/269195256#comment19) change the warning for Identity op to error
+    // when issue with input graph is resolved. Possible issue with python layer
+    // inserting Identity op incorrectly.
+    if (isa<TF::IdentityOp>(op)) {
+      op->emitWarning("TF/XLA TPU bridge input check: found invalid op. ")
+          << op->getName() << " can't be both xla and non-xla";
+      return true;
+    }
     op->emitOpError("TF/XLA TPU bridge input check: found invalid op. ")
         << "Can't be both xla and non-xla";
     return false;

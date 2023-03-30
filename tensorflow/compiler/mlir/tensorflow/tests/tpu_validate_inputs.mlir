@@ -127,3 +127,17 @@ func.func @valid_xla_nonxla(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tenso
 }
 
 // -----
+
+func.func @valid_xla_nonxla_warning(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<*x!tf_type.string>, tensor<*x!tf_type.string>) {
+  %0:2 = tf_executor.graph {
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _tpu_replicate = "cluster", device = "/device:TPU:0", num_replicas = 2, topology = "topology"} : () -> ()
+    %ri, %c0 = tf_executor.island wraps "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 1 : i64, is_mirrored_variable = false, is_packed = false} : (tensor<i32>, tensor<i32>) -> tensor<*x!tf_type.string>
+    // expected-warning @+1 {{TF/XLA TPU bridge input check: found invalid op. tf.Identity can't be both xla and non-xla}}
+    %out, %c1 = tf_executor.island(%c0) wraps "tf.Identity"(%ri) {_tpu_replicate = "cluster", device = ""} : (tensor<*x!tf_type.string>) -> tensor<*x!tf_type.string>
+    %ro:2, %c2 = tf_executor.island wraps "tf.TPUReplicatedOutput"(%out) : (tensor<*x!tf_type.string>) -> (tensor<*x!tf_type.string>, tensor<*x!tf_type.string>)
+    tf_executor.fetch %ro#0, %ro#1 : tensor<*x!tf_type.string>, tensor<*x!tf_type.string>
+  }
+  return %0#0, %0#1 : tensor<*x!tf_type.string>, tensor<*x!tf_type.string>
+}
+
+// -----
