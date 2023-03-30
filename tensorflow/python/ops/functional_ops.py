@@ -1138,7 +1138,7 @@ def partitioned_call(args,
   Args:
     args: The arguments of the function, including captured inputs.
     f: The function to execute; an instance of `_DefinedFunction` or
-      `_EagerDefinedFunction`.
+      `AtomicFunction`.
     tout: a list containing the output dtypes enums; if `None`, inferred from
       the signature of `f`.
     executing_eagerly: (Optional) A boolean indicating whether the context is
@@ -1169,7 +1169,7 @@ def partitioned_call(args,
     executor_type = ""
 
   if executing_eagerly:
-    if f.stateful_ops:
+    if f.stateful_ops:  # pylint: disable=protected-access
       outputs = gen_functional_ops.stateful_partitioned_call(
           args=args,
           Tout=tout,
@@ -1205,7 +1205,11 @@ def partitioned_call(args,
 
   graph = ops.get_default_graph()
   graph._add_function_recursive(f)  # pylint: disable=protected-access
-  op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
+  op_name = (
+      "StatefulPartitionedCall"
+      if f.stateful_ops  # pylint: disable=protected-access
+      else "PartitionedCall"
+  )
 
   # Propagate the attribute indicating the need to compile from function to the
   # call itself.
