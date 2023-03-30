@@ -41,6 +41,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -73,7 +74,7 @@ class LoadTest(test.TestCase):
         # the right variable.
         distractor = ref_variable.RefVariable(-1.0, name="distractor")
         v = ref_variable.RefVariable(3.0, name="v")
-      local_variable = variables.VariableV1(
+      local_variable = variable_v1.VariableV1(
           1.0,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           trainable=False,
