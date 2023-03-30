@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -367,24 +368,24 @@ FailureOr<TransformResult> Deallocator::transformOp(
   if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op)) {
     return transformOp(rbi, ownedMemrefs);
   }
-  if (auto alloc = llvm::dyn_cast<memref::AllocOp>(op)) {
-    OpBuilder b(alloc.getContext());
-    b.setInsertionPointAfter(alloc);
-    auto owned = b.create<OwnOp>(alloc.getLoc(), alloc);
-    setOwnershipIndicator(alloc, owned);
-    return TransformResult{{}, {owned}};
-  }
-  if (auto realloc = llvm::dyn_cast<memref::ReallocOp>(op)) {
-    OpBuilder b(realloc);
-    b.setInsertionPointAfter(realloc);
-    auto owned = b.create<deallocation::OwnOp>(realloc.getLoc(), realloc);
-    setOwnershipIndicator(realloc, owned);
-    return TransformResult{{realloc.getSource()}, {owned}};
-  }
-  if (llvm::isa<memref::DeallocOp>(op)) {
-    emitError(op->getLoc(),
-              "expected no dealloc ops to be present in the input");
-    return failure();
+  if (auto me = llvm::dyn_cast<MemoryEffectOpInterface>(op)) {
+    TransformResult result;
+    OpBuilder b(op->getContext());
+    b.setInsertionPointAfter(op);
+
+    SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>> allocs,
+        frees;
+    me.getEffects<MemoryEffects::Allocate>(allocs);
+    me.getEffects<MemoryEffects::Free>(frees);
+    for (const auto& alloc : allocs) {
+      auto owned = b.create<OwnOp>(op->getLoc(), alloc.getValue());
+      setOwnershipIndicator(alloc.getValue(), owned);
+      result.acquired.push_back(owned);
+    }
+    for (const auto& free : frees) {
+      result.released.insert(free.getValue());
+    }
+    return result;
   }
   if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
     auto transformedBlock =

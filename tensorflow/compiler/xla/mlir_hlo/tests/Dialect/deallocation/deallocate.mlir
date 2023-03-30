@@ -343,3 +343,53 @@ func.func @realloc_in_loop(%size: index, %lb: index, %ub: index, %step: index) {
 // CHECK-NEXT: }
 // CHECK-NEXT: deallocation.retain() of(%[[FOR]]#1)
 // CHECK-NEXT: return
+
+func.func @dealloc() {
+  %alloc = memref.alloc() : memref<i32>
+  "test.use"(%alloc) : (memref<i32>) -> ()
+  memref.dealloc %alloc: memref<i32>
+  return
+}
+
+// CHECK-LABEL: @dealloc
+// CHECK-SIMPLE-LABEL: @dealloc
+// CHECK-SIMPLE-NEXT: memref.alloc
+// CHECK-SIMPLE-NEXT: test.use
+// CHECK-SIMPLE-NEXT: memref.dealloc
+// CHECK-SIMPLE-NEXT: return
+
+func.func @dealloc_in_loop(%lb: index, %ub: index, %step: index) {
+  scf.for %i = %lb to %ub step %step {
+    %alloc = memref.alloc() : memref<i32>
+    "test.use"(%alloc) : (memref<i32>) -> ()
+    memref.dealloc %alloc: memref<i32>
+  }
+  return
+}
+
+// CHECK-LABEL: @dealloc_in_loop
+// CHECK-SIMPLE-LABEL: @dealloc_in_loop
+// CHECK-SIMPLE-NEXT: scf.for
+// CHECK-SIMPLE-NEXT:   memref.alloc
+// CHECK-SIMPLE-NEXT:   test.use
+// CHECK-SIMPLE-NEXT:   memref.dealloc
+// CHECK-SIMPLE-NEXT: }
+// CHECK-SIMPLE-NEXT: return
+
+func.func @dealloc_around_loop(%lb: index, %ub: index, %step: index) {
+  %alloc = memref.alloc() : memref<i32>
+  scf.for %i = %lb to %ub step %step {
+    "test.use"(%alloc) : (memref<i32>) -> ()
+  }
+  memref.dealloc %alloc: memref<i32>
+  return
+}
+
+// CHECK-LABEL: @dealloc_around_loop
+// CHECK-SIMPLE-LABEL: @dealloc_around_loop
+// CHECK-SIMPLE-NEXT: memref.alloc
+// CHECK-SIMPLE-NEXT: scf.for
+// CHECK-SIMPLE-NEXT:   test.use
+// CHECK-SIMPLE-NEXT: }
+// CHECK-SIMPLE-NEXT: memref.dealloc
+// CHECK-SIMPLE-NEXT: return

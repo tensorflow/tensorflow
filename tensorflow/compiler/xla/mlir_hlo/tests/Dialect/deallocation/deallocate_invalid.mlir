@@ -1,8 +1,10 @@
 // RUN: mlir-hlo-opt -allow-unregistered-dialect %s -split-input-file -hlo-deallocate -verify-diagnostics
 
-func.func @dealloc() {
+func.func @dealloc_invalid(%lb: index, %ub: index, %step: index) {
   %alloc = memref.alloc() : memref<i32>
-  memref.dealloc %alloc: memref<i32>  // expected-error {{expected no dealloc ops}}
+  scf.for %i = %lb to %ub step %step {  // expected-error {{can't implicitly capture across loop boundaries}}
+    memref.dealloc %alloc: memref<i32>
+  }
   return
 }
 
