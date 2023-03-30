@@ -20,11 +20,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
@@ -94,6 +96,14 @@ class Tf2XlaRewriterTestPeer {
     return tf2xla_rewriter_.ImportXlaComputation(computation);
   }
 
+  Status UnpackTupleFromFunction(FuncOp func_op) {
+    if (failed(tf2xla_rewriter_.UnpackTupleResults(func_op))) {
+      return tsl::errors::Internal("Couldn't unpack tuple results");
+    }
+
+    return tsl::OkStatus();
+  }
+
  private:
   OpBuilder op_builder_;
   EmptyPatternRewriter empty_rewriter_;
@@ -115,18 +125,17 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     context_.loadAllAvailableDialects();
   }
 
-  Status LegalizeOp() {
+  Status LegalizeOp(bool use_tf2xla_hlo_importer) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
     Operation& first_op = GetFirstOpFromMain();
     OpBuilder op_builder(&first_op);
     EmptyPatternRewriter pattern_rewriter(op_builder);
 
-    LogicalResult result =
-        Tf2XlaRewriter::RewriteOp(&first_op, pattern_rewriter,
-                                  /*device_type=*/"XLA_CPU_JIT",
-                                  /*is_module_pass=*/false,
-                                  /*use_tf2xla_hlo_importer=*/false);
+    LogicalResult result = Tf2XlaRewriter::RewriteOp(
+        &first_op, pattern_rewriter,
+        /*device_type=*/"XLA_CPU_JIT",
+        /*is_module_pass=*/false, use_tf2xla_hlo_importer);
     if (!result.succeeded()) {
       return tsl::errors::Internal("Failed to rewrite op");
     }
@@ -161,13 +170,19 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return test_peer.ImportXlaComputationIntoModule(computation);
   }
 
- private:
+ protected:
   MLIRContext context_;
   OwningOpRef<ModuleOp> module_;
   llvm::SourceMgr source_manager_;
 };
 
-TEST_F(Tf2XlaRewriterTest, LegalizesOp) { TF_EXPECT_OK(LegalizeOp()); }
+TEST_F(Tf2XlaRewriterTest, LegalizesOp) {
+  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/false));
+}
+
+TEST_F(Tf2XlaRewriterTest, LegalizesOpWithTf2xlaHloImporter) {
+  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/true));
+}
 
 TEST_F(Tf2XlaRewriterTest, CreatesModuleFromXla) {
   XlaComputation computation = GetTestXlaComputation();
@@ -195,6 +210,64 @@ TEST_F(Tf2XlaRewriterTest, ImportsXlaModule) {
 
   EXPECT_TRUE(expected_generated_function);
   EXPECT_EQ(generated_function.value(), expected_generated_function);
+}
+
+TEST_F(Tf2XlaRewriterTest, ReturnsMultipleValues) {
+  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/true));
+
+  ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
+
+  FuncOp expected_generated_function =
+      parent_module.lookupSymbol<mlir::func::FuncOp>(
+          "translated_tf2xla_kernel_tf.Unpack_0");
+
+  EXPECT_TRUE(expected_generated_function);
+  EXPECT_EQ(expected_generated_function.getNumResults(),
+            GetFirstOpFromMain().getNumResults());
+}
+
+TEST_F(Tf2XlaRewriterTest, ErasesTupleOpFromMultipleReturnValues) {
+  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/true));
+
+  ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
+
+  FuncOp expected_generated_function =
+      parent_module.lookupSymbol<mlir::func::FuncOp>(
+          "translated_tf2xla_kernel_tf.Unpack_0");
+  ASSERT_TRUE(expected_generated_function);
+
+  EXPECT_TRUE(expected_generated_function.getOps<mhlo::TupleOp>().empty());
+}
+
+TEST_F(Tf2XlaRewriterTest, FailsUnpackingModuleWithoutTuple) {
+  FuncOp funcOp = GetFirstOpFromMain().getParentOfType<FuncOp>();
+  ASSERT_TRUE(funcOp);
+
+  Tf2XlaRewriterTestPeer test_peer(funcOp.getOperation());
+  EXPECT_FALSE(test_peer.UnpackTupleFromFunction(funcOp).ok());
+}
+
+TEST(UnpackingModuleTest, FailsUnpackingModuleWithMultipleReturnValues) {
+  static constexpr char kMlirModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
+    func.func @main(%arg0: tensor<3xi64>) -> (tensor<1xi64>, tensor<i64>) {
+      %0 = "mhlo.slice"(%arg0) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<3xi64>) -> tensor<1xi64>
+      %1 = mhlo.reshape %0 : (tensor<1xi64>) -> tensor<i64>
+      return %0, %1 : tensor<1xi64>, tensor<i64>
+    }
+  })";
+
+  MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      OwningOpRef<ModuleOp> module,
+      test::GetMlirModuleFromString(kMlirModuleStr, &context));
+
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main_func);
+
+  Tf2XlaRewriterTestPeer test_peer(main_func.getOperation());
+  EXPECT_FALSE(test_peer.UnpackTupleFromFunction(main_func).ok());
 }
 
 }  // namespace mhlo

@@ -59,7 +59,8 @@ class Tf2XlaRewriter {
 
   // Compiles the given Operation with XlaBuilder and imports the generated HLO
   // via the HLO -> MHLO importer.
-  tsl::StatusOr<mlir::func::FuncOp> CompileWithHloImporter();
+  tsl::StatusOr<mlir::func::FuncOp> CompileWithHloImporter(
+      tensorflow::OpKernelContext& op_context);
 
   // Create a unique function name for the given translated op and ensure
   // it doesn't exist in the parent module op.
@@ -94,6 +95,11 @@ class Tf2XlaRewriter {
   mlir::LogicalResult GetKernelOutputs(tensorflow::OpKernelContext& op_context,
                                        mlir::func::FuncOp translated_function,
                                        llvm::SmallVector<Value>& outputs);
+
+  // Given a translated function with a single return value, unpack the tuple
+  // results.
+  mlir::LogicalResult UnpackTupleResults(
+      mlir::func::FuncOp translated_function);
 
   // When using the Hlo Importer, legalize the op into a call to the imported
   // MHLO function.

@@ -22,4 +22,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<2xf32>
   }
 
+  // CHECK-LABEL: multiple_return_values
+  func.func @multiple_return_values(%arg0: tensor<3xi64>) -> tensor<i64> {
+    // CHECK: call @translated_tf2xla_kernel_tf.Unpack_0(%arg0) : (tensor<3xi64>) -> (tensor<i64>, tensor<i64>, tensor<i64>)
+     %0:3 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<3xi64>) -> (tensor<i64>, tensor<i64>, tensor<i64>)
+    func.return %0#0 : tensor<i64>
+  }
+
 }
