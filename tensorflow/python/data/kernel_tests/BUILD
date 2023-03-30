@@ -197,6 +197,9 @@ tf_py_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.py"],
+    tags = [
+        "nomac",  # TODO(b/276269493)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
