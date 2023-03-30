@@ -438,6 +438,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
+  FunctionLibraryDefinition& operator=(FunctionLibraryDefinition&& other);
 
   // Returns True if the library contains `func`, False otherwise.
   bool Contains(const std::string& func) const;
