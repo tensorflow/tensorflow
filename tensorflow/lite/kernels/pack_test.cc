@@ -32,20 +32,35 @@ using ::testing::ElementsAreArray;
 template <typename T>
 class PackOpModel : public SingleOpModel {
  public:
-  PackOpModel(const TensorData& input_template, int axis, int values_count) {
+  PackOpModel(const TensorData& input_template,
+              std::vector<std::vector<T>> input_data, int axis,
+              int values_count, bool constant_tensors) {
     std::vector<std::vector<int>> all_input_shapes;
     for (int i = 0; i < values_count; ++i) {
       all_input_shapes.push_back(input_template.shape);
-      AddInput(input_template);
+      if (constant_tensors) {
+        AddConstInput(input_template, input_data[i]);
+      } else {
+        AddInput(input_template);
+      }
     }
     output_ = AddOutput({input_template.type, /*shape=*/{}, input_template.min,
                          input_template.max});
     SetBuiltinOp(BuiltinOperator_PACK, BuiltinOptions_PackOptions,
                  CreatePackOptions(builder_, values_count, axis).Union());
     BuildInterpreter(all_input_shapes);
+    if (!constant_tensors) {
+      for (int i = 0; i < values_count; ++i) {
+        SetInput(i, input_data[i]);
+      }
+    }
   }
 
-  void SetInput(int index, std::initializer_list<T> data) {
+  const TfLiteTensor* GetOutputTensor(int index) {
+    return interpreter_->output_tensor(index);
+  }
+
+  void SetInput(int index, std::vector<T>& data) {
     PopulateTensor(index, data);
   }
 
@@ -56,144 +71,191 @@ class PackOpModel : public SingleOpModel {
   int output_;
 };
 
+struct PackOpTest : public testing::TestWithParam<bool> {};
+
+INSTANTIATE_TEST_SUITE_P(ConstantTensor, PackOpTest, testing::Bool());
+
 // float32 tests.
-TEST(PackOpTest, FloatThreeInputs) {
-  PackOpModel<float> model({TensorType_FLOAT32, {2}}, 0, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+TEST_P(PackOpTest, FloatThreeInputs) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<float> model({TensorType_FLOAT32, {2}}, {{1, 4}, {2, 5}, {3, 6}},
+                           0, 3, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, FloatThreeInputsDifferentAxis) {
-  PackOpModel<float> model({TensorType_FLOAT32, {2}}, 1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+TEST_P(PackOpTest, FloatThreeInputsDifferentAxis) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<float> model({TensorType_FLOAT32, {2}}, {{1, 4}, {2, 5}, {3, 6}},
+                           1, 3, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, FloatThreeInputsNegativeAxis) {
-  PackOpModel<float> model({TensorType_FLOAT32, {2}}, -1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+TEST_P(PackOpTest, FloatThreeInputsNegativeAxis) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<float> model({TensorType_FLOAT32, {2}}, {{1, 4}, {2, 5}, {3, 6}},
+                           -1, 3, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, FloatMultilDimensions) {
-  PackOpModel<float> model({TensorType_FLOAT32, {2, 3}}, 1, 2);
-  model.SetInput(0, {1, 2, 3, 4, 5, 6});
-  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+TEST_P(PackOpTest, FloatMultilDimensions) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<float> model({TensorType_FLOAT32, {2, 3}},
+                           {{1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}}, 1, 2,
+                           constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+  if (constant_tensors) {
+    // The output is too big to be calculated during Prepare.
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+  }
 }
 
-TEST(PackOpTest, FloatFiveDimensions) {
-  PackOpModel<float> model({TensorType_FLOAT32, {2, 2, 2, 2}}, 1, 2);
-  model.SetInput(0, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  model.SetInput(
-      1, {17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
+TEST_P(PackOpTest, FloatFiveDimensions) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<float> model(
+      {TensorType_FLOAT32, {2, 2, 2, 2}},
+      {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+       {17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}},
+      1, 2, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 2, 2, 2));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  17, 18, 19,
                                 20, 21, 22, 23, 24, 9,  10, 11, 12, 13, 14,
                                 15, 16, 25, 26, 27, 28, 29, 30, 31, 32}));
+  if (constant_tensors) {
+    // The output is too big to be calculated during Prepare.
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+  }
 }
 
 // int32 tests.
-TEST(PackOpTest, Int32ThreeInputs) {
-  PackOpModel<int32_t> model({TensorType_INT32, {2}}, 0, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+TEST_P(PackOpTest, Int32ThreeInputs) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int32_t> model({TensorType_INT32, {2}}, {{1, 4}, {2, 5}, {3, 6}},
+                             0, 3, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, Int32ThreeInputsDifferentAxis) {
-  PackOpModel<int32_t> model({TensorType_INT32, {2}}, 1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+TEST_P(PackOpTest, Int32ThreeInputsDifferentAxis) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int32_t> model({TensorType_INT32, {2}}, {{1, 4}, {2, 5}, {3, 6}},
+                             1, 3, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, Int32ThreeInputsNegativeAxis) {
-  PackOpModel<int32_t> model({TensorType_INT32, {2}}, -1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+TEST_P(PackOpTest, Int32ThreeInputsNegativeAxis) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int32_t> model({TensorType_INT32, {2}}, {{1, 4}, {2, 5}, {3, 6}},
+                             -1, 3, constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, Int32MultilDimensions) {
-  PackOpModel<int32_t> model({TensorType_INT32, {2, 3}}, 1, 2);
-  model.SetInput(0, {1, 2, 3, 4, 5, 6});
-  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+TEST_P(PackOpTest, Int32MultilDimensions) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int32_t> model({TensorType_INT32, {2, 3}},
+                             {{1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}}, 1, 2,
+                             constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+  if (constant_tensors) {
+    // The output is too big to be calculated during Prepare.
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+  }
 }
 
 // int64 tests.
-TEST(PackOpTest, Int64ThreeInputs) {
-  PackOpModel<int64_t> model({TensorType_INT64, {2}}, 0, 3);
-  model.SetInput(0, {1LL << 33, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, -(1LL << 34)});
+TEST_P(PackOpTest, Int64ThreeInputs) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int64_t> model({TensorType_INT64, {2}},
+                             {{1LL << 33, 4}, {2, 5}, {3, -(1LL << 34)}}, 0, 3,
+                             constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 4LL, 2LL, 5LL, 3LL, -(1LL << 34)}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, Int64ThreeInputsDifferentAxis) {
-  PackOpModel<int64_t> model({TensorType_INT64, {2}}, 1, 3);
-  model.SetInput(0, {1LL << 33, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, -(1LL << 34)});
+TEST_P(PackOpTest, Int64ThreeInputsDifferentAxis) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int64_t> model({TensorType_INT64, {2}},
+                             {{1LL << 33, 4}, {2, 5}, {3, -(1LL << 34)}}, 1, 3,
+                             constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 2LL, 3LL, 4LL, 5LL, -(1LL << 34)}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, Int64ThreeInputsNegativeAxis) {
-  PackOpModel<int64_t> model({TensorType_INT64, {2}}, -1, 3);
-  model.SetInput(0, {1LL << 33, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, -(1LL << 34)});
+TEST_P(PackOpTest, Int64ThreeInputsNegativeAxis) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int64_t> model({TensorType_INT64, {2}},
+                             {{1LL << 33, 4}, {2, 5}, {3, -(1LL << 34)}}, -1, 3,
+                             constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 2LL, 3LL, 4LL, 5LL, -(1LL << 34)}));
+  if (constant_tensors) {
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+  }
 }
 
-TEST(PackOpTest, Int64MultilDimensions) {
-  PackOpModel<int64_t> model({TensorType_INT64, {2, 3}}, 1, 2);
-  model.SetInput(0, {1LL << 33, 2, 3, 4, 5, 6});
-  model.SetInput(1, {7, 8, -(1LL << 34), 10, 11, 12});
+TEST_P(PackOpTest, Int64MultilDimensions) {
+  const bool constant_tensors = GetParam();
+  PackOpModel<int64_t> model(
+      {TensorType_INT64, {2, 3}},
+      {{1LL << 33, 2, 3, 4, 5, 6}, {7, 8, -(1LL << 34), 10, 11, 12}}, 1, 2,
+      constant_tensors);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 2LL, 3LL, 7LL, 8LL, -(1LL << 34),
                                 4LL, 5LL, 6LL, 10LL, 11LL, 12LL}));
+  if (constant_tensors) {
+    // The output is too big to be calculated during Prepare.
+    EXPECT_EQ(model.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+  }
 }
 
 template <typename InputType>
@@ -211,10 +273,7 @@ TYPED_TEST_CASE(PackOpTestInt, TestTypes);
 
 TYPED_TEST(PackOpTestInt, ThreeInputs) {
   PackOpModel<typename TestFixture::TypeToTest> model(
-      {TestFixture::TENSOR_TYPE, {2}}, 0, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+      {TestFixture::TENSOR_TYPE, {2}}, {{1, 4}, {2, 5}, {3, 6}}, 0, 3, false);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
@@ -222,10 +281,7 @@ TYPED_TEST(PackOpTestInt, ThreeInputs) {
 
 TYPED_TEST(PackOpTestInt, ThreeInputsDifferentAxis) {
   PackOpModel<typename TestFixture::TypeToTest> model(
-      {TestFixture::TENSOR_TYPE, {2}}, 1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+      {TestFixture::TENSOR_TYPE, {2}}, {{1, 4}, {2, 5}, {3, 6}}, 1, 3, false);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
@@ -233,10 +289,7 @@ TYPED_TEST(PackOpTestInt, ThreeInputsDifferentAxis) {
 
 TYPED_TEST(PackOpTestInt, ThreeInputsNegativeAxis) {
   PackOpModel<typename TestFixture::TypeToTest> model(
-      {TestFixture::TENSOR_TYPE, {2}}, -1, 3);
-  model.SetInput(0, {1, 4});
-  model.SetInput(1, {2, 5});
-  model.SetInput(2, {3, 6});
+      {TestFixture::TENSOR_TYPE, {2}}, {{1, 4}, {2, 5}, {3, 6}}, -1, 3, false);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
@@ -244,9 +297,8 @@ TYPED_TEST(PackOpTestInt, ThreeInputsNegativeAxis) {
 
 TYPED_TEST(PackOpTestInt, MultilDimensions) {
   PackOpModel<typename TestFixture::TypeToTest> model(
-      {TestFixture::TENSOR_TYPE, {2, 3}}, 1, 2);
-  model.SetInput(0, {1, 2, 3, 4, 5, 6});
-  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+      {TestFixture::TENSOR_TYPE, {2, 3}},
+      {{1, 2, 3, 4, 5, 6}, {7, 8, 9, 10, 11, 12}}, 1, 2, false);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
