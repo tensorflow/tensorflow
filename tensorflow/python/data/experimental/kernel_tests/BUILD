@@ -327,6 +327,9 @@ tf_py_test(
     size = "medium",
     srcs = ["map_and_batch_test.py"],
     shard_count = 4,
+    tags = [
+        "nomac",  # TODO(b/276269493)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
