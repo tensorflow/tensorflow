@@ -1062,6 +1062,7 @@ cc_library(
     deps = [
         ":full_type_proto_cc",
         ":full_type_util",
+        ":loose_headers",
         ":op_def_builder",
         ":op_def_util",
         "//tensorflow/core:core_stringpiece",
