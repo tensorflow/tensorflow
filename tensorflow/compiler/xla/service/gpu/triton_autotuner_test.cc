@@ -169,7 +169,44 @@ ENTRY e {
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
-                         ::testing::ValuesIn({0, 1, 2, 3, 4}));
+                         ::testing::Range(0, 5));
+
+using TritonAutotunerSplitKTest = TritonAutotunerLevelTest;
+
+TEST_P(TritonAutotunerSplitKTest, SplitK) {
+  // Shapes with K >> M, N have to force split-K configurations.
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = s8[7,4096] parameter(0)
+  p0c = f16[7,4096] convert(p0)
+  p1 = f16[4096,18] parameter(1)
+  ROOT dot.0 = f16[7,18] dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TritonAutotuner::ClearAutotuneResults();
+  TritonAutotuner::ClearCompilationCache();
+
+  // According to should_check_correctness() in triton_autotuner.
+  if (GetParam() >= 4) {
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%p0, %p1), kind=kCustom
+; CHECK-NOT: reduce
+)");
+  } else {
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%p0, %p1), kind=kCustom
+; CHECK: ROOT %reduce
+)");
+  }
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-1, 1e-1}));
+}
+
+INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevel1Test, TritonAutotunerSplitKTest,
+                         ::testing::Values(1, 4));
 
 }  // namespace
 }  // namespace gpu
