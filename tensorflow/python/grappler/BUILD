@@ -139,6 +139,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
@@ -284,6 +285,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//third_party/py/numpy",
@@ -309,6 +311,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:random_seed",
