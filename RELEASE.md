@@ -87,6 +87,7 @@
         releases.
     *   Added support for `class_weight` for 3+ dimensional targets (e.g.
         image segmentation masks) in `Model.fit`.
+    *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
 
 *   `tf.function`:
 
