@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -61,12 +60,6 @@ auto* graph_compiler_failed_compilation_op_count =
         "/tensorflow/core/tf2xla/graph_compilation_failed_op_count",
         /*metric_description=*/"Records an op that failed to compile",
         /*metric_label=*/"op_name");
-
-auto* graph_compiler_hlo_op_count = tensorflow::monitoring::Counter<1>::New(
-    /*metric_name=*/
-    "/tensorflow/core/tf2xla/graph_compilation_hlo_generated_op_count",
-    /*metric_description=*/"Records the HLO op that was generated from TF",
-    /*metric_label=*/"op_name");
 
 namespace {
 Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
@@ -216,21 +209,6 @@ Status GraphCompiler::Compile() {
 
 namespace {
 
-void RecordCompiledHloOps(const XlaCompiler::CompilationResult& result) {
-  if (!result.computation) {
-    return;
-  }
-
-  for (const xla::HloComputationProto& computation :
-       result.computation->proto().computations()) {
-    for (const xla::HloInstructionProto& instruction :
-         computation.instructions()) {
-      graph_compiler_hlo_op_count->GetCell(instruction.opcode())
-          ->IncrementBy(1);
-    }
-  }
-}
-
 Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
                               const Node& node, NameAttrList* func) {
   if (node.IsPartitionedCall()) {
@@ -299,8 +277,6 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(
       compiler->CompileFunction(compile_options, func, arguments, &result));
-
-  RecordCompiledHloOps(result);
 
   TF_RET_CHECK(arguments.size() == expressions.size());
 
