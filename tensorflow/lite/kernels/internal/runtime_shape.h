@@ -108,12 +108,28 @@ class RuntimeShape {
   inline const int32_t* DimsDataUpTo5D() const { return dims_; }
 
   inline void Resize(int dimensions_count) {
-    if (size_ > kMaxSmallSize) {
-      delete[] dims_pointer_;
-    }
-    size_ = dimensions_count;
-    if (dimensions_count > kMaxSmallSize) {
-      dims_pointer_ = new int32_t[dimensions_count];
+    if ((size_ <= kMaxSmallSize && dimensions_count <= kMaxSmallSize) ||
+        (size_ > kMaxSmallSize && dimensions_count > kMaxSmallSize &&
+         dimensions_count <= size_)) {
+      size_ = dimensions_count;
+    } else {
+      int32_t* old_dims_pointer = dims_pointer_;
+      int32_t old_small_data[kMaxSmallSize];
+      auto old_size = size_;
+      if (old_size <= kMaxSmallSize) {
+        memcpy(dims_, old_small_data, sizeof(int32_t) * old_size);
+        old_dims_pointer = old_small_data;
+      }
+      if (dimensions_count > kMaxSmallSize) {
+        dims_pointer_ = new int32_t[dimensions_count];
+      }
+      const size_t count =
+          dimensions_count < old_size ? dimensions_count : old_size;
+      memcpy(dims_pointer_, old_dims_pointer, sizeof(int32_t) * count);
+      size_ = dimensions_count;
+      if (old_size > kMaxSmallSize) {
+        delete[] old_dims_pointer;
+      }
     }
   }
 
