@@ -72,6 +72,8 @@ tf_cc_fuzz_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
+        "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
     ],
 )
 
