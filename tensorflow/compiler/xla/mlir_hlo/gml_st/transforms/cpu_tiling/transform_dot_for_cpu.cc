@@ -71,7 +71,9 @@ int64_t roundDownToPowerOfTwo(int64_t n) {
 // Skylake.
 MatmulSizes skylakeTilingHeuristic(MatmulSizes sizes) {
   if (sizes.m == 1) {
-    return {1, sizes.n, 1};
+    // Limit the maximum tiling to an arbitrary 32 to limit code growth. This
+    // needs re-tuning.
+    return {1, std::min<int64_t>(sizes.n, 32), 1};
   }
 
   if (sizes.n == 1) {
