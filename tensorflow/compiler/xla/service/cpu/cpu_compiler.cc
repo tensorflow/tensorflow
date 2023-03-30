@@ -337,11 +337,12 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.experimental_deallocation =
+        GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
     options.cpu_name = llvm::sys::getHostCPUName();
 
     if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
       options.enable_fusion_outlining = true;
-      options.sparse_bufferization = false;
       options.experimental_deallocation = true;
     }
 
@@ -1059,6 +1060,13 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         [](mlir::Pass* pass, mlir::Operation* op) { return true; },
         /*printModuleScope=*/true, /*printAfterOnlyOnChange=*/true,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
+  }
+
+  if (DumpingEnabledForHloModule(*module)) {
+    pm.addInstrumentation(
+        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+            module->config().debug_options().xla_dump_to(), module->unique_id(),
+            module->name()));
   }
 
   xla::runtime::PassManager xla_pm(&pm);
