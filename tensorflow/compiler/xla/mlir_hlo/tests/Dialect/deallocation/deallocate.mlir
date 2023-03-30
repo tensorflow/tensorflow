@@ -393,3 +393,17 @@ func.func @dealloc_around_loop(%lb: index, %ub: index, %step: index) {
 // CHECK-SIMPLE-NEXT: }
 // CHECK-SIMPLE-NEXT: memref.dealloc
 // CHECK-SIMPLE-NEXT: return
+
+func.func @memory_effect_no_free_or_alloc() {
+  %alloc = memref.alloc() : memref<i32>
+  %expand_shape = memref.expand_shape %alloc [] : memref<i32> into memref<1x1xi32>
+  "test.use"(%expand_shape) : (memref<1x1xi32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @memory_effect_no_free_or_alloc
+// CHECK-NEXT: memref.alloc
+// CHECK-NEXT: deallocation.own
+// CHECK-NEXT: memref.expand_shape
+// CHECK-NEXT: test.use
+// CHECK-NEXT: deallocation.retain

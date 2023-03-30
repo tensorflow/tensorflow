@@ -368,6 +368,7 @@ FailureOr<TransformResult> Deallocator::transformOp(
   if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(op)) {
     return transformOp(rbi, ownedMemrefs);
   }
+
   if (auto me = llvm::dyn_cast<MemoryEffectOpInterface>(op)) {
     TransformResult result;
     OpBuilder b(op->getContext());
@@ -377,15 +378,17 @@ FailureOr<TransformResult> Deallocator::transformOp(
         frees;
     me.getEffects<MemoryEffects::Allocate>(allocs);
     me.getEffects<MemoryEffects::Free>(frees);
-    for (const auto& alloc : allocs) {
-      auto owned = b.create<OwnOp>(op->getLoc(), alloc.getValue());
-      setOwnershipIndicator(alloc.getValue(), owned);
-      result.acquired.push_back(owned);
+    if (!allocs.empty() || !frees.empty()) {
+      for (const auto& alloc : allocs) {
+        auto owned = b.create<OwnOp>(op->getLoc(), alloc.getValue());
+        setOwnershipIndicator(alloc.getValue(), owned);
+        result.acquired.push_back(owned);
+      }
+      for (const auto& free : frees) {
+        result.released.insert(free.getValue());
+      }
+      return result;
     }
-    for (const auto& free : frees) {
-      result.released.insert(free.getValue());
-    }
-    return result;
   }
   if (auto func = llvm::dyn_cast<func::FuncOp>(op)) {
     auto transformedBlock =
