@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -108,28 +109,24 @@ class RuntimeShape {
   inline const int32_t* DimsDataUpTo5D() const { return dims_; }
 
   inline void Resize(int dimensions_count) {
-    if ((size_ <= kMaxSmallSize && dimensions_count <= kMaxSmallSize) ||
-        (size_ > kMaxSmallSize && dimensions_count > kMaxSmallSize &&
-         dimensions_count <= size_)) {
-      size_ = dimensions_count;
-    } else {
-      int32_t* old_dims_pointer = dims_pointer_;
+    const int32_t old_size = size_;
+    size_ = dimensions_count;
+    if ((old_size <= kMaxSmallSize && dimensions_count <= kMaxSmallSize) ||
+        (old_size > kMaxSmallSize && dimensions_count > kMaxSmallSize &&
+         dimensions_count <= old_size)) {
+      return;
+    } else if (old_size <= kMaxSmallSize) {  // Small to big.
       int32_t old_small_data[kMaxSmallSize];
-      auto old_size = size_;
-      if (old_size <= kMaxSmallSize) {
-        memcpy(dims_, old_small_data, sizeof(int32_t) * old_size);
-        old_dims_pointer = old_small_data;
-      }
-      if (dimensions_count > kMaxSmallSize) {
-        dims_pointer_ = new int32_t[dimensions_count];
-      }
-      const size_t count =
-          dimensions_count < old_size ? dimensions_count : old_size;
-      memcpy(dims_pointer_, old_dims_pointer, sizeof(int32_t) * count);
-      size_ = dimensions_count;
-      if (old_size > kMaxSmallSize) {
-        delete[] old_dims_pointer;
-      }
+      memcpy(old_small_data, dims_, sizeof(int32_t) * old_size);
+      dims_pointer_ = new int32_t[dimensions_count];
+      memcpy(dims_pointer_, old_small_data, sizeof(int32_t) * old_size);
+    } else if (dimensions_count <= old_size) {  // Big to small.
+      std::unique_ptr<int32_t[]> old_data(dims_pointer_);
+      memcpy(dims_, old_data.get(), sizeof(int32_t) * dimensions_count);
+    } else {  // Big to bigger.
+      std::unique_ptr<int32_t[]> old_data(dims_pointer_);
+      dims_pointer_ = new int32_t[dimensions_count];
+      memcpy(dims_pointer_, old_data.get(), sizeof(int32_t) * old_size);
     }
   }
 
