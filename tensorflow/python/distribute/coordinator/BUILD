@@ -112,7 +112,7 @@ tf_py_test(
     srcs = ["fault_tolerance_test.py"],
     flaky = True,
     python_version = "PY3",
-    shard_count = 36,
+    shard_count = 40,  # = number of tests, so one shard = one test
     tags = [
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
@@ -139,6 +139,23 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training:training_lib",
+    ],
+)
+
+tf_py_test(
+    name = "fault_tolerance_coordination_service_test",
+    srcs = ["fault_tolerance_coordination_service_test.py"],
+    flaky = True,
+    python_version = "PY3",
+    shard_count = 41,
+    tags = [
+        # Inherit tags from fault_tolerance_test
+        "no_oss",  # TODO(b/219580021)
+        "noasan",  # Multi-process runner does not work with test sanitizers
+        "nomac",  # TODO(b/177065434)
+    ],
+    deps = [
+        ":fault_tolerance_test",
     ],
 )
 
