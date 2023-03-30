@@ -85,7 +85,8 @@ class GetTaskStatesTest(object):  # pylint: disable=missing-docstring
     context.context().configure_coordination_service(
         service_type="standalone",
         service_leader="/job:ps/replica:0/task:0",
-        heartbeat_timeout_in_ms=_PULL_FREQ_IN_SEC * 1000)
+        heartbeat_timeout_in_ms=_PULL_FREQ_IN_SEC * 1000,
+        allow_new_incarnation_to_reconnect=True)
     self.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         cluster_resolver)
     self.cluster_coord = cluster_coordinator.ClusterCoordinator(self.strategy)

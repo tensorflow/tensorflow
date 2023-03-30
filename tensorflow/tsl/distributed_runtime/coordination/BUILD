@@ -106,6 +106,7 @@ tsl_cc_test(
     deps = [
         ":coordination_client",
         ":coordination_service",
+        ":coordination_service_error_util",
         ":coordination_service_impl",
         ":test_device_proto_cc",
         "//tensorflow/tsl/distributed_runtime:call_options",
