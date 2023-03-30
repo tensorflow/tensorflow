@@ -1374,6 +1374,38 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   }
 };
 
+class GatherOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::GATHER);
+    GatherAttributes attr;
+    const TfLiteTensor* input_tensor = reader->GetInputTensor(0);
+    const TfLiteGatherParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    RETURN_IF_ERROR(
+        ExtractAxisFromIndex(*input_tensor, tf_options->axis, &attr.axis));
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    const TfLiteTensor* idx_tensor = reader->GetInputTensor(1);
+    if (!IsConstantTensor(idx_tensor)) {
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+    } else {
+      RETURN_IF_ERROR(reader->ReadTensor(1, &attr.indices));
+    }
+    node->operation.attributes = std::move(attr);
+    return reader->AddOutputs(node);
+  }
+};
+
 class HardSwishOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -3085,6 +3117,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
           OperationType::FLOOR_MOD);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
+    case kTfLiteBuiltinGather:
+      return std::make_unique<GatherOperationParser>();
     case kTfLiteBuiltinGreater:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::GREATER);
@@ -3281,6 +3315,9 @@ TfLiteIntArray* GetOpsToReplace(
     if (registration->builtin_code == kTfLiteBuiltinLogicalAnd) {
       allowed_in_types.push_back(kTfLiteBool);
       allowed_out_types.push_back(kTfLiteBool);
+    }
+    if (registration->builtin_code == kTfLiteBuiltinGather) {
+      allowed_in_types.push_back(kTfLiteInt32);
     }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
