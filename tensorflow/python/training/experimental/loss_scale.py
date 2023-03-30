@@ -19,6 +19,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -257,7 +258,7 @@ class FixedLossScale(LossScale):
 def _is_all_finite(grads):
   """Returns a scalar boolean tensor indicating if all gradients are finite."""
   def raw_values(g):
-    return g.values if isinstance(g, tf.IndexedSlices) else g
+    return g.values if isinstance(g, indexed_slices.IndexedSlices) else g
 
   is_finite_per_grad = [
       math_ops.reduce_all(math_ops.is_finite(raw_values(g)))
