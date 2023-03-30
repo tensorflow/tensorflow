@@ -659,32 +659,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    // cuBLASLt FP8 GEMM kernels require the non-batch dimensions of the
-    // operands to be multiples of 16.
-    absl::Span<const int64_t> a_dims =
-        (a_unary_ops.empty() ? a : a_unary_ops.back())->shape().dimensions();
-    absl::Span<const int64_t> b_dims =
-        (b_unary_ops.empty() ? b : b_unary_ops.back())->shape().dimensions();
-    absl::Span<const int64_t> a_batch_dims =
-        gemm_backend_config.dot_dimension_numbers().lhs_batch_dimensions();
-    absl::Span<const int64_t> b_batch_dims =
+    absl::Span<const int64_t> batch_dims =
         gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
-    for (int i = 0; i < a_dims.size(); ++i) {
-      if (a_dims[i] % 16 && !absl::c_linear_search(a_batch_dims, i)) {
-        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                << " into FP8 Custom Call. The non-batch dimensions of A must "
-                   "be multiples of 16.";
-        return false;
-      }
-    }
-    for (int i = 0; i < b_dims.size(); ++i) {
-      if (b_dims[i] % 16 && !absl::c_linear_search(b_batch_dims, i)) {
-        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-                << " into FP8 Custom Call. The non-batch dimensions of B must "
-                   "be multiples of 16.";
-        return false;
-      }
-    }
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
@@ -779,12 +755,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if ((a_unary_ops.empty() ? a : a_unary_ops.back())
                     ->shape()
                     .dimensions_size() -
-                a_batch_dims.size() !=
+                batch_dims.size() !=
             2 ||
         (b_unary_ops.empty() ? b : b_unary_ops.back())
                     ->shape()
                     .dimensions_size() -
-                b_batch_dims.size() !=
+                batch_dims.size() !=
             2) {
       VLOG(1) << "Failed to rewrite " << instr->ToShortString()
               << "into FP8 Custom Call. A and B must have one non-contracting "
@@ -825,8 +801,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
-    int a_batch_dim_offset = a_batch_dims.size();
-    int b_batch_dim_offset = b_batch_dims.size();
+    int batch_dim_offset = batch_dims.size();
 
     // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
     // be row-major. If A is column-major, swap the contracting and
@@ -834,38 +809,82 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // column-major.
     // TODO(philipphack): Remove once cuBLASLt supports A being column-major
     if (a_is_col_major) {
-      CHECK(a_contracting_dims[0] == a_batch_dim_offset ||
-            a_contracting_dims[0] == a_batch_dim_offset + 1);
-      if (a_contracting_dims[0] == a_batch_dim_offset) {
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset + 1);
+      CHECK(a_contracting_dims[0] == batch_dim_offset ||
+            a_contracting_dims[0] == batch_dim_offset + 1);
+      if (a_contracting_dims[0] == batch_dim_offset) {
+        dim_nums->set_lhs_contracting_dimensions(0, batch_dim_offset + 1);
       } else {
-        dim_nums->set_lhs_contracting_dimensions(0, a_batch_dim_offset);
+        dim_nums->set_lhs_contracting_dimensions(0, batch_dim_offset);
       }
-      a = TransposeMatrix(a, a_contracting_dims[0], a_batch_dims);
+      a = TransposeMatrix(a, a_contracting_dims[0], batch_dims);
     }
 
     // Similarly, cuBLASLt requires the second operand to be column-major, so
     // make it column-major if it is currently row-major.
     if (!b_is_col_major) {
-      CHECK(b_contracting_dims[0] == b_batch_dim_offset ||
-            b_contracting_dims[0] == b_batch_dim_offset + 1);
-      if (b_contracting_dims[0] == b_batch_dim_offset) {
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset + 1);
+      CHECK(b_contracting_dims[0] == batch_dim_offset ||
+            b_contracting_dims[0] == batch_dim_offset + 1);
+      if (b_contracting_dims[0] == batch_dim_offset) {
+        dim_nums->set_rhs_contracting_dimensions(0, batch_dim_offset + 1);
       } else {
-        dim_nums->set_rhs_contracting_dimensions(0, b_batch_dim_offset);
+        dim_nums->set_rhs_contracting_dimensions(0, batch_dim_offset);
       }
-      b = TransposeMatrix(b, b_contracting_dims[0], b_batch_dims);
+      b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
-    std::unique_ptr<HloInstruction> new_custom_call =
-        HloInstruction::CreateCustomCall(
-            instr->shape(), {a, b, c, scales_f32[0], scales_f32[1], one, one},
-            kCublasLtMatmulF8CallTarget);
+
+    // Pad the non-batch dimensions of the operands to multiples of 16 as
+    // required by cuBLASLt.
+    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = x->shape();
+      for (int i = 0; i < x->shape().rank(); ++i) {
+        auto dimension = padding_config.add_dimensions();
+        if (!absl::c_linear_search(batch_dims, i)) {
+          int64_t padded_dimension =
+              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
+          dimension->set_edge_padding_low(0);
+          dimension->set_edge_padding_high(padded_dimension -
+                                           x->shape().dimensions(i));
+          dimension->set_interior_padding(0);
+          padded_shape.set_dimensions(i, padded_dimension);
+        }
+      }
+      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
+        HloInstruction *zero =
+            instr->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::Zero(x->shape().element_type())));
+        x = instr->AddInstruction(
+            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
+      }
+      return;
+    };
+    pad_operand(a);
+    pad_operand(b);
+    pad_operand(c);
+
+    HloInstruction *new_custom_call =
+        instr->AddInstruction(HloInstruction::CreateCustomCall(
+            ShapeUtil::MakeShapeWithDenseLayout(
+                instr->shape().element_type(), c->shape().dimensions(),
+                instr->shape().layout().minor_to_major()),
+            {a, b, c, scales_f32[0], scales_f32[1], one, one},
+            kCublasLtMatmulF8CallTarget));
 
     TF_RETURN_IF_ERROR(
         new_custom_call->set_backend_config(gemm_backend_config));
-    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call));
+
+    // Slice the result of the GEMM if the operands were padded.
+    HloInstruction *slice = nullptr;
+    if (c->shape().dimensions() != instr->shape().dimensions()) {
+      std::vector<int64_t> start_indices(instr->shape().rank(), 0);
+      std::vector<int64_t> strides(instr->shape().rank(), 1);
+      slice = instr->AddInstruction(HloInstruction::CreateSlice(
+          instr->shape(), new_custom_call, start_indices,
+          instr->shape().dimensions(), strides));
+    }
     TF_RETURN_IF_ERROR(
-        ReplaceWithNewInstruction(instr, std::move(new_custom_call)));
+        ReplaceInstruction(instr, slice ? slice : new_custom_call));
     return true;
   }
 
