@@ -22,6 +22,7 @@ def generated_test_models():
         "batch_to_space_nd",
         "batchmatmul",
         "bitcast",
+        "bitwise_xor",
         "broadcast_args",
         "broadcast_gradient_args",
         "broadcast_to",

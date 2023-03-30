@@ -579,6 +579,9 @@ def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;
 
 def LegalizeBitcast : Pat<(TF_BitcastOp $x), (TFL_BitcastOp $x)>;
 
+def LegalizeBitwiseXor : Pat<(TF_BitwiseXorOp $l, $r),
+                             (TFL_BitwiseXorOp $l, $r)>;
+
 // =============================================================================
 // Training OPs
 // =============================================================================

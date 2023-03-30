@@ -98,6 +98,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteVarHandleParams",
                                       "TfLiteUnsortedSegmentSumParams",
                                       "TfLiteUnsortedSegmentMinParams",
+                                      "TfLiteBitwiseXorParams",
                                       nullptr};
 }  // namespace
 
@@ -221,6 +222,7 @@ class OpOptionData {
     op_to_option_["GELU"] = "";
     op_to_option_["DYNAMIC_UPDATE_SLICE"] = "";
     op_to_option_["BITCAST"] = "";
+    op_to_option_["BITWISE_XOR"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";

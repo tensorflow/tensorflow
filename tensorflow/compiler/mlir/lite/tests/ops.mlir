@@ -3148,3 +3148,13 @@ func.func @testBitcast(%arg0: tensor<8xui32>) -> tensor<8xi32> {
   func.return %0 : tensor<8xi32>
   // CHECK: return %0 : tensor<8xi32>
 }
+
+// -----
+
+// CHECK-LABEL: testBitwiseXor
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.bitwise_xor"(%arg0, %arg1)
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
+}

@@ -192,6 +192,7 @@ TfLiteRegistration* Register_WHERE();
 TfLiteRegistration* Register_WHILE();
 TfLiteRegistration* Register_ZEROS_LIKE();
 TfLiteRegistration* Register_BITCAST();
+TfLiteRegistration* Register_BITWISE_XOR();
 
 }  // namespace builtin
 }  // namespace ops

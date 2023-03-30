@@ -546,6 +546,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseZerosLike(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_BITWISE_XOR: {
+      return ParseBitwiseXor(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_CAST: {
       return ParseCast(op, error_reporter, allocator, builtin_data);
     }
@@ -849,6 +853,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
@@ -2450,6 +2455,14 @@ TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseZerosLike(const Operator*, ErrorReporter*,
                             BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBitwiseXor(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

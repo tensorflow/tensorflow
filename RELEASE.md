@@ -44,6 +44,7 @@
         `equal`
     *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
     *   Add 16-bit and 32-bit int support for the built-in op `bitcast`.
+    *   Add 8-bit/16-bit/32-bit int/uint support for the built-in op `bitwise_xor`
     *   Add int16 indices support for built-in op `gather` and `gather_nd`.
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.

@@ -587,6 +587,7 @@ BUILTIN_KERNEL_SRCS = [
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
     "bitcast.cc",
+    "bitwise_xor.cc",
     "broadcast_args.cc",
     "broadcast_to.cc",
     "bucketize.cc",
@@ -2980,6 +2981,17 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bitwise_xor_test",
+    size = "small",
+    srcs = ["bitwise_xor_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
