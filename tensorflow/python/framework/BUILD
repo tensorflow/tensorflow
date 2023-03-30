@@ -1775,6 +1775,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -1823,6 +1824,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
@@ -2239,6 +2241,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )
@@ -2398,7 +2401,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -2418,6 +2421,7 @@ tf_py_test(
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:ref_variable",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:while_loop",
     ],
 )

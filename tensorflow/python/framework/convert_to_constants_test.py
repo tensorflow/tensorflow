@@ -52,6 +52,7 @@ from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops import while_v2
@@ -330,7 +331,7 @@ class VariablesToConstantsTest(test.TestCase):
           shape=[1, 1], dtype=dtypes.float32, name="start")
       distractor = ref_variable.RefVariable(-1., name="distractor")
       v = ref_variable.RefVariable(3., name="v")
-      local_variable = variables.VariableV1(
+      local_variable = variable_v1.VariableV1(
           1.,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           trainable=False,
