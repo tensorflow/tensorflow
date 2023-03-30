@@ -38,6 +38,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -62,7 +63,7 @@ class LoadTest(test.TestCase):
           shape=None, dtype=dtypes.float32, name="start"
       )
       if use_resource:
-        distractor = variables.RefVariable(-1.0, name="distractor")
+        distractor = ref_variable.RefVariable(-1.0, name="distractor")
         v = resource_variable_ops.ResourceVariable(3.0, name="v")
       else:
         # "distractor" gets saved in the checkpoint and so used in the restore
@@ -70,8 +71,8 @@ class LoadTest(test.TestCase):
         # node naming: it needs to be consistent (and ideally always the same as
         # the node in the original GraphDef) for the resource manager to find
         # the right variable.
-        distractor = variables.RefVariable(-1.0, name="distractor")
-        v = variables.RefVariable(3.0, name="v")
+        distractor = ref_variable.RefVariable(-1.0, name="distractor")
+        v = ref_variable.RefVariable(3.0, name="v")
       local_variable = variables.VariableV1(
           1.0,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
