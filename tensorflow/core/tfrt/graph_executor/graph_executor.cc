@@ -508,6 +508,11 @@ tensorflow::Status GraphExecutor::Run(
   // Conduct cost analysis for the first request on this `loaded_client_graph`.
   std::unique_ptr<CostRecorder> cost_recorder;
   if (options_.enable_online_cost_analysis) {
+    // TODO(juanlishen, chky): Support online cost analysis in MLRT.
+    if (loaded_executable) {
+      return errors::InvalidArgument(
+          "Online cost analysis is not supported in MLRT yet.");
+    }
     cost_recorder = loaded_client_graph.MaybeCreateCostRecorder();
   }
 

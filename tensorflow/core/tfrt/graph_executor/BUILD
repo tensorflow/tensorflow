@@ -113,6 +113,7 @@ tf_cc_test(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:tensor",
