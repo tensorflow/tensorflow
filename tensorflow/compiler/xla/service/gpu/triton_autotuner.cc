@@ -137,6 +137,12 @@ struct CompilationResult {
   LaunchDimensions launch_dimensions;
 };
 
+using CompilationKey = std::pair<std::string, TritonTilingWrapper>;
+static absl::Mutex compilation_cache_mutex(absl::kConstInit);
+static auto& compilation_cache ABSL_GUARDED_BY(compilation_cache_mutex) =
+    *new absl::node_hash_map<CompilationKey,
+                             std::optional<CompilationResult>>();
+
 // TODO(b/266210099): Do not duplicate this functionality with
 // gemm_algorithm_picker.
 static AutotuneConfig GetConfig(const DebugOptions& debug_options) {
@@ -400,19 +406,14 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   StatusOr<CompilationResult*> Compile(
       HloComputation* hlo_computation, const DeviceConfig& device_config,
       const AutotuneResult::TritonGemmKey& autotune_config) {
-    using CompilationKey = std::pair<std::string, TritonTilingWrapper>;
-    static absl::Mutex mutex(absl::kConstInit);
-    static auto& cache ABSL_GUARDED_BY(mutex) =
-        *new absl::node_hash_map<CompilationKey,
-                                 std::optional<CompilationResult>>();
     CompilationKey key = std::make_pair(ToCanonicalString(hlo_computation),
                                         TritonTilingWrapper{autotune_config});
 
     // TODO(b/266210099): Avoid duplication.
     {
-      absl::MutexLock lock(&mutex);
-      auto it = cache.find(key);
-      if (it != cache.end()) {
+      absl::MutexLock lock(&compilation_cache_mutex);
+      auto it = compilation_cache.find(key);
+      if (it != compilation_cache.end()) {
         std::optional<CompilationResult>& res = it->second;
         if (res.has_value()) {
           VLOG(1) << "Compilation cache hit";
@@ -426,8 +427,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         std::optional<CompilationResult> res,
         CompileNoCache(hlo_computation, device_config, autotune_config));
     {
-      absl::MutexLock lock(&mutex);
-      auto [it2, inserted] = cache.emplace(key, res);
+      absl::MutexLock lock(&compilation_cache_mutex);
+      auto [it2, inserted] = compilation_cache.emplace(key, res);
       std::optional<CompilationResult>& res_inserted = it2->second;
       if (res_inserted.has_value()) {
         return &*res_inserted;
@@ -609,6 +610,11 @@ Status TritonAutotuner::LoadAutotuneResults(const AutotuneResults& results) {
 void TritonAutotuner::ClearAutotuneResults() {
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache.clear();
+}
+
+void TritonAutotuner::ClearCompilationCache() {
+  absl::MutexLock lock(&compilation_cache_mutex);
+  compilation_cache.clear();
 }
 
 }  // namespace gpu
