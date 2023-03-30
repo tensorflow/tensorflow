@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/Support/ErrorHandling.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -40,6 +41,11 @@ namespace {
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
+
+template <class ConstAttr>
+ConstAttr getAttrFromConstant(Value v) {
+  return v.getDefiningOp<mhlo::ConstantOp>().getValue().cast<ConstAttr>();
+}
 
 class SparseCustomCallRewritingPass
     : public impl::SparseCustomCallRewritingPassBase<
@@ -165,6 +171,57 @@ struct SparseUnaryChloCallRewriter {
   }
 };
 
+struct SparseSliceCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 4 &&
+           "Need one operand and three slicing parameters");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    auto ctx = op.getContext();
+    auto loc = op.getLoc();
+    auto retTp = op.getResults().getTypes()[0].cast<RankedTensorType>();
+
+    auto offsets = getAttrFromConstant<DenseIntElementsAttr>(op.getInputs()[1]);
+    auto strides = getAttrFromConstant<DenseIntElementsAttr>(op.getInputs()[3]);
+
+    assert(offsets.getNumElements() == strides.getNumElements() &&
+           offsets.getNumElements() == retTp.getRank());
+
+    SmallVector<sparse_tensor::SparseTensorDimSliceAttr> slice_attrs;
+    SmallVector<int64_t> static_offsets, static_sizes, static_strides;
+    for (auto [offset, size, stride] :
+         llvm::zip(offsets, retTp.getShape(), strides)) {
+      int64_t o = offset.getZExtValue(), s = stride.getZExtValue();
+      // Converts limits to sizes.
+      slice_attrs.push_back(
+          sparse_tensor::SparseTensorDimSliceAttr::get(ctx, o, size, s));
+      static_offsets.push_back(o);
+      static_sizes.push_back(size);
+      static_strides.push_back(s);
+    }
+
+    auto srcEnc =
+        retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
+    // TODO(peiming): add a getSliceEncodingFrom into MLIR upstream.
+    auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
+        ctx, srcEnc.getDimLevelType(), srcEnc.getDimOrdering(),
+        srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
+        slice_attrs);
+    auto sliceTp = RankedTensorType::get(retTp.getShape(),
+                                         retTp.getElementType(), sliceEnc);
+
+    auto slice = rewriter.create<tensor::ExtractSliceOp>(
+        loc, sliceTp, op.getInputs()[0], ValueRange(), ValueRange(),
+        ValueRange(), static_offsets, static_sizes, static_strides);
+
+    // TODO(peiming): This weakens the performance benefit we get from the
+    // sparse compiler by forcing every slice to be materizalized while the
+    // sparse compiler supports view-based slice.
+    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(op, retTp, slice);
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -192,6 +249,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
                      SparseUnaryChloCallRewriter<chlo::SinhOp>()),
       std::make_pair("sparse_tensor_tan",
                      SparseUnaryChloCallRewriter<chlo::TanOp>()),
+      std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
