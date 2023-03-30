@@ -16,7 +16,7 @@ func.func @reduce_1d_static(%arg0: tensor<100xf32>) -> tensor<f32> {
 //       CHECK: scf.for
 //       CHECK:   vector.multi_reduction <add>
 //  CHECK-SAME:     : vector<4x8xf32> to vector<8xf32>
-//       CHECK:   scf.yield %{{.*}} : {{.*}}, vector<8xf32>
+//       CHECK:   scf.yield %{{.*}} : vector<8xf32>
 
 //       CHECK: vector.multi_reduction <add>
 //  CHECK-SAME:   : vector<8xf32> to f32
@@ -40,7 +40,7 @@ func.func @reduce_1d_dynamic(%arg0: tensor<?xf32>) -> tensor<f32> {
 //       CHECK: scf.for
 //       CHECK:   vector.multi_reduction <add>
 //  CHECK-SAME:     : vector<4x8xf32> to vector<8xf32>
-//       CHECK:   scf.yield %{{.*}} :  {{.*}}, vector<8xf32>
+//       CHECK:   scf.yield %{{.*}} :  vector<8xf32>
 
 //       CHECK: vector.multi_reduction <add>
 //  CHECK-SAME:   : vector<8xf32> to f32

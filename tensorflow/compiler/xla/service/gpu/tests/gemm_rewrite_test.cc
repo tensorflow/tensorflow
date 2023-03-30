@@ -219,10 +219,12 @@ class ParameterizedGemmRewriteTest
     return replacements_[kCustomCallTargetPlaceholder];
   }
 
+ protected:
+  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
+
  private:
   static constexpr const char* kCustomCallTargetPlaceholder{
       "<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"};
-  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
 };
 
 TEST_P(ParameterizedGemmRewriteTest, Simple) {
@@ -4225,8 +4227,51 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %PreHopperTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
-; CHECK:    {{.*}} = {{.*}}[16,16]{1,0} dot({{.*}}, {{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK:    {{.*}} = f16[16,16]{1,0} custom-call({{.*}}, {{.*}})
+; CHECK-DAG:  custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
           )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedShapes) {
+  // Test with shapes unsupported by cuBLAS LT when FP8 is used. cuBLAS LT with
+  // FP8 requires each non-batch dimension to be a multiple of 16.
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY unsupported_shapes {
+      x = f8e4m3fn[8,16] parameter(0)
+      y = f8e4m3fn[16,8] parameter(1)
+      ROOT out = f8e4m3fn[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(GetCudaComputeCapability()),
+                            absl::StrReplaceAll(R"(
+; CHECK-LABEL: ENTRY %unsupported_shapes (x: f8e4m3fn[8,16], y: f8e4m3fn[16,8]) -> f8e4m3fn[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[8,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P0_CONVERT:%[^ ]+]] = f16[8,16]{1,0} convert([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_CONVERT:%[^ ]+]] = f16[16,8]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_CONVERT]], [[P1_CONVERT]]),
+; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[8,8]{1,0} convert([[DOT]])
+      )",
+                                                replacements_));
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {

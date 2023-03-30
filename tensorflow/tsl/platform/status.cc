@@ -195,17 +195,6 @@ void Status::MaybeAddSourceLocation(SourceLocation loc) {
   state_->source_locations.push_back(loc);
 }
 
-Status::Status(tsl::error::Code code, absl::string_view msg,
-               SourceLocation loc) {
-  assert(code != absl::StatusCode::kOk);
-  state_ = std::make_unique<State>();
-  state_->code = static_cast<absl::StatusCode>(code);
-  state_->msg = std::string(msg);
-  MaybeAddSourceLocation(loc);
-  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
-          << CurrentStackTrace();
-}
-
 Status::Status(absl::StatusCode code, absl::string_view msg,
                SourceLocation loc) {
   assert(code != absl::StatusCode::kOk);

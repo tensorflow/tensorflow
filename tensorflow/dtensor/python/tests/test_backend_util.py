@@ -55,7 +55,7 @@ def slice_host_devices_for_multiworker(num_clients, client_id, ports):
     # All GPUs are visible to the client.
     del os.environ['CUDA_VISIBLE_DEVICES']
     del os.environ['HIP_VISIBLE_DEVICES']
-  else:    
+  else:
     # Make the client_id-th GPU visible to the client.
     os.environ['CUDA_VISIBLE_DEVICES'] = f'{client_id}'
     os.environ['HIP_VISIBLE_DEVICES'] = f'{client_id}'

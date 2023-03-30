@@ -52,6 +52,7 @@ py_library(
 dtensor_test(
     name = "mirrored_strategy_test",
     srcs = ["mirrored_strategy_test.py"],
+    shard_count = {"tpu": 2},
     tags = ["no_pip"],
     deps = [
         ":dtensor_util",

@@ -660,7 +660,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
-  return shape.IsArray() && ElementsIn(shape) == 0;
+  return shape.IsArray() &&
+         absl::c_any_of(shape.dimensions(), [](int64_t d) { return d == 0; });
 }
 
 /* static */ bool ShapeUtil::IsScalarWithElementType(
@@ -815,55 +816,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ int64_t ShapeUtil::ByteSizeOfPrimitiveType(
     PrimitiveType primitive_type) {
-  switch (primitive_type) {
-    case PRED:
-      return sizeof(int8_t);
-    case S4:
-      return sizeof(int8_t);
-    case S8:
-      return sizeof(int8_t);
-    case S16:
-      return sizeof(int16_t);
-    case S32:
-      return sizeof(int32_t);
-    case S64:
-      return sizeof(int64_t);
-    case U4:
-      return sizeof(uint8_t);
-    case U8:
-      return sizeof(uint8_t);
-    case U16:
-      return sizeof(uint16_t);
-    case U32:
-      return sizeof(uint32_t);
-    case U64:
-      return sizeof(uint64_t);
-    case F8E5M2:
-      return sizeof(float) / 4;
-    case F8E4M3FN:
-      return sizeof(float) / 4;
-    case BF16:
-      return sizeof(float) / 2;
-    case F16:
-      return sizeof(float) / 2;
-    case F32:
-      return sizeof(float);
-    case F64:
-      return sizeof(double);
-    case C64:
-      return sizeof(complex64);
-    case C128:
-      return sizeof(complex128);
-    case TOKEN:
-      // Tokens require no space.
-      return 0;
-    case TUPLE:
-    case OPAQUE_TYPE:
-      LOG(FATAL) << PrimitiveType_Name(primitive_type)
-                 << " primitive type has no definitive size";
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << primitive_type;
-  }
+  return primitive_util::ByteWidth(primitive_type);
 }
 
 /* static */ int64_t ShapeUtil::ByteSizeOf(const Shape& shape,

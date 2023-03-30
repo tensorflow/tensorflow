@@ -724,7 +724,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
                              int batch_count, uint64_t batch_stride,
                              bool gather) {
   if(gather==false)
-    return tsl::Status(tsl::error::INTERNAL, "gather=false unsupported");
+    return tsl::Status(absl::StatusCode::kInternal, "gather=false unsupported");
   assert(batch_count > 0);
   char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
   char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
@@ -764,7 +764,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
       bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
       if (!a_status) {
         return tsl::Status(
-            tsl::error::INTERNAL,
+          absl::StatusCode::kInternal,
           "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
     }
@@ -938,7 +938,7 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
                         batch_stride_c, batch_count);
   }
   if (!ok)
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "failed BLAS call, see log for details");
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,

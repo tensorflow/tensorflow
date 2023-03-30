@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "gml_st/transforms/passes.h"
+#include "gml_st/utils/tensor_utils.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -38,17 +39,6 @@ namespace {
 using NameToOpMap =
     std::unordered_map<std::string, llvm::SmallVector<Operation *, 4>>;
 
-bool isDegeneratingCollapseShape(tensor::CollapseShapeOp op) {
-  llvm::ArrayRef<int64_t> srcShape = op.getSrcType().getShape();
-  for (auto &indices : op.getReassociationIndices()) {
-    unsigned numUnitDims = 0;
-    for (int64_t position : indices)
-      if (srcShape[position] == 1) numUnitDims++;
-    if (numUnitDims != indices.size() - 1) return false;
-  }
-  return true;
-}
-
 struct CollectStatsPass : public impl::CollectStatsPassBase<CollectStatsPass> {
   using CollectStatsPassBase<CollectStatsPass>::CollectStatsPassBase;
 
@@ -66,9 +56,8 @@ struct CollectStatsPass : public impl::CollectStatsPassBase<CollectStatsPass> {
 
       std::string key = op->getName().getStringRef().str();
       if (auto collapseShapeOp = dyn_cast<tensor::CollapseShapeOp>(op)) {
-        key += isDegeneratingCollapseShape(collapseShapeOp)
-                   ? " (degenerate)"
-                   : " (non-degenerate)";
+        key += isDegenerateReshapeOp(collapseShapeOp) ? " (degenerate)"
+                                                      : " (non-degenerate)";
       }
       map[key].push_back(op);
       return WalkResult::advance();

@@ -455,6 +455,13 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
             << " is greater than the requested repetition " << repetition;
     return OkStatus();
   }
+  if (repetition > current_repetition) {
+    // This could happen if an iterator is repeated before reaching end of
+    // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
+    // the previous repetitions as completed and advance to the requested
+    // repetition.
+    TF_RETURN_IF_ERROR(split_providers_[iteration_id][provider_index]->Reset());
+  }
   SplitProvider* split_provider =
       split_providers_[iteration_id][provider_index].get();
   DCHECK(split_provider != nullptr);

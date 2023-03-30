@@ -128,6 +128,12 @@ def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleO
   ];
 }
 
+def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
+  let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
+  let constructor = "hlo::createGenericHostToLLVMPass()";
+  let options = [];
+}
+
 def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let summary = "Unbufferize partially bufferized functions.";
   let description = [{
@@ -150,4 +156,4 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
-#endif // MLIR_HLO_TRANSFORMS_PASSES
+#endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

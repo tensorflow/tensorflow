@@ -824,7 +824,7 @@ class _PythonLoopChecker(object):
     self.check_op_count_after_iteration = False
 
   def _get_ops(self):
-    return ops.get_default_graph().get_operations()
+    return set(ops.get_default_graph().get_operations())
 
   def _check_unroll_limits(self):
     if self.iterations > PYTHON_MAX_ITERATIONS:

@@ -222,17 +222,6 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
       HloInstruction::CreateTranspose(new_shape, instr, permutation));
 }
 
-bool IsCublasSupportedMatrixMultiplication(
-    const HloInstruction &dot, se::CudaComputeCapability compute_capability) {
-  if (!IsMatrixMultiplication(dot)) {
-    return false;
-  }
-  if (IsF8Type(dot.operand(0)) || IsF8Type(dot.operand(1))) {
-    // cuBLAS LT only supports F8 matmuls on Hopper and above.
-    return compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
-  }
-  return true;
-}
 
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
@@ -373,16 +362,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       : cuda_compute_capability_(cuda_compute_capability) {}
 
   Status HandleDot(HloInstruction *instr) override {
-    if (!IsCublasSupportedMatrixMultiplication(*instr,
-                                               cuda_compute_capability_)) {
+    if (!IsMatrixMultiplication(*instr)) {
       return OkStatus();
     }
 
     CHECK(!instr->IsRank2Transpose());
-    HloInstruction *lhs = instr->mutable_operand(0);
-    HloInstruction *rhs = instr->mutable_operand(1);
-    CHECK(!lhs->IsRank2Transpose());
-    CHECK(!rhs->IsRank2Transpose());
+    CHECK(!instr->mutable_operand(0)->IsRank2Transpose());
+    CHECK(!instr->mutable_operand(1)->IsRank2Transpose());
 
     // Create a GemmBackendConfig based on the instruction.
     GemmBackendConfig gemm_backend_config;
@@ -421,6 +407,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    if (IsF8Type(instr->operand(0))) {
+      // Couldn't rewrite as an FP8 cublasLt custom call, so turn into an FP16
+      // dot and below it will be rewritten as an FP16 cublas or cublasLt call.
+      TF_ASSIGN_OR_RETURN(instr, TurnF8DotIntoF16Dot(instr));
+    }
+
     // Couldn't rewrite as an FP8 cublasLt custom call, rewrite as a cublas or
     // cublasLt call.
     TF_ASSIGN_OR_RETURN(
@@ -429,7 +421,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const Shape &output_shape = instr->shape();
     HloInstruction *gemm_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
-            output_shape, {lhs, rhs}, gemm_custom_call_target));
+            output_shape,
+            {instr->mutable_operand(0), instr->mutable_operand(1)},
+            gemm_custom_call_target));
     TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
     return OkStatus();
@@ -1509,6 +1503,34 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Check that the size of the non-contracting dimension is not too large.
     return lhs_non_contracting_dimension_size <= kMaxDimensionSize;
+  }
+
+  // Turns an F8 dot into an F16 dot, converting operands to F16 and
+  // converting the output back to F8.
+  StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
+    DCHECK(IsF8Type(instr));
+    DCHECK(IsF8Type(instr->operand(0)));
+    DCHECK(IsF8Type(instr->operand(1)));
+
+    // Convert operands to F16
+    for (int i = 0; i < 2; ++i) {
+      Shape operand_f16_shape = instr->operand(i)->shape();
+      operand_f16_shape.set_element_type(F16);
+      HloInstruction *convert =
+          instr->AddInstruction(HloInstruction::CreateConvert(
+              operand_f16_shape, instr->mutable_operand(i)));
+      TF_RETURN_IF_ERROR(instr->ReplaceOperandWith(i, convert));
+    }
+
+    // Clone instruction and convert output to F8
+    Shape output_f16_shape = instr->shape();
+    output_f16_shape.set_element_type(F16);
+    HloInstruction *f16_dot =
+        instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
+    HloInstruction *convert_to_f8 = instr->AddInstruction(
+        HloInstruction::CreateConvert(instr->shape(), f16_dot));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
+    return f16_dot;
   }
 };
 

@@ -21,6 +21,7 @@ def generated_test_models():
         "avg_pool3d",
         "batch_to_space_nd",
         "batchmatmul",
+        "bitcast",
         "broadcast_args",
         "broadcast_gradient_args",
         "broadcast_to",

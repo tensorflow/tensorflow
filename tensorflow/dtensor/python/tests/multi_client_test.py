@@ -217,6 +217,7 @@ def multi_client_main():
   # No GPU visible to the flock controller.
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
   os.environ['HIP_VISIBLE_DEVICES'] = ''
+
   # Python multiprocess module in OSS.
   mp_context = test_backend_util.get_mp_context()
 

@@ -569,7 +569,10 @@ cc_library(
     name = "tfrt_compile_options",
     srcs = ["translate/tfrt_compile_options.cc"],
     hdrs = ["translate/tfrt_compile_options.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(

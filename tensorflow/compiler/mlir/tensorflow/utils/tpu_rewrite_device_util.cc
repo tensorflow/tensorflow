@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -596,4 +597,11 @@ bool IsTPUReplicatedCore(llvm::StringRef device) {
     return false;
   return parsed_device.has_type && parsed_device.type == kTPUReplicatedCore;
 }
+
+bool TypeValidForXLA(const mlir::Type& type) {
+  const mlir::Type elem = getElementTypeOrSelf(type);
+  return !elem.isa<mlir::TF::ResourceType>() &&
+         !elem.isa<mlir::TF::StringType>();
+}
+
 }  // namespace tensorflow

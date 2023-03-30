@@ -320,6 +320,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (ctx->warm_start()) {
         TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
       }
+      cond_var_->notify_all();
       return OkStatus();
     }
 

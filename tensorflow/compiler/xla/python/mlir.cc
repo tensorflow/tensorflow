@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -158,18 +159,22 @@ StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
 StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
                                                 std::string target) {
   mlir::MLIRContext context;
+  if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
 
-  // Legalize CHLO -> MHLO -> StableHLO
+  // Legalize CHLO -> [MHLO+Shape] -> StableHLO
   mlir::PassManager pm(&context);
-  // FIXME: Add other dialect registrations here.
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createShapeLegalizeToHloPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (!mlir::succeeded(pm.run(*module))) {
-    return tsl::errors::InvalidArgument("CHLO => MHLO => StableHLO failed");
+    return tsl::errors::InvalidArgument(
+        "CHLO => [MHLO+Shape] => StableHLO failed");
   }
 
   // Serialize portable artifact

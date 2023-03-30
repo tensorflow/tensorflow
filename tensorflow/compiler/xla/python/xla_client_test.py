@@ -52,9 +52,17 @@ def jax_array_device(self):
   return self._sharding._device
 
 
+def jax_array_copy_to_host_async(self):
+  self._copy_single_device_array_to_host_async()
+
+
 Array = xla_client.ArrayImpl
 Array.__array__ = jax_array_convert_to_array
+Array.copy_to_host_async = jax_array_copy_to_host_async
 Array.device = jax_array_device
+xla_client.SingleDeviceSharding.device_set = property(
+    lambda self: {self._device}
+)
 # pylint: enable=invalid-name
 
 
@@ -623,13 +631,6 @@ def TestFactory(xla_backend,
       with self.assertRaises(xla_client.XlaRuntimeError):
         compiled_c.execute([arg_buffer])
 
-    def testXlaShape(self):
-      pyval = np.array([[1., 2.]], np.float32)
-      local_buffer = self.backend.buffer_from_pyval(pyval)
-      xla_shape = local_buffer.xla_shape()
-      self.assertEqual(xla_shape.dimensions(), (1, 2))
-      self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
-
     def testXlaShapeIndex(self):
       a = xla_client.ShapeIndex((1, 2))
       b = xla_client.ShapeIndex((1, 2))
@@ -723,8 +724,6 @@ def TestFactory(xla_backend,
       self.assertIs(self.backend.live_buffers()[0], arg2_buffer)
       self.assertIs(self.backend.live_buffers()[1], arg1_buffer)
       self.assertIs(self.backend.live_buffers()[2], arg0_buffer)
-      self.assertEqual(self.backend.devices()[0].live_buffers(),
-                       self.backend.live_buffers())
 
       arg1_buffer.delete()
       self.assertLen(self.backend.live_buffers(), 2)
@@ -791,13 +790,6 @@ def TestFactory(xla_backend,
       self.assertNotEqual(id(x), id(y))
       np.testing.assert_array_equal(np.asarray(y), np.asarray(z))
       self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
-
-    @unittest.skipIf(cloud_tpu or pathways, "not implemented")
-    def testJaxAttributesHaveCorrectDefaults(self):
-      x = np.array([[3., 4., 5.]], np.float32)
-      y = self.backend.buffer_from_pyval(x)
-      self.assertIsNone(y.aval)
-      self.assertIsNone(y._device)
 
   tests.append(BufferTest)
 
@@ -2210,6 +2202,7 @@ def TestFactory(xla_backend,
       outfeed_shape = xla_client.shape_from_pyval(
           to_round_trip[0]).with_major_to_minor_layout_if_absent()
       ops.OutfeedWithToken(x, token, outfeed_shape)
+      ops.Tuple(c, ())
 
       compiled_c = self.backend.compile(
           xla_computation_to_mlir_module(c.build()))

@@ -932,8 +932,18 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             }
             // Set resharding cost to be 0 because there is only one choice and
             // the cost do not matter.
-            resharding_costs.push_back(std::vector<double>(
-                strategy_map.at(operand)->leaf_vector.size(), 0.0));
+            size_t resharding_costs_length;
+            if (ins->opcode() == HloOpcode::kGetTupleElement) {
+              CHECK(strategy_map.at(operand)->is_tuple);
+              resharding_costs_length = strategy_map.at(operand)
+                                            ->childs[ins->tuple_index()]
+                                            ->leaf_vector.size();
+            } else {
+              resharding_costs_length =
+                  strategy_map.at(operand)->leaf_vector.size();
+            }
+            resharding_costs.push_back(
+                std::vector<double>(resharding_costs_length, 0.0));
           }
         }
         double memory_cost =
@@ -1208,8 +1218,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                               device_mesh.dim(j)))) {
               continue;
             }
-            std::string name = absl::StrCat("S", std::to_string(index_dim),
-                                            " @ ", std::to_string(j));
+            std::string name = absl::StrCat("S", index_dim, " @ ", j);
 
             HloSharding output_spec =
                 Tile(shape, {index_dim}, {j}, device_mesh);
@@ -2006,8 +2015,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     if (s_follow[i] < 0) {
       var_vector_cnt += 1;
       // Creates variables for instructions that do not follow others.
-      solver->MakeBoolVarArray(
-          s_len[i], absl::StrCat("s[", std::to_string(i), "]"), &s[i]);
+      solver->MakeBoolVarArray(s_len[i], absl::StrCat("s[", i, "]"), &s[i]);
     }
   }
 
@@ -2021,10 +2029,9 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   for (size_t i = 0; i < num_edges; ++i) {
     std::pair<int, int> edge = E[i];
-    solver->MakeBoolVarArray(s_len[edge.first] * s_len[edge.second],
-                             absl::StrCat("e[", std::to_string(edge.first), ",",
-                                          std::to_string(edge.second), "]"),
-                             &e[i]);
+    solver->MakeBoolVarArray(
+        s_len[edge.first] * s_len[edge.second],
+        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
   }
 
   // Objective
@@ -2660,7 +2667,8 @@ std::string PrintLivenessSet(const LivenessSet& liveness_set) {
     std::vector<std::string> names;
     names.reserve(liveness_set[i].size());
     for (const HloValue* value : liveness_set[i]) {
-      names.push_back(value->instruction()->name() + value->index().ToString());
+      names.push_back(absl::StrCat(value->instruction()->name(),
+                                   value->index().ToString()));
     }
     std::sort(names.begin(), names.end());
     absl::StrAppend(&str, "Time ", i, ": ", absl::StrJoin(names, ", "), "\n");
@@ -3194,7 +3202,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
         continue;
       }
 
-      VLOG(10) << "SET:  " << output_spec.ToString();
+      VLOG(10) << "SET: " << output_spec.ToString();
 
       if (absl::StartsWith(strategy.name, "RR = RS x SR")) {
         // If set the sharding for this dot instruction, the SPMD

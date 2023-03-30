@@ -412,7 +412,7 @@ class _CoordinatedClosureQueue(object):
     if tag is not None:
       with self._queue_lock:
         self._tagged_queue[tag].put(closure, block=False)
-        self._closures_queued_condition.notifyAll()
+        self._closures_queued_condition.notify_all()
     else:
       with self._put_wait_lock, self._queue_lock:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())

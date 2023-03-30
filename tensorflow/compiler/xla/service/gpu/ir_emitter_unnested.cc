@@ -66,6 +66,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
@@ -2780,7 +2781,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
           // this once we get rid of this function, or don't rely on the op name
           // (which shouldn't be the identity) to generate LLVM symbols.
           instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(
-              module->name() + "_" + instr->name()));
+              absl::StrCat(module->name(), "_", instr->name())));
         }
       }
     }
@@ -4129,7 +4130,7 @@ void IrEmitterUnnested::WriteReductionOutput(
     const HloReduceInstruction* reduction, int partial_result_idx,
     const absl::Span<TypedPointer const> values) {
   const HloComputation* reducer = reduction->to_apply();
-  for (auto [oidx, typed_ptr] : llvm::enumerate(values)) {
+  for (const auto& [oidx, typed_ptr] : llvm::enumerate(values)) {
     auto [output_ptr, type] = typed_ptr;
     llvm::Value* output_address = GetOutputAddressForReduction(
         partial_result_idx, index_ty, reduction_codegen_state,
@@ -5868,6 +5869,7 @@ void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
                   mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
                   mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect,
                   mlir::memref::MemRefDialect>();
+  mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);

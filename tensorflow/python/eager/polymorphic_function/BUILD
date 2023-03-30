@@ -83,8 +83,22 @@ py_library(
         ":attributes",
         ":function_context",
         ":monomorphic_function",
+        ":tf_method_target",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
+    ],
+)
+
+py_library(
+    name = "tf_method_target",
+    srcs = ["tf_method_target.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/python/autograph/impl:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 

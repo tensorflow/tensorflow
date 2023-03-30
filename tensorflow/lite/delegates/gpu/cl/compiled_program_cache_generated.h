@@ -20,6 +20,13 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffers.h"
 
+// Ensure the included flatbuffers.h is the same version as when this file was
+// generated, otherwise it may not be compatible.
+static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
+              FLATBUFFERS_VERSION_MINOR == 1 &&
+              FLATBUFFERS_VERSION_REVISION == 20,
+             "Non-compatible flatbuffers version included");
+
 namespace tflite {
 namespace gpu {
 namespace cl {
@@ -31,7 +38,7 @@ struct ProgramBuilder;
 struct CompiledCache;
 struct CompiledCacheBuilder;
 
-struct Program FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct Program FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ProgramBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FINGERPRINT = 4,
@@ -40,10 +47,10 @@ struct Program FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   uint64_t fingerprint() const {
     return GetField<uint64_t>(VT_FINGERPRINT, 0);
   }
-  const flatbuffers::Vector<uint8_t> *binary() const {
-    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_BINARY);
+  const ::flatbuffers::Vector<uint8_t> *binary() const {
+    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_BINARY);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint64_t>(verifier, VT_FINGERPRINT, 8) &&
            VerifyOffset(verifier, VT_BINARY) &&
@@ -54,37 +61,37 @@ struct Program FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct ProgramBuilder {
   typedef Program Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
   void add_fingerprint(uint64_t fingerprint) {
     fbb_.AddElement<uint64_t>(Program::VT_FINGERPRINT, fingerprint, 0);
   }
-  void add_binary(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> binary) {
+  void add_binary(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> binary) {
     fbb_.AddOffset(Program::VT_BINARY, binary);
   }
-  explicit ProgramBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit ProgramBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  flatbuffers::Offset<Program> Finish() {
+  ::flatbuffers::Offset<Program> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<Program>(end);
+    auto o = ::flatbuffers::Offset<Program>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<Program> CreateProgram(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<Program> CreateProgram(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t fingerprint = 0,
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> binary = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> binary = 0) {
   ProgramBuilder builder_(_fbb);
   builder_.add_fingerprint(fingerprint);
   builder_.add_binary(binary);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<Program> CreateProgramDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<Program> CreateProgramDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     uint64_t fingerprint = 0,
     const std::vector<uint8_t> *binary = nullptr) {
   auto binary__ = binary ? _fbb.CreateVector<uint8_t>(*binary) : 0;
@@ -94,19 +101,19 @@ inline flatbuffers::Offset<Program> CreateProgramDirect(
       binary__);
 }
 
-struct CompiledCache FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct CompiledCache FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef CompiledCacheBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DRIVER_VERSION = 4,
     VT_PROGRAMS = 6
   };
-  const flatbuffers::String *driver_version() const {
-    return GetPointer<const flatbuffers::String *>(VT_DRIVER_VERSION);
+  const ::flatbuffers::String *driver_version() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_DRIVER_VERSION);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>> *programs() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>> *>(VT_PROGRAMS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<tflite::gpu::cl::data::Program>> *programs() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<tflite::gpu::cl::data::Program>> *>(VT_PROGRAMS);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DRIVER_VERSION) &&
            verifier.VerifyString(driver_version()) &&
@@ -119,41 +126,41 @@ struct CompiledCache FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct CompiledCacheBuilder {
   typedef CompiledCache Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_driver_version(flatbuffers::Offset<flatbuffers::String> driver_version) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_driver_version(::flatbuffers::Offset<::flatbuffers::String> driver_version) {
     fbb_.AddOffset(CompiledCache::VT_DRIVER_VERSION, driver_version);
   }
-  void add_programs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>>> programs) {
+  void add_programs(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<tflite::gpu::cl::data::Program>>> programs) {
     fbb_.AddOffset(CompiledCache::VT_PROGRAMS, programs);
   }
-  explicit CompiledCacheBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit CompiledCacheBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  flatbuffers::Offset<CompiledCache> Finish() {
+  ::flatbuffers::Offset<CompiledCache> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<CompiledCache>(end);
+    auto o = ::flatbuffers::Offset<CompiledCache>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<CompiledCache> CreateCompiledCache(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> driver_version = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>>> programs = 0) {
+inline ::flatbuffers::Offset<CompiledCache> CreateCompiledCache(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> driver_version = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<tflite::gpu::cl::data::Program>>> programs = 0) {
   CompiledCacheBuilder builder_(_fbb);
   builder_.add_programs(programs);
   builder_.add_driver_version(driver_version);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<CompiledCache> CreateCompiledCacheDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<CompiledCache> CreateCompiledCacheDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *driver_version = nullptr,
-    const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>> *programs = nullptr) {
+    const std::vector<::flatbuffers::Offset<tflite::gpu::cl::data::Program>> *programs = nullptr) {
   auto driver_version__ = driver_version ? _fbb.CreateString(driver_version) : 0;
-  auto programs__ = programs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::cl::data::Program>>(*programs) : 0;
+  auto programs__ = programs ? _fbb.CreateVector<::flatbuffers::Offset<tflite::gpu::cl::data::Program>>(*programs) : 0;
   return tflite::gpu::cl::data::CreateCompiledCache(
       _fbb,
       driver_version__,
@@ -161,11 +168,11 @@ inline flatbuffers::Offset<CompiledCache> CreateCompiledCacheDirect(
 }
 
 inline const tflite::gpu::cl::data::CompiledCache *GetCompiledCache(const void *buf) {
-  return flatbuffers::GetRoot<tflite::gpu::cl::data::CompiledCache>(buf);
+  return ::flatbuffers::GetRoot<tflite::gpu::cl::data::CompiledCache>(buf);
 }
 
 inline const tflite::gpu::cl::data::CompiledCache *GetSizePrefixedCompiledCache(const void *buf) {
-  return flatbuffers::GetSizePrefixedRoot<tflite::gpu::cl::data::CompiledCache>(buf);
+  return ::flatbuffers::GetSizePrefixedRoot<tflite::gpu::cl::data::CompiledCache>(buf);
 }
 
 inline const char *CompiledCacheIdentifier() {
@@ -173,22 +180,22 @@ inline const char *CompiledCacheIdentifier() {
 }
 
 inline bool CompiledCacheBufferHasIdentifier(const void *buf) {
-  return flatbuffers::BufferHasIdentifier(
+  return ::flatbuffers::BufferHasIdentifier(
       buf, CompiledCacheIdentifier());
 }
 
 inline bool SizePrefixedCompiledCacheBufferHasIdentifier(const void *buf) {
-  return flatbuffers::BufferHasIdentifier(
+  return ::flatbuffers::BufferHasIdentifier(
       buf, CompiledCacheIdentifier(), true);
 }
 
 inline bool VerifyCompiledCacheBuffer(
-    flatbuffers::Verifier &verifier) {
+    ::flatbuffers::Verifier &verifier) {
   return verifier.VerifyBuffer<tflite::gpu::cl::data::CompiledCache>(CompiledCacheIdentifier());
 }
 
 inline bool VerifySizePrefixedCompiledCacheBuffer(
-    flatbuffers::Verifier &verifier) {
+    ::flatbuffers::Verifier &verifier) {
   return verifier.VerifySizePrefixedBuffer<tflite::gpu::cl::data::CompiledCache>(CompiledCacheIdentifier());
 }
 
@@ -197,14 +204,14 @@ inline const char *CompiledCacheExtension() {
 }
 
 inline void FinishCompiledCacheBuffer(
-    flatbuffers::FlatBufferBuilder &fbb,
-    flatbuffers::Offset<tflite::gpu::cl::data::CompiledCache> root) {
+    ::flatbuffers::FlatBufferBuilder &fbb,
+    ::flatbuffers::Offset<tflite::gpu::cl::data::CompiledCache> root) {
   fbb.Finish(root, CompiledCacheIdentifier());
 }
 
 inline void FinishSizePrefixedCompiledCacheBuffer(
-    flatbuffers::FlatBufferBuilder &fbb,
-    flatbuffers::Offset<tflite::gpu::cl::data::CompiledCache> root) {
+    ::flatbuffers::FlatBufferBuilder &fbb,
+    ::flatbuffers::Offset<tflite::gpu::cl::data::CompiledCache> root) {
   fbb.FinishSizePrefixed(root, CompiledCacheIdentifier());
 }
 

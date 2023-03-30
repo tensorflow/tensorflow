@@ -262,6 +262,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
     case C128:
       return 16;
 
+    case TOKEN:
+      // Tokens require no space.
+      return 0;
+
     case TUPLE:
       LOG(FATAL) << "TUPLE is an invalid type for ByteWidth";
 

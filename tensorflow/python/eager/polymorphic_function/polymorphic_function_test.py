@@ -1878,7 +1878,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*py_composite.*',

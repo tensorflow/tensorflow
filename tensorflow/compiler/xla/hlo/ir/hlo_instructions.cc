@@ -265,7 +265,7 @@ HloAsyncInstruction::HloAsyncInstruction(
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(*this);
   set_async_execution_thread(async_execution_thread);
 }
 
@@ -280,7 +280,7 @@ HloAsyncInstruction::HloAsyncInstruction(
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(*this);
   set_async_execution_thread(async_execution_thread);
 }
 
@@ -2280,7 +2280,7 @@ std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
 
 HloParameterInstruction::HloParameterInstruction(int64_t parameter_number,
                                                  const Shape& shape,
-                                                 const std::string& name)
+                                                 absl::string_view name)
     : HloInstruction(HloOpcode::kParameter, shape),
       parameter_number_(parameter_number) {
   SetAndSanitizeName(name);
@@ -2537,10 +2537,10 @@ HloConvolutionInstruction::HloConvolutionInstruction(
 std::string HloConvolutionInstruction::ToCategory() const {
   std::string category = "convolution";
   if (window_util::HasBaseDilation(window())) {
-    category += " base-dilated";
+    absl::StrAppend(&category, " base-dilated");
   }
   if (window_util::HasWindowDilation(window())) {
-    category += " window-dilated";
+    absl::StrAppend(&category, " window-dilated");
   }
   return category;
 }

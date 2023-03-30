@@ -29,6 +29,9 @@ DebugDataDumper* DebugDataDumper::Global() {
 
 bool DebugDataDumper::ShouldDump(const std::string& name,
                                  bool bypass_name_filter) const {
+  // Do not dump data for the wrapped functions.
+  if (absl::StartsWith(name, "__wrapped__")) return false;
+
   // Do name filter check if bypass_name_filter is false.
   if (!bypass_name_filter) {
     // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
@@ -53,6 +56,58 @@ bool DebugDataDumper::ShouldDump(const std::string& name,
 
   // If all conditions are met, return true to allow the dump.
   return true;
+}
+
+void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
+                                                const std::string& tag,
+                                                const Graph* graph) {
+  const char* dump_stacktraces = getenv("TF_DUMP_OP_CREATION_STACKTRACES");
+  if (dump_stacktraces == nullptr) {
+    VLOG(1) << "Skip dumping op creation stacktraces for '" << name
+            << "', because TF_DUMP_OP_CREATION_STACKTRACES is not set";
+    return;
+  }
+
+  // Construct the dump filename.
+  std::string dump_filename = GetDumpFileBasename(name, tag);
+
+  // Dump module txt to file.
+  DumpToFile(dump_filename, "", ".csv", "StackTrace",
+             [&graph, &dump_filename](WritableFile* file) {
+               auto status = file->Append("node_id,node_name,stackframes\n");
+               if (!status.ok()) {
+                 LOG(WARNING) << "error writing to file to " << dump_filename
+                              << ": " << status.error_message();
+                 return status;
+               }
+
+               for (Node* node : graph->nodes()) {
+                 auto stack_trace = node->GetStackTrace();
+                 if (stack_trace == nullptr) continue;
+
+                 int node_id = node->id();
+                 std::string node_name = node->name();
+                 std::vector<std::string> stackframes;
+
+                 for (auto& frame : stack_trace->ToFrames()) {
+                   stackframes.push_back(
+                       absl::StrFormat("%s(%d): %s", frame.file_name,
+                                       frame.line_number, frame.function_name));
+                 }
+
+                 status = file->Append(
+                     absl::StrFormat("%d,%s,%s\n", node_id, node_name,
+                                     absl::StrJoin(stackframes, ";")));
+
+                 if (!status.ok()) {
+                   LOG(WARNING) << "error writing to file to " << dump_filename
+                                << ": " << status.error_message();
+                   return status;
+                 }
+               }
+
+               return file->Close();
+             });
 }
 
 void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
@@ -101,7 +156,7 @@ void DebugDataDumper::DumpMLIRModule(const std::string& name,
 
 std::string DebugDataDumper::GetDumpFileBasename(const std::string& name,
                                                  const std::string& tag) {
-  return absl::StrFormat("%s.%d.%s", name, GetNextDumpId(name), tag);
+  return absl::StrFormat("%s.%04d.%s", name, GetNextDumpId(name), tag);
 }
 
 }  // namespace tensorflow

@@ -48,7 +48,10 @@
 // //tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer
 // && cp
 // bazel-bin/tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
-// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss
+// tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+// NOTE: If you are a Google developer using the internal dev environment,
+// please read the description of the following bash script and then run it:
+// ./third_party/tensorflow/lite/experimental/acceleration/configuration/google/regenerate_tflite_configuration_generated_header.sh
 
 // LINT.IfChange
 

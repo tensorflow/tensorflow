@@ -19,10 +19,11 @@ limitations under the License.
 // 8-bit Floating Point Interchange Format, as described by
 //   https://arxiv.org/abs/2209.05433
 
-#include <cmath>
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <ostream>
+#include <type_traits>
 #include <utility>
 
 #include "absl/numeric/bits.h"
@@ -414,118 +415,165 @@ struct numeric_limits_float8 {
 template <>
 struct numeric_limits_float8<float8_e4m3fn>
     : public numeric_limits_float8_base {
+ private:
+  static inline constexpr const int kExponentBias = 7;
+  static inline constexpr const int kMantissaBits = 3;
+
+ public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 4;
   static inline constexpr const int digits10 = 0;      // floor(3 * log10(2));
   static inline constexpr const int max_digits10 = 3;  // ceil(4 * log10(2) + 1)
-  static inline constexpr const int min_exponent = -5;
+  static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
   static inline constexpr const int min_exponent10 = -1;
-  static inline constexpr const int max_exponent = 9;  // Extended format.
+  static inline constexpr const int max_exponent =
+      (0b1111 - 7) + 1;  // Extended format.
   static inline constexpr const int max_exponent10 = 2;
   static inline constexpr const bool is_iec559 = false;
   static inline constexpr const bool has_infinity = false;
   static inline constexpr const bool has_signaling_NaN = false;
   // NOLINTEND
 
-  static constexpr float8_e4m3fn min() { return float8_e4m3fn::FromRep(0x08); }
+  // 1.0 * 2^(0b0001 - 7) = 1.0 * 2^-6 = 0.015625
+  static constexpr float8_e4m3fn min() {
+    return float8_e4m3fn::FromRep(0b0'0001 << kMantissaBits);
+  }
+  // -(1 + 0b110 * 2^-3) * 2^(0b1111 - 7) = -1.75 * 2^8 = 448
   static constexpr float8_e4m3fn lowest() {
-    return float8_e4m3fn::FromRep(0xFE);
+    return float8_e4m3fn::FromRep(0b1'1111'110);
   }
-  static constexpr float8_e4m3fn max() { return float8_e4m3fn::FromRep(0x7E); }
+  // (1 + 0b110 * 2^-3) * 2**(0b1111 - 7) = 1.75 * 2^8 = 448
+  static constexpr float8_e4m3fn max() {
+    return float8_e4m3fn::FromRep(0b0'1111'110);
+  }
+  // 1.0 * 2^-3 = 0.125
   static constexpr float8_e4m3fn epsilon() {
-    return float8_e4m3fn::FromRep(0x20);
+    return float8_e4m3fn::FromRep((-kMantissaBits + kExponentBias)
+                                  << kMantissaBits);
   }
+  // 1.0 * 2^-1 = 0.5
   static constexpr float8_e4m3fn round_error() {
-    return float8_e4m3fn::FromRep(0x30);
+    return float8_e4m3fn::FromRep((-1 + kExponentBias) << kMantissaBits);
   }
   static constexpr float8_e4m3fn infinity() {
-    return float8_e4m3fn::FromRep(0x7F);
-  }  // NaN.
+    return float8_e4m3fn::FromRep(0b0'1111'111);
+  }
+  // NaN.
   static constexpr float8_e4m3fn quiet_NaN() {
-    return float8_e4m3fn::FromRep(0x7F);
+    return float8_e4m3fn::FromRep(0b0'1111'111);
   }
   static constexpr float8_e4m3fn signaling_NaN() {
-    return float8_e4m3fn::FromRep(0x7F);
+    return float8_e4m3fn::FromRep(0b0'1111'111);
   }
+  // 1.0 * 2^(-7 - 3 + 1) = 1.0 * 2^-9 = 0.001953125
   static constexpr float8_e4m3fn denorm_min() {
-    return float8_e4m3fn::FromRep(0x01);
+    return float8_e4m3fn::FromRep(0b0'0000'001);
   }
 };
 
 template <>
 struct numeric_limits_float8<float8_e4m3b11>
     : public numeric_limits_float8_base {
+ private:
+  static inline constexpr const int kExponentBias = 11;
+  static inline constexpr const int kMantissaBits = 3;
+
+ public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 4;
   static inline constexpr const int digits10 = 0;      // floor(3 * log10(2));
   static inline constexpr const int max_digits10 = 3;  // ceil(4 * log10(2) + 1)
-  static inline constexpr const int min_exponent = (1 - 11) + 1;
+  static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
   static inline constexpr const int min_exponent10 = -2;
   static inline constexpr const int max_exponent =
-      (0b1111 - 11) + 1;  // Extended format.
+      (0b1111 - kExponentBias) + 1;  // Extended format.
   static inline constexpr const int max_exponent10 = 1;
   static inline constexpr const bool is_iec559 = false;
   static inline constexpr const bool has_infinity = false;
   static inline constexpr const bool has_signaling_NaN = false;
   // NOLINTEND
 
+  // 1.0 * 2^(0b0001 - 11) = 1.0 * 2^-10 = 0.0009765625
   static constexpr float8_e4m3b11 min() {
-    return float8_e4m3b11::FromRep(0x08);
+    return float8_e4m3b11::FromRep(1 << kMantissaBits);
   }
+  // -(1 + 0b111 * 2^-3) * 2^(0b1111 - 11) = -1.875 * 2^4 = -30
   static constexpr float8_e4m3b11 lowest() {
-    return float8_e4m3b11::FromRep(0xFF);
+    return float8_e4m3b11::FromRep(0b1'1111'111);
   }
+  // (1 + 0b111 * 2^-3) * 2^(0b1111 - 11) = 1.875 * 2^4 = 30
   static constexpr float8_e4m3b11 max() {
-    return float8_e4m3b11::FromRep(0x7F);
+    return float8_e4m3b11::FromRep(0b0'1111'111);
   }
+  // 1.0 * 2^-3 = 0.125
   static constexpr float8_e4m3b11 epsilon() {
-    constexpr int kExponentBias = 11;
-    constexpr int kMantissaBits = 3;
-    return float8_e4m3b11::FromRep((kExponentBias - kMantissaBits)
+    return float8_e4m3b11::FromRep((-kMantissaBits + kExponentBias)
                                    << kMantissaBits);
   }
+  // 1.0 * 2^-1 = 0.5
   static constexpr float8_e4m3b11 round_error() {
-    constexpr int kExponentBias = 11;
-    constexpr int kMantissaBits = 3;
-    return float8_e4m3b11::FromRep((kExponentBias - 1) << kMantissaBits);
+    return float8_e4m3b11::FromRep((-1 + kExponentBias) << kMantissaBits);
   }
   static constexpr float8_e4m3b11 infinity() {
-    return float8_e4m3b11::FromRep(0x80);
-  }  // NaN.
+    return float8_e4m3b11::FromRep(0b1'0000'000);
+  }
+  // NaN.
   static constexpr float8_e4m3b11 quiet_NaN() {
-    return float8_e4m3b11::FromRep(0x80);
+    return float8_e4m3b11::FromRep(0b1'0000'000);
   }
   static constexpr float8_e4m3b11 signaling_NaN() {
-    return float8_e4m3b11::FromRep(0x80);
+    return float8_e4m3b11::FromRep(0b1'0000'000);
   }
+  // 1.0 * 2^(-11 - 3 + 1) = 1.0 * 2^-13 = 0.0001220703125
   static constexpr float8_e4m3b11 denorm_min() {
-    return float8_e4m3b11::FromRep(0x01);
+    return float8_e4m3b11::FromRep(0b0'0000'001);
   }
 };
 
 template <>
 struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
+ private:
+  static inline constexpr const int kExponentBias = 15;
+  static inline constexpr const int kMantissaBits = 2;
+
+ public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 3;
   static inline constexpr const int digits10 = 0;      // floor(2 * log10(2))
   static inline constexpr const int max_digits10 = 2;  // ceil(3 * log10(2) + 1)
-  static inline constexpr const int min_exponent = -13;
+  static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
   static inline constexpr const int min_exponent10 = -4;
-  static inline constexpr const int max_exponent = 16;
+  static inline constexpr const int max_exponent = 0b11111 - kExponentBias;
   static inline constexpr const int max_exponent10 = 4;
   static inline constexpr const bool is_iec559 = true;
   static inline constexpr const bool has_infinity = true;
   static inline constexpr const bool has_signaling_NaN = true;
   // NOLINTEND
 
-  static constexpr float8_e5m2 min() { return float8_e5m2::FromRep(0x04); }
-  static constexpr float8_e5m2 lowest() { return float8_e5m2::FromRep(0xFB); }
-  static constexpr float8_e5m2 max() { return float8_e5m2::FromRep(0x7B); }
-  static constexpr float8_e5m2 epsilon() { return float8_e5m2::FromRep(0x34); }
-  static constexpr float8_e5m2 round_error() {
-    return float8_e5m2::FromRep(0x38);
+  // 1.0 * 2^(0b00001 - 15) = 1.0 * 2^-14 = 0.00006103515625
+  static constexpr float8_e5m2 min() {
+    return float8_e5m2::FromRep(1 << kMantissaBits);
   }
-  static constexpr float8_e5m2 infinity() { return float8_e5m2::FromRep(0x7C); }
+  // -(1 + 0b11 * 2^-2) * 2^(0b11110 - 15) = -1.75 * 2^15 = -57344
+  static constexpr float8_e5m2 lowest() {
+    return float8_e5m2::FromRep(0b1'11110'11);
+  }
+  // (1 + 0b11 * 2^-2) * 2^(0b11110 - 15) = 1.75 * 2^15 = 57344
+  static constexpr float8_e5m2 max() {
+    return float8_e5m2::FromRep(0b0'11110'11);
+  }
+  // 1.0 * 2^-2 = 0.25
+  static constexpr float8_e5m2 epsilon() {
+    return float8_e5m2::FromRep((-kMantissaBits + kExponentBias)
+                                << kMantissaBits);
+  }
+  // 1.0 * 2^-1 = 0.5
+  static constexpr float8_e5m2 round_error() {
+    return float8_e5m2::FromRep((-1 + kExponentBias) << kMantissaBits);
+  }
+  static constexpr float8_e5m2 infinity() {
+    return float8_e5m2::FromRep(0b0'11111'00);
+  }
   static constexpr float8_e5m2 quiet_NaN() {
     // IEEE 754-2019 6.2.1: "All binary NaN bit strings have the sign bit S set
     // to 0 or 1 and all the bits of the biased exponent field E set to 1
@@ -538,8 +586,9 @@ struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
     // the first bit of the trailing significand field being 0."
     return float8_e5m2::FromRep(0b0'11111'01);
   }
+  // 1.0 * 2^(-15 - 2 + 1) = 1.0 * 2^-16 = 0.0000152587890625
   static constexpr float8_e5m2 denorm_min() {
-    return float8_e5m2::FromRep(0x01);
+    return float8_e5m2::FromRep(0b0'00000'01);
   }
 };
 
@@ -569,49 +618,42 @@ namespace float8_internal {
 
 // Free-functions for use with ADL and in Eigen.
 constexpr inline float8_e4m3fn abs(const float8_e4m3fn& a) {
-  return float8_e4m3fn::FromRep(a.rep() & 0x7F);
+  return float8_e4m3fn::FromRep(a.rep() & 0b0'1111'111);
 }
 
 constexpr inline bool isnan(const float8_e4m3fn& a) {
-  return (a.rep() & 0x7F) == 0x7F;
-}
-
-constexpr inline bool isinf(const float8_e4m3fn& a) {
-  return false;  // No inf representation.
-}
-
-constexpr inline bool isfinite(const float8_e4m3fn& a) {
-  return !isnan(a) && !isinf(a);
+  return abs(a).rep() == std::numeric_limits<float8_e4m3fn>::quiet_NaN().rep();
 }
 
 constexpr inline float8_e4m3b11 abs(const float8_e4m3b11& a) {
-  return (a.rep() & 0x7F) == 0 ? float8_e4m3b11::FromRep(a.rep())
-                               : float8_e4m3b11::FromRep(a.rep() & 0x7F);
+  return (a.rep() & 0b0'1111'111) == 0
+             ? float8_e4m3b11::FromRep(a.rep())
+             : float8_e4m3b11::FromRep(a.rep() & 0b0'1111'111);
 }
 
-constexpr inline bool isnan(const float8_e4m3b11& a) { return a.rep() == 0x80; }
-
-constexpr inline bool isinf(const float8_e4m3b11& a) {
-  return false;  // No inf representation.
-}
-
-constexpr inline bool isfinite(const float8_e4m3b11& a) {
-  return !isnan(a) && !isinf(a);
+constexpr inline bool isnan(const float8_e4m3b11& a) {
+  return a.rep() == std::numeric_limits<float8_e4m3b11>::quiet_NaN().rep();
 }
 
 constexpr inline float8_e5m2 abs(const float8_e5m2& a) {
-  return float8_e5m2::FromRep(a.rep() & 0x7F);
+  return float8_e5m2::FromRep(a.rep() & 0b0'11111'11);
 }
 
 constexpr inline bool isnan(const float8_e5m2& a) {
-  return (a.rep() & 0x7F) > 0x7C;
+  return abs(a).rep() > std::numeric_limits<float8_e5m2>::infinity().rep();
 }
 
-constexpr inline bool isinf(const float8_e5m2& a) {
-  return (a.rep() & 0x7F) == 0x7C;
+template <typename T>
+constexpr inline std::enable_if_t<std::is_base_of_v<float8_base<T>, T>, bool>
+isinf(const T& a) {
+  return std::numeric_limits<T>::has_infinity
+             ? abs(a).rep() == std::numeric_limits<T>::infinity().rep()
+             : false;  // No inf representation.
 }
 
-constexpr inline bool isfinite(const float8_e5m2& a) {
+template <typename T>
+constexpr inline std::enable_if_t<std::is_base_of_v<float8_base<T>, T>, bool>
+isfinite(const T& a) {
   return !isnan(a) && !isinf(a);
 }
 
@@ -625,29 +667,10 @@ std::ostream& operator<<(std::ostream& os, const float8_base<Float8>& f8) {
 // Inline conversion routines between float8 and other types.
 //==============================================================================
 
-// Helper struct for getting a bit representation provided a byte size.
+// Helper for getting a bit representation provided a byte size.
 template <int kNumBytes>
-struct GetUnsignedInteger;
-
-template <>
-struct GetUnsignedInteger<1> {
-  using type = uint8_t;
-};
-
-template <>
-struct GetUnsignedInteger<2> {
-  using type = uint16_t;
-};
-
-template <>
-struct GetUnsignedInteger<4> {
-  using type = uint32_t;
-};
-
-template <>
-struct GetUnsignedInteger<8> {
-  using type = uint64_t;
-};
+using GetUnsignedInteger =
+    typename Eigen::numext::get_integer_by_size<kNumBytes>::unsigned_type;
 
 // Converts between two floating-point types.
 template <typename From, typename To, bool kSaturate, bool kTruncate,
@@ -678,7 +701,7 @@ struct ConvertImpl<Scalar, Scalar, /*kSaturate=*/true, /*kTruncate=*/true,
 
 template <typename Float>
 struct TraitsBase {
-  using BitsType = typename GetUnsignedInteger<sizeof(Float)>::type;
+  using BitsType = GetUnsignedInteger<sizeof(Float)>;
   static constexpr int kBits = sizeof(Float) * CHAR_BIT;
   static constexpr int kMantissaBits = Eigen::NumTraits<Float>::digits() - 1;
   static constexpr int kExponentBits = kBits - kMantissaBits - 1;
@@ -691,56 +714,12 @@ template <typename Float>
 struct Traits : public TraitsBase<Float> {
   using Base = TraitsBase<Float>;
   static constexpr int kExponentBias = (1 << (Base::kExponentBits - 1)) - 1;
-  static EIGEN_DEVICE_FUNC Float ConstructFromSignAndBits(
-      typename Base::BitsType sign, typename Base::BitsType bits) {
-    return Eigen::numext::bit_cast<Float>(
-        static_cast<typename Base::BitsType>(bits | sign));
-  }
 };
 
 template <>
 struct Traits<float8_e4m3b11> : public TraitsBase<float8_e4m3b11> {
-  using Base = TraitsBase<float8_e4m3b11>;
   static constexpr int kExponentBias = 11;
-  static EIGEN_DEVICE_FUNC float8_e4m3b11 ConstructFromSignAndBits(
-      typename Base::BitsType sign, typename Base::BitsType bits) {
-    // float8_e4m3b11 does not support signed zero, ignore the sign if we try to
-    // make one.
-    if (bits == 0) {
-      sign = 0;
-    }
-    return Eigen::numext::bit_cast<float8_e4m3b11>(
-        static_cast<typename Base::BitsType>(bits | sign));
-  }
 };
-
-// Shift bits in the appropriate directions and add the exponent offset
-// to convert between bit representations.  The input `in` must be a
-// positive normalized value.
-template <typename From, typename To,
-          typename FromBits = typename Traits<From>::BitsType,
-          typename ToBits = typename Traits<To>::BitsType>
-constexpr FromBits ToFromBits(ToBits in) {
-  using FromTraits = Traits<From>;
-  constexpr int kFromMantissaBits = FromTraits::kMantissaBits;
-  constexpr int kFromExponentBias = FromTraits::kExponentBias;
-
-  using ToTraits = Traits<To>;
-  constexpr int kToMantissaBits = ToTraits::kMantissaBits;
-  constexpr int kToExponentBias = ToTraits::kExponentBias;
-
-  constexpr int kExponentOffset = kFromExponentBias - kToExponentBias;
-  constexpr int kDigitShift = kFromMantissaBits - kToMantissaBits;
-
-  FromBits out = static_cast<FromBits>(in);
-  if constexpr (kDigitShift > 0) {
-    out <<= kDigitShift;
-  } else if constexpr (kDigitShift < 0) {
-    out >>= -kDigitShift;
-  }
-  out += static_cast<FromBits>(kExponentOffset) << kFromMantissaBits;
-  return out;
-}
 
 template <typename Bits>
 constexpr inline Bits RoundBitsToNearestEven(Bits bits, int roundoff) {
@@ -762,7 +741,7 @@ template <typename From, typename To, bool kSaturate, bool kTruncate>
 struct ConvertImpl<From, To, kSaturate, kTruncate,
                    std::enable_if_t<!std::is_same_v<From, To>>> {
   using FromTraits = Traits<From>;
-  using FromBits = typename GetUnsignedInteger<sizeof(From)>::type;
+  using FromBits = typename FromTraits::BitsType;
   static constexpr int kFromBits = FromTraits::kBits;
   static constexpr int kFromMantissaBits = FromTraits::kMantissaBits;
   static constexpr int kFromExponentBits = FromTraits::kExponentBits;
@@ -770,55 +749,50 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
   static constexpr FromBits kFromExponentMask = FromTraits::kExponentMask;
 
   using ToTraits = Traits<To>;
-  using ToBits = typename GetUnsignedInteger<sizeof(To)>::type;
+  using ToBits = typename ToTraits::BitsType;
   static constexpr int kToBits = ToTraits::kBits;
   static constexpr int kToMantissaBits = ToTraits::kMantissaBits;
   static constexpr int kToExponentBits = ToTraits::kExponentBits;
   static constexpr int kToExponentBias = ToTraits::kExponentBias;
   static constexpr ToBits kToExponentMask = ToTraits::kExponentMask;
 
+  // `WideBits` is wide enough to accomodate the largest exponent and mantissa
+  // in either `From` or `To`.
+  static constexpr int kWideBits =
+      (std::max(kToMantissaBits, kFromMantissaBits)) +  // Max significand.
+      (std::max(kToExponentBits, kFromExponentBits));   // Max exponent.
+  static constexpr int kWideBytes = (kWideBits + (CHAR_BIT - 1)) / CHAR_BIT;
+  using WideBits = GetUnsignedInteger<kWideBytes>;
   static constexpr int kExponentOffset = kToExponentBias - kFromExponentBias;
   static constexpr int kDigitShift = kToMantissaBits - kFromMantissaBits;
-  static constexpr int kSignShift = kToBits - kFromBits;
 
   static EIGEN_DEVICE_FUNC inline To run(const From& from) {
     // Shift bits to destination type, without sign bit.
-    FromBits from_bits = Eigen::numext::bit_cast<FromBits>(from);
-    const FromBits from_sign =
-        from_bits ^ Eigen::numext::bit_cast<FromBits>(Eigen::numext::abs(from));
-    ToBits sign;
-    if constexpr (kSignShift >= 0) {
-      sign = ToBits{from_sign} << kSignShift;
-    } else if constexpr (kSignShift < 0) {
-      sign = static_cast<ToBits>(from_sign >> -kSignShift);
-    }
-    from_bits ^= from_sign;  // Zeros sign bit to obtain absolute value.
+    const bool from_sign_bit =
+        Eigen::numext::bit_cast<FromBits>(from) >> (kFromBits - 1);
+    const FromBits from_bits =
+        Eigen::numext::bit_cast<FromBits>(Eigen::numext::abs(from));
 
     // Special values, preserving sign.
     if (Eigen::numext::isinf(from)) {
-      return sign != 0 ? -Eigen::NumTraits<To>::infinity()
-                       : Eigen::NumTraits<To>::infinity();
+      return from_sign_bit ? -Eigen::NumTraits<To>::infinity()
+                           : Eigen::NumTraits<To>::infinity();
     }
     if (Eigen::numext::isnan(from)) {
-      return sign != 0 ? -Eigen::NumTraits<To>::quiet_NaN()
-                       : Eigen::NumTraits<To>::quiet_NaN();
+      return from_sign_bit ? -Eigen::NumTraits<To>::quiet_NaN()
+                           : Eigen::NumTraits<To>::quiet_NaN();
     }
     if (from_bits == 0) {
-      return ToTraits::ConstructFromSignAndBits(/*sign=*/sign, /*bits=*/0);
+      return from_sign_bit ? -To{} : To{};
     }
 
-    // Adjust mantissa.
-    FromBits rounded_from_bits = from_bits;
-    if constexpr (kDigitShift < 0) {
-      if constexpr (!kTruncate) {
-        rounded_from_bits = RoundBitsToNearestEven(from_bits, -kDigitShift);
-      }
-      // Zero-out tail bits.
-      rounded_from_bits &= ~((FromBits{1} << (-kDigitShift)) - 1);
-    }
+    const int biased_from_exponent = from_bits >> kFromMantissaBits;
 
-    if constexpr (kExponentOffset > 0) {
-      if ((from.rep() & kFromExponentMask) == 0) {
+    // `To` supports more exponents near zero which means that some subnormal
+    // values in `From` may become normal.
+    if constexpr (std::numeric_limits<To>::min_exponent <
+                  std::numeric_limits<From>::min_exponent) {
+      if (biased_from_exponent == 0) {
         // Subnormals.
         ToBits bits = from_bits;
 
@@ -835,29 +809,20 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
         // Insert the exponent bits.
         bits |= static_cast<ToBits>(kExponentOffset - normalization_factor + 1)
                 << kToMantissaBits;
-        return ToTraits::ConstructFromSignAndBits(/*sign=*/sign, /*bits=*/bits);
+        To to = Eigen::numext::bit_cast<To>(bits);
+        return from_sign_bit ? -to : to;
       }
-    } else if constexpr (kExponentOffset < 0) {
-      // Check for overflows.
-
-      // Shift up exponent and mantissa, add offset to adjust exponent to
-      // source type.
-      constexpr ToBits kToHighest = Eigen::NumTraits<To>::highest().rep();
-      constexpr FromBits kHighest = ToFromBits<From, To>(kToHighest);
-
-      if (rounded_from_bits > kHighest) {
-        ToBits bits =
-            kSaturate ? kToHighest : Eigen::NumTraits<To>::infinity().rep();
-        return ToTraits::ConstructFromSignAndBits(/*sign=*/sign, /*bits=*/bits);
-      }
-
+    }
+    // `To` supports fewer exponents near zero which means that some values in
+    // `From` may become subnormal.
+    if constexpr (std::numeric_limits<To>::min_exponent >
+                  std::numeric_limits<From>::min_exponent) {
+      const int unbiased_exponent = biased_from_exponent - kFromExponentBias;
+      const int biased_to_exponent = unbiased_exponent + kToExponentBias;
       // Subnormals and zero.
-      constexpr FromBits kLowestNormal =
-          ToFromBits<From, To>(std::numeric_limits<To>::min().rep());
-      if (rounded_from_bits < kLowestNormal) {
+      if (biased_to_exponent <= 0) {
         // Round and shift mantissa down.
-        int exponent = ((from_bits >> kFromMantissaBits) - kFromExponentBias);
-        int exponent_shift = -kDigitShift - exponent - kToExponentBias + 1;
+        int exponent_shift = -kDigitShift - biased_to_exponent + 1;
 
         // Insert the implicit leading 1 bit on the mantissa.  This assumes
         // the input is normalized.  If it is not, then the mantissa bits -
@@ -866,8 +831,8 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
         // the lower precision bits may already be lost.  There is an edge-case
         // where rounding to a normalized value would normally round down,
         // but for a subnormal, we need to round up.
-        rounded_from_bits = ((from_bits & FromTraits::kMantissaMask) |
-                             (FromBits{1} << kFromMantissaBits));
+        FromBits rounded_from_bits = ((from_bits & FromTraits::kMantissaMask) |
+                                      (FromBits{1} << kFromMantissaBits));
         ToBits bits = 0;
         // To avoid UB, limit rounding and shifting to the full mantissa plus
         // leading 1.
@@ -879,22 +844,55 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
           bits = (rounded_from_bits >> exponent_shift);
         }
         // Insert sign and return.
-        return ToTraits::ConstructFromSignAndBits(/*sign=*/sign, /*bits=*/bits);
+        To to = Eigen::numext::bit_cast<To>(bits);
+        return from_sign_bit ? -to : to;
       }
     }
 
-    // Shift bits.
-    ToBits bits;
+    // Round the mantissa if it is shrinking.
+    WideBits rounded_from_bits = from_bits;
     if constexpr (kDigitShift < 0) {
+      if constexpr (!kTruncate) {
+        rounded_from_bits = RoundBitsToNearestEven(from_bits, -kDigitShift);
+      }
+      // Zero-out tail bits.
+      rounded_from_bits &= ~((WideBits{1} << (-kDigitShift)) - 1);
+    }
+
+    // Re-bias the exponent.
+    rounded_from_bits += static_cast<WideBits>(kExponentOffset)
+                         << kFromMantissaBits;
+
+    ToBits bits;
+    // Check for overflows by aligning the significands. We always align the
+    // narrower significand to the wider significand.
+    const WideBits kToHighestRep =
+        Eigen::numext::bit_cast<ToBits>(Eigen::NumTraits<To>::highest());
+    WideBits aligned_highest{kToHighestRep};
+    if constexpr (kDigitShift < 0) {
+      aligned_highest <<= -kDigitShift;
+      // Shift down, all dropped bits should already be zero.
       bits = static_cast<ToBits>(rounded_from_bits >> -kDigitShift);
     } else if constexpr (kDigitShift >= 0) {
-      bits = ToBits{rounded_from_bits} << kDigitShift;
+      // Shift up, inserting zeros in the newly created digits.
+      rounded_from_bits <<= kDigitShift;
+      bits = ToBits{rounded_from_bits};
     }
-    // Increase exponent by offset difference.
-    bits += static_cast<ToBits>(kExponentOffset) << kToMantissaBits;
 
+    To to = Eigen::numext::bit_cast<To>(bits);
+    // `From` supports larger values than `To`, we may overflow.
+    if constexpr (std::make_pair(std::numeric_limits<To>::max_exponent,
+                                 std::numeric_limits<To>::digits) <
+                  std::make_pair(std::numeric_limits<From>::max_exponent,
+                                 std::numeric_limits<From>::digits)) {
+      if (rounded_from_bits > aligned_highest) {
+        // Overflowed values map to highest or infinity depending on kSaturate.
+        to = kSaturate ? Eigen::NumTraits<To>::highest()
+                       : Eigen::NumTraits<To>::infinity();
+      }
+    }
     // Insert sign bit.
-    return ToTraits::ConstructFromSignAndBits(/*sign=*/sign, /*bits=*/bits);
+    return from_sign_bit ? -to : to;
   }
 };
 
@@ -930,7 +928,7 @@ struct ConvertImpl<Eigen::half, float8_e5m2, kSaturate, kTruncate> {
       // value if saturation is requested.
       if constexpr (kSaturate) {
         const float8_e5m2 kHighest = Eigen::NumTraits<float8_e5m2>::highest();
-        if ((from_bits & 0x7FFF) > static_cast<uint16_t>(kHighest.rep()) << 8) {
+        if ((from_bits & 0x7F00) > static_cast<uint16_t>(kHighest.rep()) << 8) {
           const bool from_sign_bit = from_bits >> 15;
           return from_sign_bit ? -kHighest : kHighest;
         }

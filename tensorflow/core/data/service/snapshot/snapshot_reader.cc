@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -135,15 +136,15 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       return errors::Unimplemented(
-          "TODO(b/250921378: Support save/load for tf.data distributed "
-          "snapshot reader.)");
+          "TODO(b/250921378): Support save/load for tf.data distributed "
+          "snapshot reader.");
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       return errors::Unimplemented(
-          "TODO(b/250921378: Support save/load for tf.data distributed "
-          "snapshot reader.)");
+          "TODO(b/250921378): Support save/load for tf.data distributed "
+          "snapshot reader.");
     }
 
    private:

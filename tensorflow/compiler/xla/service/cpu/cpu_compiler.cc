@@ -69,6 +69,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
@@ -203,6 +204,7 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
                       mlir::func::FuncDialect, mlir::AffineDialect,
                       mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
+  mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
 }
 
@@ -1325,9 +1327,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                 subcomputation.allow_reassociation)
             .status());
   }
-  std::string function_name_prefix = entry_computation->name().empty()
-                                         ? "__compute"
-                                         : entry_computation->name();
+  absl::string_view function_name_prefix = entry_computation->name().empty()
+                                               ? "__compute"
+                                               : entry_computation->name();
   TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,

@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <string>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -198,6 +196,28 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-2}));
 }
 
+TEST_F(TritonGemmTest, NonMajorMostBatch) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  x = f32[20,50,30] parameter(0)
+  y = f16[30,50,40] parameter(1)
+  cy = f32[30,50,40] convert(y)
+  ROOT _ = f32[50,20,40] dot(x, cy),
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    lhs_batch_dims={1}, rhs_batch_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion(%y, %x)
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: backend_config="{\"block_m\":\"
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+}
+
 TEST_F(TritonGemmTest, BatchTransposeF32F16) {
   const std::string hlo_text = R"(
 HloModule t
@@ -226,18 +246,18 @@ TEST_F(TritonGemmTest, DoNotFuseArbitraryReshape) {
 HloModule m
 
 ENTRY e {
-  Arg_0.1 = f16[2,2,3]{2,1,0} parameter(0)
-  c = f32[2,2,3]{2,1,0} convert(Arg_0.1)
-  Arg_1.2 = f32[4,3]{1,0} parameter(1)
-  reshape.4 = f32[3,2,2]{2,1,0} reshape(Arg_1.2)
-  ROOT dot.5 = f32[2,2,2]{2,1,0} dot(c, reshape.4),
-    lhs_batch_dims={1}, lhs_contracting_dims={2},
-    rhs_batch_dims={1}, rhs_contracting_dims={0}
+  p0 = f16[5,2,3] parameter(0)
+  p0c = f32[5,2,3] convert(p0)
+  p1 = f32[20,3] parameter(1)
+  p1r = f32[5,3,4] reshape(p1)
+  ROOT dot.5 = f32[5,2,4] dot(p0c, p1r),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: f32[3,2,2]{2,1,0} bitcast(%Arg_1.2)
-; CHECK: fusion(%Arg_0.1, %bitcast
+; CHECK: f32[5,3,4]{2,1,0} bitcast(%p1)
+; CHECK: fusion(%p0, %bitcast
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");

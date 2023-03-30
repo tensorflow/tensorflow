@@ -16,10 +16,15 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/metrics.h"
 
 #include <string>
+#include <utility>
 
+#include "json/config.h"
+#include "json/json.h"
+#include "json/writer.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -64,6 +69,17 @@ auto* saved_model_write_path = monitoring::Gauge<string, 0>::New(
     "/tensorflow/core/saved_model/write/path",
     "The path (saved_model_path) of the exported SavedModel.");
 
+// Gauge that contains the path (saved_model_path) and the fingerprint
+// (concatenation of graph_def_program_hash, signature_def_hash,
+// saved_object_graph_hash, and checkpoint_hash) of the newly written
+// SavedModel.
+auto* saved_model_write_path_and_singleprint =
+    monitoring::Gauge<string, 0>::New(
+        "/tensorflow/core/saved_model/write/path_and_fingerprint",
+        "The path (saved_model_path) and fingerprint (concatenation of "
+        "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
+        "and checkpoint_hash) of the newly written SavedModel.");
+
 // Gauge that contains the fingerprint (saved_model_checksum) of the loaded
 // SavedModel.
 auto* saved_model_read_fingerprint = monitoring::Gauge<string, 0>::New(
@@ -74,6 +90,15 @@ auto* saved_model_read_fingerprint = monitoring::Gauge<string, 0>::New(
 auto* saved_model_read_path = monitoring::Gauge<string, 0>::New(
     "/tensorflow/core/saved_model/read/path",
     "The path (saved_model_path) of the loaded SavedModel.");
+
+// Gauge that contains the path (saved_model_path) and the fingerprint
+// (concatenation of graph_def_program_hash, signature_def_hash,
+// saved_object_graph_hash, and checkpoint_hash) of the loaded SavedModel.
+auto* saved_model_read_path_and_singleprint = monitoring::Gauge<string, 0>::New(
+    "/tensorflow/core/saved_model/read/path_and_fingerprint",
+    "The path (saved_model_path) and fingerprint (concatenation of "
+    "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
+    "and checkpoint_hash) of the loaded SavedModel.");
 
 // Distribution of checkpoint write durations.
 auto* checkpoint_write_durations = monitoring::Sampler<1>::New(
@@ -153,12 +178,51 @@ monitoring::GaugeCell<string>& SavedModelReadPath() {
   return *saved_model_read_path->GetCell();
 }
 
+monitoring::GaugeCell<string>& SavedModelReadPathAndSingleprint() {
+  return *saved_model_read_path_and_singleprint->GetCell();
+}
+
 monitoring::GaugeCell<string>& SavedModelWriteFingerprint() {
   return *saved_model_write_fingerprint->GetCell();
 }
 
 monitoring::GaugeCell<string>& SavedModelWritePath() {
   return *saved_model_write_path->GetCell();
+}
+
+monitoring::GaugeCell<string>& SavedModelWritePathAndSingleprint() {
+  return *saved_model_write_path_and_singleprint->GetCell();
+}
+
+string MakeFingerprintJson(FingerprintDef fingerprint_serialized) {
+  Json::Value fingerprint = Json::objectValue;
+  fingerprint["saved_model_checksum"] =
+      Json::UInt64(fingerprint_serialized.saved_model_checksum());
+  fingerprint["graph_def_program_hash"] =
+      Json::UInt64(fingerprint_serialized.graph_def_program_hash());
+  fingerprint["signature_def_hash"] =
+      Json::UInt64(fingerprint_serialized.signature_def_hash());
+  fingerprint["saved_object_graph_hash"] =
+      Json::UInt64(fingerprint_serialized.saved_object_graph_hash());
+  fingerprint["checkpoint_hash"] =
+      Json::UInt64(fingerprint_serialized.checkpoint_hash());
+
+  Json::StreamWriterBuilder json_factory;
+  return Json::writeString(json_factory, fingerprint);
+}
+
+string MakeSavedModelPathAndSingleprint(string path, string singleprint) {
+  return absl::StrCat(path, ":", singleprint);
+}
+
+std::pair<string, string> ParseSavedModelPathAndSingleprint(
+    string path_and_singleprint) {
+  size_t delimiter = path_and_singleprint.rfind(':');
+  if (delimiter == std::string::npos) {
+    return std::pair<string, string>("", "");
+  }
+  return std::pair<string, string>(path_and_singleprint.substr(0, delimiter),
+                                   path_and_singleprint.substr(delimiter + 1));
 }
 
 monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label) {

@@ -51,9 +51,6 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
     if (failed(addressSpaceOr)) return failure();
     unsigned addressSpace = addressSpaceOr.value();  // NOLINT
 
-    Type elemType = baseMemRefType.getElementType();
-    Type llvmElemType = typeConverter.convertType(elemType);
-
     Value zero = createIndexConstant(rewriter, loc, 0);
     if (auto resultType = nullOp.getType().dyn_cast<MemRefType>()) {
       // Set all dynamic sizes to 1 and compute fake strides.
@@ -67,7 +64,7 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
       // Prepare packed args [allocatedPtr, alignedPtr, offset, sizes, strides]
       // to create a memref descriptor.
       Value null = rewriter.create<LLVM::NullOp>(
-          loc, LLVM::LLVMPointerType::get(llvmElemType, addressSpace));
+          loc, LLVM::LLVMPointerType::get(rewriter.getContext(), addressSpace));
       SmallVector<Value> packedValues{null, null, zero};
       packedValues.append(sizes);
       packedValues.append(strides);
@@ -90,14 +87,14 @@ struct NullOpLowering : public ConvertOpToLLVMPattern<NullOp> {
     UnrankedMemRefDescriptor::computeSizes(rewriter, loc, *getTypeConverter(),
                                            desc, addressSpace, sizes);
     Value underlyingDestPtr = rewriter.create<LLVM::AllocaOp>(
-        loc, getVoidPtrType(), sizes.front(), std::nullopt);
+        loc, getVoidPtrType(), rewriter.getI8Type(), sizes.front());
 
     // Populate underlying ranked descriptor.
     LLVM::LLVMPointerType elemPtrType =
-        LLVM::LLVMPointerType::get(llvmElemType, addressSpace);
+        LLVM::LLVMPointerType::get(rewriter.getContext(), addressSpace);
 
     Value null = rewriter.create<LLVM::NullOp>(
-        loc, LLVM::LLVMPointerType::get(llvmElemType, addressSpace));
+        loc, LLVM::LLVMPointerType::get(rewriter.getContext(), addressSpace));
     UnrankedMemRefDescriptor::setAllocatedPtr(rewriter, loc, underlyingDestPtr,
                                               elemPtrType, null);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),
@@ -123,10 +120,8 @@ struct GetBufferOpLowering : public ConvertOpToLLVMPattern<GetBufferOp> {
     Value ptr;
     if (auto unrankedTy =
             llvm::dyn_cast<UnrankedMemRefType>(op.getMemref().getType())) {
-      Type elementType = unrankedTy.getElementType();
-      Type llvmElementTy = getTypeConverter()->convertType(elementType);
-      LLVM::LLVMPointerType elementPtrTy = getTypeConverter()->getPointerType(
-          llvmElementTy, unrankedTy.getMemorySpaceAsInt());
+      LLVM::LLVMPointerType elementPtrTy = LLVM::LLVMPointerType::get(
+          rewriter.getContext(), unrankedTy.getMemorySpaceAsInt());
       memref = UnrankedMemRefDescriptor(memref).memRefDescPtr(rewriter, loc);
       ptr = UnrankedMemRefDescriptor::allocatedPtr(rewriter, loc, memref,
                                                    elementPtrTy);
@@ -152,8 +147,6 @@ struct ConvertDeallocationOpsToLLVMPass
     const auto &dataLayoutAnalysis = getAnalysis<DataLayoutAnalysis>();
     LowerToLLVMOptions options(&getContext(),
                                dataLayoutAnalysis.getAtOrAbove(func));
-    // TODO(b/267828330): Migrate to opaque pointers.
-    options.useOpaquePointers = false;
 
     LLVMTypeConverter typeConverter(&getContext(), options,
                                     &dataLayoutAnalysis);

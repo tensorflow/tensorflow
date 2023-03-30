@@ -119,11 +119,13 @@ TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
   mlir::registerTensorFlowPasses();
 
   EXPECT_TRUE(mlir::MlirOptMain(output_stream->os(), std::move(input_file),
-                                passPipeline, registry,
-                                /*splitInputFile=*/false,
-                                /*verifyDiagnostics=*/false,
-                                /*verifyPasses=*/false,
-                                /*allowUnregisteredDialects=*/false)
+                                registry,
+                                mlir::MlirOptMainConfig{}
+                                    .splitInputFile(false)
+                                    .verifyDiagnostics(false)
+                                    .verifyPasses(false)
+                                    .allowUnregisteredDialects(false)
+                                    .setPassPipelineParser(passPipeline))
                   .succeeded());
 }
 

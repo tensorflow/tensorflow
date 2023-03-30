@@ -29,23 +29,31 @@ tf_class {
   }
   member_method {
     name: "batch_sharded"
-    argspec: "args=[\'mesh\', \'batch_dim\', \'rank\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
+    argspec: "args=[\'cls\', \'mesh\', \'batch_dim\', \'rank\', \'axis\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "delete"
     argspec: "args=[\'self\', \'dims\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "from_device"
+    argspec: "args=[\'cls\', \'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_proto"
-    argspec: "args=[\'layout_proto\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'layout_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_single_device_mesh"
+    argspec: "args=[\'cls\', \'mesh\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_string"
-    argspec: "args=[\'layout_str\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'layout_str\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "inner_sharded"
-    argspec: "args=[\'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'mesh\', \'inner_dim\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_batch_parallel"
@@ -53,6 +61,10 @@ tf_class {
   }
   member_method {
     name: "is_fully_replicated"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_single_device"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -69,7 +81,7 @@ tf_class {
   }
   member_method {
     name: "replicated"
-    argspec: "args=[\'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'mesh\', \'rank\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_string"

@@ -12,9 +12,9 @@
 // CHECK:         %[[VAL_5:.*]] = udiv i32 %[[VAL_3]], 1
 // CHECK:         %[[VAL_6:.*]] = icmp ult i32 %[[VAL_3]], 2
 // CHECK:         br i1 %[[VAL_6]], label %[[VAL_7:.*]], label %[[VAL_8:.*]]
-// CHECK:       indices.in_bounds-after:                          ; preds = %[[VAL_7]], %[[VAL_9:.*]]
+// CHECK:       indices_remat2.in_bounds-after:                   ; preds = %[[VAL_7]], %[[VAL_9:.*]]
 // CHECK:         ret void
-// CHECK:       indices.in_bounds-true:                           ; preds = %[[VAL_9]]
+// CHECK:       indices_remat2.in_bounds-true:                    ; preds = %[[VAL_9]]
 // CHECK:         %[[VAL_10:.*]] = getelementptr inbounds i32, ptr %[[VAL_11:.*]], i32 %[[VAL_3]]
 // CHECK:         %[[VAL_12:.*]] = load i32, ptr %[[VAL_10]], align 4, !invariant.load !10
 // CHECK:         %[[VAL_13:.*]] = getelementptr inbounds i32, ptr %[[VAL_11]], i32 %[[VAL_3]]
@@ -35,9 +35,9 @@
 // CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_21]], 3
 // CHECK:         %[[VAL_26:.*]] = icmp ult i32 %[[VAL_21]], 6
 // CHECK:         br i1 %[[VAL_26]], label %[[VAL_27:.*]], label %[[VAL_28:.*]]
-// CHECK:       updates.in_bounds-after:                          ; preds = %[[VAL_27]], %[[VAL_29:.*]]
+// CHECK:       updates_remat2.in_bounds-after:                   ; preds = %[[VAL_27]], %[[VAL_29:.*]]
 // CHECK:         ret void
-// CHECK:       updates.in_bounds-true:                           ; preds = %[[VAL_29]]
+// CHECK:       updates_remat2.in_bounds-true:                    ; preds = %[[VAL_29]]
 // CHECK:         %[[VAL_30:.*]] = getelementptr inbounds i32, ptr %[[VAL_31:.*]], i32 %[[VAL_21]]
 // CHECK:         %[[VAL_32:.*]] = load i32, ptr %[[VAL_30]], align 4, !invariant.load !10
 // CHECK:         %[[VAL_33:.*]] = getelementptr inbounds i32, ptr %[[VAL_31]], i32 %[[VAL_21]]
@@ -58,9 +58,9 @@
 // CHECK:         %[[VAL_45:.*]] = udiv i32 %[[VAL_41]], 3
 // CHECK:         %[[VAL_46:.*]] = icmp ult i32 %[[VAL_41]], 9
 // CHECK:         br i1 %[[VAL_46]], label %[[VAL_47:.*]], label %[[VAL_48:.*]]
-// CHECK:       operand.in_bounds-after:                          ; preds = %[[VAL_47]], %[[VAL_49:.*]]
+// CHECK:       operand_remat2.in_bounds-after:                   ; preds = %[[VAL_47]], %[[VAL_49:.*]]
 // CHECK:         ret void
-// CHECK:       operand.in_bounds-true:                           ; preds = %[[VAL_49]]
+// CHECK:       operand_remat2.in_bounds-true:                    ; preds = %[[VAL_49]]
 // CHECK:         %[[VAL_50:.*]] = getelementptr inbounds i32, ptr %[[VAL_51:.*]], i32 %[[VAL_41]]
 // CHECK:         %[[VAL_52:.*]] = load i32, ptr %[[VAL_50]], align 4, !invariant.load !10
 // CHECK:         %[[VAL_53:.*]] = getelementptr inbounds i32, ptr %[[VAL_51]], i32 %[[VAL_41]]

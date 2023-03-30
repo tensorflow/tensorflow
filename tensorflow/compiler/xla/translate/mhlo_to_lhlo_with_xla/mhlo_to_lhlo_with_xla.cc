@@ -1983,8 +1983,10 @@ tsl::Status LhloDialectEmitter::Initialize() {
   mlir::IntegerAttr unique_id =
       builder_.getI32IntegerAttr(computation_.parent()->unique_id());
   module_->setAttr("hlo.unique_id", unique_id);
-  std::string function_name =
-      computation_.name().empty() ? "__compute" : computation_.name();
+  llvm::StringRef function_name =
+      computation_.name().empty() ? "__compute"
+                                  : llvm::StringRef(computation_.name().data(),
+                                                    computation_.name().size());
 
   // Create the function as () -> (), we'll compute the arguments from the
   // buffer allocation and update the type then.

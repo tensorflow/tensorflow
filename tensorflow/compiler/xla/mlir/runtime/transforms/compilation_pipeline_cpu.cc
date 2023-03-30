@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/AMX/AMXToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ArmNeon/ArmNeonToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ArmSVE/ArmSVEToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -73,6 +74,7 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
   mlir::registerArmNeonDialectTranslation(*dialects);
   mlir::registerAMXDialectTranslation(*dialects);
   mlir::registerArmSVEDialectTranslation(*dialects);
+  mlir::registerBuiltinDialectTranslation(*dialects);
   mlir::registerLLVMDialectTranslation(*dialects);
   mlir::registerX86VectorDialectTranslation(*dialects);
 }
@@ -136,17 +138,11 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
     pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
     // Convert async to LLVM once everything else is in the LLVM dialect.
-    // TODO(b/267828330): Migrate to opaque pointers.
-    mlir::ConvertAsyncToLLVMPassOptions async_to_llvm_opts;
-    async_to_llvm_opts.useOpaquePointers = false;
-    pm.addPass(mlir::createConvertAsyncToLLVMPass(async_to_llvm_opts));
+    pm.addPass(mlir::createConvertAsyncToLLVMPass());
   } else {
     pm.addPass(mlir::xla_framework::CreateLegalizeXLAFrameworkToLLVMPass());
   }
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertLinalgToLLVMPassOptions linalg_to_llvm_opts;
-  linalg_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertLinalgToLLVMPass(linalg_to_llvm_opts));
+  pm.addPass(mlir::createConvertLinalgToLLVMPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
 
   // Lower math dialect to LLVM/Libm.
@@ -157,19 +153,10 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 
   // Convert everything else to LLVM dialect.
   mlir::ConvertVectorToLLVMPassOptions vector_to_llvm_opts;
-  // TODO(b/267828330): Migrate to opaque pointers.
-  vector_to_llvm_opts.useOpaquePointers = false;
   if (opts.math_avx2) vector_to_llvm_opts.x86Vector = true;
   pm.addPass(mlir::createConvertVectorToLLVMPass(vector_to_llvm_opts));
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::FinalizeMemRefToLLVMConversionPassOptions memref_to_llvm_opts;
-  memref_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(
-      mlir::createFinalizeMemRefToLLVMConversionPass(memref_to_llvm_opts));
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertFuncToLLVMPassOptions func_to_llvm_opts;
-  func_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertFuncToLLVMPass(func_to_llvm_opts));
+  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createConvertComplexToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 

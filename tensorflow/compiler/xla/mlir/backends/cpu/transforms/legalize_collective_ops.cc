@@ -201,8 +201,13 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
 
     rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
         op, op->getResultTypes(), op->getOperands(), dsts,
-        op.getReplicaGroupsAttr(), op.getSplitDimensionAttr(),
-        op.getConcatDimensionAttr(), op.getSplitCountAttr());
+        op.getReplicaGroupsAttr(),
+        rewriter.getI32IntegerAttr(op.getChannelHandle() ? 1 : 0),
+        rewriter.getI64IntegerAttr(op.getChannelHandle()
+                                       ? op.getChannelHandle()->getHandle()
+                                       : int64_t{0}),
+        op.getSplitDimensionAttr(), op.getConcatDimensionAttr(),
+        op.getSplitCountAttr());
     return success();
   };
 };

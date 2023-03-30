@@ -262,6 +262,11 @@ bool IsTPUDevice(llvm::StringRef device);
 // Checks if a device string is a TPU replicated core device.
 bool IsTPUReplicatedCore(llvm::StringRef device);
 
+// Checks if `type` is allowed for XLA. String and resources are not XLA types.
+// There are other TF types that are not XLA types which will be removed by
+// successive passes in TF/XLA bridge phase 2.
+bool TypeValidForXLA(const mlir::Type& type);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_

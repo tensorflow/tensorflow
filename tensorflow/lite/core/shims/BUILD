@@ -527,6 +527,7 @@ cc_library(
     name = "builtin_ops_list",
     textual_hdrs = ["builtin_ops_list.inc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = ["//tensorflow/lite/kernels:builtin_ops_list"],
 )
 
 exports_files(

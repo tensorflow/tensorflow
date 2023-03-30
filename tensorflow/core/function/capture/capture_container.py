@@ -162,6 +162,11 @@ class FunctionCaptures(object):
     if tensor.graph is not graph:
       graph._validate_in_scope(tensor)  # pylint: disable=protected-access
       if name is None:
+        assert tensor.op is not None, (
+            tensor.__class__,
+            dir(tensor),
+            tensor.__class__.__name__,
+        )
         name = tensor.op.name
       # cond/while graphs override _capture_helper() so cannot call
       # self.create_placeholder_helper() here directly.

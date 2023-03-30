@@ -51,7 +51,8 @@ struct GreedyFusionPattern : public OpRewritePattern<scf::ForallOp> {
 
     rewriter.updateRootInPlace(op, [&]() {
       fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
-        return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp>(op);
+        return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
+                   tensor::CollapseShapeOp, tensor::ExpandShapeOp>(op);
       });
     });
 

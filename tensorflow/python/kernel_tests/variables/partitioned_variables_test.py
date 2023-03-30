@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
@@ -30,6 +31,13 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
+
+
+def initialized_value(var):
+  return control_flow_ops.cond(
+      variables.is_variable_initialized(var),
+      var.read_value,
+      lambda: var.initial_value)
 
 
 class PartitionerCreatorsTest(test.TestCase):
@@ -408,7 +416,7 @@ class PartitionedVariablesTestCase(test.TestCase):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([200, 40]))
       vs = partitioned_variables.create_partitioned_variables(
-          rnd.get_shape(), [1, 10], rnd.initialized_value())
+          rnd.get_shape(), [1, 10], initialized_value(rnd))
       self.evaluate(variables.global_variables_initializer())
       val = array_ops.concat(vs, 1)
       rnd = self.evaluate(rnd)
@@ -427,7 +435,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           random_ops.random_uniform([20, 43], dtype=dtypes.float64))
       var_lists = [
           partitioned_variables.create_partitioned_variables(
-              rnd.get_shape(), [1, i], rnd.initialized_value())
+              rnd.get_shape(), [1, i], initialized_value(rnd))
           for i in range(1, 10)
       ]
       self.evaluate(variables.global_variables_initializer())
@@ -463,7 +471,7 @@ class PartitionedVariablesTestCase(test.TestCase):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))
       vs = partitioned_variables.create_partitioned_variables(
-          rnd.get_shape(), [1, 1], rnd.initialized_value())
+          rnd.get_shape(), [1, 1], initialized_value(rnd))
       self.evaluate(variables.global_variables_initializer())
       val = array_ops.concat(vs, 0)
       rnd = self.evaluate(rnd)
@@ -474,7 +482,7 @@ class PartitionedVariablesTestCase(test.TestCase):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))
       vs = partitioned_variables.create_partitioned_variables(
-          rnd.get_shape(), [10, 1], rnd.initialized_value())
+          rnd.get_shape(), [10, 1], initialized_value(rnd))
       self.evaluate(variables.global_variables_initializer())
       val = array_ops.concat(vs, 0)
       rnd = self.evaluate(rnd)
@@ -524,25 +532,25 @@ class PartitionedVariablesTestCase(test.TestCase):
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10], [1, 1], rnd.initialized_value())
+            [10], [1, 1], initialized_value(rnd))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10, 20], [1], rnd.initialized_value())
+            [10, 20], [1], initialized_value(rnd))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10, 43], [1], rnd.initialized_value())
+            [10, 43], [1], initialized_value(rnd))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10, 43], [1, 2, 3], rnd.initialized_value())
+            [10, 43], [1, 2, 3], initialized_value(rnd))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10, 43], [11, 1], rnd.initialized_value())
+            [10, 43], [11, 1], initialized_value(rnd))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10, 43], [20, 1], rnd.initialized_value())
+            [10, 43], [20, 1], initialized_value(rnd))
       with self.assertRaises(ValueError):
         partitioned_variables.create_partitioned_variables(
-            [10, 43], [1, 50], rnd.initialized_value())
+            [10, 43], [1, 50], initialized_value(rnd))
 
   @test_util.run_deprecated_v1
   def testControlDepsNone(self):

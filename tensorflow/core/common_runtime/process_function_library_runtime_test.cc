@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -790,6 +791,29 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
       status.error_message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
       << "Actual error message: " << status.error_message();
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, FullTypeForInt32) {
+  FunctionDef def = test::function::XTimesTwoInt32();
+  // Add bad full type information to a node to cause Int32FulltypePass to
+  // return an error (TFT_PRODUCT[TFT_TENSOR] instead of
+  // TFT_PRODUCT[TFT_TENSOR[TFT_INT32]]).
+  def.mutable_node_def(2)->mutable_experimental_type()->set_type_id(
+      TFT_PRODUCT);
+  def.mutable_node_def(2)->mutable_experimental_type()->add_args()->set_type_id(
+      TFT_TENSOR);
+  Init({def});
+  FunctionLibraryRuntime::Handle handle;
+  Status status =
+      proc_flr_->Instantiate("XTimesTwoInt32", test::function::Attrs({}),
+                             MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
+  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  // Check that the error is found by earlier in ProcessFunctionLibraryRuntime
+  // and not later in FunctionLibraryRuntime.
+  EXPECT_TRUE(absl::StrContains(
+      status.error_message(),
+      "in 'ProcessFunctionLibraryRuntime::InstantiateMultiDevice' has "
+      "TFT_TENSOR output 0 which has 0 args instead of 1"));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {

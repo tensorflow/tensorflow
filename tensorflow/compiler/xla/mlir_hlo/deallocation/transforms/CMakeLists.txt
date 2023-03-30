@@ -26,6 +26,7 @@ add_mlir_library(DeallocationPasses
   deallocate.cc
   deallocation_to_scf.cc
   split_alloc_tensors.cc
+  xla_buffer_arg_rewrite.cc
 
   DEPENDS
   MLIRDeallocationPassesIncGen

@@ -98,7 +98,7 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
   // (any sign-op, or an integral abs-op).
   // TODO(peiming, ajcbik): these all can potentially be optimized by applying
   // value transform on sparse_tenosr.value memref
-  if (isa<mhlo::SignOp>(op) ||
+  if (isa<mhlo::SignOp>(op) || isa<mhlo::NegOp>(op) ||
       (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
       isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
       isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||
