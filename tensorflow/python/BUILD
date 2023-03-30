@@ -1538,7 +1538,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "control_flow_util_v2",
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY3",
@@ -1546,10 +1546,13 @@ py_library(
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
+        ":gradients_util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:tf_decorator",
@@ -2094,13 +2097,16 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "io_ops",
     srcs = ["ops/io_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":data_flow_ops_gen",
         ":io_ops_gen",
         ":lib",
+        ":parsing_ops_gen",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:fast_tensor_util",
         "//tensorflow/python/framework:ops",
@@ -2585,23 +2591,26 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "stateless_random_ops",
     srcs = ["ops/stateless_random_ops.py"],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":array_ops_stack",
+        ":bitwise_ops",
         ":math_ops",
         ":random_index_shuffle_ops_gen",
         ":shape_util",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
