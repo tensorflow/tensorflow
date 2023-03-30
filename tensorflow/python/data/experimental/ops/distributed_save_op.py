@@ -38,7 +38,7 @@ def distributed_save(dataset,
       used.  If `None`, the `dataset` materialization is not compressed.
 
   Returns:
-    `None`.
+    An operation which when executed performs the distributed save.
 
   Raises:
     ValueError: If `dispatcher_address` is invalid.
