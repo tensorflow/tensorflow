@@ -57,6 +57,7 @@ from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -1240,9 +1241,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session(config=config):
 
       with ops.device("/device:CPU:0"):
-        a = variables.VariableV1(3.0)
+        a = variable_v1.VariableV1(3.0)
       with ops.device("/device:CPU:1"):
-        b = variables.VariableV1(5.0)
+        b = variable_v1.VariableV1(5.0)
 
       def func(_):
         nonlocal a, b

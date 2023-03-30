@@ -638,6 +638,7 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",

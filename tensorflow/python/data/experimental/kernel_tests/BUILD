@@ -75,7 +75,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
