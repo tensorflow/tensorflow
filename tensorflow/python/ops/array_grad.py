@@ -1023,10 +1023,10 @@ def _QuantizeAndDequantizeV3Grad(_, grad):
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
   input_bhwc = array_ops.shape(op.inputs[0], out_type=dtypes.int64)
-  batch_size, rows_in, cols_in, channels = array_ops.unstack(input_bhwc)
+  batch_size, rows_in, cols_in, channels = array_ops_stack.unstack(input_bhwc)
 
   output_bhwc = array_ops.shape(op.outputs[0], out_type=dtypes.int64)
-  rows_out, cols_out = array_ops.unstack(output_bhwc[1:3])
+  rows_out, cols_out = array_ops_stack.unstack(output_bhwc[1:3])
 
   _, ksize_r, ksize_c, _ = op.get_attr("ksizes")
 
