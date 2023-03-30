@@ -17,14 +17,93 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_STATUS_CASTERS_H_
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace xla {
 
-// Helper that converts a failing StatusOr to an exception.
-// For use only inside pybind11 code.
+// C++ -> Python caster helpers.
+//
+// Failing statuses become Python exceptions; OK Status() becomes None.
+//
+// Given there can be only a single global pybind11 type_caster for the
+// `absl::Status` type, and given XLA wants a custom exception being raised,
+// we use a dedicated helper to implement this feature without relying on a
+// global `type_caster`.
+//
+// For example:
+//
+// - Functions without arguments:
+//   m.def("my_func", []() { xla::ThrowIfError(MyFunc()); }
+// - Classes with a single argument:
+//   py_class.def("delete", [](Buffer& self) {
+//     xla::ThrowIfError(self.Delete());
+//   }
+//
+// For functions with more arguments, you can either inline the arguments,
+// or use the `ThrowIfErrorWrapper` wrapper defined below:
+//
+// m.def("my_func", xla::ThrowIfErrorWrapper(MyFunc));
+inline void ThrowIfError(xla::Status src) {
+  if (!src.ok()) {
+    throw xla::XlaRuntimeError(src);
+  }
+}
+
+// If one does not want to have to define a lambda specifying the inputs
+// arguments, on can use the following wrapper.
+//
+// It's a fancier version, not using `std::function` equivalent to:
+// template <typename StatusType, typename... Args>
+// std::function<pybind11::object(Args...)> ThrowIfErrorWrapper(
+//     StatusType (*f)(Args...)) {
+//   return [f](Args&&... args) -> pybind11::object {
+//     xla::ThrowIfError(
+//         std::forward<StatusType>(f(std::forward<Args>(args)...)));
+//   };
+// }
+// In particular, the here-above solution would not wrap lambdas.
+
+template <typename Sig, typename F>
+struct ThrowIfErrorWrapper;
+
+// C++17 "deduction guide" that guides class template argument deduction (CTAD)
+template <typename F>
+ThrowIfErrorWrapper(F) -> ThrowIfErrorWrapper<decltype(&F::operator()), F>;
+
+template <typename... Args>
+ThrowIfErrorWrapper(xla::Status (&)(Args...))
+    -> ThrowIfErrorWrapper<xla::Status(Args...), xla::Status (&)(Args...)>;
+
+template <typename... Args>
+struct ThrowIfErrorWrapper<xla::Status(Args...), xla::Status (&)(Args...)> {
+  explicit ThrowIfErrorWrapper(xla::Status (&f)(Args...)) : func(f) {}
+  void operator()(Args... args) {
+    xla::ThrowIfError(func(std::forward<Args>(args)...));
+  }
+  xla::Status (&func)(Args...);
+};
+template <typename C, typename... Args, typename F>
+struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...), F> {
+  explicit ThrowIfErrorWrapper(F&& f) : func(std::move(f)) {}
+  void operator()(Args... args) {
+    xla::ThrowIfError(func(std::forward<Args>(args)...));
+  }
+  F func;
+};
+template <typename C, typename... Args, typename F>
+struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...) const, F> {
+  explicit ThrowIfErrorWrapper(F&& f) : func(std::move(f)) {}
+  void operator()(Args... args) const {
+    xla::ThrowIfError(func(std::forward<Args>(args)...));
+  }
+  F func;
+};
+
+// Utilities for `StatusOr`.
 template <typename T>
 T ValueOrThrow(StatusOr<T> v) {
   if (!v.ok()) {
@@ -41,22 +120,6 @@ T ValueOrThrow(StatusOr<T> v) {
 // the exceptions are local to the binding code.
 namespace pybind11 {
 namespace detail {
-
-// Status, StatusOr. Failing statuses become Python exceptions; OK Status()
-// becomes None.
-template <>
-struct type_caster<xla::Status> {
- public:
-  PYBIND11_TYPE_CASTER(xla::Status, _("Status"));
-
-  static handle cast(xla::Status src, return_value_policy /* policy */,
-                     handle /* parent */) {
-    if (!src.ok()) {
-      throw xla::XlaRuntimeError(src);
-    }
-    return none().inc_ref();
-  }
-};
 
 template <typename T>
 struct type_caster<xla::StatusOr<T>> {

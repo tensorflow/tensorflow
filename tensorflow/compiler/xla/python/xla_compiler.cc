@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -711,7 +712,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           });
 
   // Custom-call targets.
-  m.def("register_custom_call_target", &PyRegisterCustomCallTarget);
+  m.def("register_custom_call_target",
+        [](const std::string& fn_name, py::capsule capsule,
+           const std::string& platform) {
+          xla::ThrowIfError(PyRegisterCustomCallTarget(
+              fn_name, std::move(capsule), platform));
+        });
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
