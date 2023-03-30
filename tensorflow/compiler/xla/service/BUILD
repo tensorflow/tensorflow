@@ -26,6 +26,7 @@ load(
 )
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/compiler/xla/service:xla_compile.bzl", "xla_aot_compile_cpu", "xla_aot_compile_gpu", "xla_aot_compile_gpu_runtime_autotuning")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
@@ -6965,7 +6966,9 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
-    ]) + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
+    ]) 
+    + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"])
+    + if_rocm(["//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin"]),
 )
 
 # A simple test of xla_aot_compile which generates an output file from an mhlo file.
