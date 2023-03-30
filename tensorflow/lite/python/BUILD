@@ -38,7 +38,6 @@ py_library(
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -91,6 +90,7 @@ py_library(
     deps = [
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
@@ -104,8 +104,8 @@ py_library(
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
-        "//tensorflow/python:util",
         "//tensorflow/python/platform",
+        "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
@@ -209,7 +209,8 @@ py_library(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -349,8 +350,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:keras_deps",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -363,7 +366,6 @@ py_library(
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -374,6 +376,8 @@ py_library(
     deps = [
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -410,6 +414,10 @@ py_library(
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -498,7 +506,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite/schema:utils_friends"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
     ],
 )
 

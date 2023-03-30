@@ -23,5 +23,6 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/common_transformers",
         "//tensorflow/python/autograph/utils:__init__",
         "//tensorflow/python/autograph/utils:ag_logging",
+        "//tensorflow/python/util:all_util",
     ],
 )

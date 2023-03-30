@@ -23,7 +23,6 @@ py_library(
         "//tensorflow/python:func_graph",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training_server_lib",
-        "//tensorflow/python:util",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:cancellation",
@@ -32,6 +31,8 @@ py_library(
         "//tensorflow/python/eager:executor",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -42,14 +43,18 @@ py_library(
         "coordinator_context.py",
     ],
     srcs_version = "PY3",
-    deps = [":remote_value"],
+    deps = [
+        ":remote_value",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
+    ],
 )
 
 py_library(
     name = "remote_value",
     srcs = ["remote_value.py"],
     srcs_version = "PY3",
-    deps = [],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(
@@ -60,11 +65,12 @@ py_library(
         ":remote_value",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -97,7 +103,6 @@ distribute_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:training_server_lib",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:multi_worker_test_base",
@@ -165,6 +170,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )
 
