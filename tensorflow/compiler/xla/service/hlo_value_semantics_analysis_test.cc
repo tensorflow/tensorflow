@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_activation_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_value_semantics_analysis.h"
 
 #include <string>
 
@@ -25,9 +25,40 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloActivationAnalysisTest : public HloTestBase {};
+class HloValueSemanticsAnalysisTest : public HloTestBase {
+ public:
+  bool IsStatic(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+                HloModule* module, absl::string_view instruction_name) {
+    HloInstruction* instruction = FindInstruction(module, instruction_name);
+    const HloValueSemantics* semantics =
+        hlo_value_semantics_analysis.GetSemantics(instruction);
+    LOG(INFO) << "instruction: " << instruction->ToString()
+              << semantics->ToString();
+    return semantics->label() == HloValueSemanticLabel::kStatic;
+  }
+  bool IsWeight(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+                HloModule* module, absl::string_view instruction_name) {
+    HloInstruction* instruction = FindInstruction(module, instruction_name);
+    const HloValueSemantics* semantics =
+        hlo_value_semantics_analysis.GetSemantics(instruction);
+    LOG(INFO) << "instruction: " << instruction->ToString()
+              << semantics->ToString();
+    return semantics->label() == HloValueSemanticLabel::kWeight;
+  }
+  bool IsActivation(
+      const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+      HloModule* module, absl::string_view instruction_name) {
+    HloInstruction* instruction = FindInstruction(module, instruction_name);
+    const HloValueSemantics* semantics =
+        hlo_value_semantics_analysis.GetSemantics(instruction);
+    LOG(INFO) << "instruction: " << instruction->ToString()
+              << semantics->ToString();
+    return semantics->label() == HloValueSemanticLabel::kActivation;
+  }
+  // TODO(b/275902523): add test cases with activation and weight gradients.
+};
 
-TEST_F(HloActivationAnalysisTest, OneMatmul) {
+TEST_F(HloValueSemanticsAnalysisTest, OneMatmul) {
   const std::string module_str = R"(
 HloModule OneMatmul
 
@@ -62,15 +93,19 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  auto act_set = ComputeHloActivationAnalysis(module.get());
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "copy")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "Arg_1.2")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.0")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "select.35")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.2")));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "copy"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "Arg_1.2"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "select.35"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
 }
 
-TEST_F(HloActivationAnalysisTest, TwoMatmuls) {
+TEST_F(HloValueSemanticsAnalysisTest, TwoMatmuls) {
   const std::string module_str = R"(
 HloModule TwoMatmuls
 
@@ -112,19 +147,29 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  auto act_set = ComputeHloActivationAnalysis(module.get());
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "copy")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "Arg_1.2")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.0")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "Arg_2.3")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.1")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "select.40")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.2")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.5")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.6")));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_FALSE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "copy"));
+  EXPECT_FALSE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "Arg_1.2"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.0"));
+  EXPECT_FALSE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "Arg_2.3"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.1"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "select.40"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.5"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.6"));
 }
 
-TEST_F(HloActivationAnalysisTest, RepeatWhile) {
+TEST_F(HloValueSemanticsAnalysisTest, RepeatWhile) {
   const std::string module_str = R"(
 HloModule RepeatWhile
 
@@ -268,30 +313,46 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  auto act_set = ComputeHloActivationAnalysis(module.get());
-  EXPECT_FALSE(
-      act_set.count(FindInstruction(module.get(), "get-tuple-element.55")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "reshape.74")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.0")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "reshape.79")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.1")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "reshape.22")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "reshape.95")));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(),
+                       "get-tuple-element.55"));
   EXPECT_TRUE(
-      act_set.count(FindInstruction(module.get(), "dynamic-update-slice.99")));
+      IsWeight(*hlo_value_semantics_analysis, module.get(), "reshape.74"));
   EXPECT_TRUE(
-      act_set.count(FindInstruction(module.get(), "get-tuple-element.180")));
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.0"));
   EXPECT_TRUE(
-      act_set.count(FindInstruction(module.get(), "get-tuple-element.190")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "reshape.21")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "multiply.3")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.20")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "reshape.23")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.21")));
-  EXPECT_FALSE(act_set.count(FindInstruction(module.get(), "reshape.24")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.22")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "reshape.26")));
-  EXPECT_TRUE(act_set.count(FindInstruction(module.get(), "dot.23")));
+      IsWeight(*hlo_value_semantics_analysis, module.get(), "reshape.79"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.1"));
+  EXPECT_TRUE(
+      IsWeight(*hlo_value_semantics_analysis, module.get(), "reshape.22"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "reshape.95"));
+  EXPECT_TRUE(IsStatic(*hlo_value_semantics_analysis, module.get(),
+                       "dynamic-update-slice.99"));
+  EXPECT_TRUE(IsStatic(*hlo_value_semantics_analysis, module.get(),
+                       "get-tuple-element.180"));
+  EXPECT_TRUE(IsStatic(*hlo_value_semantics_analysis, module.get(),
+                       "get-tuple-element.190"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "reshape.21"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "multiply.3"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.20"));
+  EXPECT_TRUE(
+      IsWeight(*hlo_value_semantics_analysis, module.get(), "reshape.23"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.21"));
+  EXPECT_TRUE(
+      IsWeight(*hlo_value_semantics_analysis, module.get(), "reshape.24"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.22"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "reshape.26"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.23"));
 }
 
 }  // namespace
