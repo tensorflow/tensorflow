@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/assign_op_key.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
@@ -678,6 +679,7 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
         // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
+        pm.addPass(mlrt_compiler::CreateAssignOpKeyPass());
         pm.addPass(
             mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(
                 options));
