@@ -691,7 +691,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    const Layout* device_layout) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
   Shape shape = ShapeUtil::MakeShape(type, dims);
@@ -711,14 +712,17 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   int64_t size = ShapeUtil::ByteSizeOf(shape);
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(Shape compact_shape,
-                      transfer_manager->ChooseCompactLayoutForShape(shape));
-  absl::InlinedVector<int64_t, 4> compact_shape_strides(
-      compact_shape.dimensions_size());
-  TF_RETURN_IF_ERROR(ShapeUtil::ByteStrides(
-      compact_shape, absl::MakeSpan(compact_shape_strides)));
+  if (device_layout != nullptr) {
+    *(shape.mutable_layout()) = *device_layout;
+  } else {
+    TF_ASSIGN_OR_RETURN(shape,
+                        transfer_manager->ChooseCompactLayoutForShape(shape));
+  }
+  absl::InlinedVector<int64_t, 4> shape_strides(shape.dimensions_size());
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::ByteStrides(shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
-      (size == 0 || *byte_strides == compact_shape_strides);
+      (size == 0 || *byte_strides == shape_strides);
   // The CPU platform is special because the "host" and the "device" are in the
   // same memory space. If the input shape is in the correct layout and we don't
   // want to defer the copy onto a thread, we can use the following fast
@@ -775,7 +779,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
-      AllocateDestinationBuffer(compact_shape, device, local_device,
+      AllocateDestinationBuffer(shape, device, local_device,
                                 local_device->host_to_device_stream(),
                                 /*is_uninitialized_create=*/false, this));
 
@@ -800,8 +804,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   std::shared_ptr<TransposePlan> transpose;
   if (!host_and_device_strides_equal) {
     absl::InlinedVector<int64_t, 4> permutation(dims.size());
-    absl::c_reverse_copy(compact_shape.layout().minor_to_major(),
-                         permutation.begin());
+    absl::c_reverse_copy(shape.layout().minor_to_major(), permutation.begin());
     absl::MutexLock lock(&transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose,
                         transpose_cache_.GetOrCreate(
@@ -901,6 +904,17 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     thread_pool()->Schedule(transfer_h2d);
   }
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+  return BufferFromHostBuffer(data, type, dims, byte_strides,
+                              host_buffer_semantics, on_done_with_host_buffer,
+                              device, /*device_layout=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
