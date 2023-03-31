@@ -1383,9 +1383,6 @@ struct DTensorAllReduceLowering
 struct DTensorReduceScatterLowering
     : public impl::DTensorReduceScatterLoweringBase<
           DTensorReduceScatterLowering> {
-  void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::dtensor::DTensorDialect>();
-  }
 
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
@@ -1439,9 +1436,6 @@ struct DTensorAllScatterLowering
 
 struct DTensorAllToAllLowering
     : public impl::DTensorAllToAllLoweringBase<DTensorAllToAllLowering> {
-  void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::dtensor::DTensorDialect>();
-  }
 
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
