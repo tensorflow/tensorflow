@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import ref_variable
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
@@ -1015,7 +1016,7 @@ class _VariableStore:
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = _DEFAULT_USE_RESOURCE
-    v = variables.VariableV1(
+    v = variable_v1.VariableV1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -2845,7 +2846,7 @@ def _make_getter(captured_getter, captured_previous):
 
 
 # TODO(apassos) remove forwarding symbol
-variable = variables.VariableV1
+variable = variable_v1.VariableV1
 
 
 @tf_export(v1=["variable_creator_scope"])

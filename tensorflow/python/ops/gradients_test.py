@@ -58,6 +58,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.nn_ops import bias_add
@@ -320,7 +321,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testVariableRefGradient(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0)
-      var = variables.VariableV1(init)
+      var = variable_v1.VariableV1(init)
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
