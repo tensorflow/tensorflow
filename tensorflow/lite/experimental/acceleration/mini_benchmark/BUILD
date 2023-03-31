@@ -536,7 +536,6 @@ cc_library(
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         # For NNAPI support library, the headears and source files are defined
