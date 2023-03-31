@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives_common.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
@@ -318,7 +319,8 @@ StatusOr<mlir::Value> EmitRelayout(
   mlir::OpBuilder builder(input.getContext());
   TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
 
-  if (CanUseAllToAll(src_layout, tgt_layout) && !is_sparse) {
+  if (EnableAllToAllForRelayout() && !is_sparse &&
+      CanUseAllToAll(src_layout, tgt_layout)) {
     // TODO(tmorris): support sparse case
     TF_ASSIGN_OR_RETURN(mlir::Value all_to_all_result,
                         EmitAllToAll(builder, input, src_layout, tgt_layout,
