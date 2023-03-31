@@ -201,97 +201,13 @@ def validate_synchronization_aggregation_trainable(synchronization, aggregation,
 class VariableMetaclass(abc.ABCMeta):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
-  def _variable_v1_call(cls,
-                        initial_value=None,
-                        trainable=None,
-                        collections=None,
-                        validate_shape=True,
-                        caching_device=None,
-                        name=None,
-                        variable_def=None,
-                        dtype=None,
-                        expected_shape=None,
-                        import_scope=None,
-                        constraint=None,
-                        use_resource=None,
-                        synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE,
-                        shape=None,
-                        experimental_enable_variable_lifting=None):
-    """Call on Variable class. Useful to force the signature."""
-    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
-    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
-      previous_getter = _make_getter(getter, previous_getter)
-
-    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
-    if aggregation is None:
-      aggregation = VariableAggregation.NONE
-    return previous_getter(
-        initial_value=initial_value,
-        trainable=trainable,
-        collections=collections,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        variable_def=variable_def,
-        dtype=dtype,
-        expected_shape=expected_shape,
-        import_scope=import_scope,
-        constraint=constraint,
-        use_resource=use_resource,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape,
-        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
-        )
-
-  def _variable_v2_call(cls,
-                        initial_value=None,
-                        trainable=None,
-                        validate_shape=True,
-                        caching_device=None,
-                        name=None,
-                        variable_def=None,
-                        dtype=None,
-                        import_scope=None,
-                        constraint=None,
-                        synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE,
-                        shape=None,
-                        experimental_enable_variable_lifting=None,
-                        ):
-    """Call on Variable class. Useful to force the signature."""
-    previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
-    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
-      previous_getter = _make_getter(getter, previous_getter)
-
-    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
-    if aggregation is None:
-      aggregation = VariableAggregation.NONE
-    return previous_getter(
-        initial_value=initial_value,
-        trainable=trainable,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        variable_def=variable_def,
-        dtype=dtype,
-        import_scope=import_scope,
-        constraint=constraint,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape,
-        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
-        )
-
   @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
-    if cls is VariableV1:
-      return cls._variable_v1_call(*args, **kwargs)
-    elif cls is Variable:
-      return cls._variable_v2_call(*args, **kwargs)
-    else:
-      return super(VariableMetaclass, cls).__call__(*args, **kwargs)
+    if hasattr(cls, "_variable_call") and callable(cls._variable_call):
+      variable_call = cls._variable_call(*args, **kwargs)
+      if variable_call is not None:
+        return variable_call
+    return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
 
 @tf_export("Variable", v1=[])
@@ -1281,6 +1197,50 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     """
     return object_identity.Reference(self)
 
+  @classmethod
+  def _variable_call(
+      cls,
+      initial_value=None,
+      trainable=None,
+      validate_shape=True,
+      caching_device=None,
+      name=None,
+      variable_def=None,
+      dtype=None,
+      import_scope=None,
+      constraint=None,
+      synchronization=VariableSynchronization.AUTO,
+      aggregation=VariableAggregation.NONE,
+      shape=None,
+      experimental_enable_variable_lifting=None,
+      **kwargs,
+    ):
+    """Variable class getter. Useful to force the signature."""
+    if cls is not Variable:
+      return None
+    previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
+    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        import_scope=import_scope,
+        constraint=constraint,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+    )
+
   class SaveSliceInfo:
     """Information on how to save this Variable as a slice.
 
@@ -1581,6 +1541,56 @@ class VariableV1(Variable):
       return cond.cond(
           is_variable_initialized(self), self.read_value,
           lambda: self.initial_value)
+
+  @classmethod
+  def _variable_call(
+      cls,
+      initial_value=None,
+      trainable=None,
+      validate_shape=True,
+      caching_device=None,
+      name=None,
+      variable_def=None,
+      dtype=None,
+      import_scope=None,
+      constraint=None,
+      synchronization=VariableSynchronization.AUTO,
+      aggregation=VariableAggregation.NONE,
+      shape=None,
+      experimental_enable_variable_lifting=None,
+      expected_shape=None,
+      collections=None,
+      use_resource=None,
+      **kwargs,
+    ):
+    """VariableV1 class getter. Useful to force the signature."""
+    if cls is not VariableV1:
+      return None
+    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        import_scope=import_scope,
+        constraint=constraint,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        expected_shape=expected_shape,
+        collections=collections,
+        use_resource=use_resource,
+    )
 
 
 # TODO(apassos): do not repeat all comments here
