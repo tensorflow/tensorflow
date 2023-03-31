@@ -436,9 +436,8 @@ tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::CompileWithHloImporter(
         "Cannot compile with HloImporter because it isn't supported");
   }
 
-  // TODO(b/275806664): Support multiple output values from HLO module importer.
-  // We wrap all the output values of a TF op into a tuple and return that
-  // from the module importer.
+  // XLA can only return a single value. Wrap all output op return values
+  // in a Tuple op that gets unpacked later.
   std::vector<xla::XlaOp> output_values;
   for (int i = 0, e = op_->getNumResults(); i < e; i++) {
     tensorflow::Tensor* output = op_context.mutable_output(i);
@@ -559,6 +558,14 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(
     Value operand, Operation* op, int64_t operand_index) {
   ElementsAttr const_attr;
   auto defining_op = operand.getDefiningOp();
+
+  ::xla::XlaOp xla_op;
+  if (use_tf2xla_hlo_importer_) {
+    xla_op = xla::Parameter(&xla_builder_, operand_index,
+                            xla::TypeToShape(operand.getType()),
+                            std::to_string(operand_index));
+  }
+
   if (defining_op && matchPattern(defining_op, m_Constant(&const_attr))) {
     tensorflow::Tensor tensor;
     auto status = tensorflow::ConvertToTensor(const_attr, &tensor);
@@ -568,24 +575,10 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(
       return tensorflow::XlaExpression::Invalid();
     }
 
-    if (use_tf2xla_hlo_importer_) {
-      std::string operand_name = std::to_string(operand_index);
-      // TODO(b/274677205): This may be bad from an inlining perspective since
-      // we're going from a known constant to a parameter type. Figure out how
-      // to plumb the constant instead.
-      xla::Parameter(&xla_builder_, operand_index,
-                     xla::TypeToShape(operand.getType()), operand_name);
-    }
-
     return tensorflow::XlaExpression::Constant(tensor);
   }
 
-  ::xla::XlaOp xla_op;
-  if (use_tf2xla_hlo_importer_) {
-    xla_op = xla::Parameter(&xla_builder_, operand_index,
-                            xla::TypeToShape(operand.getType()),
-                            std::to_string(operand_index));
-  } else {
+  if (!use_tf2xla_hlo_importer_) {
     auto xla_op_or = hlo_builder_.MakeXlaOp(operand);
     if (!xla_op_or.ok()) {
       op->emitRemark() << "skipping legalization due to "

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/tf2xla_rewriter.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -23,11 +24,14 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -116,24 +120,24 @@ class Tf2XlaRewriterTest : public ::testing::Test {
  public:
   void SetUp() override {
     tensorflow::XlaOpRegistry::RegisterCompilationKernels();
-
-    StatusOr<OwningOpRef<ModuleOp>> module =
-        test::GetMlirModuleFromString(kMlirModuleStr, &context_);
-    ASSERT_TRUE(module.ok());
-
-    module_ = std::move(module.value());
-    context_.loadAllAvailableDialects();
   }
 
-  Status LegalizeOp(bool use_tf2xla_hlo_importer) {
+  Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
+    TF_ASSIGN_OR_RETURN(
+        module_, test::GetMlirModuleFromString(module_string, &context_));
+
+    context_.loadAllAvailableDialects();
+    return tsl::OkStatus();
+  }
+
+  Status LegalizeSingleOp(bool use_tf2xla_hlo_importer, Operation& op) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
-    Operation& first_op = GetFirstOpFromMain();
-    OpBuilder op_builder(&first_op);
+    OpBuilder op_builder(&op);
     EmptyPatternRewriter pattern_rewriter(op_builder);
 
     LogicalResult result = Tf2XlaRewriter::RewriteOp(
-        &first_op, pattern_rewriter,
+        &op, pattern_rewriter,
         /*device_type=*/"XLA_CPU_JIT",
         /*is_module_pass=*/false, use_tf2xla_hlo_importer);
     if (!result.succeeded()) {
@@ -143,11 +147,24 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  mlir::Operation& GetFirstOpFromMain() {
-    mlir::func::FuncOp main_func =
-        module_->lookupSymbol<mlir::func::FuncOp>("main");
+  Status LegalizeModuleWithSingleOp(
+      bool use_tf2xla_hlo_importer,
+      std::string module_string = kMlirModuleStr) {
+    TF_EXPECT_OK(CreateMlirModule(module_string));
+
+    Operation& first_op = GetFirstOpFromMain();
+    return LegalizeSingleOp(use_tf2xla_hlo_importer, first_op);
+  }
+
+  mlir::func::FuncOp GetMainFunc() {
+    func::FuncOp main_func = module_->lookupSymbol<mlir::func::FuncOp>("main");
     EXPECT_TRUE(main_func);
 
+    return main_func;
+  }
+
+  mlir::Operation& GetFirstOpFromMain() {
+    mlir::func::FuncOp main_func = GetMainFunc();
     return main_func.getBody().front().front();
   }
 
@@ -177,14 +194,16 @@ class Tf2XlaRewriterTest : public ::testing::Test {
 };
 
 TEST_F(Tf2XlaRewriterTest, LegalizesOp) {
-  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/false));
+  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/false));
 }
 
 TEST_F(Tf2XlaRewriterTest, LegalizesOpWithTf2xlaHloImporter) {
-  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/true));
+  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
 }
 
 TEST_F(Tf2XlaRewriterTest, CreatesModuleFromXla) {
+  TF_ASSERT_OK(CreateMlirModule());
+
   XlaComputation computation = GetTestXlaComputation();
 
   StatusOr<mlir::OwningOpRef<ModuleOp>> generated_module =
@@ -195,6 +214,8 @@ TEST_F(Tf2XlaRewriterTest, CreatesModuleFromXla) {
 }
 
 TEST_F(Tf2XlaRewriterTest, ImportsXlaModule) {
+  TF_ASSERT_OK(CreateMlirModule());
+
   XlaComputation computation = GetTestXlaComputation();
 
   StatusOr<FuncOp> generated_function =
@@ -202,10 +223,8 @@ TEST_F(Tf2XlaRewriterTest, ImportsXlaModule) {
 
   TF_EXPECT_OK(generated_function.status());
 
-  ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
-
   FuncOp expected_generated_function =
-      parent_module.lookupSymbol<mlir::func::FuncOp>(
+      module_->lookupSymbol<mlir::func::FuncOp>(
           "translated_tf2xla_kernel_tf.Unpack_0");
 
   EXPECT_TRUE(expected_generated_function);
@@ -213,12 +232,10 @@ TEST_F(Tf2XlaRewriterTest, ImportsXlaModule) {
 }
 
 TEST_F(Tf2XlaRewriterTest, ReturnsMultipleValues) {
-  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/true));
-
-  ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
+  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
 
   FuncOp expected_generated_function =
-      parent_module.lookupSymbol<mlir::func::FuncOp>(
+      module_->lookupSymbol<mlir::func::FuncOp>(
           "translated_tf2xla_kernel_tf.Unpack_0");
 
   EXPECT_TRUE(expected_generated_function);
@@ -226,13 +243,60 @@ TEST_F(Tf2XlaRewriterTest, ReturnsMultipleValues) {
             GetFirstOpFromMain().getNumResults());
 }
 
-TEST_F(Tf2XlaRewriterTest, ErasesTupleOpFromMultipleReturnValues) {
-  TF_EXPECT_OK(LegalizeOp(/*use_tf2xla_hlo_importer=*/true));
+TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
+  static constexpr char kModuleWithConstParam[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
+    func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+      %0 = "tf.Const"() {value = dense<1.42> : tensor<2xf32>} : () -> tensor<2xf32>
+      %1 = "tf.Atan2"(%arg0, %0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+      func.return %0 : tensor<2xf32>
+    }
+  })";
 
-  ModuleOp parent_module = GetFirstOpFromMain().getParentOfType<ModuleOp>();
+  TF_ASSERT_OK(CreateMlirModule(kModuleWithConstParam));
+  func::FuncOp main_func = GetMainFunc();
+
+  // NOTE: Extra wonkiness here. LLVM returns an iterator and hold references to
+  // the op here. However, we're testing a rewriter and replace the original op
+  // with a call op. The original op that we have a reference to via the getOps
+  // is a use after free. To get around that, we clone the op, lose the ref to
+  // it and convert the cloned op instead. For purposes of just this test,
+  // it's fine, but this is bad.
+  int atan_op_count = 0;
+  for (auto atan_op : main_func.getOps<TF::Atan2Op>()) {
+    atan_op_count++;
+    mlir::Operation* cloned_op = atan_op->clone();
+
+    OpBuilder builder(atan_op);
+    builder.insert(cloned_op);
+
+    TF_ASSERT_OK(
+        LegalizeSingleOp(/*use_tf2xla_hlo_importer=*/true, *cloned_op));
+  }
+
+  EXPECT_EQ(atan_op_count, 1);
 
   FuncOp expected_generated_function =
-      parent_module.lookupSymbol<mlir::func::FuncOp>(
+      module_->lookupSymbol<mlir::func::FuncOp>(
+          "translated_tf2xla_kernel_tf.Atan2_0");
+
+  EXPECT_TRUE(expected_generated_function);
+  EXPECT_EQ(expected_generated_function.getNumArguments(), 2);
+
+  EXPECT_TRUE(expected_generated_function.getArgument(1).getUses().empty());
+  EXPECT_FALSE(expected_generated_function.getArgument(0).getUses().empty());
+
+  mhlo::ConstantOp const_op = llvm::dyn_cast<mhlo::ConstantOp>(
+      expected_generated_function.getBody().front().front());
+  EXPECT_TRUE(const_op);
+  EXPECT_EQ(const_op.getValue().getSplatValue<float>(), 1.42f);
+}
+
+TEST_F(Tf2XlaRewriterTest, ErasesTupleOpFromMultipleReturnValues) {
+  TF_EXPECT_OK(LegalizeModuleWithSingleOp(/*use_tf2xla_hlo_importer=*/true));
+
+  FuncOp expected_generated_function =
+      module_->lookupSymbol<mlir::func::FuncOp>(
           "translated_tf2xla_kernel_tf.Unpack_0");
   ASSERT_TRUE(expected_generated_function);
 
@@ -240,6 +304,8 @@ TEST_F(Tf2XlaRewriterTest, ErasesTupleOpFromMultipleReturnValues) {
 }
 
 TEST_F(Tf2XlaRewriterTest, FailsUnpackingModuleWithoutTuple) {
+  TF_ASSERT_OK(CreateMlirModule());
+
   FuncOp funcOp = GetFirstOpFromMain().getParentOfType<FuncOp>();
   ASSERT_TRUE(funcOp);
 
