@@ -2198,7 +2198,6 @@ cc_test(
     size = "small",
     srcs = ["squeeze_test.cc"],
     tags = [
-        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
         "tflite_nnapi",
     ],
     deps = [
