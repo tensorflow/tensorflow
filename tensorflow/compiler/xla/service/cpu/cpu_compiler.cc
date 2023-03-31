@@ -340,7 +340,12 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     options.experimental_deallocation =
         GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
     options.cpu_name = llvm::sys::getHostCPUName();
-
+    if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+      options.matmul_tile_sizes = {
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+    }
     if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
       options.enable_fusion_outlining = true;
       options.experimental_deallocation = true;
@@ -1073,6 +1078,12 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   HloXlaRuntimePipelineOptions options;
   options.enable_tiling_and_fusion =
       GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+    options.matmul_tile_sizes = {
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+  }
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =

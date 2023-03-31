@@ -455,6 +455,12 @@ message DebugOptions {
   // instead.
   bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
 
+  // XLA:CPU-Next tiling parameters for matmul.
+  bool xla_cpu_enable_custom_matmul_tiling = 195;
+  int64 xla_cpu_matmul_tiling_m_dim = 196;
+  int64 xla_cpu_matmul_tiling_n_dim = 197;
+  int64 xla_cpu_matmul_tiling_k_dim = 198;
+
   bool xla_cpu_enable_mlir_fusion_outlining = 192;
 
   // If set, use the experimental deallocation pass from mlir-hlo.
@@ -479,7 +485,7 @@ message DebugOptions {
 
   bool xla_gpu_allow_all_reduce_kernel = 193;
 
-  // Next id: 195
+  // Next id: 199
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
