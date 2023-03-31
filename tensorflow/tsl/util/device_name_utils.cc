@@ -618,6 +618,62 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   return OkStatus();
 }
 
+/*static*/ string DeviceNameUtils::GetDeviceNameFromStreamDeviceName(
+    const string& device_name) {
+  string output = device_name;
+  size_t pos = output.find("STREAM_CPU_");
+  if (pos != string::npos) {
+    output.replace(pos, 11, "CPU:");
+    output.erase(output.find_last_of(":"));
+  } else {
+    pos = output.find("STREAM_GPU_");
+    if (pos != string::npos) {
+      output.replace(pos, 11, "GPU:");
+      output.erase(output.find_last_of(":"));
+    } else {
+      VLOG(3) << "Not a valid stream device name: " << device_name
+              << ", return the name directly.";
+    }
+  }
+  if (output.find(":") == string::npos) {
+    LOG(ERROR) << "Not a valid device name: " << output << ", parsed from "
+               << device_name << ".";
+    return device_name;
+  }
+  return output;
+}
+
+/*static*/ int DeviceNameUtils::DecodeDeviceFromStreamDeviceName(
+    const string& device_name) {
+  size_t pos1 = device_name.find("STREAM_CPU_");
+  if (pos1 == string::npos) {
+    pos1 = device_name.find("STREAM_GPU_");
+    if (pos1 == string::npos) {
+      VLOG(3) << "Not a valid stream device name: " << device_name
+              << ", treat it like a normal device name.";
+      return DecodeStreamFromStreamDeviceName(device_name);
+    }
+  }
+  size_t pos2 = device_name.find_last_of(":");
+  if (pos2 == string::npos) {
+    VLOG(3) << "Not a valid stream device name: " << device_name
+            << ", return -1.";
+    return -1;
+  }
+  return std::stoi(device_name.substr(pos1 + 11, pos2 - pos1));
+}
+
+/*static*/ int DeviceNameUtils::DecodeStreamFromStreamDeviceName(
+    const string& device_name) {
+  size_t pos = device_name.find_last_of(":");
+  if (pos == string::npos) {
+    VLOG(3) << "Not a valid stream device name: " << device_name
+            << ", return -1.";
+    return -1;
+  }
+  return std::stoi(device_name.substr(pos + 1));
+}
+
 std::ostream& operator<<(std::ostream& os,
                          const DeviceNameUtils::ParsedName& x) {
   os << DeviceNameUtils::ParsedNameToString(x);

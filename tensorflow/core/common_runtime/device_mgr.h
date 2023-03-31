@@ -74,29 +74,23 @@ class DeviceMgr {
   // nullptr.
   virtual Device* HostCPU() const = 0;
 
-  virtual int32 RequireStreamGroup(const Device* device) const {
-    LOG(FATAL) << "DeviceMgr does not implement RequireStreamGroup()";
-  }
+  // Get the most appropriate stream group of the given device.
+  virtual int RequireStreamGroup(const Device* device) const = 0;
 
+  // Release one stream group of the given device specified by stream_id.
   virtual void ReleaseStreamGroup(const Device* device,
-                                  const int32 stream_id) const {
-    LOG(FATAL) << "DeviceMgr does not implement ReleaseStreamGroup()";
-  }
+                                  const int stream_id) const = 0;
 
-  virtual int32 GetMaxStreamNum() const {
-    LOG(FATAL) << "DeviceMgr does not implement GetMaxStreamNum()";
-  }
+  // Get the maximum number of stream groups across all devices.
+  virtual size_t GetMaxStreamNum() const = 0;
 
-  virtual int32 GetStreamNum(const Device* device) const {
-    LOG(FATAL) << "DeviceMgr does not implement GetStreamNum()";
-  }
+  // Get the number of stream groups of the given device.
+  virtual size_t GetStreamNum(const Device* device) const = 0;
 
-  // Assigns *device with pointer to Device of the given name.
-  // Accepts either a full device name, or just the replica-local suffix.
+  // Assigns *device with pointer to StreamDevice of the device of the
+  // given name and given stream_id.
   virtual Device* LookupStream(const Device* device,
-                               const int32 stream_id) const {
-    LOG(FATAL) << "DeviceMgr does not implement LookupStream()";
-  }
+                               const int stream_id) const = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceMgr);
 };
@@ -123,20 +117,13 @@ class StaticDeviceMgr : public DeviceMgr {
   int NumDeviceType(const string& type) const override;
   int NumDevices() const override;
   Device* HostCPU() const override;
-
-  int32 RequireStreamGroup(const Device* device) const override;
-
+  int RequireStreamGroup(const Device* device) const override;
   void ReleaseStreamGroup(const Device* device,
-                          const int32 stream_id) const override;
-
-  int32 GetMaxStreamNum() const override;
-
-  int32 GetStreamNum(const Device* device) const override;
-
-  // Assigns *device with pointer to Device of the given name.
-  // Accepts either a full device name, or just the replica-local suffix.
+                          const int stream_id) const override;
+  size_t GetMaxStreamNum() const override;
+  size_t GetStreamNum(const Device* device) const override;
   Device* LookupStream(const Device* device,
-                       const int32 stream_id) const override;
+                       const int stream_id) const override;
 
  private:
   const std::vector<std::unique_ptr<Device>> devices_;
@@ -146,33 +133,33 @@ class StaticDeviceMgr : public DeviceMgr {
   void InitStreamDevice();
   class StreamGroupMgr {
    public:
-    StreamGroupMgr(const int32 total_num);
+    StreamGroupMgr(const size_t total_num);
     virtual ~StreamGroupMgr(){};
 
-    int32 RequireStreamGroup();
-    void ReleaseStreamGroup(const int32 stream_id);
+    int RequireStreamGroup();
+    void ReleaseStreamGroup(const int stream_id);
 
    private:
-    void swap(const int32, const int32);
+    void swap(const size_t, const size_t);
     void reset_accumulators();
     struct StreamGroupNode {
-      int32 id_;
-      int32 workload_;
-      uint64 accumulator_;
-      StreamGroupNode(const int32 id, const int32 workload = 0,
-                      const uint32 accumulator = 0)
+      int id_;
+      int workload_;
+      uint64_t accumulator_;
+      StreamGroupNode(const int id, const int workload = 0,
+                      const uint64_t accumulator = 0)
           : id_(id), workload_(workload), accumulator_(accumulator) {}
     };
-    int32 total_num_;
+    size_t total_num_;
     mutable mutex mu_;
     std::vector<std::unique_ptr<StreamGroupNode>> stream_group_heap_
         TF_GUARDED_BY(mu_);
-    std::unordered_map<int32, int32> id2heap_map_ TF_GUARDED_BY(mu_);
+    std::unordered_map<int, size_t> id2heap_map_ TF_GUARDED_BY(mu_);
   };
   static mutex mgrs_mu_;
   static std::unordered_map<const Device*, std::unique_ptr<StreamGroupMgr>>
       stream_group_mgrs_ TF_GUARDED_BY(mgrs_mu_);
-  static int32 max_stream_num_ TF_GUARDED_BY(mgrs_mu_);
+  static size_t max_stream_num_ TF_GUARDED_BY(mgrs_mu_);
   std::unordered_map<const Device*, std::vector<Device*>> stream_device_map_
       TF_GUARDED_BY(mgrs_mu_);
 

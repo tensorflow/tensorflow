@@ -70,7 +70,7 @@ class ExecutorCache {
   // We key off of ordinal (instead of just looking up all fields in the
   // StreamExecutorConfig) for a slight improvement in lookup time.
   absl::Mutex mutex_;
-  std::map<std::pair<int, int32>, Entry> cache_ ABSL_GUARDED_BY(mutex_);
+  std::map<std::pair<int, int>, Entry> cache_ ABSL_GUARDED_BY(mutex_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ExecutorCache);
 };

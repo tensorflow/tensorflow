@@ -575,8 +575,8 @@ Status DirectSession::RunInternal(
   }
 #endif
 
-  // Decide the best stream group for each GPU device (Get device2stream map)
-  std::unordered_map<Device*, int32> stream_group_map;
+  // Decide the best stream group for each GPU device.
+  std::unordered_map<Device*, int> stream_group_map;
   int max_stream_group_idx(-1);
   std::unordered_set<Device*> cpu_devices;
   for (const auto& item : executors_and_keys->items) {
@@ -587,12 +587,10 @@ Status DirectSession::RunInternal(
       if (stream_group_idx > max_stream_group_idx) {
         max_stream_group_idx = stream_group_idx;
       }
-      stream_group_map.insert(std::make_pair(
-          item.device, stream_group_idx));  // CPU device will return 0
+      stream_group_map.insert(std::make_pair(item.device, stream_group_idx));
     }
   }
-  // Fill the CPU Devices in. Multiple GPU Devies may cause error here,
-  // because there is only one group of GPU host allocators.
+  // Fill the CPU devices with the max index of the stream group.
   for (auto* cpu : cpu_devices) {
     stream_group_map[cpu] = max_stream_group_idx;
   }
@@ -803,7 +801,7 @@ Status DirectSession::RunInternal(
     run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
-  // release the stream group
+  // Release the stream groups.
   for (const auto& item : stream_group_map) {
     device_mgr_->ReleaseStreamGroup(item.first, item.second);
   }
@@ -1408,9 +1406,9 @@ Status DirectSession::CreateExecutors(
             return OkStatus();
           }}));
 
-  int32 max_stream_num = device_mgr_->GetMaxStreamNum();
+  size_t max_stream_num = device_mgr_->GetMaxStreamNum();
   func_info->stream_proc_flr.reserve(max_stream_num);
-  for (int32 executor_index(0); executor_index < max_stream_num;
+  for (int executor_index = 0; executor_index < max_stream_num;
        ++executor_index) {
     func_info->stream_proc_flr.push_back(
         absl::make_unique<ProcessFunctionLibraryRuntime>(
@@ -1490,19 +1488,19 @@ Status DirectSession::CreateExecutors(
     item->device = device;
     auto executor_type = options_.config.experimental().executor_type();
 
-    // Create the multi-stream executors first
-    auto stream_num = device_mgr_->GetStreamNum(device);
+    // Create the multi-stream executors first.
+    size_t stream_num = device_mgr_->GetStreamNum(device);
     ek->stream_items.resize(ek->stream_items.size() + 1);
     auto* items = &(ek->stream_items.back());
     items->reserve(stream_num);
 
     std::vector<FunctionLibraryRuntime*> stream_libs;
-    for (int32 executor_index(0); executor_index < max_stream_num;
+    for (size_t executor_index = 0; executor_index < max_stream_num;
          ++executor_index) {
       stream_libs.push_back(
           func_info->stream_proc_flr[executor_index]->GetFLR(partition_name));
     }
-    for (int32 executor_index(0); executor_index < stream_num;
+    for (int executor_index = 0; executor_index < stream_num;
          ++executor_index) {
       items->resize(items->size() + 1);
       auto* item = &(items->back());
@@ -1513,7 +1511,7 @@ Status DirectSession::CreateExecutors(
       }
       item->flib = lib;
 
-      int const_stream_idx(0);
+      static size_t const_stream_idx = 0;
       LocalExecutorParams params;
       params.device = device_mgr_->LookupStream(device, executor_index);
       params.session_metadata = session_metadata;
@@ -1563,7 +1561,7 @@ Status DirectSession::CreateExecutors(
       }
     }
 
-    // Create the initial executor at last
+    // Create the original executor at last.
     TF_RETURN_IF_ERROR(
         NewExecutor(executor_type, params, *partition_graph, &item->executor));
     if (!options_.config.experimental().disable_output_partition_graphs() ||

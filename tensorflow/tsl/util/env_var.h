@@ -38,8 +38,16 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
 
 // Returns a comma separated int64 into "value" from the environmental variable
 // "env_var_name". If it is unset, the default value is used.
-Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64 default_val,
-                            std::vector<int64>* value);
+Status ReadInt64sFromEnvVar(StringPiece env_var_name,
+                            std::vector<int64_t> default_val,
+                            std::vector<int64_t>* value);
+
+// Returns a comma separated int64 into "value" from the environmental variable
+// "env_var_name". If it is unset, a vector with the default value as the only
+// one item is used.
+Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64_t default_val,
+                            std::vector<int64_t>* value);
+
 // Returns a float into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.
 // If the string cannot be parsed into float, an error status is returned.

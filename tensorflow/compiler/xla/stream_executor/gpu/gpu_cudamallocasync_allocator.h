@@ -70,7 +70,7 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = true,
-                                       int32 stream_id = 0);
+                                       int stream_id = 0);
   ~GpuCudaMallocAsyncAllocator() override;
   std::string Name() override { return name_; }
   void* AllocateRaw(size_t alignment,

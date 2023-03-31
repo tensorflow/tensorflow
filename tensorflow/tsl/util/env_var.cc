@@ -60,12 +60,14 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 
-Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64 default_val,
+Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64_t default_val,
                             std::vector<int64_t>* value) {
-  string str_val;
-  TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
-      env_var_name, std::to_string(default_val), &str_val));
-  std::vector<string> str_value = str_util::Split(str_val, ',');
+  std::vector<string> str_value;
+  TF_RETURN_IF_ERROR(ReadStringsFromEnvVar(env_var_name, "", &str_value));
+  if (str_value.empty()) {
+    value->push_back(default_val);
+    return OkStatus();
+  }
   for (auto& v : str_value) {
     int64_t val;
     if (!strings::safe_strto64(v, &val)) {
@@ -74,6 +76,37 @@ Status ReadInt64sFromEnvVar(StringPiece env_var_name, int64 default_val,
       return errors::InvalidArgument(strings::StrCat(
           "Failed to parse the env-var ${", env_var_name,
           "} into sequenced int64. Use the default value: ", default_val));
+    }
+    value->push_back(val);
+  }
+  return OkStatus();
+}
+
+Status ReadInt64sFromEnvVar(StringPiece env_var_name,
+                            std::vector<int64_t>& default_val,
+                            std::vector<int64_t>* value) {
+  std::vector<string> str_value;
+  TF_RETURN_IF_ERROR(ReadStringsFromEnvVar(env_var_name, "", &str_value));
+  if (str_value.empty()) {
+    value->assign(default_val.begin(), default_val.end());
+    return OkStatus();
+  }
+  for (auto& v : str_value) {
+    int64_t val;
+    if (!strings::safe_strto64(v, &val)) {
+      value->clear();
+      value->assign(default_val.begin(), default_val.end());
+      std::string default_val_str = "<";
+      for (auto& v : default_val) {
+        default_val_str += std::to_string(v) + ",";
+      }
+      if (!default_val.empty()) {
+        default_val_str.pop_back();
+      }
+      default_val_str += ">";
+      return errors::InvalidArgument(strings::StrCat(
+          "Failed to parse the env-var ${", env_var_name,
+          "} into sequenced int64. Use the default value: ", default_val_str));
     }
     value->push_back(val);
   }

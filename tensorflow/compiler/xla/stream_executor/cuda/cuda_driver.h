@@ -129,9 +129,9 @@ class CreatedContexts {
 
   // Return the context associated to that ptr.
   static CUcontext GetAnyContext(void* ptr) {
-    static const auto use_cuda_malloc_async = [] {
+    static const bool use_cuda_malloc_async = [] {
       const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
-      auto result = allocator_env != nullptr &&
+      bool result = allocator_env != nullptr &&
                     std::strcmp(allocator_env, "cuda_malloc_async") == 0;
 #if CUDA_VERSION >= 11020
       return result;

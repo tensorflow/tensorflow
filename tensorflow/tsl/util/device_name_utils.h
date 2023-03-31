@@ -215,6 +215,13 @@ class DeviceNameUtils {
   // `device_name`.
   static Status DeviceNameToCpuDeviceName(const std::string& device_name,
                                           std::string* host_device_name);
+
+  static std::string GetDeviceNameFromStreamDeviceName(
+      const std::string& device_name);
+
+  static int DecodeDeviceFromStreamDeviceName(const std::string& device_name);
+
+  static int DecodeStreamFromStreamDeviceName(const std::string& device_name);
 };
 
 std::ostream& operator<<(std::ostream& os,

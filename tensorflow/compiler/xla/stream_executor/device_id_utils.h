@@ -44,7 +44,7 @@ class DeviceIdUtil {
   }
   static tsl::StatusOr<StreamExecutor*> ExecutorForPlatformDeviceId(
       Platform* device_manager, tsl::PlatformDeviceId platform_device_id,
-      int32 stream_id) {
+      int stream_id) {
     return device_manager->ExecutorForDevice(platform_device_id.value(),
                                              stream_id);
   }
@@ -58,7 +58,7 @@ class DeviceIdUtil {
   }
   static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
       const tsl::DeviceType& type, Platform* device_manager,
-      tsl::TfDeviceId tf_device_id, int32 stream_id) {
+      tsl::TfDeviceId tf_device_id, int stream_id) {
     tsl::PlatformDeviceId platform_device_id;
     TF_RETURN_IF_ERROR(tsl::DeviceIdManager::TfToPlatformDeviceId(
         type, tf_device_id, &platform_device_id));

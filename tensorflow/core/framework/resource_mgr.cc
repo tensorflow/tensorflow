@@ -65,16 +65,9 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
 namespace internal {
 
 Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
-  if (ctx->device()->attributes().name() != p.device()) {
-    auto pos1 = ctx->device()->attributes().name().find("STREAM");
-    auto pos2 = p.device().find("STREAM");
-    auto pos3 = ctx->device()->attributes().name().rfind(":");
-    auto pos4 = p.device().rfind(":");
-    if (pos1 != string::npos && pos2 != string::npos &&
-        ctx->device()->attributes().name().substr(0, pos3) ==
-            p.device().substr(0, pos4)) {
-      return OkStatus();
-    }
+  if (DeviceNameUtils::GetDeviceNameFromStreamDeviceName(
+          ctx->device()->attributes().name()) !=
+      DeviceNameUtils::GetDeviceNameFromStreamDeviceName(p.device())) {
     return errors::InvalidArgument(
         "Trying to access resource ", p.name(), " located in device ",
         p.device(), " from device ", ctx->device()->attributes().name());

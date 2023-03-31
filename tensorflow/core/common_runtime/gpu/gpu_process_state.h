@@ -86,10 +86,9 @@ class GPUProcessState {
   virtual Allocator* GetGPUAllocator(
       const GPUOptions& options, tsl::TfDeviceId tf_device_id,
       size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids,
-      int32 stream_id = 0);
+      int stream_id = 0);
 
-  Allocator* GetGPUAllocator(tsl::TfDeviceId tf_device_id,
-                             int32 stream_id = 0) {
+  Allocator* GetGPUAllocator(tsl::TfDeviceId tf_device_id, int stream_id = 0) {
     return GetGPUAllocator(/*options=*/{}, tf_device_id, /*total_bytes=*/0,
                            /*peer_gpu_ids=*/{}, stream_id);
   }
@@ -114,7 +113,7 @@ class GPUProcessState {
   // e.g. to set the memory limit on this allocator.  After that if you pass in
   // a different set of options, they will be ignored.
   virtual Allocator* GetGpuHostAllocator(const GPUOptions& options,
-                                         int numa_node, int32 stream_id = 0);
+                                         int numa_node, int stream_id = 0);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by the
   // SubAllocator of every GPU proximate to the specified bus.  The AllocVisitor
@@ -127,25 +126,25 @@ class GPUProcessState {
   // PCIe is rooted).  If the bus_id is invalid, results are undefined.
   virtual void AddGPUAllocVisitor(int bus_id,
                                   const SubAllocator::Visitor& visitor,
-                                  int32 stream_id = 0);
+                                  int stream_id = 0);
 
   // Registers a Visitor to be invoked on new chunks of memory allocated by
   // the SubAllocator of the GpuHostAllocator for the given numa_node.
   virtual void AddGpuHostAllocVisitor(int numa_node,
                                       const SubAllocator::Visitor& visitor,
-                                      int32 stream_id = 0);
+                                      int stream_id = 0);
 
   // Registers a Visitor to be invoked on each chunk handed back for freeing to
   // the SubAllocator of the GpuHostAllocator for the given numa_node.
   virtual void AddGpuHostFreeVisitor(int numa_node,
                                      const SubAllocator::Visitor& visitor,
-                                     int32 stream_id = 0);
+                                     int stream_id = 0);
 
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(tsl::TfDeviceId tf_device_id);
 
   SharedCounter* GPUAllocatorCounter(tsl::TfDeviceId tf_device_id,
-                                     int32 stream_id = 0);
+                                     int stream_id = 0);
 
  protected:
   // GPUProcessState is a singleton that should not normally be deleted except

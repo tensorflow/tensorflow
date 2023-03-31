@@ -35,7 +35,7 @@ class GPUDebugAllocator : public tsl::Allocator {
  public:
   explicit GPUDebugAllocator(tsl::Allocator* allocator,
                              tsl::PlatformDeviceId platform_device_id,
-                             tsl::int32 stream_id);
+                             int stream_id);
   ~GPUDebugAllocator() override;
   std::string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
@@ -66,7 +66,7 @@ class GPUNanResetAllocator : public tsl::Allocator {
  public:
   explicit GPUNanResetAllocator(tsl::Allocator* allocator,
                                 tsl::PlatformDeviceId platform_device_id,
-                                tsl::int32 stream_id);
+                                int stream_id);
   ~GPUNanResetAllocator() override;
   std::string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

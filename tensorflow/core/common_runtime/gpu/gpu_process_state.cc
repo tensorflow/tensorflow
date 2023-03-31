@@ -103,7 +103,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     const GPUOptions& options, tsl::PlatformDeviceId platform_device_id,
     const std::vector<SubAllocator::Visitor>& alloc_visitors,
     size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids,
-    int32 stream_id) {
+    int stream_id) {
   auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
                       se::GPUMachineManager(), platform_device_id, stream_id)
                       .value();
@@ -155,7 +155,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
 
 Allocator* GPUProcessState::GetGPUAllocator(
     const GPUOptions& options, tsl::TfDeviceId tf_device_id, size_t total_bytes,
-    const std::vector<tsl::TfDeviceId>& peer_gpu_ids, int32 stream_id) {
+    const std::vector<tsl::TfDeviceId>& peer_gpu_ids, int stream_id) {
   CHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -168,7 +168,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
     gpu_allocators_.resize(tf_device_id.value() + 1);
   }
   if (stream_id >=
-      static_cast<int32>(gpu_allocators_[tf_device_id.value()].size())) {
+      static_cast<int>(gpu_allocators_[tf_device_id.value()].size())) {
     gpu_allocators_[tf_device_id.value()].resize(stream_id + 1);
   }
 
@@ -287,14 +287,14 @@ void GPUProcessState::GetGPUAllocators(
     each_bytes = total_bytes / num_allocators;
   }
   allocators.resize(num_allocators);
-  for (int32 i = 0; i < num_allocators; ++i) {
+  for (int i = 0; i < num_allocators; ++i) {
     allocators[i] =
         GetGPUAllocator(options, tf_device_id, each_bytes, peer_gpu_ids, i);
   }
 }
 
 SharedCounter* GPUProcessState::GPUAllocatorCounter(
-    tsl::TfDeviceId tf_device_id, int32 stream_id) {
+    tsl::TfDeviceId tf_device_id, int stream_id) {
   DCHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -307,7 +307,7 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
     return nullptr;
   }
   if (stream_id >=
-      static_cast<int32>(gpu_allocators_[tf_device_id.value()].size())) {
+      static_cast<int>(gpu_allocators_[tf_device_id.value()].size())) {
     LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
                << " stream group" << stream_id << " but only have "
                << gpu_allocators_[tf_device_id.value()].size();
@@ -331,8 +331,7 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
 }
 
 Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
-                                                int numa_node,
-                                                int32 stream_id) {
+                                                int numa_node, int stream_id) {
   CHECK(process_state_);
   if (!HasGPUDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
@@ -416,7 +415,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       gpu_host_free_visitors_[n].push_back({});
     }
   }
-  // Create one allocator for every numa node at the given stream
+  // Create one allocator for every numa node at the given stream.
   for (int numa_idx = 0; numa_idx <= numa_node; ++numa_idx) {
     if (static_cast<int>(gpu_host_allocators_[numa_idx].size()) > stream_id &&
         gpu_host_allocators_[numa_idx][stream_id].allocator != nullptr) {
@@ -469,7 +468,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
 
 void GPUProcessState::AddGPUAllocVisitor(int bus_id,
                                          const SubAllocator::Visitor& visitor,
-                                         int32 stream_id) {
+                                         int stream_id) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
@@ -480,7 +479,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
   while (bus_id >= static_cast<int64_t>(gpu_visitors_.size())) {
     gpu_visitors_.push_back(std::vector<std::vector<SubAllocator::Visitor>>());
   }
-  while (stream_id >= static_cast<int32>(gpu_visitors_[bus_id].size())) {
+  while (stream_id >= static_cast<int>(gpu_visitors_[bus_id].size())) {
     gpu_visitors_[bus_id].push_back(std::vector<SubAllocator::Visitor>());
   }
   gpu_visitors_[bus_id][stream_id].push_back(visitor);
@@ -488,7 +487,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
 }
 
 void GPUProcessState::AddGpuHostAllocVisitor(
-    int numa_node, const SubAllocator::Visitor& visitor, int32 stream_id) {
+    int numa_node, const SubAllocator::Visitor& visitor, int stream_id) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
@@ -500,7 +499,7 @@ void GPUProcessState::AddGpuHostAllocVisitor(
         std::vector<std::vector<SubAllocator::Visitor>>());
   }
   while (stream_id >=
-         static_cast<int64_t>(gpu_host_alloc_visitors_[numa_node].size())) {
+         static_cast<int>(gpu_host_alloc_visitors_[numa_node].size())) {
     gpu_host_alloc_visitors_[numa_node].push_back(
         std::vector<SubAllocator::Visitor>());
   }
@@ -509,7 +508,7 @@ void GPUProcessState::AddGpuHostAllocVisitor(
 }
 
 void GPUProcessState::AddGpuHostFreeVisitor(
-    int numa_node, const SubAllocator::Visitor& visitor, int32 stream_id) {
+    int numa_node, const SubAllocator::Visitor& visitor, int stream_id) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   mutex_lock lock(mu_);
@@ -521,7 +520,7 @@ void GPUProcessState::AddGpuHostFreeVisitor(
         std::vector<std::vector<SubAllocator::Visitor>>());
   }
   while (stream_id >=
-         static_cast<int64_t>(gpu_host_free_visitors_[numa_node].size())) {
+         static_cast<int>(gpu_host_free_visitors_[numa_node].size())) {
     gpu_host_free_visitors_[numa_node].push_back(
         std::vector<SubAllocator::Visitor>());
   }

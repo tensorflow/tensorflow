@@ -111,7 +111,7 @@ std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     tsl::PlatformDeviceId platform_device_id, size_t pool_size,
-    bool reserve_memory, bool compute_stats, int32 stream_id)
+    bool reserve_memory, bool compute_stats, int stream_id)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
       reserve_memory_(reserve_memory) {
   ++number_instantiated_;

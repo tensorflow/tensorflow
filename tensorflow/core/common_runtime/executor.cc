@@ -591,7 +591,7 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
   Device* device = immutable_state_.params().device;
   const bool is_expensive = kernel_stats_->IsExpensive(item);
 
-  static const auto gpu_stream_merge = [] {
+  static const bool gpu_stream_merge = [] {
     bool gpu_stream_merge;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
                                    /*default_val=*/false, &gpu_stream_merge));
@@ -602,7 +602,7 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
        (op_kernel->type_string() == "_Send" &&
         device->parsed_name().type.find("CPU") != string::npos)) &&
       params->inputs[0].tensor->NumElements() > 0) {
-    CHECK(item.num_inputs == 1);  // only one tensor to send
+    CHECK(item.num_inputs == 1);
     params->tensor_holder->AddTensor(*(params->inputs[0].tensor));
   }
 

@@ -76,7 +76,7 @@ class ProcessFunctionLibraryRuntime {
       const SessionMetadata* session_metadata = nullptr,
       Rendezvous::Factory rendezvous_factory = Rendezvous::Factory(),
       StatsPublisherFactory stats_publisher_factory = CreateNoOpStatsPublisher,
-      int32 stream_id = -1);
+      int stream_id = -1);
 
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -215,7 +215,7 @@ class ProcessFunctionLibraryRuntime {
 
   // Initialize the set of local and remote devices and corresponding flr for op
   // device selection.
-  void InitializeDeviceAndFlr(int32 stream_id);
+  void InitializeDeviceAndFlr(int stream_id);
 
   const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 

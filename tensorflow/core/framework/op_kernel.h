@@ -561,13 +561,13 @@ struct GraphCollector {
   }
 };
 
+// Hold some tensors temporarily until the object is destructured.
 class TensorHolder {
  public:
   ~TensorHolder();
   void AddTensor(const Tensor& tensor);
 
  private:
-  // The tensors that will be released at cancellation.
   mutex lock_;
   std::vector<std::unique_ptr<TensorReference>> tensors_ GUARDED_BY(lock_);
 };
@@ -706,7 +706,7 @@ class OpKernelContext {
     // For access to distributed coordination service.
     tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
 
-    // To hold some CPU tensors until session run finish
+    // To hold some CPU tensors until the session run finish.
     TensorHolder* tensor_holder = nullptr;
   };
 
@@ -731,8 +731,6 @@ class OpKernelContext {
   const absl::optional<ManagedStackTrace>& stack_trace() const {
     return params_->stack_trace;
   }
-
-  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
 
   // Input/output signature.
 
@@ -1257,6 +1255,8 @@ class OpKernelContext {
   }
 
   Allocator* get_allocator(AllocatorAttributes attr);
+
+  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
 
  private:
   bool record_memory_consumption_ = false;

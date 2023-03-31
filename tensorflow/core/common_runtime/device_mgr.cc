@@ -32,7 +32,7 @@ mutex StaticDeviceMgr::mgrs_mu_;
 std::unordered_map<const Device*,
                    std::unique_ptr<StaticDeviceMgr::StreamGroupMgr>>
     StaticDeviceMgr::stream_group_mgrs_;
-int32 StaticDeviceMgr::max_stream_num_;
+size_t StaticDeviceMgr::max_stream_num_;
 
 StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
     : devices_(std::move(devices)),
@@ -164,19 +164,19 @@ int StaticDeviceMgr::NumDevices() const { return devices_.size(); }
 Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
 
 void StaticDeviceMgr::InitStreamDevice() {
-  // get how many stream device for a gpu and cpu
-  std::unordered_map<int, int32> gpu_id2num;
-  std::unordered_map<int, int32> cpu_id2num;
+  // Counts how many StreamDevices there are within a GPU/CPU.
+  std::unordered_map<int, size_t> gpu_id2num;
+  std::unordered_map<int, size_t> cpu_id2num;
   for (auto& d : devices_) {
     if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
-      int idx = std::stoi(d->parsed_name().type.substr(11));
+      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
       if (gpu_id2num.find(idx) == gpu_id2num.end()) {
         gpu_id2num[idx] = 1;
       } else {
         ++gpu_id2num[idx];
       }
     } else if (d->parsed_name().type.find("STREAM_CPU") != string::npos) {
-      int idx = std::stoi(d->parsed_name().type.substr(11));
+      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
       if (cpu_id2num.find(idx) == cpu_id2num.end()) {
         cpu_id2num[idx] = 1;
       } else {
@@ -186,9 +186,8 @@ void StaticDeviceMgr::InitStreamDevice() {
   }
 
   mutex_lock l(mgrs_mu_);
-  // Deal with GPU
+  // Create Stream Group Managers and Map for GPUs.
   Device* gpu;
-  // create stream group mgrs
   for (auto& item : gpu_id2num) {
     TF_CHECK_OK(
         LookupDevice(strings::StrCat("/device:GPU:", item.first), &gpu));
@@ -199,28 +198,25 @@ void StaticDeviceMgr::InitStreamDevice() {
       stream_group_mgrs_[gpu] = absl::make_unique<StreamGroupMgr>(item.second);
     }
   }
-  // create stream_device_map_
   for (auto& d : devices_) {
     if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
-      int idx = std::stoi(d->parsed_name().type.substr(11));
+      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
       TF_CHECK_OK(LookupDevice(strings::StrCat("/device:GPU:", idx), &gpu));
       stream_device_map_[gpu][d->parsed_name().id] = d.get();
       d->SetRealDevice(gpu);
     }
   }
 
-  // Deal with CPU
+  // Create Stream Group Map for CPUs.
   Device* cpu;
-  // don't create stream group mgrs for CPU
   for (auto& item : cpu_id2num) {
     TF_CHECK_OK(
         LookupDevice(strings::StrCat("/device:CPU:", item.first), &cpu));
     stream_device_map_[cpu] = std::vector<Device*>(item.second);
   }
-  // create stream_device_map_
   for (auto& d : devices_) {
     if (d->parsed_name().type.find("STREAM_CPU") != string::npos) {
-      int idx = std::stoi(d->parsed_name().type.substr(11));
+      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
       TF_CHECK_OK(LookupDevice(strings::StrCat("/device:CPU:", idx), &cpu));
       stream_device_map_[cpu][d->parsed_name().id] = d.get();
       d->SetRealDevice(cpu);
@@ -228,12 +224,12 @@ void StaticDeviceMgr::InitStreamDevice() {
   }
 }
 
-int32 StaticDeviceMgr::GetMaxStreamNum() const {
+size_t StaticDeviceMgr::GetMaxStreamNum() const {
   tf_shared_lock l(mgrs_mu_);
   return max_stream_num_;
 }
 
-int32 StaticDeviceMgr::GetStreamNum(const Device* device) const {
+size_t StaticDeviceMgr::GetStreamNum(const Device* device) const {
   tf_shared_lock l(mgrs_mu_);
   if (stream_device_map_.find(device) == stream_device_map_.end()) {
     return 0;
@@ -242,7 +238,7 @@ int32 StaticDeviceMgr::GetStreamNum(const Device* device) const {
 }
 
 Device* StaticDeviceMgr::LookupStream(const Device* device,
-                                      const int32 stream_id) const {
+                                      const int stream_id) const {
   tf_shared_lock l(mgrs_mu_);
   if (stream_id < 0 ||
       stream_device_map_.find(device) == stream_device_map_.end() ||
@@ -252,7 +248,7 @@ Device* StaticDeviceMgr::LookupStream(const Device* device,
   return stream_device_map_.at(device).at(stream_id);
 }
 
-int32 StaticDeviceMgr::RequireStreamGroup(const Device* device) const {
+int StaticDeviceMgr::RequireStreamGroup(const Device* device) const {
   if (device->parsed_name().type != "GPU" &&
       device->parsed_name().type != "gpu") {
     return -1;
@@ -264,7 +260,7 @@ int32 StaticDeviceMgr::RequireStreamGroup(const Device* device) const {
 }
 
 void StaticDeviceMgr::ReleaseStreamGroup(const Device* device,
-                                         const int32 stream_id) const {
+                                         const int stream_id) const {
   if (device->parsed_name().type == "GPU" ||
       device->parsed_name().type == "gpu") {
     tf_shared_lock l(mgrs_mu_);
@@ -275,16 +271,17 @@ void StaticDeviceMgr::ReleaseStreamGroup(const Device* device,
   }
 }
 
-StaticDeviceMgr::StreamGroupMgr::StreamGroupMgr(const int32 total_num)
+StaticDeviceMgr::StreamGroupMgr::StreamGroupMgr(const size_t total_num)
     : total_num_(total_num) {
   stream_group_heap_.resize(total_num);
-  for (int32 i = 0; i < total_num; ++i) {
+  for (int i = 0; i < total_num; ++i) {
     stream_group_heap_[i] = absl::make_unique<StreamGroupNode>(i);
     id2heap_map_.insert(std::make_pair(i, i));
   }
 }
 
-void StaticDeviceMgr::StreamGroupMgr::swap(const int32 idx1, const int32 idx2) {
+void StaticDeviceMgr::StreamGroupMgr::swap(const size_t idx1,
+                                           const size_t idx2) {
   id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
   id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
   std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);
@@ -298,14 +295,14 @@ void StaticDeviceMgr::StreamGroupMgr::reset_accumulators() {
   }
 }
 
-int32 StaticDeviceMgr::StreamGroupMgr::RequireStreamGroup() {
+int StaticDeviceMgr::StreamGroupMgr::RequireStreamGroup() {
   mutex_lock l(mu_);
-  int32 ret(stream_group_heap_[0]->id_);
+  int ret(stream_group_heap_[0]->id_);
   ++stream_group_heap_[0]->workload_;
-  if (++stream_group_heap_[0]->accumulator_ == 0xffffffffffffffff) {
+  if (++stream_group_heap_[0]->accumulator_ == 0xFFFFFFFFFFFFFFFFull) {
     reset_accumulators();
   }
-  int32 ptr(0);
+  size_t ptr(0);
   while (true) {
     if (2 * ptr + 2 >= total_num_) {
       if (2 * ptr + 2 == total_num_ &&
@@ -321,16 +318,18 @@ int32 StaticDeviceMgr::StreamGroupMgr::RequireStreamGroup() {
           stream_group_heap_[2 * ptr + 1]->workload_) {
         swap(ptr, 2 * ptr + 1);
         ptr = 2 * ptr + 1;
-      } else
+      } else {
         break;
+      }
     } else if (stream_group_heap_[2 * ptr + 1]->workload_ >
                stream_group_heap_[2 * ptr + 2]->workload_) {
       if (stream_group_heap_[ptr]->workload_ >
           stream_group_heap_[2 * ptr + 2]->workload_) {
         swap(ptr, 2 * ptr + 2);
         ptr = 2 * ptr + 2;
-      } else
+      } else {
         break;
+      }
     } else {
       if (stream_group_heap_[ptr]->workload_ >
           stream_group_heap_[2 * ptr + 1]->workload_) {
@@ -342,26 +341,27 @@ int32 StaticDeviceMgr::StreamGroupMgr::RequireStreamGroup() {
           swap(ptr, 2 * ptr + 2);
           ptr = 2 * ptr + 2;
         }
-      } else
+      } else {
         break;
+      }
     }
   }
   return ret;
 }
 
-void StaticDeviceMgr::StreamGroupMgr::ReleaseStreamGroup(
-    const int32 stream_id) {
+void StaticDeviceMgr::StreamGroupMgr::ReleaseStreamGroup(const int stream_id) {
   mutex_lock l(mu_);
-  int32 ptr(id2heap_map_[stream_id]);
+  size_t ptr = id2heap_map_[stream_id];
   --stream_group_heap_[ptr]->workload_;
   while (ptr != 0) {
-    int32 parent = (ptr + 1) / 2 - 1;
+    size_t parent = (ptr + 1) / 2 - 1;
     if (stream_group_heap_[ptr]->workload_ <
         stream_group_heap_[parent]->workload_) {
       swap(ptr, parent);
       ptr = parent;
-    } else
+    } else {
       break;
+    }
   }
 }
 

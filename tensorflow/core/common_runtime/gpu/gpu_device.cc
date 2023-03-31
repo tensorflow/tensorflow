@@ -1090,15 +1090,15 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
   return min_system_memory;
 }
 
-int64 ContextMinSystemMemory(int64 available_memory, int cc_major,
-                             tsl::PlatformDeviceId platform_device_id) {
-  std::vector<int64> gpu_context_count;
+int64_t ContextMinSystemMemory(int64_t available_memory, int cc_major,
+                               tsl::PlatformDeviceId platform_device_id) {
+  std::vector<int64_t> gpu_context_count;
   TF_CHECK_OK(tensorflow::ReadInt64sFromEnvVar("TF_GPU_CONTEXT_COUNT",
                                                /*default_val=*/1,
                                                &gpu_context_count));
-  int64 context_count = gpu_context_count.size() > 1
-                            ? gpu_context_count[platform_device_id.value()]
-                            : gpu_context_count[0];
+  int64_t context_count = gpu_context_count.size() > 1
+                              ? gpu_context_count[platform_device_id.value()]
+                              : gpu_context_count[0];
   return context_count * MinSystemMemory(available_memory, cc_major);
 }
 
@@ -1622,7 +1622,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   GPUProcessState* process_state = GPUProcessState::singleton();
   std::vector<Allocator*> gpu_allocators;
   if (is_multi_stream_) {
-    std::vector<int64> gpu_stream_group_count;
+    std::vector<int64_t> gpu_stream_group_count;
     TF_CHECK_OK(tensorflow::ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
                                                  /*default_val=*/1,
                                                  &gpu_stream_group_count));
@@ -1631,7 +1631,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
             ? gpu_stream_group_count[platform_device_id.value()]
             : gpu_stream_group_count[0]);
     if (stream_group_count == 1) {
-      // don't create STREAM Device
+      // Don't create the StreamDevice if multi-stream is not enabled.
       return OkStatus();
     }
 
@@ -1692,7 +1692,7 @@ GetPeerAccessMap(se::Platform* platform,
       std::map<std::pair<tsl::PlatformDeviceId, tsl::PlatformDeviceId>, bool>>
       map(new std::map<std::pair<tsl::PlatformDeviceId, tsl::PlatformDeviceId>,
                        bool>);
-  std::vector<int64> gpu_stream_group_count;
+  std::vector<int64_t> gpu_stream_group_count;
   TF_CHECK_OK(tensorflow::ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
                                                /*default_val=*/1,
                                                &gpu_stream_group_count));
@@ -1702,11 +1702,11 @@ GetPeerAccessMap(se::Platform* platform,
                                      platform, platform_gpu_i)
                                      .value();
       if (platform_gpu_j == visible_gpu_order[0]) {
-        int64 stream_group_count =
+        int64_t stream_group_count =
             gpu_stream_group_count.size() > 1
                 ? gpu_stream_group_count[platform_gpu_i.value()]
                 : gpu_stream_group_count[0];
-        for (int i(1); i < stream_group_count; ++i) {
+        for (int i = 1; i < stream_group_count; ++i) {
           from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
                      platform, platform_gpu_i, i)
                      .value();

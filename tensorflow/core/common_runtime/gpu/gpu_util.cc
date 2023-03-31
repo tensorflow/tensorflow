@@ -283,7 +283,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     return;
   }
 
-  static const auto gpu_stream_merge = [] {
+  static const bool gpu_stream_merge = [] {
     bool gpu_stream_merge;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
                                    /*default_val=*/false, &gpu_stream_merge));
@@ -340,7 +340,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     return;
   }
 
-  static const auto gpu_stream_merge = [] {
+  static const bool gpu_stream_merge = [] {
     bool gpu_stream_merge;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_GPU_STREAM_MERGE",
                                    /*default_val=*/false, &gpu_stream_merge));

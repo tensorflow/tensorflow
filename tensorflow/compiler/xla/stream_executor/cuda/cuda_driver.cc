@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -286,8 +287,10 @@ static tsl::Status InternalInit() {
 
 /* static */ tsl::Status GpuDriver::GetDevice(int device_ordinal,
                                               CUdevice* device) {
-  RETURN_IF_CUDA_RES_ERROR(cuDeviceGet(device, device_ordinal & (0xffff)),
-                           "Failed call to cuDeviceGet");
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGet(device,
+                  DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal)),
+      "Failed call to cuDeviceGet");
   return ::tsl::OkStatus();
 }
 
@@ -362,8 +365,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   std::vector<int64_t> gpu_context_count;
   TF_CHECK_OK(tsl::ReadInt64sFromEnvVar("TF_GPU_CONTEXT_COUNT",
                                         /*default_val=*/1, &gpu_context_count));
-  int stream_idx = device_ordinal >> 16;
-  int device_idx = device_ordinal & (0xffff);
+  int stream_idx = DeviceOrdinalHelper::DecodeStreamFromOrdinal(device_ordinal);
+  int device_idx = DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal);
   int64_t context_count = gpu_context_count.size() > 1
                               ? gpu_context_count[device_idx]
                               : gpu_context_count[0];
@@ -1523,8 +1526,9 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
 
 /* static */ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
                                                  int device_ordinal) {
-  CUresult res =
-      cuDeviceGetProperties(device_properties, device_ordinal & (0xffff));
+  CUresult res = cuDeviceGetProperties(
+      device_properties,
+      DeviceOrdinalHelper::DecodeDeviceFromOrdinal(device_ordinal));
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;

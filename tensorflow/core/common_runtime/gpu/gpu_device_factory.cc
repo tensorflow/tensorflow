@@ -51,11 +51,8 @@ class GPUDevice : public BaseGPUDevice {
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
         GPUProcessState* ps = GPUProcessState::singleton();
-        if (use_per_stream_host_allocator_) {
-          return ps->GetGpuHostAllocator(gpu_options_, 0, stream_id_);
-        } else {
-          return ps->GetGpuHostAllocator(gpu_options_, 0);
-        }
+        return ps->GetGpuHostAllocator(
+            gpu_options_, 0, use_per_stream_host_allocator_ ? stream_id_ : 0);
       } else {
         return cpu_allocator_;
       }
@@ -206,16 +203,16 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
     int num_numa_nodes = options.config.experimental().use_numa_affinity()
                              ? port::NUMANumNodes()
                              : 1;
-    bool use_per_stream_host_allocator;
-    int64 max_stream_group_count(1);
+    int max_stream_group_count(1);
     if (is_multi_stream_) {
+      bool use_per_stream_host_allocator;
       TF_CHECK_OK(ReadBoolFromEnvVar("TF_PER_STREAM_HOST_ALLOCATOR",
                                      /*default_val=*/false,
                                      &use_per_stream_host_allocator));
       if (!use_per_stream_host_allocator) {
         return OkStatus();
       }
-      std::vector<int64> gpu_stream_group_count;
+      std::vector<int64_t> gpu_stream_group_count;
       TF_CHECK_OK(ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
                                        /*default_val=*/1,
                                        &gpu_stream_group_count));

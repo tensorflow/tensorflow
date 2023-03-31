@@ -10,6 +10,8 @@
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/default_device.h"
@@ -26,20 +28,23 @@ using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 using std::chrono::system_clock;
 
-// Default batch size
+// The default batch size.
 #define BATCH_SIZE 16
-// Default infer iterations for each thread
+// The default infer iterations for each thread.
 #define INFER_NUM 1000
-// Default num of threads
+// The default number of threads in parallel.
 #define NUM_THREADS 3
 
 namespace tensorflow {
+
+// The GPU host allocator.
+static Allocator *host_allocator = nullptr;
 
 namespace example {
 
 typedef std::vector<std::pair<std::string, Tensor>> InputsMap;
 
-// thread function for multiple thread TF session run
+// The thread function for multiple-thread TF session run.
 void TFRun(Session *sess, int infer_num,
            std::vector<std::pair<std::string, Tensor>> *inputs,
            std::vector<std::string> *output_names,
@@ -49,7 +54,7 @@ void TFRun(Session *sess, int infer_num,
   }
 }
 
-// assume that the first unkonwn dim is batch size
+// We assume that the first unkonwn dim is batch size.
 TensorShape getNodeShape(const GraphDef &graph_def, const std::string name,
                          int batch_size) {
   for (int i = 0; i < graph_def.node_size(); i++) {
@@ -62,10 +67,6 @@ TensorShape getNodeShape(const GraphDef &graph_def, const std::string name,
         int dim_size = shape.dim(d).size();
         if (d == 0 && dim_size == -1) {
           int new_size = batch_size;
-          // assume the first dimension is batch size,
-          // note that it may not be true for some models.
-          // LOG(INFO) << "change batch size from: " << dim_size <<
-          //    " to " << new_size << std::endl;
           dim_size = new_size;
         }
         tensorShape.AddDim(dim_size);
@@ -149,7 +150,7 @@ void PrintTensorData(Tensor &t) {
   }
   std::cout << std::endl;
 
-  // print the first 32 elements
+  // Print the first 32 elements.
   int size = t.NumElements();
   size = size > 32 ? 32 : size;
 
@@ -175,7 +176,8 @@ void GenerateInputs(GraphDef &graph_def, const std::vector<string> &input_names,
   for (int i = 0; i < input_names.size(); i++) {
     auto tensorshape = getNodeShape(graph_def, input_names[i], batch_size);
     auto tensortype = getNodeType(graph_def, input_names[i]);
-    Tensor t = Tensor(tensortype, tensorshape);
+    Tensor t = host_allocator ? Tensor(host_allocator, tensortype, tensorshape)
+                              : Tensor(tensortype, tensorshape);
     RandomInitialize(t);
     input_tensors.push_back(t);
   }
@@ -243,16 +245,10 @@ Status Test(GraphDef &graph_def, std::vector<std::string> &input_names,
             int num_infers_per_thread, int num_threads, bool use_xla,
             int threadpool_num, int threadpool_size) {
   SessionOptions options;
-  // options.config.mutable_gpu_options()->set_force_gpu_compatible(true);
-  // options.config.mutable_gpu_options()->set_allow_growth(false);
   if (use_xla) {
-    // enable XLA
     options.config.mutable_graph_options()
         ->mutable_optimizer_options()
         ->set_global_jit_level(tensorflow::OptimizerOptions::ON_1);
-    // These XLA flags are needed to trigger XLA properly from C (more
-    // generally non-Python) clients. If this API is called again with
-    // `enable` set to false, it is safe to keep these flag values as is.
     auto *flags = tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
@@ -264,28 +260,38 @@ Status Test(GraphDef &graph_def, std::vector<std::string> &input_names,
   if (threadpool_size > 0) {
     options.config.set_inter_op_parallelism_threads(threadpool_size);
   }
-  std::unique_ptr<Session> session(NewSession(options));
 
-  // SetDevice("/device:GPU:0", &graph_def);
+  std::unique_ptr<Session> session(NewSession(options));
   TF_CHECK_OK(session->Create(graph_def));
+
+  const DeviceMgr *device_manager;
+  TF_CHECK_OK(session->LocalDeviceManager(&device_manager));
+  std::vector<Device *> devices = device_manager->ListDevices();
+  for (auto *d : devices) {
+    if (d->parsed_name().type == "CPU") {
+      LOG(INFO) << "CPU device: " << d->name();
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      host_allocator = d->GetAllocator(attr);
+      break;
+    }
+  }
 
   std::vector<Tensor> input_tensors_tf;
   GenerateInputs(graph_def, input_names, input_tensors_tf, batch_size);
 
-  // first normal TF session run
-  InputsMap inputs_tf;  // input map for Normal TF run
+  InputsMap inputs_tf;
   FillInputsMap(inputs_tf, input_names, input_tensors_tf);
 
   std::vector<std::vector<Tensor>> output_tensors_tf(num_threads);
   std::vector<std::thread> threads;
 
-  // init run
-  // the first session run is slow due to resource initialization
+  // The first session run is slow due to resource initialization.
   TFRun(session.get(), num_infers_per_thread, &inputs_tf, &output_names,
         &output_tensors_tf[0]);
   sleep(1);
 
-  // the seconed session run can be used to compare single thread runing
+  // The seconed session run can be used to compare single thread performance.
   auto start = system_clock::now();
   TFRun(session.get(), num_infers_per_thread, &inputs_tf, &output_names,
         &output_tensors_tf[0]);
@@ -298,13 +304,13 @@ Status Test(GraphDef &graph_def, std::vector<std::string> &input_names,
   LOG(INFO) << "[TF] Single Thread QPS = " << qps;
   sleep(1);
 
+  // The third session run can be used to compare multiple threads performance.
   start = system_clock::now();
   for (int i = 0; i < num_threads; i++) {
     threads.push_back(std::thread(TFRun, session.get(), num_infers_per_thread,
                                   &inputs_tf, &output_names,
                                   &output_tensors_tf[i]));
   }
-
   for (auto &thread : threads) {
     thread.join();
   }
@@ -312,7 +318,7 @@ Status Test(GraphDef &graph_def, std::vector<std::string> &input_names,
 
   for (int i = 0; i < num_threads; i++) {
     LOG(INFO) << "TF results: ";
-    // print first output tensor
+    // Print the first output tensor.
     PrintTensorData(output_tensors_tf[i][0]);
     output_tensors_tf[i].clear();
   }
@@ -399,7 +405,7 @@ int main(int argc, char *argv[]) {
   GraphDef graph_def;
   Status status;
 
-  // accept pb or pbtxt files
+  // Accept pb or pbtxt files here.
   if (model_path.find(".pbtxt") == std::string::npos) {
     status = ReadBinaryProto(Env::Default(), model_path, &graph_def);
   } else {

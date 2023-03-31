@@ -96,7 +96,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     DistributedFunctionLibraryRuntime* parent,
     const SessionMetadata* session_metadata,
     Rendezvous::Factory rendezvous_factory,
-    StatsPublisherFactory stats_publisher_factory, int32 stream_id)
+    StatsPublisherFactory stats_publisher_factory, int stream_id)
     : parent_(parent),
       env_(env),
       config_(config ? std::make_optional(*config) : std::nullopt),
@@ -218,7 +218,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
                           "function executions");
 }
 
-void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr(int32 stream_id) {
+void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr(int stream_id) {
   // Reset device_set_ by one of the two following scenarios:
   // 1) Both cluster-FLR and its remote_device_mgr is available: include local
   //    devices (if any) from the local device_mgr_ as Device type, and include
