@@ -2031,14 +2031,16 @@ Status EagerKernelExecute(
 Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
                     int* num_retvals) {
   if (VLOG_IS_ON(1) && op->is_function()) {
-    std::string op_name = op->Name();
-    std::string exec_mode = op->IsLocal() ? "local" : "remote";
-    std::string device_name = op->DeviceName();
+    const std::string& op_name = op->Name();
+    const std::string& exec_mode = op->IsLocal() ? "local" : "remote";
+    const std::string& device_name = op->DeviceName();
 
-    std::string msg =
-        "eager executing " + exec_mode + " operation '" + op_name + "'";
+    auto msg = absl::StrCat("eager executing ", exec_mode, " operation '",
+                            op_name, "'");
 
-    if (!device_name.empty()) msg += " on device '" + device_name + "'";
+    if (!device_name.empty()) {
+      absl::StrAppend(&msg, " on device '", device_name, "'");
+    }
 
     VLOG(1) << "Entering " << msg;
 
@@ -2047,9 +2049,8 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
     VLOG(1) << "Exiting " << msg << ", status code is " << status;
 
     return status;
-  } else {
-    return DoEagerExecute(op, retvals, num_retvals);
   }
+  return DoEagerExecute(op, retvals, num_retvals);
 }
 
 namespace {
