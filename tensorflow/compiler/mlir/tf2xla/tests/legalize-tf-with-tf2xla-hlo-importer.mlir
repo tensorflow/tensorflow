@@ -37,4 +37,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<2xf32>
   }
 
+  // CHECK-LABEL: uses_translated_return_type
+  func.func @uses_translated_return_type(%arg0: tensor<3xf32>) -> tensor<?xf32> {
+    // CHECK: call @translated_tf2xla_kernel_tf.Unique_0(%arg0) : (tensor<3xf32>) -> (tensor<?xf32, #mhlo.type_extensions<bounds = [3]>>, tensor<3xi32>)
+    %y, %idx = "tf.Unique"(%arg0) {device = ""} : (tensor<3xf32>) -> (tensor<?xf32>, tensor<3xi32>)
+    return %y : tensor<?xf32>
+  }
+
 }

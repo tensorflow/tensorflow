@@ -501,14 +501,21 @@ mlir::LogicalResult Tf2XlaRewriter::UnpackTupleResults(
            << "Translated Function didn't return a tuple type";
   }
 
+  if (tuple_result->getNumOperands() != op_->getNumResults()) {
+    return op_->emitRemark() << "Translated function tuple has different "
+                                "number of results than original op";
+  }
+
+  FunctionType new_type =
+      FunctionType::get(op_->getContext(), op_->getOperandTypes(),
+                        // Note: Tuple results might have been type specialized
+                        // so we overwrite the return type with the tuple result
+                        // types instead of the original op_ return type.
+                        tuple_result->getOperandTypes());
+  translated_function.setType(new_type);
+
   xla_return_op->setOperands(tuple_result->getOperands());
   tuple_result.getOperation()->erase();
-
-  // Update the function signature to return the underlying values instead of
-  // a tuple type.
-  FunctionType new_type = FunctionType::get(
-      op_->getContext(), op_->getOperandTypes(), op_->getResultTypes());
-  translated_function.setType(new_type);
 
   return success();
 }
