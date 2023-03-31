@@ -114,7 +114,7 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
