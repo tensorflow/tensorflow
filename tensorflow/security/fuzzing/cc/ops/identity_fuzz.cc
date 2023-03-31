@@ -19,6 +19,8 @@
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
 namespace tensorflow {
@@ -28,7 +30,7 @@ namespace fuzzing {
 class FuzzIdentity : public FuzzSession<Tensor> {
   void BuildGraph(const Scope& scope) override {
     auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_UINT8);
+        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_INT32);
     tensorflow::ops::Identity(scope.WithOpName("output"), op_node);
   }
   void FuzzImpl(const Tensor& input_tensor) final {
@@ -40,7 +42,12 @@ class FuzzIdentity : public FuzzSession<Tensor> {
 };
 
 // Setup up fuzzing test.
-FUZZ_TEST_F(FuzzIdentity, Fuzz).WithDomains(AnyTensor());
+FUZZ_TEST_F(FuzzIdentity, Fuzz)
+    .WithDomains(fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
+                                             /*max_rank=*/5,
+                                             /*dim_lower_bound=*/0,
+                                             /*dim_upper_bound=*/10),
+                                         fuzztest::Just(DT_INT32)));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow
