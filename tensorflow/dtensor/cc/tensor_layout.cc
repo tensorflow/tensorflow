@@ -406,7 +406,9 @@ std::vector<std::string> Mesh::hosts() const {
 std::string Mesh::device_type() const {
   if (IsEmpty()) return std::string();
   std::string device;
-  if (!global_devices_.empty()) {
+  if (IsSingleDevice()) {
+    device = single_device_;
+  } else if (!global_devices_.empty()) {
     device = global_devices_[0];
   } else {
     device = local_devices_[0];

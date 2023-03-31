@@ -342,6 +342,16 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
           )
       )
 
+  def testSingleDeviceMesh(self):
+    # FIXME(b/274647196): Add a mesh_util API that takes CPU:0.
+    cpu0_mesh = Mesh.from_device("/job:localhost/replica:0/task:0/device:CPU:0")
+    with api.default_mesh(cpu0_mesh):
+      a = constant_op.constant(1.0)
+      b = array_ops.ones(shape=(3, 3))
+    # FIXME(b/274647196): This shall eventually become a DTensor on cpu0_mesh.
+    self.assertIn("CPU:0", b.device)
+    self.assertIn("CPU:0", a.device)
+
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
 

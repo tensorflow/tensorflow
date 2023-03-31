@@ -541,7 +541,9 @@ cc_library(
 cc_library(
     name = "tfe_op_attrs_internal",
     hdrs = ["tfe_op_attrs_internal.h"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":abstract_op_attrs",
         "//tensorflow/c:conversion_macros",
