@@ -667,6 +667,22 @@ class PjRtClient {
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
+  // Variant of BufferFromHostBuffer that takes an optional device layout. It is
+  // used when non-compact layout is preferred.
+  // TODO(b/275645543): remove BufferFromHostBuffer without optional device
+  // layout after all the inherited classes and call sites are updated.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostBuffer with an optional device layout is not "
+        "implemented on platform: ",
+        platform_name());
+  }
+
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
