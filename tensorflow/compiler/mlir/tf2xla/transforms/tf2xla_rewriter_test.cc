@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -54,6 +56,8 @@ using ::mlir::Operation;
 using ::mlir::func::FuncOp;
 using ::tsl::Status;
 using ::tsl::StatusOr;
+using xla::ReplicaGroup;
+using ::xla::ShapeUtil;
 using ::xla::XlaBuilder;
 using ::xla::XlaComputation;
 
@@ -241,6 +245,39 @@ TEST_F(Tf2XlaRewriterTest, ReturnsMultipleValues) {
   EXPECT_TRUE(expected_generated_function);
   EXPECT_EQ(expected_generated_function.getNumResults(),
             GetFirstOpFromMain().getNumResults());
+}
+
+TEST_F(Tf2XlaRewriterTest, ImportsSingleComputation) {
+  XlaBuilder builder("test_builder");
+  XlaComputation to_apply;
+  {
+    auto sub_builder = builder.CreateSubBuilder("add");
+    auto arg0 = Parameter(sub_builder.get(), 0,
+                          ShapeUtil::MakeScalarShape(xla::F32), "x");
+    auto arg1 = Parameter(sub_builder.get(), 1,
+                          ShapeUtil::MakeScalarShape(xla::F32), "y");
+    Add(arg0, arg1);
+    TF_ASSERT_OK_AND_ASSIGN(to_apply, sub_builder->Build());
+  }
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(xla::F32, {4, 16}), "x");
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+  ReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
+                /*replica_groups=*/{group});
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  EXPECT_EQ(computation.proto().computations_size(), 2);
+
+  TF_ASSERT_OK(CreateMlirModule());
+  TF_ASSERT_OK_AND_ASSIGN(OwningOpRef<ModuleOp> generated_module,
+                          GetModuleFromXlaComputation(computation));
+
+  int num_func_ops = 0;
+  generated_module->walk(
+      [&num_func_ops](func::FuncOp func_op) { num_func_ops++; });
+
+  EXPECT_EQ(num_func_ops, 1);
 }
 
 TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {

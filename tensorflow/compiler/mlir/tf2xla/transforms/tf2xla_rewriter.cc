@@ -183,7 +183,7 @@ Tf2XlaRewriter::CreateModuleFromXlaComputation(
 
   TF_RETURN_IF_ERROR(
       xla::ConvertHloToMlirHlo(temp_module.get(), &computation.proto(),
-                               /*import_all_computations=*/true));
+                               /*import_all_computations=*/false));
 
   return temp_module;
 }
