@@ -48,7 +48,8 @@ bool CanImplement(OpT op) {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type(), Thunk::kNcclAllGather) &&
-           LayoutUtil::MinorToMajor(shape).back() == op.getAllGatherDimension();
+           ShapeUtil::IsEffectivelyMostMajorDimension(
+               shape, op.getAllGatherDimension());
   });
 }
 }  // namespace impl
