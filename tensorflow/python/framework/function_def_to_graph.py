@@ -275,7 +275,7 @@ def function_def_to_graph_def(
         # it.
         graph_def.library.function.add().CopyFrom(fdef)
         copied_functions.add(node_def.op)
-        if f.grad_func_name:
+        if getattr(f, "grad_func_name", None):
           grad_def = function_pb2.GradientDef()
           grad_def.function_name = f.name
           grad_def.gradient_func = f.grad_func_name

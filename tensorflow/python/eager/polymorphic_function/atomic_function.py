@@ -86,21 +86,23 @@ class AtomicFunction:
 
   Lowest level abstraction in the Python tf.function implementation.
   """
+  __slots__ = [
+      "_name",
+      "_bound_context",
+      "_graph_artifacts",
+      "_cached_definition",
+  ]
 
   def __init__(self, name, bound_context, graph_artifacts):
     self._name = compat.as_bytes(name)
     self._bound_context = bound_context
     self._graph_artifacts = graph_artifacts
+    self._cached_definition = None
 
     if self.name not in RUNTIME_FUNCTION_REFS:
       RUNTIME_FUNCTION_REFS[self.name] = 1
     else:
       RUNTIME_FUNCTION_REFS[self.name] += 1
-
-    # TODO(fmuham): Lower to C++ or remove otherwise.
-    self.grad_func_name = None
-    self.python_grad_func = None
-    self._grad_func = None
 
   @property
   def _c_func(self):
@@ -125,10 +127,9 @@ class AtomicFunction:
   @property
   def cached_definition(self):
     """Cached FunctionDef (not guaranteed to be fresh)."""
-    try:
-      return self._cached_definition
-    except AttributeError:
+    if self._cached_definition is None:
       self._cached_definition = self.definition
+
     return self._cached_definition
 
   @property
