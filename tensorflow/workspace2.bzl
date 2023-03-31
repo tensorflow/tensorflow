@@ -196,9 +196,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "onednn_v3",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "f7aca425e9895b791a942ae755edc28f1b9f9fe9bf94291c59f33ebcf5859f2c",
-        strip_prefix = "oneDNN-3.0.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.0.1.tar.gz"),
+        sha256 = "28e31f2d576e1a7e3a796f5c33c1d733c256078cff1c48b9e2a692d5975e1401",
+        strip_prefix = "oneDNN-3.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.1.tar.gz"),
     )
 
     tf_http_archive(
