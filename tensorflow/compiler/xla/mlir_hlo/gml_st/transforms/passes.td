@@ -165,18 +165,22 @@ def TransformElementwiseForCpuPass :
 def TransformReduceForCpuPass :
     Pass<"xla-cpu-transform-reduce", "mlir::func::FuncOp"> {
   let summary = "Transform reduce ops for running on CPU";
-
-  let constructor = "createTransformReduceForCpuPass()";
-
   let options = [
-    Option<"vectorSize", "vector-size", "int64_t", "8",
-           "Vector size for a 1D `linalg.reduce`">,
-    Option<"tileSize1D", "tile-size-1d", "int64_t", "32",
-               "Tile size for a 1D `linalg.reduce`">,
-    ListOption<"tileSizes2D", "tile-sizes-2d", "int64_t",
-               "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
-               "dimension and tileSizes[1] is the reduction dimension.">,
+    Option<"tileSize1D", "reduction-1d-tile-size", "int64_t", "32",
+           "Tile size for a 1D reduction.">,
+    Option<"splitRatio1D", "reduction-1d-split-ratio", "int64_t", "8",
+           "Ratio used to split the reduction dimension, i.e. tiled reduce op "
+           "`reduce(tensor<N>)` will be split into a composition of a "
+           " column reduction `reduce(tensor<N/splitRatio1D x splitRatio1D>)` "
+           "and a row 1D reductionreduce(tensor<splitRatio1D>)`." >,
+    Option<"parallelDimTileSize2D",
+            "reduction-2d-parallel-dim-tile-size", "int64_t", "4",
+           "Tile size for the parallel dimension of a 2D reduction.">,
+    Option<"reductionDimTileSize2D",
+           "reduction-2d-reduction-dim-tile-size", "int64_t", "4",
+           "Tile size for the reduction dimension of a 2D reduction.">,
   ];
+  let constructor = "::mlir::gml_st::createTransformReduceForCpuPass()";
 }
 
 def AddDebugInfoPass :
