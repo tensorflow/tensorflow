@@ -187,7 +187,7 @@ _SMCLI_TARGET_TRIPLE = flags.DEFINE_string(
     name='target_triple', default='',
     help='Triple identifying a target variation, containing information such as'
     ' processor architecture, vendor, operating system, and environment. '
-    'Defaults to \'x86_64-pc-linux\'.')
+    'Defaults to \'\'.')
 
 _SMCLI_TARGET_CPU = flags.DEFINE_string(
     name='target_cpu', default='',
