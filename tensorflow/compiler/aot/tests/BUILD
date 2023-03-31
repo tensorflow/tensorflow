@@ -327,29 +327,10 @@ tfcompile_test_dep_configs = [
 ]
 
 tfcompile_bench_tfmatmul_mkn = [
-    (x, x, x)
-    for x in (16, 32, 64, 128, 256, 512, 1024)
-] + [
-    (1, 2, 256),
-    (1, 8, 256),
-    (1, 18, 300),
-    (1, 37, 256),
-    (1, 91, 256),
-    (1, 111, 256),
-    (1, 192, 192),
-    (1, 226, 256),
-    (1, 256, 192),
-    (1, 256, 256),
-    (1, 512, 512),
-    (1, 300, 18),
-    (21, 24, 1),
-    (21, 120, 1),
-    (10, 10, 10),
-    (100, 100, 100),
-    (18, 1, 300),
-    (18, 300, 1),
-    (300, 1, 18),
-    (300, 18, 1),
+    # Intentionally empty to avoid running unnecessary tests.
+    # Add here your desired (M, K, N) parameters, e.g.
+    #    (1, 1, 256),
+    #    (1, 2, 256),
 ]
 
 tfcompile_bench_tfmatmul = [
