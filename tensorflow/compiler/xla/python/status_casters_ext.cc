@@ -41,9 +41,8 @@ PYBIND11_MODULE(status_casters_ext, m) {
   m.def("my_lambda2", xla::ThrowIfErrorWrapper(MyFunc));
 
   py::class_<MyClass> my_class(m, "MyClass");
-  my_class.def("my_method", [](MyClass& self, int a, int b) {
-    xla::ThrowIfError(self.MyMethod(a, b));
-  });
+  my_class.def(py::init<>());
+  my_class.def("my_method", xla::ThrowIfErrorWrapper(&MyClass::MyMethod));
 }
 
 }  // namespace

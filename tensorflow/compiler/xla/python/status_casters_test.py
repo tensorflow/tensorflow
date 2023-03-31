@@ -25,6 +25,7 @@ class StatusCastersTest(absltest.TestCase):
     status_casters_ext.my_lambda()
     status_casters_ext.my_lambda2()
 
+    status_casters_ext.MyClass().my_method(1, 2)
 
 if __name__ == "__main__":
   absltest.main()
