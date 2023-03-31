@@ -50,6 +50,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -107,10 +108,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
