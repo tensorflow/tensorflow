@@ -414,3 +414,22 @@ func.func @copy_from_param_to_param(
 // CHECK-LABEL: @copy_from_param_to_param(
 // CHECK-NEXT: memref.copy
 // CHECK-NEXT: return
+
+// -----
+
+func.func @copy_to_alloc() {
+  %foo = memref.alloc() : memref<i32>
+  %bar = memref.alloc() : memref<i32>
+  "some.op"(%foo) : (memref<i32>) -> ()
+  memref.copy %foo, %bar : memref<i32> to memref<i32>
+  memref.dealloc %foo : memref<i32>
+  "some.op"(%bar) : (memref<i32>) -> ()
+  memref.dealloc %bar : memref<i32>
+  return
+}
+
+// CHECK-LABEL: @copy_to_alloc
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: some.op
+// CHECK-NEXT: some.op
+// CHECK-NEXT: return
