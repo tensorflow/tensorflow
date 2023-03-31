@@ -969,7 +969,8 @@ def run():
     AttributeError: An error when neither --inputs nor --input_exprs is passed
     to run command.
   """
-  if not _SMCLI_INPUTS.value and not _SMCLI_INPUT_EXPRS.value and not _SMCLI_INPUT_EXAMPLES.value:
+  if not _SMCLI_INPUTS.value and not _SMCLI_INPUT_EXPRS.value \
+          and not _SMCLI_INPUT_EXAMPLES.value:
     raise AttributeError(
         'At least one of --inputs, --input_exprs or --input_examples must be '
         'required')
