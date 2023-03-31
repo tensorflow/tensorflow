@@ -128,7 +128,7 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
     RunMklLayoutRewritePass(ug);
     // After we ran the pass conv2d node might be overwritten
     // so we need to make sure that it is pointing to the one
-    // that exists
+    // that exists.
     if (!graph->FindNodeId(conv2d_node_id)) {
       conv2d = graph->FindNodeId(conv2d_node_id + 1);
     }
