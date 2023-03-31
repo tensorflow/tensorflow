@@ -33,8 +33,12 @@ template <typename FP>
 XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const FP> coefficients) {
   static_assert(std::is_floating_point<FP>::value,
                 "Template-argument 'FP' must be a floating-point type");
-  XlaOp poly = ScalarLike(x, 0.0);
-  for (FP c : coefficients) {
+  if (coefficients.empty()) {
+    return ScalarLike(x, FP(0.0));
+  }
+  XlaOp poly = ScalarLike(x, coefficients[0]);
+  for (int i = 1; i < coefficients.size(); ++i) {
+    FP c = coefficients[i];
     poly = poly * x + ScalarLike(x, c);
   }
   return poly;
