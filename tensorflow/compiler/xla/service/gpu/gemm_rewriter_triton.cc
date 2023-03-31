@@ -213,82 +213,82 @@ DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
 Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   const Shape& operand_shape = hlo->operand(0)->shape();
   DimOrderVector operand_dim_order;
-  operand_dim_order.reserve(operand_shape.rank());
-  // Subdimension index tracking dimension splits.
-  int subdim_index = 0;
+  operand_dim_order.reserve(dim_order_.size());
+  // Size of not yet assigned part of current operand dimension.
+  int64_t operand_remaining_size = 1;
   // Iterate in parallel over output dimension order and operand dimensions
   // in minor_to_major order. Find groups of dimensions of equal size
   // and project the output dimension order onto the operand.
   auto operand_dim_iter = operand_shape.layout().minor_to_major().cbegin();
   for (auto out_dim = dim_order_.cbegin(); out_dim != dim_order_.cend();
        ++out_dim) {
-    int64_t out_dim_size = out_dim->size;
-    if (operand_dim_iter == operand_shape.layout().minor_to_major().cend()) {
-      // Out of dimensions of the operand -> output should only have
-      // degenerate dimensions from here.
-      if (out_dim_size == 1) {
-        continue;
+    if (operand_remaining_size >= out_dim->size) {
+      if (operand_remaining_size % out_dim->size) {
+        return Unimplemented("Unsupported bitcast.");
       }
-      // Otherwise this is an arbitrary transformation like
-      // [2, 3] -> [3, 2] which is not supported yet
-      return Unimplemented("general bitcast");
-    }
-    int64_t operand_dim_size = operand_shape.dimensions(*operand_dim_iter);
-    VLOG(9) << out_dim->target_dim_number << "\t" << *operand_dim_iter;
-    VLOG(9) << out_dim_size << "\t" << operand_dim_size;
-    subdim_index = 0;
-    if (out_dim_size == operand_dim_size) {
-      // 1:1 matching dimensions.
+      // Output dimension fragment completely fits into the operand one:
+      // just copy it as is.
       operand_dim_order.push_back(*out_dim);
-    } else if (out_dim_size < operand_dim_size) {
-      // Multiple output dimensions <- one operand dimension:
-      //  just keep their order.
-      do {
-        operand_dim_order.push_back(*out_dim);
-        ++out_dim;
-        if (out_dim == dim_order_.cend()) {
-          return Unimplemented("general bitcast");
-        }
-        out_dim_size *= out_dim->size;
-      } while (out_dim_size != operand_dim_size);
-      operand_dim_order.push_back(*out_dim);
+      // Update the size of the remaining part of the operand that is
+      // carried over to next output dimensions.
+      operand_remaining_size /= out_dim->size;
     } else {
-      // One output dimension <- multiple operand dimensions:
-      //  create new sub-dimensions.
-      do {
-        if (out_dim->subdim_number != 0) {
-          return Unimplemented("split of subdimension");
+      // Output is larger than input. Assign further operand dimensions.
+      // Size of the not yet assigned part of the output dimension.
+      int64_t out_remaining_size = out_dim->size;
+      // Subdimension index tracking dimension splits.
+      int subdim_index = out_dim->subdim_number;
+      if (operand_remaining_size > 1) {
+        // If there is a remaining fragment of a previous operand dimension
+        // assign it first.
+        if (out_remaining_size % operand_remaining_size) {
+          return Unimplemented("Unsupported bitcast.");
         }
         operand_dim_order.push_back(
-            {out_dim->target_dim_number, subdim_index,
-             operand_shape.dimensions(*operand_dim_iter)});
+            {out_dim->target_dim_number, subdim_index, operand_remaining_size});
         ++subdim_index;
-        ++operand_dim_iter;
-        if (operand_dim_iter ==
-            operand_shape.layout().minor_to_major().cend()) {
-          return Unimplemented("general bitcast");
+        // Update the size of the fragment remaining to assign.
+        out_remaining_size /= operand_remaining_size;
+        operand_remaining_size = 1;
+      }
+      while (out_remaining_size > 1) {
+        // Assign operand dimensions until the output remainder is covered.
+        int64_t operand_dim_size = operand_shape.dimensions(*operand_dim_iter);
+        int64_t new_fragment_size = operand_dim_size;
+        if (operand_dim_size > out_remaining_size) {
+          // If adding the next operand dimension exceeds output fragment size
+          // assign the remainder of the output and carry over the remainder
+          // of the operand.
+          if (operand_dim_size % out_remaining_size) {
+            return Unimplemented("Unsupported bitcast.");
+          }
+          operand_remaining_size = operand_dim_size / out_remaining_size;
+          new_fragment_size = out_remaining_size;
         }
-        operand_dim_size *= operand_shape.dimensions(*operand_dim_iter);
-      } while (out_dim_size != operand_dim_size);
-      operand_dim_order.push_back(
-          {out_dim->target_dim_number, subdim_index,
-           operand_shape.dimensions(*operand_dim_iter)});
+        operand_dim_order.push_back(
+            {out_dim->target_dim_number, subdim_index, new_fragment_size});
+        out_remaining_size /= new_fragment_size;
+        ++operand_dim_iter;
+        ++subdim_index;
+      }
     }
-    ++operand_dim_iter;
   }
+  CHECK_EQ(operand_remaining_size, 1);
+
   // Handle remaining major dimensions of the operand. Call all degenerate
   // ones subdimensions of the most-major non-degenerate one. Otherwise
   // give up.
+  int subdim_index = operand_dim_order.back().subdim_number + 1;
   while (operand_dim_iter != operand_shape.layout().minor_to_major().cend()) {
-    ++subdim_index;
     if (operand_shape.dimensions(*operand_dim_iter) != 1) {
-      return Unimplemented("general bitcast");
+      return Unimplemented("Unsupported bitcast.");
     }
     operand_dim_order.push_back(
-        {dim_order_[hlo->shape().rank() - 1].target_dim_number, subdim_index,
-         1});
+        {operand_dim_order.back().target_dim_number, subdim_index, 1});
+    ++subdim_index;
     ++operand_dim_iter;
   }
+
   dim_order_ = operand_dim_order;
   return OkStatus();
 }
