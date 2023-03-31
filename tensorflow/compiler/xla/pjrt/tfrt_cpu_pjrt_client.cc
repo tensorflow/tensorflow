@@ -475,6 +475,8 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   auto input_options = options;
   ExecutableBuildOptions& build_options = options.executable_build_options;
 
+  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+
   int num_replicas;
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;

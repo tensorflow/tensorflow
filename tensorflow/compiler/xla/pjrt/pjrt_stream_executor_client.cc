@@ -2775,6 +2775,8 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
   auto input_options = options;
 
+  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
