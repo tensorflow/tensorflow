@@ -106,6 +106,13 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
   return _xla.get_c_api_client('tpu', options)
 
 
+DeviceTopology = _xla.DeviceTopology
+
+
+def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+  return _xla.get_default_c_api_topology('tpu')
+
+
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   _xla.load_pjrt_plugin(plugin_name, library_path)
 

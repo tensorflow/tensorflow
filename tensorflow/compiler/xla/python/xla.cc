@@ -409,6 +409,13 @@ PYBIND11_MODULE(xla_extension, m) {
       },
       py::arg("platform_name"),
       py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>());
+  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
+  // GetCApiTopology does not depend on TPU.
+  m.def("get_default_c_api_topology",
+        [](std::string platform_name)
+            -> StatusOr<std::unique_ptr<PjRtDeviceTopology>> {
+          return GetCApiTopology(platform_name);
+        });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
