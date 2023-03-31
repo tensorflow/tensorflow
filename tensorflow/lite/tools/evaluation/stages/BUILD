@@ -53,9 +53,11 @@ cc_library(
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_jpeg_internal",
+            "//tensorflow/core/lib/png:png_io",
         ],
         "//conditions:default": [
             "//tensorflow/core:jpeg_internal",
+            "//tensorflow/core/lib/png:png_io",
         ],
     }),
 )

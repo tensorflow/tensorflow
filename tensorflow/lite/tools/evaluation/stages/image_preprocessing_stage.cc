@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
+#include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -103,6 +104,29 @@ inline void LoadImageJpeg(std::string* filename, ImageData* image_data) {
   float_image->reserve(original_size);
   for (int i = 0; i < original_size; ++i) {
     float_image->push_back(static_cast<float>(original_image[i]));
+  }
+  image_data->data.reset(float_image);
+}
+
+// Loads the png image.
+inline void LoadImagePng(std::string* filename, ImageData* image_data) {
+  // Reads image.
+  std::ifstream t(*filename);
+  std::string image_str((std::istreambuf_iterator<char>(t)),
+                        std::istreambuf_iterator<char>());
+
+  tensorflow::png::DecodeContext context;
+  CHECK(CommonInitDecode(image_str, 3 /*RGB*/, 8 /*uint8*/, &context));
+  char* image_buffer = new char[3 * context.width * context.height];
+  CHECK(CommonFinishDecode(absl::bit_cast<png_byte*>(image_buffer),
+                           3 * context.width /*stride*/, &context));
+
+  image_data->width = context.width;
+  image_data->height = context.height;
+  std::vector<float>* float_image = new std::vector<float>();
+  float_image->reserve(3 * context.width * context.height);
+  for (int i = 0; i < 3 * context.width * context.height; ++i) {
+    float_image->push_back(static_cast<float>(image_buffer[i]));
   }
   image_data->data.reset(float_image);
 }
@@ -284,6 +308,8 @@ TfLiteStatus ImagePreprocessingStage::Run() {
     LoadImageRaw(image_path_, &image_data);
   } else if (image_ext == ".jpg" || image_ext == ".jpeg") {
     LoadImageJpeg(image_path_, &image_data);
+  } else if (image_ext == ".png") {
+    LoadImagePng(image_path_, &image_data);
   } else {
     LOG(ERROR) << "Extension " << image_ext << " is not supported";
     return kTfLiteError;

@@ -28,7 +28,7 @@ namespace {
 constexpr char kImagePreprocessingStageName[] = "inception_preprocessing_stage";
 constexpr char kTestImage[] =
     "tensorflow/lite/tools/evaluation/stages/testdata/"
-    "grace_hopper.jpg";
+    "grace_hopper.png";
 constexpr int kImageDim = 224;
 
 TEST(ImagePreprocessingStage, NoParams) {
