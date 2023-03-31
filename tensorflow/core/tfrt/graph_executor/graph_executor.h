@@ -28,6 +28,7 @@ limitations under the License.
 #include "learning/infra/mira/mlrt/interpreter/context.h"
 #include "absl/base/call_once.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
@@ -88,7 +89,9 @@ tensorflow::Status GraphExecutionRunOnFunction(
 
 // Compiles MLIR in TF executor dialect to MLRT bytecode executable.
 StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module);
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    const CostRecorder* cost_recorder = nullptr,
+    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
 
 // Runs a MLRT function for executing tensorflow graphs.
 tensorflow::Status RunMlrtFunction(
@@ -105,11 +108,27 @@ class GraphExecutor {
   using Options = GraphExecutionOptions;
   using RunOptions = GraphExecutionRunOptions;
 
-  // Stores BEF-related data.
-  struct BefContext {
-    BefContext(tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file)
+  // Stores executable-related data.
+  struct ExecutableContext {
+    ExecutableContext(
+        mlrt::bc::Buffer bytecode_buffer,
+        std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable)
+        : bytecode_buffer(std::move(bytecode_buffer)),
+          bytecode_executable(std::move(bytecode_executable)) {}
+
+    ExecutableContext(tfrt::BefBuffer bef,
+                      tfrt::RCReference<tfrt::BEFFile> bef_file)
         : bef(std::move(bef)), bef_file(std::move(bef_file)) {}
 
+    bool IsForMlrt() const { return bytecode_executable != nullptr; }
+
+    // Only one set of values will be filled.
+
+    // For the MLRT path.
+    mlrt::bc::Buffer bytecode_buffer;
+    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
+
+    // For the TFRT path.
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
   };
@@ -117,18 +136,17 @@ class GraphExecutor {
   // The loading result of a `ClientGraph`.
   class LoadedClientGraph {
    public:
-    LoadedClientGraph(
-        std::string name, std::unique_ptr<mlir::MLIRContext> mlir_context,
-        mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
-        std::shared_ptr<BefContext> bef_context,
-        mlrt::bc::Buffer bytecode_buffer,
-        std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable)
+    LoadedClientGraph(std::string name, GraphExecutor* graph_executor,
+                      std::unique_ptr<mlir::MLIRContext> mlir_context,
+                      mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
+                      mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
+                      std::shared_ptr<ExecutableContext> executable_context)
         : name_(std::move(name)),
+          graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
+          tf_mlir_with_op_keys_(std::move(tf_mlir_with_op_keys)),
           tfrt_mlir_(std::move(tfrt_mlir)),
-          bef_context_(std::move(bef_context)),
-          bytecode_buffer_(std::move(bytecode_buffer)),
-          bytecode_executable_(std::move(bytecode_executable)) {}
+          executable_context_(std::move(executable_context)) {}
 
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
@@ -140,33 +158,29 @@ class GraphExecutor {
                       const Runtime& runtime);
 
     // Getters.
-    std::shared_ptr<BefContext> bef_context() const {
-      tensorflow::mutex_lock lock(bef_context_mu_);
-      return bef_context_;
+    std::shared_ptr<ExecutableContext> executable_context() const {
+      tensorflow::mutex_lock lock(executable_context_mu_);
+      return executable_context_;
     }
     absl::string_view name() const { return name_; }
 
     OpKernelRunnerTable& runner_table() { return runner_table_; }
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
 
-    mlrt::LoadedExecutable* bytecode_executable() const {
-      return bytecode_executable_.get();
-    }
-
    private:
     std::string name_;
+    GraphExecutor* graph_executor_ = nullptr;
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;
     std::unique_ptr<mlir::MLIRContext> mlir_context_;
     // Thread-safety resulted from `create_cost_recorder_once_`.
-    mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir_;
-    // Only one of `bef_context_` or `bytecode_executable_` should be filled for
-    // a single `LoadedClientGraph`.
-    mutable tensorflow::mutex bef_context_mu_;
+    mlir::OwningOpRef<mlir::ModuleOp>
+        tf_mlir_with_op_keys_;                     // For recompilation in MLRT.
+    mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir_;  // For recompilation in TFRT.
+    mutable tensorflow::mutex executable_context_mu_;
     // Can be updated if online cost analysis is enabled.
-    std::shared_ptr<BefContext> bef_context_ TF_GUARDED_BY(bef_context_mu_);
-    mlrt::bc::Buffer bytecode_buffer_;
-    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable_ = nullptr;
+    std::shared_ptr<ExecutableContext> executable_context_
+        TF_GUARDED_BY(executable_context_mu_);
     mutable absl::once_flag create_cost_recorder_once_;
   };
 

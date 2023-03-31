@@ -75,6 +75,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",

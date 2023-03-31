@@ -574,6 +574,7 @@ cc_library(
     srcs = ["analysis/cost_analysis.cc"],
     hdrs = ["analysis/cost_analysis.h"],
     deps = [
+        ":constants",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
@@ -881,4 +882,9 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TransformUtils",
     ],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
 )

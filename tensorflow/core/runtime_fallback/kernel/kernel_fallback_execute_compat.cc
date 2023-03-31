@@ -527,7 +527,11 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
                                   *fallback_request_state, *kernel_runner,
                                   kernel_runner->IsAsync(), device);
 
-  // Finish recording the op execution time, given a non-null cost recorder.
+  // Finish recording the op execution time, given a non-null
+  // cost recorder.
+  //
+  // TODO(b/259602527): Measure async op costs more accurately with whole
+  // execution time. (It's not urgent because async ops are rare.)
   if (cost_recorder != nullptr) {
     op_chain->AndThen(
         [cost_recorder, run_start_time_ns, op_key = frame.op_key().GetValue()] {
