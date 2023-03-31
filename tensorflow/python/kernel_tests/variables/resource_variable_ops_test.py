@@ -54,6 +54,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
@@ -205,16 +206,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     var1 = resource_variable_ops.ResourceVariable(1.0, name="var1")
     var2 = resource_variable_ops.ResourceVariable(
         control_flow_ops.cond(
-            variables.is_variable_initialized(var1),
-            var1.read_value,
+            variable_v1.is_variable_initialized(var1), var1.read_value,
             lambda: var1.initial_value),
         name="var2")
     self.assertAllEqual(
         control_flow_ops.cond(
-            variables.is_variable_initialized(var2),
-            var2.read_value,
-            lambda: var2.initial_value),
-        1.0)
+            variable_v1.is_variable_initialized(var2), var2.read_value,
+            lambda: var2.initial_value), 1.0)
 
   def testEagerBool(self):
     with context.eager_mode():
@@ -522,7 +520,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEqual(self.evaluate(read), [[2]])
 
   def testUseResource(self):
-    v = variables.VariableV1(1.0, use_resource=True)
+    v = variable_v1.VariableV1(1.0, use_resource=True)
     self.assertIsInstance(v, resource_variable_ops.ResourceVariable)
 
   def testEagerNoUseResource(self):
@@ -1002,10 +1000,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertProtoEquals(v_def, v.to_proto())
       # But attempts to use read_value will result in errors.
       with self.assertRaises(ValueError):
-        self.evaluate(control_flow_ops.cond(
-            variables.is_variable_initialized(v),
-            v.read_value,
-            lambda: v.initial_value))
+        self.evaluate(
+            control_flow_ops.cond(
+                variable_v1.is_variable_initialized(v), v.read_value,
+                lambda: v.initial_value))
 
   def testTrainableInProto(self):
     with ops.Graph().as_default():

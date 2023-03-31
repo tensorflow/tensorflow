@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
@@ -96,16 +97,14 @@ TEST_P(GraphExecutorTest, Vanilla) {
               ::testing::ElementsAreArray({2}));
 }
 
-INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
-                         ::testing::Bool());
-
-TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
+TEST_P(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
   options.enable_online_cost_analysis = true;
+  options.enable_mlrt = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto fallback_state,
@@ -113,7 +112,7 @@ TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
           CreateDefaultSessionOptions(options), graph_def.library()));
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
-      GraphExecutor::Create(std::move(options), *fallback_state, graph_def,
+      GraphExecutor::Create(options, *fallback_state, graph_def,
                             GetKernelRegistry()));
 
   // Set input 'x' to [[1, 1, 1]]
@@ -122,6 +121,17 @@ TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
                                  /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
 
   std::vector<tensorflow::Tensor> outputs;
+
+  if (options.enable_mlrt) {
+    EXPECT_THAT(tsl::ToAbslStatus(graph_executor->Run(
+                    /*run_options=*/{}, inputs,
+                    /*output_tensor_names=*/{"rank"},
+                    /*target_tensor_names=*/{}, &outputs)),
+                ::testing::status::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    "Online cost analysis is not supported in MLRT yet."));
+    return;
+  }
 
   // A first run should trigger online cost analysis.
   TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
@@ -141,6 +151,9 @@ TEST_F(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
 }
+
+INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
+                         ::testing::Bool());
 
 TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
   GraphExecutor::LoadedClientGraph loaded_client_graph_0(
@@ -246,7 +259,7 @@ TEST_F(GraphExecutorTest, DisableCompilation) {
                                     /*target_tensor_names=*/{}, &outputs);
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.ToString(),
       ::testing::HasSubstr("GraphExecutor: compilation is disabled in "
                            "execution but the compiled graph is not found"));
 

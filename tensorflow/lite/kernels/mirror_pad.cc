@@ -289,7 +289,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output_tensor->params.zero_point, 0);
   }
 
-  if (!IsConstantTensor(padding_matrix)) {
+  if (!IsConstantOrPersistentTensor(padding_matrix)) {
     SetTensorToDynamic(output_tensor);
     return kTfLiteOk;
   }

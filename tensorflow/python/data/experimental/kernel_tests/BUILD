@@ -75,7 +75,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -115,6 +115,7 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -229,7 +230,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:io",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -327,6 +327,9 @@ tf_py_test(
     size = "medium",
     srcs = ["map_and_batch_test.py"],
     shard_count = 4,
+    tags = [
+        "nomac",  # TODO(b/276269493)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -380,11 +383,11 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:matching_files",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -548,7 +551,6 @@ tf_py_test(
     srcs = ["sleep_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -579,11 +581,11 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:writers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -593,7 +595,6 @@ tf_py_test(
     srcs = ["variant_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

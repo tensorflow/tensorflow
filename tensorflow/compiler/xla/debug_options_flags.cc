@@ -75,8 +75,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // flag.
   opts.set_xla_gpu_enable_cublaslt(false);
 
-  // TODO(b/258036887): Remove this flag once CUDA Graphs are fully supported.
-  opts.set_xla_gpu_enable_cuda_graphs(false);
+  // TODO(b/258036887): Enable once CUDA Graphs are fully supported.
+  opts.set_xla_gpu_cuda_graph_level(0);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -106,6 +106,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
+  opts.set_xla_cpu_enable_custom_matmul_tiling(false);
+  opts.set_xla_cpu_matmul_tiling_m_dim(8);
+  opts.set_xla_cpu_matmul_tiling_n_dim(8);
+  opts.set_xla_cpu_matmul_tiling_k_dim(8);
   opts.set_xla_cpu_enable_experimental_deallocation(true);
 
   opts.set_xla_partitioning_algorithm(
@@ -767,10 +771,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_cuda_graphs",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cuda_graphs),
-      debug_options->xla_gpu_enable_cuda_graphs(),
-      "Use CUDA graphs to execute XLA GPU executables when possible."));
+      "xla_gpu_cuda_graphs_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_level),
+      debug_options->xla_gpu_cuda_graph_level(),
+      "Set CUDA graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
+      "capture convolutions and gemms; 3 = capture collectives."));
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
@@ -854,6 +859,26 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_fusion_outlining),
       debug_options->xla_cpu_enable_mlir_fusion_outlining(),
       "Enable MLIR fusion outlining (to improve compile time)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_custom_matmul_tiling",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_custom_matmul_tiling),
+      debug_options->xla_cpu_enable_custom_matmul_tiling(),
+      "Enable custom tiling given by M, K, N parameters."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_matmul_tiling_m_dim",
+      int64_setter_for(&DebugOptions::set_xla_cpu_matmul_tiling_m_dim),
+      debug_options->xla_cpu_matmul_tiling_m_dim(),
+      "Custom tile size for matmul's M dimension."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_matmul_tiling_n_dim",
+      int64_setter_for(&DebugOptions::set_xla_cpu_matmul_tiling_n_dim),
+      debug_options->xla_cpu_matmul_tiling_n_dim(),
+      "Custom tile size for matmul's N dimension."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_matmul_tiling_k_dim",
+      int64_setter_for(&DebugOptions::set_xla_cpu_matmul_tiling_k_dim),
+      debug_options->xla_cpu_matmul_tiling_k_dim(),
+      "Custom tile size for matmul's K dimension."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_enable_experimental_deallocation",
       bool_setter_for(

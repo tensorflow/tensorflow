@@ -897,13 +897,13 @@ cc_library(
         "//tensorflow/lite/core/c:common",
     ] + select({
         ":tflite_with_xnnpack_explicit_true": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
             ":tflite_with_xnnpack_enabled",
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         ],
         ":tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
             ":tflite_with_xnnpack_default",
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         ],
     }),
 )

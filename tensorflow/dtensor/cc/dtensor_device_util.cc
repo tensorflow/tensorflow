@@ -365,11 +365,10 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
-    TensorHandlePtr single_tensor, const Mesh& mesh, const Layout& layout,
-    TF_Status* status) {
-  if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
+    TensorHandlePtr single_tensor, const Layout& layout, TF_Status* status) {
+  if (!layout.IsSingleDevice()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Input mesh or layout is not for single device.");
+                 "Input layout is not for single device.");
     return nullptr;
   }
   std::vector<int64_t> shape = TensorShapeAsVector(single_tensor.get(), status);
@@ -377,8 +376,8 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
     return nullptr;
   }
 
-  return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(single_tensor), mesh, layout, shape));
+  return absl::WrapUnique(new TensorWithLayoutTf(std::move(single_tensor),
+                                                 layout.mesh(), layout, shape));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
@@ -1059,7 +1058,6 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
                    status.error_message().c_str());
-      // TODO(b/256016071): Try finding a way to append source locations.
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           status.error_message());

@@ -296,8 +296,7 @@ TEST_F(PruneGraphDefTest, EliminateRefVariablesFromV1ControlFlowFailed) {
 
   const auto status = EliminateRefVariablesFromV1ControlFlow(graphdef);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("requires its input to be refs"));
+  EXPECT_THAT(status.ToString(), HasSubstr("requires its input to be refs"));
 }
 
 TEST_F(PruneGraphDefTest, KeepLoopStructureComplete) {

@@ -66,7 +66,7 @@ def create_new_tf_function(func_graph):
   Returns:
     The name of the new TF_Function.
   """
-  func = function._EagerDefinedFunction(  # pylint: disable=protected-access
+  func = function.from_func_graph(  # pylint: disable=protected-access
       func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
 
   func_graph.outer_graph._add_function_recursive(func)  # pylint: disable=protected-access
@@ -163,7 +163,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     tensor_name: the name of the resource tensor to be resolved to an input.
     input_names: a list of the names of all inputs to the function.
     node_defs: a dict mapping op name -> NodeDef for every op in the function.
-    functions: a dict mapping function name -> _EagerDefinedFunction.
+    functions: a dict mapping function name -> AtomicFunction.
 
   Returns:
     The index into input_names corresponding to `tensor_name`.

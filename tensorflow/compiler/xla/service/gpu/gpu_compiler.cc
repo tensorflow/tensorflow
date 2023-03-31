@@ -405,6 +405,14 @@ Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !debug_options.xla_gpu_enable_fast_min_max());
 
+  // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
+  // the transpose/reshape has multiple users.  This helps int8 models, which
+  // tend to have lots of transpose+reshape's (converting between NCHW and
+  // NCHW_VECT_C).  Without this, those reshape+transposes can get materialized
+  // out, which is really bad for perf.
+  layout_insensitive_algsimp_opts
+      .set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+
   if (gpu_target_config.platform_name == "ROCM") {
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
@@ -902,18 +910,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-  GpuFloatSupport bf16_support(BF16);
-  pipeline.AddPass<FloatNormalization>(&bf16_support);
-  GpuFloatSupport f8e5m2_support(F8E5M2);
-  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
-  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
-  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
-
-  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-    pipeline.AddPass<SimplifyFPConversions>();
-  }
-
   AutotuningConfig autotune_config =
       stream_exec
           ? AutotuningConfig{DeviceConfig{stream_exec, device_allocator}}
@@ -955,6 +951,18 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           ? debug_options.xla_gpu_force_compilation_parallelism()
           : tsl::port::MaxParallelism());
 #endif  // GOOGLE_CUDA
+
+  GpuFloatSupport bf16_support(BF16);
+  pipeline.AddPass<FloatNormalization>(&bf16_support);
+  GpuFloatSupport f8e5m2_support(F8E5M2);
+  pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+  GpuFloatSupport f8e4m3fn_support(F8E4M3FN);
+  pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
+
+  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+    pipeline.AddPass<SimplifyFPConversions>();
+  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
@@ -1076,7 +1084,7 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
   GpuPipelineOpts opts;
-  opts.enable_cuda_graphs = debug_options.xla_gpu_enable_cuda_graphs();
+  opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
@@ -1226,11 +1234,9 @@ static Status CompileModuleToLlvmIrImpl(
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 
-    auto is_nop = [](const HloInstruction* instr) {
-      HloOpcode op = instr->opcode();
-      return op == HloOpcode::kParameter || op == HloOpcode::kConstant ||
-             op == HloOpcode::kBitcast || op == HloOpcode::kGetTupleElement;
-    };
+    HloPredicate is_nop =
+        HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
+                         HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
     pipeline.AddPass<ConvertAsyncCollectivesToSync>(is_nop);
     pipeline.AddPass<OptimizationBarrierExpander>();
 

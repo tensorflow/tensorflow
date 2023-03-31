@@ -536,7 +536,6 @@ cc_library(
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         # For NNAPI support library, the headears and source files are defined
@@ -629,11 +628,11 @@ cc_library(
         ":status_codes",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
-        "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -843,9 +842,9 @@ cc_test(
         ":status_codes",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -869,19 +868,19 @@ cc_binary(
     deps = [
         ":constants",
         ":fb_storage",
-        ":runner",
-        ":status_codes",
-        ":set_big_core_affinity",
         ":file_lock",
+        ":runner",
+        ":set_big_core_affinity",
+        ":status_codes",
         ":validator",
         ":validator_runner",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/tools:model_loader",
-        "//tensorflow/lite:minimal_logging",
     ] + select({
         # On Android, as the validation runs in a separate process as a
         # different binary, any TFLite delegates to be validated need to
@@ -960,24 +959,24 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
-        ":embedded_mobilenet_validation_model",
         ":embedded_mobilenet_model",
+        ":embedded_mobilenet_validation_model",
         ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
         "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
+        "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core:model_builder",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:flatbuffer_to_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools:model_loader",
-        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",

@@ -128,6 +128,27 @@ def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleO
   ];
 }
 
+def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
+  let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
+  let constructor = "hlo::createGenericHostToLLVMPass()";
+  let options = [
+      Option<"enableAvx2", "enable-avx2", "bool",
+             /*default=*/"false", "Whether to enable avx2">,
+  ];
+  let dependentDialects = [
+    "::mlir::LLVM::LLVMDialect",
+    "::mlir::arith::ArithDialect",
+    "::mlir::cf::ControlFlowDialect",
+    "::mlir::complex::ComplexDialect",
+    "::mlir::deallocation::DeallocationDialect",
+    "::mlir::func::FuncDialect",
+    "::mlir::math::MathDialect",
+    "::mlir::memref::MemRefDialect",
+    "::mlir::scf::SCFDialect",
+    "::mlir::x86vector::X86VectorDialect",
+  ];
+}
+
 def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let summary = "Unbufferize partially bufferized functions.";
   let description = [{
@@ -150,4 +171,4 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
-#endif // MLIR_HLO_TRANSFORMS_PASSES
+#endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

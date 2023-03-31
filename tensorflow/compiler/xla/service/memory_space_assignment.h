@@ -1024,43 +1024,86 @@ class MemorySpaceAssignment {
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
 };
 
-// Config to override preferred prefetch / copy start location for a target
-// instruction, to immediately before/after a reference instruction.
-class OverridePreferredPrefetchTime {
-  // Place copy start of element indexed into operand_index_ of the (possibly
-  // tuple) operand at operand_number_ of instruction with name
-  // instruction_name_ and place it before or after (depending on placement_)
-  // the reference instruction with name reference_instruction_name_.
+// Filters prefetches by matching against multiple filters and overrides the
+// preferred prefetch time for matching prefetches by the provided override
+// strategy.
+class FilterUpdatePreferredPrefetch {
  public:
-  enum class Placement { kBefore, kAfter };
-  std::string instruction_name_;
-  int64_t operand_number_;
-  ShapeIndex operand_index_;
-  Placement placement_;
-  std::string reference_instruction_name_;
+  // Supported filters for prefetch filtering by operand size, instruction name,
+  // operand number and operand index matching.
+  enum class FilterType {
+    OP_SIZE_LTE,  // sting value: op_size_lte, filter value type: integer
+    OP_SIZE_GTE,  // sting value: op_size_gte, filter value type: integer
+    INSTRUCTION_NAME_EXACT,  // sting value: instruction_name_exact,
+                             // filter value type: string
+    OP_NUMBER_EXACT,         // sting value: op_number_exact,
+                             // filter value type: integer
+    OP_INDEX_EXACT  // sting value: op_index_exact, filter value type: string
+                    // (empty string for {}, 1 for {1} and 1#2 for {1,2})
+  };
+  // Strategies to compute new perferred prefetch time. Prefetch eagerness
+  // sets prefetch time to a time within the live-range depending on a value,
+  // e.g. 0.5 sets it exactly in the middle of the live-range. Put after
+  // instruction or put before instruction finds an instruction in the schedule
+  // and puts the preferred prefetch time before or after the found instruction.
+  enum class OverrideType {
+    PREFETCH_EAGERNESS,     // sting value: prefetch_eagerness,
+                            // override value type : float
+    PUT_AFTER_INSTRUCTION,  // sting value: put_after_instruction,
+                            // override value type: string
+    PUT_BEFORE_INSTRUCTION  // sting value: put_before_instruction,
+                            // override value type: string
+  };
+  std::vector<std::pair<FilterType, std::string>> filter_list_;
+  OverrideType override_type_;
+  std::string override_value_;
 
-  OverridePreferredPrefetchTime(std::string inst_name, int64_t op_num,
-                                ShapeIndex op_idx, Placement p,
-                                std::string ref_inst_name)
-      : instruction_name_(inst_name),
-        operand_number_(op_num),
-        operand_index_(op_idx),
-        placement_(p),
-        reference_instruction_name_(ref_inst_name) {}
+  std::string ToString() const { return config_string_; }
 
-  // For debugging use only.
-  std::string ToString() const;
+  static StatusOr<std::vector<FilterUpdatePreferredPrefetch>>
+  ParseFilterUpdatePreferredPrefetches(std::string config);
 
-  static StatusOr<
-      std::vector<memory_space_assignment::OverridePreferredPrefetchTime>>
-  ParseOverridePreferredPrefetchTimesConfig(
-      std::string override_preferred_prefetch_times_config);
+  static StatusOr<bool> IsOpSizeGte(int64_t operand_size, std::string config);
+
+  static StatusOr<bool> IsOpSizeLte(int64_t operand_size, std::string config);
+
+  static StatusOr<bool> IsInstructionNameExact(
+      absl::string_view instruction_name, std::string config);
+
+  static StatusOr<bool> IsOpNumberExact(int64_t operand_number,
+                                        std::string config);
+
+  static StatusOr<bool> IsOpIndexExact(const ShapeIndex& operand_index,
+                                       std::string config);
+
+  StatusOr<std::optional<int64_t>> GetPrefetchByEagerness(
+      int64_t earliest_prefetch_time, int64_t latest_prefetch_time) const;
+
+  StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
+      const absl::flat_hash_map<const xla::HloInstruction*,
+                                xla::HloLiveRange::LogicalTime>& schedule)
+      const;
+
+  StatusOr<std::optional<int64_t>> GetPrefetchTimeBeforeInstruction(
+      const absl::flat_hash_map<const xla::HloInstruction*,
+                                xla::HloLiveRange::LogicalTime>& schedule)
+      const;
 
  private:
+  std::string config_string_;
+  StatusOr<xla::HloLiveRange::LogicalTime> GetScheduleTimeFromInstructionName(
+      const absl::flat_hash_map<const xla::HloInstruction*,
+                                xla::HloLiveRange::LogicalTime>& schedule)
+      const;
+
+  static StatusOr<FilterType> ParseFilterType(std::string config);
+
+  static StatusOr<OverrideType> ParseOverrideType(std::string config);
+
   static StatusOr<ShapeIndex> ParseOperandIndex(std::string config);
 
-  static StatusOr<OverridePreferredPrefetchTime>
-  ParseOverridePreferredPrefetchTimeConfig(std::string config);
+  static StatusOr<FilterUpdatePreferredPrefetch>
+  ParseFilterUpdatePreferredPrefetch(std::string config);
 };
 
 // The different options to be passed to the Run() API.
@@ -1196,9 +1239,9 @@ struct Options {
   // If true, enforces the FIFO order for prefetches.
   bool enforce_prefetch_fifo_order = false;
 
-  // Config to override preferred prefetch times for operands of specific
-  // instructions to before or after given reference instructions.
-  std::vector<OverridePreferredPrefetchTime> override_preferred_prefetch_times;
+  // Config to filter prefetches and update preferred prefetch times for the
+  // filtered prefetches according to an update config.
+  std::vector<FilterUpdatePreferredPrefetch> filter_update_preferred_prefetches;
 };
 
 // A struct representing an asynchronous copy with its logical start and end

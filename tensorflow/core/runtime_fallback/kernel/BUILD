@@ -502,6 +502,7 @@ cc_library(
         ":tensor_util",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "//tensorflow/core/tfrt/utils:gpu_variables_table",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",

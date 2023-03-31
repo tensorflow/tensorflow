@@ -84,7 +84,15 @@ struct RefCountDeleter {
 
 // A unique_ptr that unrefs the owned object on destruction.
 template <typename T>
-using RefCountPtr = std::unique_ptr<T, RefCountDeleter>;
+class RefCountPtr : public std::unique_ptr<T, RefCountDeleter> {
+ public:
+  using std::unique_ptr<T, RefCountDeleter>::unique_ptr;
+  ABSL_MUST_USE_RESULT RefCountPtr GetNewRef() const {
+    if (this->get() == nullptr) return RefCountPtr<T>();
+    this->get()->Ref();
+    return RefCountPtr<T>(this->get());
+  }
+};
 
 // Helper class to unref an object when out-of-scope.
 class ScopedUnref {

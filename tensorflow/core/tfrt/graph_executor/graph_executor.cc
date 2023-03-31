@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/assign_op_key.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
@@ -507,6 +508,11 @@ tensorflow::Status GraphExecutor::Run(
   // Conduct cost analysis for the first request on this `loaded_client_graph`.
   std::unique_ptr<CostRecorder> cost_recorder;
   if (options_.enable_online_cost_analysis) {
+    // TODO(juanlishen, chky): Support online cost analysis in MLRT.
+    if (loaded_executable) {
+      return errors::InvalidArgument(
+          "Online cost analysis is not supported in MLRT yet.");
+    }
     cost_recorder = loaded_client_graph.MaybeCreateCostRecorder();
   }
 
@@ -561,12 +567,20 @@ GraphExecutor::ImportAndCompileClientGraph(
   mlrt::bc::Buffer bytecode_buffer;
   std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer, tfrt::CompileTfMlirModuleToBytecode(module.get()));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
   } else if (options_.enable_mlrt) {
+    if (kernel_registry_ == nullptr) {
+      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+    }
+
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode_buffer,
         CompileMlirModuleToByteCode(options_.compile_options, module.get()));
@@ -670,6 +684,10 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
         // TODO(chky): Refactor this function to compiler directory.
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
+        pm.addPass(mlrt_compiler::CreateAssignOpKeyPass());
+        pm.addPass(
+            mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(
+                options));
         pm.addPass(mlrt_compiler::CreateParallelizationPass(
             options.cost_threshold, options.merge_inter_dependent_streams));
         pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));

@@ -420,7 +420,6 @@ class DTensorDevice {
 
   // Broadcasts `tensor` to `mesh` using replicated sharding. Returns `nullptr`
   // if it fails.
-  // TODO(b/256016071): Unify this and the one in `TensorWithLayoutTf`.
   std::unique_ptr<TensorWithLayout> Broadcast(TFE_Context* context,
                                               TFE_TensorHandle* input,
                                               const Mesh& mesh,
@@ -1293,7 +1292,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
     }
     TensorHandlePtr single_tensor(copied_tensor);
     std::unique_ptr<TensorWithLayoutTf> tensor_with_layout =
-        TensorWithLayoutTf::Wrap(std::move(single_tensor), *single_device_mesh,
+        TensorWithLayoutTf::Wrap(std::move(single_tensor),
                                  *single_device_layout, status);
     if (TF_GetCode(status) != TF_OK) {
       return tensor_with_layouts;
@@ -2072,14 +2071,11 @@ void DTensorDevice::ExecuteRegularOperation(
       RETURN_STATUS(status, TF_INTERNAL,
                     "Expected one output from VarHandleOp");
     }
-    NameAttrList name_and_attrs;
-    ASSIGN_OR_RETURN_C_STATUS(name_and_attrs, FetchAttributes(attributes),
-                              status);
 
     RETURN_C_STATUS_IF_NOT_OK(
         llvm::cast<ResourceHandleWithLayout>(typed_outputs[0].get())
-            ->UpdateShapeAndDType(name_and_attrs.attr().at("shape").shape(),
-                                  name_and_attrs.attr().at("dtype").type()),
+            ->UpdateShapeAndDType(eager_attributes.attr().at("shape").shape(),
+                                  eager_attributes.attr().at("dtype").type()),
         status);
   }
 

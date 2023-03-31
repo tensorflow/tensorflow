@@ -61,6 +61,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/async/c:types",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -95,6 +96,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -116,6 +118,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/async/c:types",
     ],
 )
 
@@ -135,6 +138,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:create_op_resolver_header",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:kernel_util",
@@ -164,7 +168,6 @@ cc_test(
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/custom_sinh.bin",
     ],
-    tags = ["no_oss"],  # TODO(b/274832369): Re-enable after fixed.
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -189,7 +192,6 @@ cc_test(
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/custom_sinh.bin",
     ],
-    tags = ["no_oss"],  # TODO(b/274832369): Re-enable after fixed.
     deps = [
         ":c_api_experimental_without_op_resolver_without_alwayslink",
         ":c_api_types",
@@ -382,7 +384,6 @@ cc_test(
     srcs = ["c_api_experimental_test.cc"],
     copts = tflite_copts(),
     data = ["//tensorflow/lite:testdata/add.bin"],
-    tags = ["no_oss"],  # TODO(b/274832369): Re-enable after fixed.
     deps = [
         ":c_api",
         ":c_api_experimental",

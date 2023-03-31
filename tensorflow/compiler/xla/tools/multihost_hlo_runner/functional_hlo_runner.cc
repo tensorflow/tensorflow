@@ -318,7 +318,11 @@ StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
   if (task_id == 0) {
-    debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    // Overwrite xla_dump_to only if its not empty, to preserve `xla_dump_to`
+    // from parsed XLA_FLAGS env (already populated in debug_options).
+    if (!raw_options.xla_dump_to.empty()) {
+      debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    }
     debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
                                            XlaTextDumpMode::kDumpAsText);
     debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==

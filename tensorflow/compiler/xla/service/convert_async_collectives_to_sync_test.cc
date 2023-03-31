@@ -43,11 +43,9 @@ class ConvertAsyncCollectivesToSyncTest : public HloTestBase {
     return OkStatus();
   }
 
-  HloPredicate is_nop_simple_ = [](const HloInstruction *inst) {
-    return inst->opcode() == HloOpcode::kBitcast ||
-           inst->opcode() == HloOpcode::kGetTupleElement ||
-           inst->opcode() == HloOpcode::kParameter;
-  };
+  HloPredicate is_nop_simple_ =
+      HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kGetTupleElement,
+                       HloOpcode::kParameter>;
 };
 
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {

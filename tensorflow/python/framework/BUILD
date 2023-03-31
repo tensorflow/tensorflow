@@ -1149,6 +1149,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_array_ops",
@@ -1158,6 +1159,7 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1773,6 +1775,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -1821,6 +1824,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
@@ -2237,6 +2241,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )
@@ -2396,7 +2401,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -2415,6 +2420,8 @@ tf_py_test(
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ref_variable",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:while_loop",
     ],
 )

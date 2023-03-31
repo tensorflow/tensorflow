@@ -118,6 +118,17 @@ CreateMutatorFactories() {
   ADD_QUEUE_CONNECTION(kEnqueueRequestLocked, kPjrtAsyncWait);
 #undef ADD_QUEUE_CONNECTION
 
+  // Fixup run_id from Host TraceMe to 28 LSB
+  mutator_factories.push_back(
+      HostRunIdMutatorFactory<
+          HostEventType::kDoEnqueueProgram>::CreateFactory());
+  mutator_factories.push_back(
+      HostRunIdMutatorFactory<
+          HostEventType::kCompleteCallbacks>::CreateFactory());
+  mutator_factories.push_back(
+      HostRunIdMutatorFactory<
+          HostEventType::kDoEnqueueContinuationProgram>::CreateFactory());
+
   // TPU program execution launch related
   mutator_factories.push_back(
       XplaneConnectedEventMutatorFactory<

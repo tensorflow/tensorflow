@@ -24,6 +24,14 @@ from tensorflow.python.util import nest
 
 def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
+  if (
+      function_spec.fullargspec.args
+      and function_spec.fullargspec.args[0] == "self"
+  ):
+    raise TypeError(
+        "Can not serialize tf.function with unbound 'self' parameter."
+    )
+
   proto = saved_object_graph_pb2.FunctionSpec()
 
   # Intentionally skip encoding annotations of a function because function

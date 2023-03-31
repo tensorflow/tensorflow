@@ -37,6 +37,7 @@ cc_library(
     deps = [
         ":graph_execution_options",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:assign_op_key",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:fuse_await_pass",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:parallelization",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:tf_to_mlrt",
@@ -112,6 +113,7 @@ tf_cc_test(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:tensor",

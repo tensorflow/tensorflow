@@ -20,6 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
+#ifndef PLATFORM_WINDOWS
+#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
+#endif
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -41,6 +44,24 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
                       shape_determination_fns.shape_representation_fn(
                           cpu_tensor->shape(), cpu_tensor->dtype(),
                           /*fast_mem=*/false, layout_preference));
+
+  const xla::Layout* device_layout;
+#ifdef PLATFORM_WINDOWS
+  device_layout = &(shape.layout());
+#else
+  // TODO(b/274809592): remove PjRtCApiClient related code when the registration
+  // and PJRT client factory is implemented.
+  auto* c_api_client = dynamic_cast<xla::PjRtCApiClient*>(pjrt_client);
+  if (c_api_client != nullptr &&
+      layout_preference != XlaLayoutPreference::kNoPreference) {
+    LOG(WARNING) << "Implicit initialization of PjRtClient only supports "
+                    "XlaLayoutPreference::kNoPreference.";
+    device_layout = nullptr;
+  } else {
+    device_layout = &(shape.layout());
+  }
+#endif
+
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * pjrt_device,
       pjrt_client->LookupAddressableDevice(device->parsed_name().id));
@@ -51,7 +72,8 @@ StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
           /*byte_strides=*/std::nullopt,
           xla::PjRtClient::HostBufferSemantics::kZeroCopy,
           /*on_done_with_host_buffer=*/
-          [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
+          [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
+          device_layout));
   return buffer;
 }
 

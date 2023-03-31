@@ -2667,6 +2667,9 @@ tf_cc_test(
     name = "optimize_cross_host_control_deps_test",
     size = "small",
     srcs = ["optimize_cross_host_control_deps_test.cc"],
+    tags = [
+        "notsan",
+    ],
     deps = [
         ":optimize_cross_host_control_deps",
         "//tensorflow/cc:cc_ops",
@@ -3351,7 +3354,14 @@ tf_cc_fuzz_test(
     srcs = ["graph_constructor_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
+        ":core",
+        ":core_cpu",
         ":graph_constructor",
+        ":session",
+        ":session_options",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
     ],
 )

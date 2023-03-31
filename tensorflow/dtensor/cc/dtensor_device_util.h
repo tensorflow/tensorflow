@@ -191,10 +191,8 @@ class TensorWithLayoutTf
       std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
       const Layout& layout);
 
-  // Given a single tensor, wraps it with a single device mesh and a single
-  // device layout.
+  // Given a single tensor, wraps it with a single device layout.
   static std::unique_ptr<TensorWithLayoutTf> Wrap(TensorHandlePtr single_tensor,
-                                                  const Mesh& mesh,
                                                   const Layout& layout,
                                                   TF_Status* status);
 
@@ -482,11 +480,6 @@ class SparseTensorWithLayout
   std::unique_ptr<parallel_device::ParallelTensor> values_;
   std::unique_ptr<parallel_device::ParallelTensor> dense_shapes_;
 };
-
-// TODO(b/256016071): Instead of having the following two functions, create a
-// factory which can branch the creation of `TensorWithLayoutTf`,
-// `ResourceHandleWithLayout`, `SparseTensorWithLayout` and the incoming
-// `TensorWithLayoutPw`.
 
 std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,

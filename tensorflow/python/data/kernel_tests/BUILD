@@ -147,7 +147,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//tensorflow/python/training:saver",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
 )
@@ -197,6 +197,9 @@ tf_py_test(
     name = "counter_test",
     size = "small",
     srcs = ["counter_test.py"],
+    tags = [
+        "nomac",  # TODO(b/276269493)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -297,9 +300,9 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -473,11 +476,11 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -562,7 +565,6 @@ cuda_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
@@ -571,6 +573,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -599,8 +602,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -630,10 +633,12 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
@@ -742,9 +747,9 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -886,9 +891,9 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -899,6 +904,9 @@ tf_py_test(
     size = "medium",
     srcs = ["repeat_test.py"],
     shard_count = 2,
+    tags = [
+        "nomac",  # TODO(b/276269493)
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -916,6 +924,9 @@ tf_py_test(
     size = "medium",
     srcs = ["sample_from_datasets_test.py"],
     shard_count = 24,
+    tags = [
+        "nomac",  # TODO(b/276269493)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -979,7 +990,8 @@ tf_py_test(
     name = "shuffle_test",
     size = "medium",
     srcs = ["shuffle_test.py"],
-    shard_count = 4,
+    shard_count = 8,
+    tags = ["requires-mem:16g"],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -990,9 +1002,10 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1116,12 +1129,12 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -1140,7 +1153,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:lib",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
@@ -1161,11 +1173,11 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -1187,9 +1199,9 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1206,8 +1218,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:compat",
     ],
 )
 

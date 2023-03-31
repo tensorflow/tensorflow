@@ -214,7 +214,7 @@ struct ShapedArrayCacheKey {
   }
 };
 
-// Constucting ShapedArrays has gotten slow. Cache it.
+// Constructing ShapedArrays has gotten slow. Cache it.
 py::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
   using CacheT =
       LRUCache<ShapedArrayCacheKey, std::shared_ptr<std::optional<py::object>>>;
@@ -382,16 +382,14 @@ PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
                  std::shared_ptr<Traceback> traceback,
-                 tsl::RCReference<ifrt::Array> ifrt_array,
-                 bool committed, bool skip_checks) {
+                 tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
+                 bool skip_checks) {
   auto* self =
       PyArray_tp_new(reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr);
   ptr() = self;
   Construct(reinterpret_cast<PyArrayObject*>(self), std::move(aval), weak_type,
             std::move(dtype), std::move(shape), std::move(sharding), committed,
-            std::move(py_client), std::move(traceback),
-            std::move(ifrt_array)
-  );
+            std::move(py_client), std::move(traceback), std::move(ifrt_array));
 
   if (!skip_checks) {
     CheckAndRearrange();
@@ -854,10 +852,15 @@ Status PyArray::RegisterTypes(py::module& m) {
         PyArray::PyInit(self, PyArray::DisableFastpath());
       },
       py::is_method(type));
-  type.attr("delete") = py::cpp_function(&PyArray::Delete, py::is_method(type));
+  type.attr("delete") =
+      py::cpp_function([](PyArray& self) { xla::ThrowIfError(self.Delete()); },
+                       py::is_method(type));
   type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
   type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
-  type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);
+  type.attr("_arrays") =
+      jax::property(&PyArray::arrays, [](PyArray& self, py::object obj) {
+        xla::ThrowIfError(self.set_arrays(obj));
+      });
   type.attr("_npy_value") =
       jax::property(&PyArray::npy_value, &PyArray::set_npy_value);
   type.attr("_committed") = jax::property_readonly(&PyArray::committed);
@@ -871,10 +874,13 @@ Status PyArray::RegisterTypes(py::module& m) {
   type.attr("_single_device_array_to_np_array") = py::cpp_function(
       &PyArray::SingleDeviceArrayToNumpyArray, py::is_method(type));
   type.attr("_copy_single_device_array_to_host_async") = py::cpp_function(
-      &PyArray::CopySingleDeviceArrayToHostAsync, py::is_method(type));
+      [](PyArray& self) {
+        xla::ThrowIfError(self.CopySingleDeviceArrayToHostAsync());
+      },
+      py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
-      [](PyArray self) -> StatusOr<py::object> {
-        TF_RETURN_IF_ERROR(self.BlockUntilReady());
+      [](PyArray self) -> py::object {
+        xla::ThrowIfError(self.BlockUntilReady());
         return self;
       },
       py::is_method(type));

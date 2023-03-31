@@ -46,6 +46,7 @@ from tensorflow.lite.testing.op_tests.batch_to_space_nd import make_batch_to_spa
 from tensorflow.lite.testing.op_tests.batchmatmul import make_batchmatmul_tests
 from tensorflow.lite.testing.op_tests.binary_op import make_add_tests, make_div_tests, make_sub_tests, make_mul_tests, make_pow_tests, make_floor_div_tests, make_floor_mod_tests, make_squared_difference_tests
 from tensorflow.lite.testing.op_tests.bitcast import make_bitcast_tests
+from tensorflow.lite.testing.op_tests.bitwise_xor import make_bitwise_xor_tests
 from tensorflow.lite.testing.op_tests.broadcast_args import make_broadcast_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_to import make_broadcast_to_tests
@@ -149,6 +150,7 @@ from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_seque
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
 from tensorflow.lite.testing.op_tests.rfft import make_rfft_tests
 from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
+from tensorflow.lite.testing.op_tests.right_shift import make_right_shift_tests
 from tensorflow.lite.testing.op_tests.roll import make_roll_tests
 from tensorflow.lite.testing.op_tests.roll import make_roll_with_constant_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests

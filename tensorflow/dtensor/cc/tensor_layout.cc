@@ -615,7 +615,18 @@ StatusOr<Mesh> Mesh::FromString(absl::string_view str) {
 
   std::vector<std::string> mesh_parts = absl::StrSplit(str, '|');
 
-  if (mesh_parts.size() == 1 && !mesh_parts[0].empty()) {
+  // We do not support specifying mesh name in single device mesh, i.e.
+  // the mesh name would always be empty.
+  if (mesh_parts.size() == 1) {
+    std::vector<std::string> single_device_parts =
+        absl::StrSplit(mesh_parts[0], ':');
+    // The single device can be
+    // "/job:localhost/replica:0/task:0/device:CPU:0" or
+    // "/job:localhost/task:0/device:CPU:0".
+    if (single_device_parts.size() != 5 && single_device_parts.size() != 6) {
+      TF_RETURN_WITH_CONTEXT(
+          errors::InvalidArgument("Input string is invalid: ", mesh_parts[0]))
+    }
     Mesh mesh;
     mesh.mesh_type_ = MeshType::kSingleDevice;
     mesh.single_device_ = str;

@@ -111,10 +111,12 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Gt(param0, param1);
   };
 
-  auto match_all_compares = [&match_compare](HloInstruction* root) {
-    return Match(root, match_compare(BF16)) ||
-           Match(root, match_compare(F32)) || Match(root, match_compare(S32)) ||
-           Match(root, match_compare(U32));
+  auto match_all_compares = [](HloInstruction* root, auto callback) {
+    bool result = false;
+    for (auto type : {BF16, F32, S32, U32}) {
+      result = result || Match(root, callback(type));
+    }
+    return result;
   };
 
   return Match(comp->root_instruction(),
@@ -128,16 +130,18 @@ static bool IsNanSafeGt(HloComputation* comp) {
                m::Gt(match_bitcast_bf16_with_convert(0),
                      match_bitcast_bf16_with_convert(1))) ||
          Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1))) ||
-         match_all_compares(comp->root_instruction());
+         match_all_compares(comp->root_instruction(), match_compare);
 }
 
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
 static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
   namespace m = match;
-  auto match_iota = m::Iota().WithShape(
-      m::Shape().WithElementType(S32).WithDims(data->shape().dimensions()));
-  return Match(sort->operand(1), match_iota) ||
-         Match(sort->operand(1), m::Broadcast(match_iota));
+  const auto sort_dims = {data->shape().dimensions(sort->sort_dimension())};
+  auto match_iota = [](auto dims) {
+    return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
+  };
+  return Match(sort->operand(1), match_iota(data->shape().dimensions())) ||
+         Match(sort->operand(1), m::Broadcast(match_iota(sort_dims)));
 }
 
 std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {

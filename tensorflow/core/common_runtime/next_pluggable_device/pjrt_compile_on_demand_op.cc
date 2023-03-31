@@ -232,6 +232,12 @@ Status PjRtCompileOnDemandOp::Run(
   xla::ExecuteOptions options;
   options.arguments_are_tupled = false;
   options.untuple_result = true;
+  // Note: TF does not use PJRT host callbacks as of today. Setting this option
+  // to true to workaround an ExecuteOptions check: [1].
+  //
+  // [1]:
+  // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
+  options.use_major_to_minor_data_layout_for_callbacks = true;
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
       pjrt_client->LookupAddressableDevice(GetDeviceOrdinal(ctx->device())));

@@ -211,7 +211,11 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
         "//tensorflow/python:tfrt_utils",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:is_in_graph_mode",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -282,7 +286,8 @@ py_library(
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -303,8 +308,9 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -334,8 +340,8 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -359,6 +365,7 @@ py_library(
     srcs = ["tape.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python/util:lazy_loader"],
 )
 
 cuda_py_test(
@@ -392,6 +399,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:cond",
         "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
@@ -414,7 +422,9 @@ cuda_py_test(
         ":forwardprop",
         ":forwardprop_util",
         ":test",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -463,6 +473,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -540,8 +551,12 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:unconnected_gradients",
-        "//tensorflow/python:util",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:variable_utils",
     ],
 )
 
@@ -565,8 +580,9 @@ py_library(
         ":forwardprop_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:util",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -604,6 +620,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
@@ -625,6 +643,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )
 
@@ -747,7 +766,7 @@ py_library(
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:unconnected_gradients",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -779,6 +798,9 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:op_selector",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:object_identity",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -792,7 +814,7 @@ tf_py_test(
         ":test",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -809,7 +831,8 @@ py_library(
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -855,6 +878,8 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
     ] + tf_additional_rpc_deps(),
 )
 
@@ -882,6 +907,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ],
 )

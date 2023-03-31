@@ -113,9 +113,12 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_jitrt_passes",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        # TODO(chky): Remove kernel fallback tensor deps.
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor_conversion_alwayslink",
         "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:fallback_state",
@@ -136,7 +139,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         ":saved_model",
-        "//tensorflow/cc/saved_model:loader_lite",
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",

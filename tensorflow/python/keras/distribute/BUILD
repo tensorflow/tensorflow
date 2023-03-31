@@ -30,6 +30,7 @@ py_library(
     deps = [
         ":distribute_coordinator_utils",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",

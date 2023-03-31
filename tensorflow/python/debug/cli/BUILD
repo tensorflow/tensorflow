@@ -341,7 +341,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/debug/lib:debug_data",
@@ -349,6 +348,7 @@ cuda_py_test(
         "//tensorflow/python/debug/lib:source_utils",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
@@ -369,8 +369,8 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )

@@ -11,6 +11,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
@@ -221,9 +222,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
         "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:versions_proto_cc",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",

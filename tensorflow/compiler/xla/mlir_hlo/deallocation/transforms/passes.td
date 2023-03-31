@@ -38,6 +38,12 @@ def DeallocatePass : Pass<"hlo-deallocate", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
 }
 
+def DeallocationSimplificationPass : Pass<"hlo-deallocation-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplifies deallocation.retain ops.";
+  let constructor = "::mlir::deallocation::createDeallocationSimplificationPass()";
+  let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
+}
+
 def XlaBufferArgRewritePass :
     Pass<"hlo-xla-buffer-arg-rewrite", "mlir::func::FuncOp"> {
   let summary = "Rewrites XLA framework buffer arguments with alias information";
