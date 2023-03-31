@@ -211,7 +211,12 @@ class Delegate {
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
         if (in_out_tensors_[input.id]->GetBufferHandle() != buffer) {
-          RETURN_IF_ERROR(in_out_tensors_[input.id]->SetBufferHandle(buffer));
+          if ([in_out_tensors_[input.id]->GetBufferHandle() length] == [buffer length]) {
+            RETURN_IF_ERROR(in_out_tensors_[input.id]->SetBufferHandle(buffer));
+            input.is_bphwc4 = true;
+          } else {
+            in_out_bhwc_f32_buffers_[input.id] = buffer;
+          }
           RETURN_IF_ERROR(inference_context_.SetTensor(input.id, in_out_tensors_[input.id].get()));
         }
         input.set_externally = true;
@@ -221,7 +226,12 @@ class Delegate {
     for (auto& output : graph_outputs_) {
       if (output.tensor_id == tensor_index) {
         if (in_out_tensors_[output.id]->GetBufferHandle() != buffer) {
-          RETURN_IF_ERROR(in_out_tensors_[output.id]->SetBufferHandle(buffer));
+          if ([in_out_tensors_[output.id]->GetBufferHandle() length] == [buffer length]) {
+            RETURN_IF_ERROR(in_out_tensors_[output.id]->SetBufferHandle(buffer));
+            output.is_bphwc4 = true;
+          } else {
+            in_out_bhwc_f32_buffers_[output.id] = buffer;
+          }
           RETURN_IF_ERROR(
               inference_context_.SetTensor(output.id, in_out_tensors_[output.id].get()));
         }
@@ -387,7 +397,7 @@ class Delegate {
           tensor_id,           // .tensor_id
           input_tensor.shape,  // .shape
           false,               // .set_externally
-
+          false,               // .is_bphwc4
       });
 
       // Create BHWC F32 buffer
@@ -421,6 +431,7 @@ class Delegate {
           tensor_id,            // .tensor_id
           output_tensor.shape,  // .shape
           false,                // .set_externally
+          false,                // .is_bphwc4
       });
 
       // Create BHWC F32 buffer
@@ -488,14 +499,16 @@ class Delegate {
 
     // CPU HWC input data conversion to PHWC4 and fill the GPU buffer
     for (const auto& input : graph_inputs_) {
-      if (input.set_externally) {
+      if (input.set_externally && input.is_bphwc4) {
         continue;
       }
       // A user provides data on CPU memory for this buffer - need to copy to MTLBuffer
+      if (!input.set_externally) {
+        TfLiteTensor* tensor = &context->tensors[input.tensor_id];
+        void* gpu_ptr = [in_out_bhwc_f32_buffers_[input.id] contents];
+        std::memcpy(gpu_ptr, tensor->data.f, input.shape.DimensionsProduct() * sizeof(float));
+      }
 
-      TfLiteTensor* tensor = &context->tensors[input.tensor_id];
-      void* gpu_ptr = [in_out_bhwc_f32_buffers_[input.id] contents];
-      std::memcpy(gpu_ptr, tensor->data.f, input.shape.DimensionsProduct() * sizeof(float));
       id<MTLComputeCommandEncoder> input_encoder = [command_buffer computeCommandEncoder];
       [converter_to_BPHWC4_ convertWithEncoder:input_encoder
                                          shape:input.shape
@@ -515,7 +528,7 @@ class Delegate {
     }
 
     for (const auto& output : graph_outputs_) {
-      if (output.set_externally) {
+      if (output.set_externally && output.is_bphwc4) {
         continue;
       }
       id<MTLComputeCommandEncoder> output_encoder = [command_buffer computeCommandEncoder];
@@ -631,6 +644,7 @@ class Delegate {
     int64_t tensor_id;
     BHWC shape;
     bool set_externally;  // a user fills/retrieves data on this MTLBuffer buffer
+    bool is_bphwc4;
   };
   std::vector<BufferDescriptor> graph_inputs_;
   std::vector<BufferDescriptor> graph_outputs_;
