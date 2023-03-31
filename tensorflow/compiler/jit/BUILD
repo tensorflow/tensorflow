@@ -8,7 +8,6 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_not_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1417,10 +1416,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
-    ] + if_not_windows(
-        # pjrt_c_api_client depends on tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper, which does not support windows.
-        ["//tensorflow/compiler/xla/pjrt:pjrt_c_api_client"],
-    ),
+    ],
 )
 
 tf_cc_test(
