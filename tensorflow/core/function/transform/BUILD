@@ -35,7 +35,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/platform",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -47,10 +47,10 @@ py_strict_test(
     deps = [
         ":transform",
         "//tensorflow/core/function/testing:test_pass_py",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

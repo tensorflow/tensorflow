@@ -23,6 +23,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:control_flow_ops",
@@ -36,6 +37,7 @@ py_library(
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
     ],
 )

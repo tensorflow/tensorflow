@@ -1245,6 +1245,17 @@ TEST(Transpose021Test, Large) {
                                                    Vector3{0, 2, 1}));
 }
 
+TEST(Transpose210Test, LogicalTranspose) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 11, 12, 13}, {3, 2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {13, 12, 10, 11}, {3, 2, 1, 0});
+  std::vector<int64_t> dimensions = {3, 2, 0, 1};
+  EXPECT_EQ(std::make_optional(Vector3{13, 12, 110}),
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{2, 1, 0}));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 2, 2}, {0, 1, 2}),

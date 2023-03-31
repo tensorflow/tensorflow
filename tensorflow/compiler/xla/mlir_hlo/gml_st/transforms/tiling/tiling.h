@@ -17,56 +17,33 @@ limitations under the License.
 #define MLIR_HLO_GML_ST_TRANSFORMS_TILING_TILING_H
 
 #include <functional>
-#include <string>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/TilingInterface.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 
-struct TilingResult {
+// Creates SCFTilingOptions from the list of tile sizes.
+scf::SCFTilingOptions getSCFTilingOptions(ArrayRef<int64_t> tileSizes);
+
+/// Returns `failure`, when there occurs a problem during tiling. If the tile
+/// sizes are smaller then the iteration domain of the op, it will still create
+/// an `scf.forall` op. This is matches the behavior of tiling to `scf.for`
+/// upstream.
+struct GMLSTTilingResult {
   SmallVector<Operation *> tiledOps;
   scf::ForallOp loop = nullptr;
 };
-
-/// Options to use to control tiling.
-struct TilingOptions {
-  using TileSizeComputationFn =
-      std::function<SmallVector<Value>(OpBuilder &, Operation *)>;
-
-  /// Function to materialize the tile sizes for a given operation. This allows
-  /// to infer tile sizes statically, e.g. based on an operation's rank, and
-  /// also dynamically based, e.g. based on a tensor's shape at runtime.
-  TileSizeComputationFn tileSizeComputationFn = nullptr;
-
-  /// Convenience function to set the `tileSizeComputationFn` to a
-  /// function that computes tile sizes from an input vector parameter.
-  void setTileSizeComputationFn(ArrayRef<int64_t> ts);
-};
-
-/// Create tiled operation based on the specified tiling options. The result is
-/// equivalent to original op.
-FailureOr<TilingResult> tileUsingGmlSt(const TilingOptions &options,
-                                       PatternRewriter &rewriter,
-                                       TilingInterface op);
-
-/// Populate tiling patterns.
-void populateTilingPatterns(
-    MLIRContext *context,
-    llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
-    const TilingOptions &opts, RewritePatternSet *patterns);
-
-/// Cleans up attributes from applying above tiling patterns.
-void removeTilingLabels(Operation *op);
+FailureOr<GMLSTTilingResult> tileUsingSCFForallOp(
+    PatternRewriter &rewriter, TilingInterface op,
+    const scf::SCFTilingOptions &options);
 
 /// Extracts all yielded values from scf.in_parallel terminator. It should be
 /// upstreamed.
 SmallVector<Value> getYieldedValues(scf::InParallelOp inParallelOp);
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st
 
 #endif  // MLIR_HLO_GML_ST_TRANSFORMS_TILING_TILING_H

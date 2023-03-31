@@ -2338,6 +2338,24 @@ func.func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi6
 // CHECK:  return
 }
 
+func.func @mul_i16(%arg0: tensor<14xi16>, %arg1: tensor<14xi16>) -> tensor<14xi16> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xi16>, tensor<14xi16>) -> tensor<14xi16>
+  func.return %0: tensor<14xi16>
+
+// CHECK-LABEL: mul_i16
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi16>
+// CHECK:  return
+}
+
+func.func @mul_ui32(%arg0: tensor<14xui32>, %arg1: tensor<14xui32>) -> tensor<14xui32> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xui32>, tensor<14xui32>) -> tensor<14xui32>
+  func.return %0: tensor<14xui32>
+
+// CHECK-LABEL: mul_ui32
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xui32>
+// CHECK:  return
+}
+
 func.func @mul_complex32(%arg0: tensor<14xcomplex<f32>>, %arg1: tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>> {
   %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xcomplex<f32>>, tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>>
   func.return %0: tensor<14xcomplex<f32>>
@@ -2513,6 +2531,69 @@ func.func @sign(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // CHECK-LABEL: sign
 // CHECK: %[[RES0:.*]] = "tfl.sign"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
 // CHECK:  return %[[RES0]] : tensor<8xf32>
+}
+
+func.func @bitcast(%arg0: tensor<8xi32>) -> tensor<8xui32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+// CHECK-LABEL: bitcast
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8xui32>
+// CHECK:  return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @bitcastI32ToI16(%arg0: tensor<8xi32>) -> tensor<8x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8x2xi16>
+  func.return %0 : tensor<8x2xi16>
+
+// CHECK-LABEL: bitcastI32ToI16
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8x2xi16>
+// CHECK:  return %[[RES0]] : tensor<8x2xi16>
+}
+
+func.func @bitcastI16ToUI32(%arg0: tensor<8x2xi16>) -> tensor<8xui32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+// CHECK-LABEL: bitcastI16ToUI32
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xui32>
+// CHECK:  return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @bitcastFloatToI16(%arg0: tensor<8xf32>) -> tensor<8x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xf32>) -> tensor<8x2xi16>
+  func.return %0 : tensor<8x2xi16>
+
+// CHECK-LABEL: bitcastFloatToI16
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xf32>) -> tensor<8x2xi16>
+// CHECK:  return %[[RES0]] : tensor<8x2xi16>
+}
+
+func.func @bitcastI16ToFloat(%arg0: tensor<8x2xi16>) -> tensor<8xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+
+// CHECK-LABEL: bitcastI16ToFloat
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xf32>
+// CHECK:  return %[[RES0]] : tensor<8xf32>
+}
+
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testBitwiseXor
+  // CHECK: %[[RES0:.*]] = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testRightShift
+  // CHECK: %[[RES0:.*]] = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
 }
 
 // =============================================================================

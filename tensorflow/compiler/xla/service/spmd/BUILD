@@ -61,7 +61,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:numbers",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",

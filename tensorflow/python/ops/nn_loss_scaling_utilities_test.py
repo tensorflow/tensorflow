@@ -18,7 +18,6 @@ from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,10 +29,6 @@ from tensorflow.python.platform import test as test_lib
 
 
 class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
-
-  def setUp(self):
-    test_util.set_logical_devices_to_at_least("CPU", 3)
-    super(LossUtilitiesTest, self).setUp()
 
   def testComputeAverageLossGlobalBatchSize(self):
     per_example_loss = [1, 2, 3, 4, 5]
@@ -66,10 +61,10 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
-          ],
-          mode=["graph", "eager"]))
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
   def testComputeAverageLossDefaultGlobalBatchSize(self, distribution):
     # Without strategy - num replicas = 1
     per_example_loss = constant_op.constant([2.5, 6.2, 5.])
@@ -85,10 +80,10 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
-          ],
-          mode=["graph", "eager"]))
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
   def testComputeAverageLossSampleWeights(self, distribution):
     with distribution.scope():
       # Scalar sample weight
@@ -126,10 +121,10 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
-          ],
-          mode=["graph", "eager"]))
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
   def testComputeAverageLossDtype(self, distribution):
     with distribution.scope():
       per_example_loss = constant_op.constant([2., 4., 6.],
@@ -164,10 +159,10 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
-          ],
-          mode=["graph", "eager"]))
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
   def testComputeAverageLossInCrossReplicaContext(self, distribution):
     with distribution.scope():
       with self.assertRaisesRegex(
@@ -177,10 +172,10 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
-          ],
-          mode=["graph", "eager"]))
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
   def testScaleRegularizationLoss(self, distribution):
     # Without strategy - num replicas = 1
     reg_losses = constant_op.constant([2.5, 6.2, 5.])
@@ -196,10 +191,10 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_cpu_1_and_2
-          ],
-          mode=["graph", "eager"]))
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
   def testScaleRegularizationLossInCrossReplicaContext(self, distribution):
     with distribution.scope():
       with self.assertRaisesRegex(

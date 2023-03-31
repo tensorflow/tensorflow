@@ -17,23 +17,19 @@
 import collections as py_collections
 import dataclasses
 import functools
-import inspect
-from typing import Any, Callable, Hashable, Mapping, Union
+from typing import Any, Callable, Hashable, Mapping, Union, Optional
 
 from tensorflow.core.function import trace_type
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import type_spec
 from tensorflow.python.types import core
-from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
 _EAGER_CONST_THRESHOLD = 128
 
 
+# TODO(panzf): Remove idf and is_by_ref when splitting the container.
 @dataclasses.dataclass(frozen=True)
 class CaptureContainer():
   """A container for both by-reference and by-value captures.
@@ -96,6 +92,21 @@ class CachedCaptureDict(py_collections.OrderedDict):
     return self._tuple_cache
 
 
+# TODO(panzf): Move lambda_fn to polymorphic function level
+@dataclasses.dataclass(frozen=False)
+class ByRefCaptureContainer():
+  """A container for by-value captures.
+
+  tracetype: TraceType of the capture
+  internal: Nested structure that contains both placeholder and Python
+    primitives.
+  lambda_fn: lambda function that returns the nested structure of the captures.
+  """
+  tracetype: Any
+  internal: Any
+  lambda_fn: Callable[[], Any]
+
+
 class FunctionCaptures(object):
   """A container for all capture usages within FuncGraph."""
 
@@ -108,9 +119,9 @@ class FunctionCaptures(object):
 
   def capture_by_value(
       self,
-      graph: "FuncGraph",
+      graph: Any,
       tensor: core.Tensor,
-      name: str = None
+      name: Optional[str] = None
   ) -> core.Tensor:
     """Captures `tensor` if it's external to this graph.
 
@@ -162,6 +173,11 @@ class FunctionCaptures(object):
     if tensor.graph is not graph:
       graph._validate_in_scope(tensor)  # pylint: disable=protected-access
       if name is None:
+        assert tensor.op is not None, (
+            tensor.__class__,
+            dir(tensor),
+            tensor.__class__.__name__,
+        )
         name = tensor.op.name
       # cond/while graphs override _capture_helper() so cannot call
       # self.create_placeholder_helper() here directly.
@@ -198,25 +214,49 @@ class FunctionCaptures(object):
       c = CaptureContainer(external, internal, idf)
       self._by_val[idf] = c
 
-  def capture_by_ref(self,
-                     lam: Callable[[], Any],
-                     idf: Hashable = None):
-    """Create a by-referece capture if not exists."""
-    # check if the capture exist in self._by_ref
+  # TODO(panzf): make the method public after supporting lam() returns
+  # non-tensor values. Currently, this method is only used by
+  # FuncGraph._experimental_capture_side_input_by_ref(), which contains the
+  # logics for converting non-tensor values to tensor.
+  def _capture_by_ref(self,
+                      graph: Any,
+                      lam: Callable[[], Any],
+                      idf: Hashable = None) -> Any:
+    """Used during tracing process to create/retrive by-ref captures.
+
+    Args:
+      graph: The FuncGraph that captures this tensor.
+      lam: A callable that takes no arguments and returns tensor captures.
+      idf: A hashable identifier.
+
+    Returns:
+      Tensor from this FuncGraph.
+    """
+    # Check if the capture exists in self._by_ref
     if idf is not None and idf in self._by_ref:
       capture = self._by_ref[idf]
       return capture.internal
     if idf is None:
       idf = len(self._by_ref)
+      while idf in self._by_ref:
+        idf += 1
 
-    if context.executing_eagerly():
-      return lam()
-    placeholder = self._create_capture_placeholder(lam)
-    capture = CaptureContainer(lam, placeholder, idf, is_by_ref=True)
+    value_nested = lam()
+    capture_trace_type = trace_type.from_value(value_nested)
+    ctx = trace_type.InternalPlaceholderContext(graph)
+    internal = capture_trace_type.placeholder_value(ctx)
+
+    def lam_fn():
+      # pytype: disable=attribute-error
+      value = lam()
+      return capture_trace_type._to_tensors(value)  # pylint: disable=protected-access
+      # pytype: enable=attribute-error
+
+    capture = ByRefCaptureContainer(capture_trace_type, internal, lam_fn)
     self._by_ref[idf] = capture
-    return capture.internal
+    return self._by_ref[idf].internal
 
-  def merge_by_ref_with(self, other: "FunctionCaptures"):
+  def merge_by_ref_with(self, other: "FunctionCaptures") -> None:
     """Add by-ref captures from `other` to `self` if not exist."""
     assert isinstance(other, FunctionCaptures)
     for key, capture in other.by_ref_captures.items():
@@ -227,13 +267,19 @@ class FunctionCaptures(object):
     """Get a snapshot of current values of by-ref captures."""
     snapshot = {}
     for key, capture in self._by_ref.items():
-      func = capture.external
-      snapshot[key] = func()
+      func = capture.lambda_fn  # pytype: disable=attribute-error
+      try:
+        value = func()
+      except (AttributeError, RuntimeError):
+        # b/269680071 In case of by-ref captures are unavailable at dispatch
+        # time, use the predefined trace_type instead.
+        value = capture.tracetype  # pytype: disable=attribute-error
+      snapshot[key] = value
     return snapshot
 
   def _create_placeholder_helper(
       self,
-      graph: "FuncGraph",
+      graph: Any,
       tensor: core.Tensor,
       name: str):
     """A helper function to create capture placeholder."""
@@ -260,48 +306,6 @@ class FunctionCaptures(object):
       placeholder = capture.internal
     placeholder._record_tape(tensor)  # pylint: disable=protected-access
     return placeholder
-
-  # TODO(panzf): Use FunctionType/TraceType to create placeholder here.
-  def _create_capture_placeholder(self, func: Callable[[], Any]) -> ...:
-    """Create placeholder if the input is tensor."""
-    values_nest = func()
-
-    values_flat = nest.flatten(values_nest)
-    # Return values in flat format. It consists of placeholders and non-tensor
-    # values.
-    return_flat = []
-    tensor_spec_flat = []
-    # Create return_flat and replace tensors with None. Later, each None is
-    # replaced again by corresponding placeholders
-    for value in values_flat:
-      if isinstance(value, core.Tensor):
-        return_flat.append(None)
-        tensor_spec_flat.append(type_spec.type_spec_from_value(value))
-      elif isinstance(value, set) or isinstance(value, frozenset):
-        raise NotImplementedError(
-            (f"Side input returned by '{inspect.getsource(func).strip()}' "
-             f"has element of {type(value)} type, which is currently not "
-             "supported by tf.function."))
-      else:
-        return_flat.append(value)
-    if tensor_spec_flat:
-
-      def tensor_func():
-        values = nest.flatten(func())
-        return [value for value in values if isinstance(value, core.Tensor)]
-      # TODO(panzf): remove get_default_graph after moving
-      # capture_call_time_value to this class.
-      graph = ops.get_default_graph()
-      placeholder_flat = graph.capture_call_time_value(
-          tensor_func, tensor_spec_flat)
-      # replace None that represents tensors with placehoders
-      flat_ptr = 0
-      for idx, item in enumerate(return_flat):
-        if item is None:
-          return_flat[idx] = placeholder_flat[flat_ptr]
-          flat_ptr += 1
-    return_nest = nest.pack_sequence_as(values_nest, return_flat)
-    return return_nest
 
   @property
   def by_ref_captures(self):

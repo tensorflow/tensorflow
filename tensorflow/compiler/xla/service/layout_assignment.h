@@ -481,7 +481,7 @@ class LayoutAssignment : public HloModulePass {
 
   // Propagates the memory space defined in the entry computation to the called
   // computations.
-  Status PropagateMemorySpace(HloModule* module);
+  virtual Status PropagateMemorySpace(HloModule* module);
 
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.

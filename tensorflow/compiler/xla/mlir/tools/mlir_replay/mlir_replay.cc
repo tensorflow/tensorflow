@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/mlir_replay_lib.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
@@ -48,15 +48,17 @@ struct ReplayOptions {
   std::string mlir_compilation_trace;
   std::string mlir_compilation_trace_dir = "";
   std::string execution_trace_dir = "";
-  std::string entry_point = "main";
+  std::vector<std::string> entry_points = {"main", "main_xla_framework"};
   bool print_changes_only = false;
   bool stop_after_first_failure = false;
+  bool print_values = true;
 };
 
 bool ResultsMatch(const xla::HloSnapshot& snapshot,
                   const llvm::SmallVector<mlir::interpreter::InterpreterValue>&
                       first_pass_results,
-                  std::vector<std::string>& failures) {
+                  std::vector<std::string>& failures,
+                  const ReplayOptions& opts) {
   auto actual = mlir::interpreter::LiteralToValue(snapshot.result());
   TF_CHECK_OK(actual.status());
 
@@ -67,8 +69,12 @@ bool ResultsMatch(const xla::HloSnapshot& snapshot,
   }
 
   if (!(*actual == first_pass_results[0])) {
-    failures.push_back("result mismatch: " + actual->toString() +
-                       " != " + first_pass_results[0].toString());
+    if (opts.print_values) {
+      failures.push_back("result mismatch: " + actual->toString() +
+                         " != " + first_pass_results[0].toString());
+    } else {
+      failures.push_back("result mismatch");
+    }
     return false;
   }
   return true;
@@ -100,12 +106,12 @@ void TestAll(mlir::MLIRContext& context, const ReplayOptions& opts) {
 
       auto results =
           mlir::interpreter::Run(context, trace.passes(0).mlir_module(),
-                                 snapshot, nullptr, opts.entry_point);
+                                 snapshot, nullptr, opts.entry_points);
       if (!results.status().ok()) {
         failures.push_back("Failed to execute " + snapshot_path + ": " +
                            results.status().ToString());
       } else {
-        if (!ResultsMatch(snapshot, *results, failures)) {
+        if (!ResultsMatch(snapshot, *results, failures, opts)) {
           failures.push_back(
               std::string("run :mlir_replay -- --mlir-compilation-trace=") +
               trace_path + " --hlo-snapshot=" + snapshot_path +
@@ -125,6 +131,7 @@ int main(int argc, char* argv[]) {
   // Flush llvm::outs before writing errors.
   llvm::errs().tie(&llvm::outs());
 
+  std::string entry_points;
   ReplayOptions opts;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("hlo-snapshot", &opts.hlo_snapshot,
@@ -137,12 +144,13 @@ int main(int argc, char* argv[]) {
                 "report the ones with bugs."),
       tsl::Flag("execution-trace-dir", &opts.execution_trace_dir,
                 "Directory where to store the execution traces (optional)."),
-      tsl::Flag("entry-point", &opts.entry_point,
+      tsl::Flag("entry-point", &entry_points,
                 "Program entry function (optional, defaults to 'main')."),
       tsl::Flag("print-changes-only", &opts.print_changes_only,
                 "If set, only print changed values"),
       tsl::Flag("stop-after-first-failure", &opts.stop_after_first_failure,
                 "If set, stop after the first failed invocation."),
+      tsl::Flag("print-values", &opts.print_values, "If set, print values."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
 
@@ -152,6 +160,11 @@ int main(int argc, char* argv[]) {
   if (!tsl::Flags::Parse(&argc, argv, flag_list)) {
     return 1;
   }
+
+  if (!entry_points.empty()) {
+    opts.entry_points = absl::StrSplit(entry_points, ',');
+  }
+
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
 
   CHECK(opts.mlir_compilation_trace.empty() !=
@@ -168,7 +181,8 @@ int main(int argc, char* argv[]) {
   registry.insert<mlir::deallocation::DeallocationDialect,
                   mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
-                  xla::runtime::RuntimeDialect, mlir::xla_cpu::XlaCpuDialect>();
+                  xla::runtime::RuntimeDialect, mlir::xla_cpu::XlaCpuDialect,
+                  mlir::xla_framework::XLAFrameworkDialect>();
 
   mlir::MLIRContext context(registry);
 
@@ -194,9 +208,10 @@ int main(int argc, char* argv[]) {
     auto results = mlir::interpreter::Run(
         context, state.mlir_module(), snapshot,
         opts.execution_trace_dir.empty() ? nullptr : &execution_trace,
-        opts.entry_point);
+        opts.entry_points);
     if (results.status().ok()) {
-      if (!opts.print_changes_only || (*results != previous_results)) {
+      if (opts.print_values &&
+          (!opts.print_changes_only || (*results != previous_results))) {
         llvm::outs() << "Results:\n";
         for (const auto& result : *results) {
           llvm::outs() << result.toString() << "\n";

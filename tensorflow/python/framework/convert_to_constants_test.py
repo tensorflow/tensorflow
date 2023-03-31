@@ -41,16 +41,18 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_case
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops import while_v2
@@ -327,9 +329,9 @@ class VariablesToConstantsTest(test.TestCase):
     with export_graph.as_default():
       start = array_ops.placeholder(
           shape=[1, 1], dtype=dtypes.float32, name="start")
-      distractor = variables.RefVariable(-1., name="distractor")
-      v = variables.RefVariable(3., name="v")
-      local_variable = variables.VariableV1(
+      distractor = ref_variable.RefVariable(-1., name="distractor")
+      v = ref_variable.RefVariable(3., name="v")
+      local_variable = variable_v1.VariableV1(
           1.,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           trainable=False,
@@ -381,7 +383,7 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
     ])
     def model(x, b):
-      return control_flow_ops.cond(
+      return cond.cond(
           b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
     root, output_func = self._freezeModel(model)
@@ -746,7 +748,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
         ])
         def model(x, b):
-          return control_flow_ops.cond(
+          return cond.cond(
               b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
         root, output_func = self._freezeModel(model)

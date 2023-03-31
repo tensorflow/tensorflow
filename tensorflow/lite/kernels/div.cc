@@ -36,6 +36,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
@@ -174,6 +175,7 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
             CpuBackendContext::GetFromContext(context);
         pthreadpool_t threadpool =
             cpu_backend_context->get_xnnpack_threadpool();
+        threadpool = nullptr;
         float output_min = -std::numeric_limits<float>::infinity();
         float output_max = std::numeric_limits<float>::infinity();
         CalculateActivationRange(params->activation, &output_min, &output_max);
@@ -186,10 +188,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
             GetTensorData<float>(input2), GetTensorData<float>(output),
             output_min, output_max,
             /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
-        if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_divide_nd_f32");
+        if (status == xnn_status_success) {
+          return;
         }
-        return;
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to run xnnpack xnn_run_divide_nd_f32. Error code: %d",
+            status);
       }
 #endif  // TFLITE_KERNEL_USE_XNNPACK
       if (data->requires_broadcast) {

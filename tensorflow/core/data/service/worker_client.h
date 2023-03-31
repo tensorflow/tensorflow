@@ -68,8 +68,8 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   std::unique_ptr<DataTransferClient> client_;
 };
 
-// Creates and initializes a new tf.data service worker client and checks its
-// compatibility with the worker server described `info`.
+// Creates and initializes a new tf.data service worker client to read
+// from the data transfer server specified in `info`.
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
                               const DataTransferServerInfo& info);

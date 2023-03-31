@@ -306,7 +306,7 @@ void ShapeInference::runOnOperation() {
     Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
-    for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
+    for (const auto &indexed_type : llvm::enumerate(func_type.getResults())) {
       int res_num = indexed_type.index();
       Type return_arg_type = return_op->getOperand(res_num).getType();
       if (return_arg_type != indexed_type.value()) {

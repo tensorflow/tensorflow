@@ -39,7 +39,6 @@ cc_library(
         ":error_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:errors",
@@ -64,8 +63,6 @@ tf_cc_test(
     deps = [
         ":utils",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -86,8 +83,8 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
@@ -292,8 +289,8 @@ cc_library(
         "//learning/brain/mlir/bridge:graph_analysis",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + [
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
 

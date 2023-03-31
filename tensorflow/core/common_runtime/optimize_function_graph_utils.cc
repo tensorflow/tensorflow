@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -364,8 +365,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
-  // Dump the initial graph.
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(), "initial");
+  DUMP_OP_CREATION_STACKTRACES(function_name, "op_stacktraces", graph.get());
 
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
@@ -375,6 +375,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   if (options.graph_collector != nullptr) {
     options.graph_collector->CollectRawGraph(graph_def);
   }
+
+  // Dump the initial graph.
+  DUMP_GRAPH(function_name, "initial", graph.get(), &reachable_lib_def, false);
 
   // Mark and assign device for each node in the graph to be compiled by
   // specified device.
@@ -417,7 +420,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        dev_set, options.config_proto, &graph, &reachable_lib_def,
+        function_name, dev_set, options.config_proto,
+        options.xla_compile_device_type, &graph, &reachable_lib_def,
         &control_ret_node_names, &control_rets_updated));
   }
 
@@ -448,11 +452,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.function_def = fdef;
   optimization_options.shape_inference_on_tfe_dialect_import =
       options.shape_inference_on_tfe_dialect_import;
-  optimization_options.debug_filename_prefix = "pflr_optmz_";
+  optimization_options.debug_filename_prefix = function_name;
   env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_pre_placement_passes");
+  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get(),
+             &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -460,24 +464,24 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_placer");
+  DUMP_GRAPH(function_name, "before_placer", graph.get(), &reachable_lib_def,
+             false);
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_post_placement_passes");
+  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get(),
+             &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
 
   if (options.optimize_graph_fn) {
-    DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                         "before_graph_optimization");
+    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get(),
+               &reachable_lib_def, false);
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
         &reachable_lib_def, dev_set, cpu_device, &graph);
@@ -485,16 +489,18 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
     }
-    DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                         "after_graph_optimization");
+    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get(),
+               &reachable_lib_def, false);
   }
 
-  DebugDataDumper::Global()->DumpGraph(function_name, graph.get(),
-                                       "before_post_rewrite_for_exec_passes");
+  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get(),
+             &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   }
+  DUMP_GRAPH(function_name, "after_post_rewrite_for_exec_passes", graph.get(),
+             &reachable_lib_def, false);
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
@@ -508,6 +514,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
 StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
+    const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
@@ -551,7 +558,7 @@ PreprocessAndPartitionGraph(
   optimization_options.graph = nullptr;
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = device_name_to_subgraphs.get();
-  optimization_options.debug_filename_prefix = "pflr_imd_";
+  optimization_options.debug_filename_prefix = function_name;
   env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
   // Normally POST_PARTITIONING passes are run by distributed workers.

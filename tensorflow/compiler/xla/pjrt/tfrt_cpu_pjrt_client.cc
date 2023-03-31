@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -311,25 +312,40 @@ StatusOr<std::string> TfrtCpuExecutable::SerializeExecutable() const {
                       compiler.Export(cpu_executable_.get()));
 
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
-
   if (serialized.empty()) {
     return Internal(
         "TfrtCpuClient::SerializeExecutable proto serialization failed");
   }
-  return serialized;
+  ExecutableAndOptionsProto proto;
+  *proto.mutable_serialized_executable() = std::move(serialized);
+  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                      compile_options_.ToProto());
+  return proto.SerializeAsString();
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
                                      std::optional<CompileOptions> options) {
-  if (!options.has_value()) {
-    return InvalidArgument(
-        "TfrtCpuClient requires `CompileOptions` for "
-        "`DeserializeExecutable()`");
+  ExecutableAndOptionsProto proto;
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "TfrtCpuClient::DeserializeExecutable proto too large (>2GB)");
   }
+  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+    return Internal(
+        "TfrtCpuClient::DeserializeExecutable proto deserialization failed");
+  }
+  CompileOptions compile_options;
+  if (options.has_value()) {
+    compile_options = *std::move(options);
+  } else {
+    TF_ASSIGN_OR_RETURN(compile_options,
+                        CompileOptions::FromProto(proto.compile_options()));
+  }
+  auto input_options = compile_options;
   // Load a CpuExecutable
   cpu::CpuCompiler compiler;
-  std::string str(serialized);
+  std::string str = std::move(*proto.mutable_serialized_executable());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.LoadAotCompilationResult(str));
   TF_ASSIGN_OR_RETURN(
@@ -343,7 +359,8 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
   TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      options->compile_portable_executable, &options->executable_build_options,
+      compile_options.compile_portable_executable,
+      &compile_options.executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
       },
@@ -369,7 +386,8 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
   std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
-  ExecutableBuildOptions& build_options = options->executable_build_options;
+  ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
     addressable_devices.reserve(num_replicas * num_partitions);
@@ -402,12 +420,13 @@ TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
 
   auto tfrt_cpu_executable = std::make_unique<TfrtCpuExecutable>(
       num_replicas, num_partitions, std::move(device_assignment),
-      options->parameter_is_tupled_arguments, std::move(executable),
-      result_slice.index(), std::move(result_buffer_indices),
+      compile_options.parameter_is_tupled_arguments, std::move(input_options),
+      std::move(executable), result_slice.index(),
+      std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
   TF_RETURN_IF_ERROR(tfrt_cpu_executable->SetUpDonation(
-      options->parameter_is_tupled_arguments));
+      compile_options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(tfrt_cpu_executable));
 }
@@ -453,7 +472,10 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile");
+  auto input_options = options;
   ExecutableBuildOptions& build_options = options.executable_build_options;
+
+  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
 
   int num_replicas;
   int num_partitions;
@@ -529,8 +551,9 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
   auto executable = std::make_unique<TfrtCpuExecutable>(
       num_replicas, num_partitions, std::move(device_assignment),
-      options.parameter_is_tupled_arguments, std::move(cpu_executable),
-      result_slice.index(), std::move(result_buffer_indices),
+      options.parameter_is_tupled_arguments, std::move(input_options),
+      std::move(cpu_executable), result_slice.index(),
+      std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
   TF_RETURN_IF_ERROR(
@@ -1264,7 +1287,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
 TfrtCpuExecutable::TfrtCpuExecutable(
     int num_replicas, int num_partitions,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    bool parameter_is_tupled_arguments,
+    bool parameter_is_tupled_arguments, CompileOptions compile_options,
     std::unique_ptr<Executable> cpu_executable,
     BufferAllocation::Index result_buffer_index,
     absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -1275,6 +1298,7 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       num_partitions_(num_partitions),
       device_assignment_(std::move(device_assignment)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
+      compile_options_(std::move(compile_options)),
       cpu_executable_(std::move(cpu_executable)),
       result_buffer_index_(result_buffer_index),
       result_buffer_indices_(std::move(result_buffer_indices)),

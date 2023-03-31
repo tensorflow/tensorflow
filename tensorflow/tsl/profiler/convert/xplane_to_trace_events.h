@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
 
 #include <string>
-#include <vector>
 
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/convert/trace_container.h"
@@ -27,16 +26,11 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-TraceContainer ConvertXSpaceToTraceEvents(
+TraceContainer ConvertXSpaceToTraceContainer(
     const tensorflow::profiler::XSpace& xspace);
 
 void ConvertXSpaceToTraceEventsString(
     const tensorflow::profiler::XSpace& xspace, std::string* content);
-
-// Not Public API, Testing only.
-void MaybeDropEventsForTraceViewer(std::vector<TraceEvent*>& events,
-                                   uint32 limit);
-
 }  // namespace profiler
 }  // namespace tsl
 

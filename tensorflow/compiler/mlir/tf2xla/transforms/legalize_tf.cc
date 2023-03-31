@@ -259,7 +259,7 @@ static RankedTensorType GetStaticBroadcastType(
                                           shape_large.end());
 
   // Update according to the broadcast dimensions.
-  for (auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
+  for (const auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
     auto old_value = out_shape[index_pair.value()];
     auto new_value = shape_small[index_pair.index()];
     out_shape[index_pair.value()] = std::max(old_value, new_value);
@@ -554,7 +554,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
+  for (const auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -3403,7 +3403,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     std::optional<int> dynamic_dim_index;
     split_sizes.reserve(
         split_sizes_attr.getType().cast<ShapedType>().getNumElements());
-    for (auto &dim : llvm::enumerate(split_sizes_attr)) {
+    for (const auto &dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
       if (dim_val == -1) {
@@ -4072,7 +4072,8 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // that this is a restricted form of shape manipulation that is just adding
     // unit dims.
     if (op.getKeepDims()) {
-      for (auto &dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+      for (const auto &dim_is_reduced :
+           llvm::enumerate(reduced_dimensions_bitmap)) {
         if (dim_is_reduced.value()) {
           auto index_attr = GetI32ElementsAttr(
               {static_cast<int>(dim_is_reduced.index())}, &rewriter);
@@ -5318,7 +5319,7 @@ class ConvertInfeedDequeueTupleOp
     }
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
-    for (auto &idx_and_type : llvm::enumerate(result_types)) {
+    for (const auto &idx_and_type : llvm::enumerate(result_types)) {
       results.push_back(data_and_token.getResult(idx_and_type.index()));
     }
     rewriter.replaceOp(op, ValueRange(results));
@@ -6772,7 +6773,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
       if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
         TypeConverter::SignatureConversion signature(num_results);
         Block &block = region.front();
-        for (auto &[block_idx, original_ty] :
+        for (const auto &[block_idx, original_ty] :
              llvm::enumerate(block.getArgumentTypes())) {
           TensorType updated_ty =
               UpdateElementTypeTo(original_ty, element_types[block_idx]);

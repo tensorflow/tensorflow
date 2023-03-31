@@ -18,7 +18,7 @@
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
@@ -92,10 +92,13 @@ class Adagrad(optimizer_v2.OptimizerV2):
     super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
     apply_state[(var_device, var_dtype)].update(
         dict(
-            epsilon=ops.convert_to_tensor_v2_with_dispatch(
-                self.epsilon, var_dtype),
+            epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype
+            ),
             neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
-            zero=array_ops.zeros((), dtype=dtypes.int64)))
+            zero=array_ops.zeros((), dtype=dtypes.int64),
+        )
+    )
 
   def set_weights(self, weights):
     params = self.weights

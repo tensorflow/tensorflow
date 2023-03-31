@@ -11,6 +11,7 @@ load(
 load(
     "//tensorflow/tsl:tsl.bzl",
     "check_deps",
+    "set_external_visibility",
     "tsl_copts",
 )
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -61,10 +62,10 @@ filegroup(
         "determinism.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow:__subpackages__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -94,10 +95,10 @@ filegroup(
         "env_var.h",
         "use_cudnn.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -106,10 +107,10 @@ filegroup(
         "determinism.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow:__subpackages__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -146,7 +147,7 @@ cc_library(
     srcs = ["determinism.cc"],
     hdrs = ["determinism.h"],
     copts = tsl_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         ":env_var",
         "//tensorflow/tsl/platform:mutex",
@@ -169,7 +170,7 @@ cc_library(
 alias(
     name = "determinism_for_kernels",
     actual = if_static(":determinism", ":determinism_hdr_lib"),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
 )
 
 check_deps(
@@ -213,10 +214,10 @@ cc_library(
     name = "reporter",
     srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
@@ -239,9 +240,9 @@ cc_library(
         "stats_calculator.h",
     ],
     copts = tsl_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
 )
 
 tsl_cc_test(
@@ -299,7 +300,7 @@ filegroup(
     srcs = [
         "reporter.h",
     ],
-    visibility = ["//tensorflow/core/util:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core/util:__pkg__"]),
 )
 
 filegroup(
@@ -308,10 +309,10 @@ filegroup(
     srcs = [
         "reporter.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -321,8 +322,8 @@ filegroup(
         "reporter.cc",
         ":android_test_hdrs",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )

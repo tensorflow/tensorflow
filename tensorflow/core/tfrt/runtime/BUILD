@@ -1,4 +1,3 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -26,29 +25,17 @@ cc_library(
     name = "runtime",
     srcs = ["runtime.cc"],
     hdrs = ["runtime.h"],
-    copts = if_cuda(
-        ["-DGOOGLE_CUDA=1"],
-        [],
-    ),
     deps = [
         ":work_queue_interface",
-        "//tensorflow/core:lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
+        "//tensorflow/core:lib",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime",
-    ] + if_cuda(
-        [
-            "@tf_runtime//backends/gpu:gpu_device",
-            "@tf_runtime//backends/gpu:gpu_op_handler",
-            "@tf_runtime//backends/gpu:gpu_tensor",
-        ],
-    ),
+        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
+    ],
 )
 
 cc_library(

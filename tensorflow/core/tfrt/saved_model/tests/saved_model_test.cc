@@ -983,9 +983,6 @@ TEST(SavedModelTest, DeadlineExceeded) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
 
-  // TODO(chky): Implement cancellation in MLRT.
-  if (options.graph_execution_options.enable_mlrt) return;
-
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});
   TF_CHECK_OK(saved_model.status());

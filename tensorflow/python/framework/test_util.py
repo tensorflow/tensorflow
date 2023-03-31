@@ -48,7 +48,6 @@ from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
@@ -963,10 +962,6 @@ def assert_no_garbage_created(f):
 
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
-    # Force-load `distribution_strategy_context` to prevent GC at
-    # test time when using eager. Remove once b/117329403 is resolved.
-    tape.distribution_strategy_context.get_strategy()
-
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
@@ -2552,9 +2547,10 @@ class TensorFlowTestCase(googletest.TestCase):
       a: a proto.
       b: another proto.
       msg: Optional message to report on failure.
-      relative_tolerance: float, relative tolerance. If this is not provided,
-        then all floats are compared using string comparison otherwise, floating
-        point comparisons are done using the relative tolerance provided.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if not compare.ProtoEq(a, b):
       compare.assertProtoEqual(
@@ -2582,9 +2578,10 @@ class TensorFlowTestCase(googletest.TestCase):
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
       msg: Optional message to report on failure.
-      relative_tolerance: float, relative tolerance. If this is not provided,
-        then all floats are compared using string comparison otherwise, floating
-        point comparisons are done using the relative tolerance provided.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii

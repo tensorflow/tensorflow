@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/protobuf/config.pb.h"
+
 namespace tensorflow {
 
 enum class TfrtDeviceInfraTarget {
@@ -46,6 +48,10 @@ struct TfrtCompileOptions {
 
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
+
+  // Graph rewrite options that will be applied on GraphDef before converting to
+  // MLIR.
+  GraphOptions graph_options;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting

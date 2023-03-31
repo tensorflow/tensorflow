@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
-#include "tensorflow/compiler/xla/test.h"
 
 namespace xla {
 namespace testing {
@@ -354,6 +360,36 @@ void HloReplicaGroupsMatcher::DescribeTo(std::ostream* os) const {
   *os << "{" << absl::StrJoin(replica_group_strs, ",") << "}";
 }
 
+bool HloSourceTargetPairsMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  const auto* collective_permute =
+      DynCast<HloCollectivePermuteInstruction>(instruction);
+
+  if (!collective_permute) {
+    *listener << instruction->ToString() << " not a collective permute";
+    return false;
+  }
+
+  if (collective_permute->source_target_pairs() == source_target_pairs_) {
+    return true;
+  }
+
+  std::ostringstream desc_stream;
+  DescribeTo(&desc_stream);
+  *listener << instruction->ToString()
+            << " has incorrect source_target_pairs (expected: "
+            << desc_stream.str() << ")";
+  return false;
+}
+
+void HloSourceTargetPairsMatcher::DescribeTo(std::ostream* os) const {
+  const auto pair_formatter = [](std::string* out,
+                                 const std::pair<int64_t, int64_t>& pair) {
+    absl::StrAppend(out, "{", pair.first, ",", pair.second, "}");
+  };
+  *os << '{' << absl::StrJoin(source_target_pairs_, ",", pair_formatter) << "}";
+}
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {

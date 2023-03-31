@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "absl/log/check.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
@@ -701,6 +701,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
   // Register infra and standard math kernels
   tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
   tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
 
   std::optional<mlrt::LoadedExecutable> loaded_executable;
@@ -715,15 +716,12 @@ SavedModelImpl::LoadSavedModel(Options options,
                       *options.graph_execution_options.runtime, bef));
   }
 
-  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
-
   auto runner_table = std::make_unique<OpKernelRunnerTable>();
   auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
 
   ASSIGN_OR_RETURN_WITH_STAGE_INFO(
       "graph_executor creation", auto graph_executor,
       GraphExecutor::Create(options.graph_execution_options, *fallback_state,
-                            tpu_model_resource.get(),
                             std::move(*meta_graph_def.mutable_graph_def()),
                             std::move(kernel_registry)));
 
@@ -755,9 +753,8 @@ SavedModelImpl::LoadSavedModel(Options options,
       std::move(options), std::move(meta_graph_def), std::move(bef),
       std::move(bef_file), std::move(bytecode), std::move(loaded_executable),
       std::move(initializers_and_signatures.signature_map),
-      std::move(fallback_state), std::move(tpu_model_resource),
-      std::move(runner_table), std::move(resource_array),
-      std::move(graph_executor))};
+      std::move(fallback_state), std::move(runner_table),
+      std::move(resource_array), std::move(graph_executor))};
 }
 
 SavedModelImpl::SavedModelImpl(
@@ -766,7 +763,6 @@ SavedModelImpl::SavedModelImpl(
     mlrt::bc::Buffer bytecode,
     std::optional<mlrt::LoadedExecutable> loaded_executable,
     SignatureMap signatures, std::unique_ptr<FallbackState> fallback_state,
-    std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
     std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
     std::unique_ptr<GraphExecutor> graph_executor)
@@ -782,7 +778,6 @@ SavedModelImpl::SavedModelImpl(
               ->GetHostContext()),
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
-      tpu_model_resource_(std::move(tpu_model_resource)),
       runner_table_(std::move(runner_table)),
       resource_array_(std::move(resource_array)),
       graph_executor_(std::move(graph_executor)) {}

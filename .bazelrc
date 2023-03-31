@@ -184,6 +184,10 @@ build:android_x86_64 --config=android
 build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
 
+# Build everything statically for Android since all static libs are later
+# bundled together into a single .so for deployment.
+build:android --dynamic_mode=off
+
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
 
@@ -398,11 +402,6 @@ build:windows --verbose_failures
 # See: https://github.com/bazelbuild/bazel/issues/5163
 build:windows --features=compiler_param_file
 
-# On windows, we never cross compile
-build:windows --distinct_host_configuration=false
-# On linux, don't cross compile by default
-build:linux --distinct_host_configuration=false
-
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
 build:linux --experimental_guard_against_concurrent_changes
@@ -443,7 +442,6 @@ build:rbe --bes_backend=buildeventservice.googleapis.com
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
-build:rbe --distinct_host_configuration=false
 build:rbe --flaky_test_attempts=3
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
@@ -610,10 +608,8 @@ build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
 build:elinux_aarch64 --cpu=aarch64
-build:elinux_aarch64 --distinct_host_configuration=true
 build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
-build:elinux_armhf --distinct_host_configuration=true
 build:elinux_armhf --copt -mfp16-format=ieee
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
@@ -627,7 +623,6 @@ try-import %workspace%/.bazelrc.user
 
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
-build:release_base --distinct_host_configuration=false
 test:release_base --flaky_test_attempts=3
 test:release_base --test_size_filters=small,medium
 

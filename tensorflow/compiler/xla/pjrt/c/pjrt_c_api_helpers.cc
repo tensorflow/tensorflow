@@ -142,8 +142,8 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
   }
 }
 
-PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code) {
-  switch (code) {
+PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
+  switch (static_cast<tsl::error::Code>(code)) {
     case tsl::error::CANCELLED:
     case tsl::error::UNKNOWN:
     case tsl::error::INVALID_ARGUMENT:
@@ -529,6 +529,35 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   absl::string_view platform_version(args.platform_version,
                                      args.platform_version_size);
   return platform_version;
+}
+
+PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
+  // `deleter_arg` holds a copy of the original xla::PjRtChunk
+  // deleter. The original xla::PjRtChunk `input` releases its ownership
+  // of data, which will subsequently be managed by `deleter` along with
+  // `deleter_arg`.
+  PJRT_Chunk c_chunk;
+  c_chunk.data = chunk.data();
+  c_chunk.size = static_cast<size_t>(chunk.size());
+  c_chunk.deleter_arg = new std::function(chunk.deleter());
+  c_chunk.deleter = [](void* data, void* deleter_arg) {
+    auto* deleter = reinterpret_cast<std::function<void(void*)>*>(deleter_arg);
+    (*deleter)(data);
+    delete deleter;
+  };
+
+  // Release the ownership of `chunk.data()`, so it can be managed by `c_chunk`.
+  chunk.release();
+
+  return c_chunk;
+}
+
+xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk) {
+  return xla::PjRtChunk(
+      chunk.data, chunk.size,
+      [deleter_arg = chunk.deleter_arg, deleter = chunk.deleter](void* data) {
+        deleter(data, deleter_arg);
+      });
 }
 
 }  // namespace pjrt

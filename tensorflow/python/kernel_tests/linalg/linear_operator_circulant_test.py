@@ -21,6 +21,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg
@@ -262,7 +263,7 @@ class LinearOperatorCirculantBaseTest(object):
       fft_x = fft_ops.fft(math_ops.cast(x, spectrum.dtype))
       h_convolve_x = fft_ops.ifft(spectrum * fft_x)
       matrix_rows.append(h_convolve_x)
-    matrix = array_ops.stack(matrix_rows, axis=-1)
+    matrix = array_ops_stack.stack(matrix_rows, axis=-1)
     return math_ops.cast(matrix, dtype)
 
 
@@ -689,7 +690,7 @@ class LinearOperatorCirculant2DBaseTest(object):
         # vector, not the block version.
         h_convolve_x = array_ops.reshape(h_convolve_x, shape[:-1])
         matrix_rows.append(h_convolve_x)
-    matrix = array_ops.stack(matrix_rows, axis=-1)
+    matrix = array_ops_stack.stack(matrix_rows, axis=-1)
     return math_ops.cast(matrix, dtype)
 
 

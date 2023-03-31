@@ -37,9 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 // Returns the first kWhile instruction within m's entry computation.
 HloInstruction* FindFirstWhile(HloModule* m) {
   const auto& instrs = m->entry_computation()->instructions();
-  return *absl::c_find_if(instrs, [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kWhile;
-  });
+  return *absl::c_find_if(instrs, HloPredicateIsOp<HloOpcode::kWhile>);
 }
 
 class WhileLoopSimplifierTest : public HloTestBase {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -26,20 +27,16 @@ DebugDataDumper* DebugDataDumper::Global() {
   return global_instance_;
 }
 
-void DebugDataDumper::DumpGraph(const std::string& name, const Graph* graph,
-                                const std::string& tag) {
-  // Use a lock to make sure this is thread safe.
-  const mutex_lock lock(lock_);
-
-  // Get the directory name from TF_DUMP_GRAPH_PREFIX.
-  const char* dump_prefix = getenv("TF_DUMP_GRAPH_PREFIX");
+bool DebugDataDumper::ShouldDump(const std::string& name) const {
+  // Do not dump data for the wrapped functions.
+  if (absl::StartsWith(name, "__wrapped__")) return false;
 
   // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
   const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
   if (name_filter == nullptr) {
     VLOG(1) << "Skip dumping graph '" << name
             << "', because TF_DUMP_GRAPH_NAME_FILTER is not set";
-    return;
+    return false;
   }
 
   // If name_filter is not '*' or name doesn't contain the name_filter,
@@ -50,25 +47,119 @@ void DebugDataDumper::DumpGraph(const std::string& name, const Graph* graph,
     VLOG(1) << "Skip dumping graph '" << name
             << "', because TF_DUMP_GRAPH_NAME_FILTER is not '*' and "
             << "it is not contained by the graph name";
+    return false;
+  }
+
+  // If all conditions are met, return true to allow the dump.
+  return true;
+}
+
+void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
+                                                const std::string& tag,
+                                                const Graph* graph) {
+  const char* dump_stacktraces = getenv("TF_DUMP_OP_CREATION_STACKTRACES");
+  if (dump_stacktraces == nullptr) {
+    VLOG(1) << "Skip dumping op creation stacktraces for '" << name
+            << "', because TF_DUMP_OP_CREATION_STACKTRACES is not set";
     return;
   }
 
   // Construct the dump filename.
-  std::string dump_filename =
-      absl::StrFormat("%s.%d.%s", name, GetNextDumpId(name), tag);
+  std::string dump_filename = GetDumpFileBasename(name, tag);
+
+  // Dump module txt to file.
+  DumpToFile(dump_filename, "", ".csv", "StackTrace",
+             [&graph, &dump_filename](WritableFile* file) {
+               auto status = file->Append("node_id,node_name,stackframes\n");
+               if (!status.ok()) {
+                 LOG(WARNING) << "error writing to file to " << dump_filename
+                              << ": " << status.error_message();
+                 return status;
+               }
+
+               for (Node* node : graph->nodes()) {
+                 auto stack_trace = node->GetStackTrace();
+                 if (stack_trace == nullptr) continue;
+
+                 int node_id = node->id();
+                 std::string node_name = node->name();
+                 std::vector<std::string> stackframes;
+
+                 for (auto& frame : stack_trace->ToFrames()) {
+                   stackframes.push_back(
+                       absl::StrFormat("%s(%d): %s", frame.file_name,
+                                       frame.line_number, frame.function_name));
+                 }
+
+                 status = file->Append(
+                     absl::StrFormat("%d,%s,%s\n", node_id, node_name,
+                                     absl::StrJoin(stackframes, ";")));
+
+                 if (!status.ok()) {
+                   LOG(WARNING) << "error writing to file to " << dump_filename
+                                << ": " << status.error_message();
+                   return status;
+                 }
+               }
+
+               return file->Close();
+             });
+}
+
+void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
+                                const Graph* graph,
+                                const FunctionLibraryDefinition* func_lib_def) {
+  // Construct the dump filename.
+  std::string dump_filename = GetDumpFileBasename(name, tag);
 
   // Make sure the dump filename is not longer than 255,
   // because Linux won't take filename that long.
   if (dump_filename.size() > 255) {
     LOG(WARNING) << "Failed to dump graph " << dump_filename << " to "
-                 << dump_prefix << ", because the file name is longer than 255";
+                 << ", because the file name is longer than 255";
     return;
   }
 
+  // Construct a graph def.
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
+
+  if (func_lib_def) *graph_def.mutable_library() = func_lib_def->ToProto();
+
   // Now dump the graph into the target file.
-  LOG(INFO) << "Dumping graph " << dump_filename << " to " << dump_prefix;
-  DumpGraphToFile(dump_filename, *graph, nullptr,
-                  dump_prefix ? std::string(dump_prefix) : "");
+  DumpGraphDefToFile(dump_filename, graph_def);
+}
+
+void DebugDataDumper::DumpMLIRModule(const std::string& name,
+                                     const std::string& tag,
+                                     const std::string& module_txt) {
+  // Construct the dump filename.
+  std::string dump_filename = GetDumpFileBasename(name, tag);
+
+  // Make sure the dump filename is not longer than 255,
+  // because Linux won't take filename that long.
+  if (dump_filename.size() > 255) {
+    LOG(WARNING) << "Failed to dump graph " << dump_filename
+                 << ", because the file name is longer than 255";
+    return;
+  }
+
+  // Dump module txt to file.
+  DumpToFile(dump_filename, "", ".mlir", "MLIR",
+             [&module_txt, &dump_filename](WritableFile* file) {
+               auto status = file->Append(module_txt);
+               if (!status.ok()) {
+                 LOG(WARNING) << "error writing to file to " << dump_filename
+                              << ": " << status.error_message();
+                 return status;
+               }
+               return file->Close();
+             });
+}
+
+std::string DebugDataDumper::GetDumpFileBasename(const std::string& name,
+                                                 const std::string& tag) {
+  return absl::StrFormat("%s.%04d.%s", name, GetNextDumpId(name), tag);
 }
 
 }  // namespace tensorflow

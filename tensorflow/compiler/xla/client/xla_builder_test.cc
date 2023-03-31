@@ -1471,9 +1471,7 @@ TEST_F(XlaBuilderTest, OutfeedTokenSharding) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto it = std::find_if(module->entry_computation()->instructions().begin(),
                          module->entry_computation()->instructions().end(),
-                         [](const HloInstruction* i) {
-                           return i->opcode() == HloOpcode::kOutfeed;
-                         });
+                         HloPredicateIsOp<HloOpcode::kOutfeed>);
   EXPECT_NE(it, module->entry_computation()->instructions().end());
   auto* outfeed = *it;
   EXPECT_TRUE(outfeed->has_sharding());

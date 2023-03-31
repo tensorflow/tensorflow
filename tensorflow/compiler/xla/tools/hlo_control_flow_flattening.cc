@@ -284,7 +284,7 @@ Status HloControlFlowFlattening::RemoveRecvDone(
   HloInstruction* custom_call_recv =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           recv->shape(), recv->operands(), kNopCustomCallTarget));
-  std::string original_recv_name = recv->name();
+  std::string original_recv_name(recv->name());
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, recv, custom_call_recv);
@@ -292,7 +292,7 @@ Status HloControlFlowFlattening::RemoveRecvDone(
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(recv, custom_call_recv));
   custom_call_recv->SetAndSanitizeName(original_recv_name);
 
-  std::string original_recv_done_name = recv_done->name();
+  std::string original_recv_done_name(recv_done->name());
   HloInstruction* custom_call_recv_done = computation->AddInstruction(
       HloInstruction::CreateCustomCall(
           recv_done->shape(), recv_done->operands(), kNopCustomCallTarget),
@@ -340,7 +340,7 @@ Status HloControlFlowFlattening::RemoveSendDone(
   HloInstruction* custom_call_send =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           send->shape(), send->operands(), kNopCustomCallTarget));
-  std::string original_send_name = send->name();
+  std::string original_send_name(send->name());
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, send, custom_call_send);
@@ -351,7 +351,7 @@ Status HloControlFlowFlattening::RemoveSendDone(
   HloInstruction* custom_call_send_done =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           send_done->shape(), send_done->operands(), "NopReturnToken"));
-  std::string original_send_done_name = send_done->name();
+  std::string original_send_done_name(send_done->name());
   Cast<HloCustomCallInstruction>(custom_call_send_done)
       ->set_custom_call_has_side_effect(true);
   if (module->has_schedule() &&
@@ -379,7 +379,7 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, hlo, custom_call);
   }
-  std::string original_op_name = hlo->name();
+  std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
   custom_call->SetAndSanitizeName(original_op_name);
   return OkStatus();

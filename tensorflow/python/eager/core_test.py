@@ -1066,6 +1066,71 @@ class TFETest(test_util.TensorFlowTestCase):
         empty_handle.shape.as_list())
 
 
+@test_util.with_eager_op_as_function
+class SendRecvTest(test_util.TensorFlowTestCase):
+
+  cpu_device = '/job:localhost/replica:0/task:0/device:CPU:0'
+
+  def _send(self, tensor, tensor_name, to_device):
+    return execute(
+        b'_Send', num_outputs=0, inputs=[tensor],
+        attrs=('T', tensor.dtype.as_datatype_enum,
+               'tensor_name', tensor_name,
+               'send_device', tensor.device,
+               'send_device_incarnation', 0,
+               'recv_device', to_device,
+               'client_terminated', True))
+
+  def _recv(self, dtype, tensor_name, from_device):
+    device_name = context.context().device_name
+    if not device_name:
+      device_name = self.cpu_device
+    return execute(
+        b'_Recv', num_outputs=1, inputs=[],
+        attrs=('tensor_type', dtype.as_datatype_enum,
+               'tensor_name', tensor_name,
+               'send_device', from_device,
+               'send_device_incarnation', 0,
+               'recv_device', device_name,
+               'client_terminated', False))[0]
+
+  def setUp(self):
+    super(SendRecvTest, self).setUp()
+    context._reset_context()
+    configure_virtual_cpus()
+
+  @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
+  def testBasic(self):
+    with ops.device(self.cpu_device):
+      t0 = constant_op.constant(1.0)
+      t1 = constant_op.constant(2.0)
+    self._send(t0, 't0', self.cpu_device)
+    self._send(t1, 't1', self.cpu_device)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't0', self.cpu_device),
+        1.0)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't1', self.cpu_device),
+        2.0)
+
+  @test_util.run_gpu_only
+  @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
+  def testLocalCrossDevice(self):
+    gpu_device_name = '/job:localhost/replica:0/task:0/device:GPU:0'
+    with ops.device('GPU:0'):
+      t0 = array_ops.identity(1.0)
+      self._send(t0, 't0', self.cpu_device)
+    with ops.device('cpu:0'):
+      self.assertAllEqual(
+          self._recv(dtypes.float32, 't0', gpu_device_name),
+          1.0)
+      self._send(constant_op.constant(2.0), 't1', gpu_device_name)
+    with ops.device('GPU:0'):
+      self.assertAllEqual(
+          self._recv(dtypes.float32, 't1', self.cpu_device),
+          2.0)
+
+
 class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

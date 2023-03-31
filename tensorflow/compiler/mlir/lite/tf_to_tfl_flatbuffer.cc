@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -44,10 +45,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -56,6 +59,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -88,6 +93,25 @@ mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
             "instead. See https://www.tensorflow.org/api_docs/python/tf/compat/"
             "v1/enable_control_flow_v2."),
         tflite::metrics::ConverterErrorData::ERROR_UNSUPPORTED_CONTROL_FLOW_V1);
+    return mlir::failure();
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult GraphContainsStatefulPartitionedOp(mlir::ModuleOp module) {
+  auto result = module.walk([&](Operation* op) {
+    return llvm::isa_and_nonnull<mlir::TF::StatefulPartitionedCallOp>(op)
+               ? mlir::WalkResult::interrupt()
+               : mlir::WalkResult::advance();
+  });
+  if (result.wasInterrupted()) {
+    // StatefulPartitionedCall ops are not supported by the tflite runtime.
+    mlir::TFL::AttachErrorCode(
+        module.emitError(
+            "The Graph contains unsupported `StatefulPartionedCallOp`(s), will "
+            "retry with `guarantee_all_funcs_used_once`"),
+        tflite::metrics::ConverterErrorData::
+            ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR);
     return mlir::failure();
   }
   return mlir::success();
@@ -143,17 +167,19 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, control_output_arrays,
-        specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
+        input_arrays, input_dtypes, input_shapes, output_arrays,
+        control_output_arrays, specs.prune_unused_nodes,
+        /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false,
         /*unconditionally_use_set_output_shapes=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, control_output_arrays,
-      specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+      file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
+      input_arrays, input_dtypes, input_shapes, output_arrays,
+      control_output_arrays, specs.prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false,
       /*unconditionally_use_set_output_shapes=*/true, context);
@@ -212,20 +238,25 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
       return errors::Aborted("Failed to preprocess & freeze TF graph");
     }
 
-    // The default minimum number of elements a weights array must have to be
-    // quantized by this transformation.
-    const int kWeightsMinNumElementsDefault = 1024;
+    // TODO(b/264218457): Refactor the component below once StableHLO Quantizer
+    // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
+    if (!toco_flags.has_quantization_options()) {
+      // The default minimum number of elements a weights array must have to be
+      // quantized by this transformation.
+      const int kWeightsMinNumElementsDefault = 1024;
 
-    tensorflow::quantization::QuantizationOptions quantization_options;
+      tensorflow::quantization::QuantizationOptions quantization_options;
 
-    quantization_options.mutable_quantization_method()->set_experimental_method(
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
-    quantization_options.set_op_set(
-        tensorflow::quantization::UNIFORM_QUANTIZED);
-    quantization_options.set_min_num_elements_for_weights(
-        kWeightsMinNumElementsDefault);
-    tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
-        pass_manager, quantization_options);
+      quantization_options.mutable_quantization_method()
+          ->set_experimental_method(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
+      quantization_options.set_op_set(
+          tensorflow::quantization::UNIFORM_QUANTIZED);
+      quantization_options.set_min_num_elements_for_weights(
+          kWeightsMinNumElementsDefault);
+      tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
+          pass_manager, quantization_options);
+    }
     if (failed(pass_manager.run(module))) {
       return statusHandler.ConsumeStatus();
     }
@@ -237,6 +268,10 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
+  if (toco_flags.has_quantization_options()) {
+    stablehlo::quantization::AddQuantizationPasses(
+        pass_manager, toco_flags.quantization_options());
+  }
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
@@ -343,6 +378,10 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
       }
     }
     return status;
+  }
+
+  if (failed(GraphContainsStatefulPartitionedOp(module))) {
+    return statusHandler.ConsumeStatus();
   }
 
   if (export_to_mlir) {

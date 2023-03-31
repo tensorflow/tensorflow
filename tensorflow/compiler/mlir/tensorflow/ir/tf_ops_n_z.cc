@@ -2298,7 +2298,7 @@ SummaryWriterOp::GetResourceHandleValueAndIdList(
 void TPUExecuteOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(getArgs().size() + 1);
+  effects.reserve(2 * getArgs().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUExecute::get());
 
@@ -2372,7 +2372,7 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
         .isa<ResourceType>();
   });
 
-  for (auto &entry : llvm::enumerate(resource_handles)) {
+  for (const auto &entry : llvm::enumerate(resource_handles)) {
     Value value = entry.value();
     effects.emplace_back(MemoryEffects::Read::get(), value,
                          ResourceEffects::Variable::get());
@@ -2733,7 +2733,14 @@ LogicalResult TransposeOp::verify() {
     for (const auto &e : llvm::enumerate(attr_perm)) {
       const int64_t y_idx = e.index();
       const int64_t y_dim = y_type.getDimSize(y_idx);
-      const int64_t x_idx = e.value().getSExtValue();
+      int64_t x_idx = e.value().getSExtValue();
+      int64_t x_rank = x_type.getRank();
+      if (x_idx < -x_rank || x_idx >= x_rank) {
+        return op.emitOpError(
+            llvm::formatv("perm[{0}]={1} must be in range [-{2}, {2})", y_idx,
+                          x_idx, x_rank));
+      }
+      if (x_idx < 0) x_idx += x_rank;
       const int64_t x_dim = x_type.getDimSize(x_idx);
       if (!ShapedType::isDynamic(y_dim) && !ShapedType::isDynamic(x_dim) &&
           y_dim != x_dim) {
@@ -2911,6 +2918,33 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
   results.add<ConvertFusedBatchNorm>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaLaunchOp
+//===----------------------------------------------------------------------===//
+
+void XlaLaunchOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(getArgs().size() + 1);
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::XlaLaunch::get());
+
+  for (Value value : getArgs()) {
+    if (value.getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>()) {
+      // Conservatively mark resource handles as read and write, as without
+      // analyzing XlaLaunch, there is not sufficient information to determine
+      // effects on resources.
+      effects.emplace_back(MemoryEffects::Read::get(), value,
+                           ResourceEffects::Variable::get());
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//

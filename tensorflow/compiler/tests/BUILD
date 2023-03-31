@@ -326,6 +326,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:framework",
@@ -671,6 +672,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
@@ -814,7 +816,6 @@ tf_xla_py_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
-        "requires-gpu-nvidia",
     ],
     deps = [
         ":xla_test",
@@ -1737,6 +1738,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:gradients",
@@ -1820,8 +1822,8 @@ tf_cuda_cc_test(
     shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "manual",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
@@ -1834,8 +1836,8 @@ tf_cuda_cc_test(
     shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "manual",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
@@ -1856,8 +1858,8 @@ tf_cuda_cc_test(
         "config-cuda-only",
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "requires-gpu-nvidia",
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -1877,8 +1879,8 @@ tf_cuda_cc_test(
         "config-cuda-only",
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "requires-gpu-nvidia",
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -2142,6 +2144,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
@@ -2161,6 +2164,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2246,6 +2250,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/tpu",
     ],
 )
 
@@ -2253,7 +2258,10 @@ tf_xla_py_test(
     name = "where_op_tpu_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    args = ["--tpu_use_tfrt=true"],
+    args = [
+        "--tpu_use_tfrt=true",
+        # TODO(b/274633087): Set tf_use_pjrt=true after fixing bug.
+    ],
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
@@ -2274,6 +2282,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/tpu",
     ],
 )
 

@@ -67,7 +67,6 @@ from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import dispatch
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
 from tensorflow.python.util import object_identity
@@ -288,8 +287,25 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
+# Tensor subclassing has historically been a mess.
+#
+# There is no "Tensor" base class for Graph & Eager tensors. Instead, when we
+# introduced EagerTensor, we had it subclass the graph "Tensor" class, and
+# override a bunch of behavior. Introducing a proper subclassing relationship
+# is complicated because many users check for type(t) == Tensor of isinstance.
+#
+# This is done internally for "bad" reasons as a way to separate out Graph and
+# Eager tensors, or subclasses which "look like" Tensor, e.g. distribute.Value.
+#
+# For now, we work around this by deferring initialization of graph tensors to
+# a separate `_init` method. `GraphTensor` is a free function, not a class, that
+# returns a Tensor object.
+#
+# b(XXX) -- fix type(t) == Tensor checks in the code base
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
-class Tensor(internal.NativeObject, core_tf_types.Symbol):
+class Tensor(
+    pywrap_tf_session.PyTensor, internal.NativeObject, core_tf_types.Symbol
+):
   """A `tf.Tensor` represents a multidimensional array of elements.
 
   All elements are of a single known data type.
@@ -357,9 +373,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
   should not rely on this behaviour.
 
   For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor).
-
   """
-
   # List of Python operators that we allow to override.
   OVERLOADABLE_OPERATORS = {
       # Binary.
@@ -403,35 +417,6 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
   # Whether to allow hashing or numpy-style equality
   _USE_EQUALITY = tf2.enabled()
 
-  def __init__(self, op, value_index, dtype):
-    """Creates a new `Tensor`.
-
-    Args:
-      op: An `Operation`. `Operation` that computes this tensor.
-      value_index: An `int`. Index of the operation's endpoint that produces
-        this tensor.
-      dtype: A `DType`. Type of elements stored in this tensor.
-
-    Raises:
-      TypeError: If the op is not an `Operation`.
-    """
-    if not isinstance(op, Operation):
-      raise TypeError(f"op needs to be an Operation. "
-                      f"An instance of type {type(op).__name__} is provided.")
-
-    self._op = op
-    self._value_index = value_index
-    self._dtype = dtypes.as_dtype(dtype)
-    # This will be set by self._as_tf_output().
-    self._tf_output = None
-    # This will be set by self.shape().
-    self._shape_val = None
-    # List of operations that use this Tensor as input.  We maintain this list
-    # to easily navigate a computation graph.
-    self._consumers = []
-    self._id = uid()
-    self._name = None
-
   def __getattr__(self, name):
     if name in {"T", "astype", "ravel", "transpose", "reshape", "clip", "size",
                 "tolist", "data"}:
@@ -444,39 +429,18 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
       """)
     self.__getattribute__(name)
 
-  @staticmethod
-  def _create_with_tf_output(op, value_index, dtype, tf_output):
-    ret = Tensor(op, value_index, dtype)
-    ret._tf_output = tf_output
-    return ret
-
-  @property
-  def op(self):
-    """The `Operation` that produces this tensor as an output."""
-    return self._op
-
   @property
   def dtype(self):
     """The `DType` of elements in this tensor."""
     return self._dtype
 
   @property
-  def graph(self):
-    """The `Graph` that contains this tensor."""
-    return self._op.graph
-
-  @property
   def name(self):
     """The string name of this tensor."""
     if self._name is None:
       assert self._op.name
-      self._name = "%s:%d" % (self._op.name, self._value_index)
+      self._name = "%s:%d" % (self._op.name, self.value_index)
     return self._name
-
-  @property
-  def device(self):
-    """The name of the device on which this tensor will be produced, or None."""
-    return self._op.device
 
   @property
   def shape(self):
@@ -498,35 +462,16 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     See `tf.Tensor.get_shape()`, and `tf.TensorShape` for details and examples.
     """
     if self._shape_val is None:
-      self._shape_val = self._c_api_shape()
+      dims, unknown_shape = self._shape
+      if unknown_shape:
+        self._shape_val = tensor_shape.unknown_shape()
+      else:
+        self._shape_val = tensor_shape.TensorShape(dims)
     return self._shape_val
-
-  def _c_api_shape(self):
-    """Returns the TensorShape of this tensor according to the C API."""
-    with self._op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-      shape_vec, unknown_shape = pywrap_tf_session.TF_GraphGetTensorShapeHelper(
-          c_graph, self._as_tf_output())
-    if unknown_shape:
-      return tensor_shape.unknown_shape()
-    else:
-      shape_vec = [None if d == -1 else d for d in shape_vec]
-      return tensor_shape.TensorShape(shape_vec)
 
   @property
   def ndim(self):
-    """Returns the number of Tensor dimensions."""
-    return self.shape.ndims
-
-  @property
-  def _shape(self):
-    logging.warning("Tensor._shape is private, use Tensor.shape "
-                    "instead. Tensor._shape will eventually be removed.")
-    return self.shape
-
-  @_shape.setter
-  def _shape(self, value):
-    raise ValueError(
-        "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
+    return self.shape.rank
 
   def _disallow_when_autograph_unavailable(self, task):
     raise errors.OperatorNotAllowedInGraphError(
@@ -603,14 +548,6 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     if shape is None:
       return None
     return tuple(shape)
-
-  def _rank(self):
-    """Integer rank of this Tensor, if known, else None.
-
-    Returns:
-      Integer rank or None
-    """
-    return self.shape.ndims
 
   def _record_tape(self, capture):
     """Connect this graph tensor with capture for gradients calculation."""
@@ -837,33 +774,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
           dim_list.append(-1)
         else:
           dim_list.append(dim.value)
-    try:
-      with self._op.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-        pywrap_tf_session.TF_GraphSetTensorShape_wrapper(
-            c_graph, self._as_tf_output(), dim_list, unknown_shape)
-    except errors.InvalidArgumentError as e:
-      # Convert to ValueError for backwards compatibility.
-      raise ValueError(e.message)
-
-  @property
-  def value_index(self):
-    """The index of this tensor in the outputs of its `Operation`."""
-    return self._value_index
-
-  def consumers(self):
-    """Returns a list of `Operation`s that consume this tensor.
-
-    Returns:
-      A list of `Operation`s.
-    """
-    consumer_names = pywrap_tf_session.TF_OperationOutputConsumers_wrapper(
-        self._as_tf_output())
-    # pylint: disable=protected-access
-    return [
-        self.graph._get_operation_by_name_unsafe(name)
-        for name in consumer_names
-    ]
-    # pylint: enable=protected-access
+    self._set_shape(dim_list, unknown_shape)
 
   def _as_node_def_input(self):
     """Return a value to use for the NodeDef "input" attribute.
@@ -878,21 +789,10 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
       a string.
     """
     assert self._op.name
-    if self._value_index == 0:
+    if self.value_index == 0:
       return self._op.name
     else:
-      return "%s:%d" % (self._op.name, self._value_index)
-
-  def _as_tf_output(self):
-    # pylint: disable=protected-access
-    # NOTE: Beyond preventing unnecessary (re-)allocation, the cached object
-    # also guarantees that a dictionary of tf_output objects will retain a
-    # deterministic (yet unsorted) order which prevents memory blowup in the
-    # cache of executor(s) stored for every session.
-    if self._tf_output is None:
-      self._tf_output = c_api_util.tf_output(self.op._c_op, self.value_index)
-    return self._tf_output
-    # pylint: enable=protected-access
+      return "%s:%d" % (self._op.name, self.value_index)
 
   def __str__(self):
     return "Tensor(\"%s\"%s%s%s)" % (
@@ -919,6 +819,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     # TODO(b/77597810): get rid of Tensor copies.
     cls = self.__class__
     result = cls.__new__(cls)
+    result._init(self.op, self.value_index, self.dtype)
     result.__dict__.update(self.__dict__)
     return result
 
@@ -1071,6 +972,34 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     return self
 
 
+def GraphTensor(op, value_index, dtype):
+  """Creates a new `Tensor` in a graph.
+
+  Args:
+    op: An `Operation`. `Operation` that computes this tensor.
+    value_index: An `int`. Index of the operation's endpoint that produces this
+      tensor.
+    dtype: A `DType`. Type of elements stored in this tensor.
+
+  Returns:
+    A Tensor object.
+
+  Raises:
+    TypeError: If the op is not an `Operation`.
+  """
+  self = Tensor()
+  # pylint: disable=protected-access
+  self._init(op, value_index, dtype)
+  self._dtype = dtypes.as_dtype(dtype)
+
+  # This will be set by self.shape().
+  self._shape_val = None
+  self._name = None
+  self._id = uid()
+  # pylint: enable=protected-access
+  return self
+
+
 def _create_graph_constant(
     value, dtype, shape, name, verify_shape, allow_broadcast
 ):
@@ -1096,9 +1025,7 @@ def _create_graph_constant(
   return const_tensor
 
 
-# TODO(agarwal): consider getting rid of this.
-# TODO(mdan): This object should not subclass ops.Tensor.
-class _EagerTensorBase(Tensor, core_tf_types.Value):
+class _EagerTensorBase(Tensor, internal.NativeObject, core_tf_types.Value):
   """Base class for EagerTensor."""
 
   # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
@@ -1431,157 +1358,6 @@ EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
     pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
 
 
-@tf_export(v1=["convert_to_tensor"])
-@dispatch.add_dispatch_support
-def convert_to_tensor_v1_with_dispatch(
-    value,
-    dtype=None,
-    name=None,
-    preferred_dtype=None,
-    dtype_hint=None):
-  """Converts the given `value` to a `Tensor`.
-
-  This function converts Python objects of various types to `Tensor`
-  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
-  and Python scalars. For example:
-
-  ```python
-  import numpy as np
-
-  def my_func(arg):
-    arg = tf.convert_to_tensor(arg, dtype=tf.float32)
-    return tf.matmul(arg, arg) + arg
-
-  # The following calls are equivalent.
-  value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
-  value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
-  value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
-  ```
-
-  This function can be useful when composing a new operation in Python
-  (such as `my_func` in the example above). All standard Python op
-  constructors apply this function to each of their Tensor-valued
-  inputs, which allows those ops to accept numpy arrays, Python lists,
-  and scalars in addition to `Tensor` objects.
-
-  Note: This function diverges from default Numpy behavior for `float` and
-    `string` types when `None` is present in a Python list or scalar. Rather
-    than silently converting `None` values, an error will be thrown.
-
-  Args:
-    value: An object whose type has a registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the type
-      is inferred from the type of `value`.
-    name: Optional name to use if a new `Tensor` is created.
-    preferred_dtype: Optional element type for the returned tensor, used when
-      dtype is None. In some cases, a caller may not have a dtype in mind when
-      converting to a tensor, so preferred_dtype can be used as a soft
-      preference.  If the conversion to `preferred_dtype` is not possible, this
-      argument has no effect.
-    dtype_hint: same meaning as preferred_dtype, and overrides it.
-
-  Returns:
-    A `Tensor` based on `value`.
-
-  Raises:
-    TypeError: If no conversion function is registered for `value` to `dtype`.
-    RuntimeError: If a registered conversion function returns an invalid value.
-    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
-  """
-  return convert_to_tensor_v1(value, dtype=dtype, name=name,
-                              preferred_dtype=preferred_dtype,
-                              dtype_hint=dtype_hint)
-
-
-def convert_to_tensor_v1(value,
-                         dtype=None,
-                         name=None,
-                         preferred_dtype=None,
-                         dtype_hint=None):
-  """Converts the given `value` to a `Tensor` (with the TF1 API)."""
-  preferred_dtype = deprecation.deprecated_argument_lookup(
-      "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype)
-  return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
-
-
-@tf_export("convert_to_tensor", v1=[])
-@dispatch.add_dispatch_support
-def convert_to_tensor_v2_with_dispatch(
-    value, dtype=None, dtype_hint=None, name=None):
-  """Converts the given `value` to a `Tensor`.
-
-  This function converts Python objects of various types to `Tensor`
-  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
-  and Python scalars.
-
-  For example:
-
-  >>> import numpy as np
-  >>> def my_func(arg):
-  ...   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
-  ...   return arg
-
-  >>> # The following calls are equivalent.
-  ...
-  >>> value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
-  >>> print(value_1)
-  tf.Tensor(
-    [[1. 2.]
-     [3. 4.]], shape=(2, 2), dtype=float32)
-  >>> value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
-  >>> print(value_2)
-  tf.Tensor(
-    [[1. 2.]
-     [3. 4.]], shape=(2, 2), dtype=float32)
-  >>> value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
-  >>> print(value_3)
-  tf.Tensor(
-    [[1. 2.]
-     [3. 4.]], shape=(2, 2), dtype=float32)
-
-  This function can be useful when composing a new operation in Python
-  (such as `my_func` in the example above). All standard Python op
-  constructors apply this function to each of their Tensor-valued
-  inputs, which allows those ops to accept numpy arrays, Python lists,
-  and scalars in addition to `Tensor` objects.
-
-  Note: This function diverges from default Numpy behavior for `float` and
-    `string` types when `None` is present in a Python list or scalar. Rather
-    than silently converting `None` values, an error will be thrown.
-
-  Args:
-    value: An object whose type has a registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the type
-      is inferred from the type of `value`.
-    dtype_hint: Optional element type for the returned tensor, used when dtype
-      is None. In some cases, a caller may not have a dtype in mind when
-      converting to a tensor, so dtype_hint can be used as a soft preference.
-      If the conversion to `dtype_hint` is not possible, this argument has no
-      effect.
-    name: Optional name to use if a new `Tensor` is created.
-
-  Returns:
-    A `Tensor` based on `value`.
-
-  Raises:
-    TypeError: If no conversion function is registered for `value` to `dtype`.
-    RuntimeError: If a registered conversion function returns an invalid value.
-    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
-  """
-  return convert_to_tensor_v2(
-      value, dtype=dtype, dtype_hint=dtype_hint, name=name)
-
-
-def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
-  """Converts the given `value` to a `Tensor`."""
-  return convert_to_tensor(
-      value=value,
-      dtype=dtype,
-      name=name,
-      preferred_dtype=dtype_hint,
-      as_ref=False)
-
-
 def _add_error_prefix(msg, *, name=None):
   return msg if name is None else f"{name}: {msg}"
 
@@ -1647,20 +1423,23 @@ def pack_eager_tensors(tensors, ctx=None):
 
 
 @profiler_trace.trace_wrapper("convert_to_tensor")
-def convert_to_tensor(value,
-                      dtype=None,
-                      name=None,
-                      as_ref=False,
-                      preferred_dtype=None,
-                      dtype_hint=None,
-                      # TODO(b/268347915): Remove argument.
-                      ctx=None,  # pylint: disable=unused-argument
-                      accepted_result_types=(Tensor,)):
+def convert_to_tensor(
+    value,
+    dtype=None,
+    name=None,
+    as_ref=False,
+    preferred_dtype=None,
+    dtype_hint=None,
+    # TODO(b/268347915): Remove argument.
+    ctx=None,  # pylint: disable=unused-argument
+    accepted_result_types=(Tensor,),
+):
   """Implementation of the public convert_to_tensor."""
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
   return tensor_conversion_registry.convert(
-      value, dtype, name, as_ref, preferred_dtype, accepted_result_types)
+      value, dtype, name, as_ref, preferred_dtype, accepted_result_types
+  )
 
 
 internal_convert_to_tensor = convert_to_tensor
@@ -1977,7 +1756,7 @@ def _create_c_op(graph,
 
 
 @tf_export("Operation")
-class Operation(pywrap_tf_session.OperationHandle):
+class Operation(pywrap_tf_session.PyOperation):
   """Represents a graph node that performs computation on tensors.
 
   An `Operation` is a node in a `tf.Graph` that takes zero or more `Tensor`
@@ -2105,7 +1884,7 @@ class Operation(pywrap_tf_session.OperationHandle):
 
     # Initialize c_op from node_def and other inputs
     c_op = _create_c_op(g, node_def, inputs, control_input_ops, op_def=op_def)
-    self = Operation(c_op, g)
+    self = Operation(c_op, GraphTensor)
     self._init(g)
 
     self._original_op = original_op
@@ -2135,13 +1914,12 @@ class Operation(pywrap_tf_session.OperationHandle):
     Returns:
       an Operation object.
     """
-    self = Operation(c_op, g)
-    self._init(g)  # pylint: disable=protected-access
+    self = Operation(c_op, GraphTensor)
+    self._init(g)
     return self
 
   def _init(self, graph):
     """Initializes Operation from a TF_Operation."""
-
     self.graph = graph
     self._original_op = None
 
@@ -2163,16 +1941,8 @@ class Operation(pywrap_tf_session.OperationHandle):
     # 3. Gradient name registered by op.type.
     self._gradient_function = None
 
-    # Initialize self._outputs.
-    num_outputs = pywrap_tf_session.TF_OperationNumOutputs(self._c_op)
-    self._outputs = []
-    for i in range(num_outputs):
-      tf_output = c_api_util.tf_output(self._c_op, i)
-      output_type = pywrap_tf_session.TF_OperationOutputType(tf_output)
-      tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
-      self._outputs.append(tensor)
-
-    self._id_value = self.graph._add_op(self, self.name)  # pylint: disable=protected-access
+    self._init_outputs()
+    self._id_value = self.graph._add_op(self)  # pylint: disable=protected-access
 
   def _control_flow_post_processing(self, input_tensors=None):
     """Add this op to its control flow context.
@@ -2356,6 +2126,7 @@ class Operation(pywrap_tf_session.OperationHandle):
     """
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
+
     _assert_same_graph(self, tensor)
 
     # Reset cached inputs.
@@ -2392,23 +2163,6 @@ class Operation(pywrap_tf_session.OperationHandle):
             tensor._as_tf_output(),  # pylint: disable=protected-access
             self._c_op)
 
-  def _add_outputs(self, types, shapes):
-    """Adds new Tensors to self.outputs.
-
-    Note: this is generally unsafe to use. This is used in certain situations in
-    conjunction with _set_type_list_attr.
-
-    Args:
-      types: list of DTypes
-      shapes: list of TensorShapes
-    """
-    assert len(types) == len(shapes)
-    orig_num_outputs = len(self.outputs)
-    for i in range(len(types)):
-      t = Tensor(self, orig_num_outputs + i, types[i])
-      self._outputs.append(t)
-      t.set_shape(shapes[i])
-
   def __str__(self):
     return str(self.node_def)
 
@@ -2418,11 +2172,6 @@ class Operation(pywrap_tf_session.OperationHandle):
   def __tf_tensor__(self, dtype=None, name=None):
     """Raises a helpful error."""
     raise TypeError("can't convert Operation '{}' to Tensor".format(self.name))
-
-  @property
-  def outputs(self):
-    """The list of `Tensor` objects representing the outputs of this op."""
-    return self._outputs
 
   @property
   def inputs(self):
@@ -2444,49 +2193,6 @@ class Operation(pywrap_tf_session.OperationHandle):
         for i in range(num_inputs)
     ]
     return input_types
-
-  @property
-  def control_inputs(self):
-    """The `Operation` objects on which this op has a control dependency.
-
-    Before this op is executed, TensorFlow will ensure that the
-    operations in `self.control_inputs` have finished executing. This
-    mechanism can be used to run ops sequentially for performance
-    reasons, or to ensure that the side effects of an op are observed
-    in the correct order.
-
-    Returns:
-      A list of `Operation` objects.
-
-    """
-    control_c_ops = pywrap_tf_session.TF_OperationGetControlInputs_wrapper(
-        self._c_op)
-    # pylint: disable=protected-access
-    return [
-        self.graph._get_operation_by_name_unsafe(
-            pywrap_tf_session.TF_OperationName(c_op)) for c_op in control_c_ops
-    ]
-    # pylint: enable=protected-access
-
-  @property
-  def _control_outputs(self):
-    """The `Operation` objects which have a control dependency on this op.
-
-    Before any of the ops in self._control_outputs can execute tensorflow will
-    ensure self has finished executing.
-
-    Returns:
-      A list of `Operation` objects.
-
-    """
-    control_c_ops = pywrap_tf_session.TF_OperationGetControlOutputs_wrapper(
-        self._c_op)
-    # pylint: disable=protected-access
-    return [
-        self.graph._get_operation_by_name_unsafe(
-            pywrap_tf_session.TF_OperationName(c_op)) for c_op in control_c_ops
-    ]
-    # pylint: enable=protected-access
 
   @property
   def traceback(self):
@@ -2934,7 +2640,7 @@ def resource_creator_scope(resource_type, resource_creator):
 
 
 @tf_export("Graph")
-class Graph(pywrap_tf_session.GraphHandle):
+class Graph(pywrap_tf_session.PyGraph):
   """A TensorFlow computation, represented as a dataflow graph.
 
   Graphs are used by `tf.function`s to represent the function's computations.
@@ -2996,10 +2702,6 @@ class Graph(pywrap_tf_session.GraphHandle):
     # Similarly, if one or more Session.run calls are going on, all mutate ops
     # have to wait until all Session.run calls have finished.
     self._group_lock = lock_util.GroupLock(num_groups=2)
-    self._nodes_by_id = {}  # GUARDED_BY(self._lock)
-    self._next_id_counter = 0  # GUARDED_BY(self._lock)
-    self._nodes_by_name = {}  # GUARDED_BY(self._lock)
-    self._version = 0  # GUARDED_BY(self._lock)
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
     self._stack_state_is_thread_local = False
@@ -3257,41 +2959,6 @@ class Graph(pywrap_tf_session.GraphHandle):
     if self._finalized:
       raise RuntimeError("Graph is finalized and cannot be modified.")
 
-  def _add_op(self, op, op_name):
-    """Adds 'op' to the graph and returns the unique ID for the added Operation.
-
-    Args:
-      op: the Operation to add.
-      op_name: the name of the Operation.
-
-    Returns:
-      An integer that is a unique ID for the added Operation.
-    """
-    self._check_not_finalized()
-    with self._lock:
-      self._next_id_counter += 1
-      op_id = self._next_id_counter
-      self._nodes_by_id[op_id] = op
-      self._nodes_by_name[op_name] = op
-      self._version = max(self._version, op_id)
-      return op_id
-
-  @property
-  def version(self):
-    """Returns a version number that increases as ops are added to the graph.
-
-    Note that this is unrelated to the
-    `tf.Graph.graph_def_versions`.
-
-    Returns:
-       An integer version that increases as ops are added to the graph.
-    """
-    if self._finalized:
-      return self._version
-
-    with self._lock:
-      return self._version
-
   @property
   def graph_def_versions(self):
     # pylint: disable=line-too-long
@@ -3361,10 +3028,10 @@ class Graph(pywrap_tf_session.GraphHandle):
     """If this graph contains functions, copy them to `graph_def`."""
     bytesize = starting_bytesize
     for f in self._functions.values():
-      bytesize += f.definition.ByteSize()
+      bytesize += f.cached_definition.ByteSize()
       if bytesize >= (1 << 31) or bytesize < 0:
         raise ValueError("GraphDef cannot be larger than 2GB.")
-      graph_def.library.function.extend([f.definition])
+      graph_def.library.function.extend([f.cached_definition])
       if f.grad_func_name:
         grad_def = function_pb2.GradientDef()
         grad_def.function_name = f.name
@@ -3412,7 +3079,7 @@ class Graph(pywrap_tf_session.GraphHandle):
 
       if add_shapes:
         for node in graph.node:
-          op = self._nodes_by_name[node.name]
+          op = self._get_operation_by_name(node.name)
           if op.outputs:
             node.attr["_output_shapes"].list.shape.extend(
                 [output.get_shape().as_proto() for output in op.outputs])
@@ -3463,7 +3130,7 @@ class Graph(pywrap_tf_session.GraphHandle):
             node.attr["_output_shapes"].list.shape.extend(
                 [output.get_shape().as_proto() for output in outputs])
 
-    return graph, self._version
+    return graph, self.version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
     # pylint: disable=line-too-long
@@ -3515,6 +3182,25 @@ class Graph(pywrap_tf_session.GraphHandle):
       The function def proto.
     """
     return self._functions.get(compat.as_str(name), None)
+
+  def _add_function_recursive(self, function, overwrite=False):
+    """Adds function to the graph including other functions in its graph."""
+
+    if self._is_function(function.name):
+      if overwrite:
+        self._remove_function(function.name)
+        self._add_function(function)
+    else:
+      self._add_function(function)
+
+    if hasattr(function, "graph"):
+      for f in function.graph._functions.values():  # pylint: disable=protected-access
+        if self._is_function(f.name):
+          if overwrite:
+            self._remove_function(f.name)
+            self._add_function(f)
+        else:
+          self._add_function(f)
 
   def _add_function(self, function):
     """Adds a function to the graph.
@@ -3840,7 +3526,7 @@ class Graph(pywrap_tf_session.GraphHandle):
     # be created before its inputs.
     new_ops = [
         self._create_op_from_tf_operation(c_op, compute_device=compute_devices)
-        for c_op in c_api_util.new_tf_operations(self)
+        for c_op in self.new_operations()
     ]
 
     # pylint: disable=protected-access
@@ -3923,12 +3609,15 @@ class Graph(pywrap_tf_session.GraphHandle):
           raise ValueError("The name %s looks a like a Tensor name, but is "
                            "not a valid one. Tensor names must be of the "
                            "form \"<op_name>:<output_index>\"." % repr(name))
-        if op_name in self._nodes_by_name:
-          op = self._nodes_by_name[op_name]
-        else:
-          raise KeyError("The name %s refers to a Tensor which does not "
-                         "exist. The operation, %s, does not exist in the "
-                         "graph." % (repr(name), repr(op_name)))
+        try:
+          op = self._get_operation_by_name(op_name)
+        except KeyError as exc:
+          raise KeyError(
+              "The name %s refers to a Tensor which does not "
+              "exist. The operation, %s, does not exist in the "
+              "graph." % (repr(name), repr(op_name))
+          ) from exc
+
         try:
           return op.outputs[out_n]
         except:
@@ -3944,18 +3633,23 @@ class Graph(pywrap_tf_session.GraphHandle):
 
       elif ":" not in name and allow_operation:
         # Looks like an Operation name and can be an Operation.
-        if name not in self._nodes_by_name:
-          raise KeyError("The name %s refers to an Operation not in the "
-                         "graph." % repr(name))
-        return self._nodes_by_name[name]
+        try:
+          op = self._get_operation_by_name(name)
+        except KeyError as exc:
+          raise KeyError(
+              "The name %s refers to an Operation not in the graph."
+              % repr(name)
+          ) from exc
+        return op
 
       elif ":" not in name and not allow_operation:
         # Looks like an Operation name but can't be an Operation.
-        if name in self._nodes_by_name:
+        try:
+          op = self._get_operation_by_name(name)
           # Yep, it's an Operation name
           err_msg = ("The name %s refers to an Operation, not a %s." %
                      (repr(name), types_str))
-        else:
+        except KeyError:
           err_msg = ("The name %s looks like an (invalid) Operation name, "
                      "not a %s." % (repr(name), types_str))
         err_msg += (" Tensor names must be of the form "
@@ -3976,24 +3670,6 @@ class Graph(pywrap_tf_session.GraphHandle):
       # We give up!
       raise TypeError("Can not convert a %s into a %s." %
                       (type(obj).__name__, types_str))
-
-  def get_operations(self):
-    """Return the list of operations in the graph.
-
-    You can modify the operations in place, but modifications
-    to the list such as inserts/delete have no effect on the
-    list of operations known to the graph.
-
-    This method may be called concurrently from multiple threads.
-
-    Returns:
-      A list of Operations.
-    """
-    if self._finalized:
-      return list(self._nodes_by_id.values())
-
-    with self._lock:
-      return list(self._nodes_by_id.values())
 
   def get_operation_by_name(self, name):
     """Returns the `Operation` with the given `name`.
@@ -4016,32 +3692,9 @@ class Graph(pywrap_tf_session.GraphHandle):
                       type(name).__name__)
     return self.as_graph_element(name, allow_tensor=False, allow_operation=True)
 
-  def _get_operation_by_name_unsafe(self, name):
-    """Returns the `Operation` with the given `name`.
-
-    This is a internal unsafe version of get_operation_by_name. It skips many
-    checks and does not have user friendly error messages but runs considerably
-    faster. This method may be called concurrently from multiple threads.
-
-    Args:
-      name: The name of the `Operation` to return.
-
-    Returns:
-      The `Operation` with the given `name`.
-
-    Raises:
-      KeyError: If `name` does not correspond to an operation in this graph.
-    """
-
-    if self._finalized:
-      return self._nodes_by_name[name]
-
-    with self._lock:
-      return self._nodes_by_name[name]
-
   def _get_operation_by_tf_operation(self, tf_oper):
     op_name = pywrap_tf_session.TF_OperationName(tf_oper)
-    return self._get_operation_by_name_unsafe(op_name)
+    return self._get_operation_by_name(op_name)
 
   def get_tensor_by_name(self, name):
     """Returns the `Tensor` with the given `name`.
@@ -4079,10 +3732,6 @@ class Graph(pywrap_tf_session.GraphHandle):
     """
     op = self._get_operation_by_tf_operation(tf_output.oper)
     return op.outputs[tf_output.index]
-
-  @property
-  def _last_id(self):
-    return self._next_id_counter
 
   def op_def_for_type(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
@@ -6245,8 +5894,9 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
-    if (isinstance(op_input, (Operation, internal.NativeObject)) and
-        ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
+    if isinstance(op_input, (Operation, internal.NativeObject)) and (
+        (not isinstance(op_input, Tensor)) or type(op_input) == Tensor  # pylint: disable=unidiomatic-typecheck
+    ):
       graph_element = op_input
     else:
       graph_element = _as_graph_element(op_input)
@@ -6419,13 +6069,7 @@ def dismantle_graph(graph):
       after this function runs.
   """
   graph._functions.clear()  # pylint: disable=protected-access
-
-  # Now clean up Operation<->Graph reference cycles by clearing all of the
-  # attributes for the Graph and its ops.
-  graph_operations = graph.get_operations()
-  for op in graph_operations:
-    op.__dict__ = {}
-  graph.__dict__ = {}
+  graph.Dismantle()
 
 
 @tf_export(v1=["add_to_collection"])
@@ -6979,10 +6623,6 @@ def _op_to_colocate_with(v, graph):
     return v.op, None
   else:
     return convert_to_tensor(v, as_ref=True).op, None
-
-
-def _is_keras_symbolic_tensor(x):
-  return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
 
 
 # Helper functions for op wrapper modules generated by `python_op_gen`.

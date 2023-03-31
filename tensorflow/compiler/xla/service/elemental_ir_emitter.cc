@@ -1933,7 +1933,7 @@ llvm::Value* ElementalIrEmitter::GetIntSMin(llvm::Type* type) {
 llvm::Value* ElementalIrEmitter::GetMinusOne(llvm::Type* type) {
   auto* integer_type = llvm::cast<llvm::IntegerType>(type);
   return llvm::ConstantInt::get(
-      integer_type, llvm::APInt::getAllOnesValue(integer_type->getBitWidth()));
+      integer_type, llvm::APInt::getAllOnes(integer_type->getBitWidth()));
 }
 
 llvm::Value* ElementalIrEmitter::IsZero(llvm::Value* v) {

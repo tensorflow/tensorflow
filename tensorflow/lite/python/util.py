@@ -351,7 +351,7 @@ def build_debug_info_func(original_graph):
           useful_ops.append((func, original_graph.get_operation_by_name(name)))
         else:
           sub_func = original_graph._get_function(func)  # pylint: disable=protected-access
-          if isinstance(sub_func, function._EagerDefinedFunction):  # pylint: disable=protected-access
+          if isinstance(sub_func, function.AtomicFunction):  # pylint: disable=protected-access
             useful_ops.append(
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:

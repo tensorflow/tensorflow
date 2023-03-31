@@ -32,7 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
@@ -847,7 +847,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m = constant_op.constant([1, 2, 3], dtype=dtypes.float32)
 
       def body(list_, m):
-        list_ = control_flow_ops.cond(
+        list_ = cond.cond(
             math_ops.equal(list_ops.tensor_list_length(list_), 0),
             lambda: list_ops.empty_tensor_list(m.shape, m.dtype), lambda: list_)
         list_ = list_ops.tensor_list_push_back(list_, m)
@@ -869,7 +869,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m = constant_op.constant([1, 2, 3], dtype=dtypes.float32)
 
       def body(i, m, t1):
-        t1 = control_flow_ops.cond(
+        t1 = cond.cond(
             math_ops.equal(list_ops.tensor_list_length(t1), 0),
             lambda: list_ops.empty_tensor_list(m.shape, m.dtype), lambda: t1)
 

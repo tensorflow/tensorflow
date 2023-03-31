@@ -195,6 +195,7 @@ tf_cuda_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:core_cpu_lib",
@@ -204,7 +205,6 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
-        "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
 )
 

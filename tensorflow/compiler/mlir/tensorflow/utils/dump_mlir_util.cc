@@ -148,7 +148,7 @@ Status CreateFileForDumping(llvm::StringRef name,
     dir = GetDumpDirFromEnvVar();
 
   if (dir.empty()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
@@ -164,7 +164,7 @@ Status CreateFileForDumping(llvm::StringRef name,
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create '" << dir
                  << "' directory for dumping: " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
   *filepath = io::JoinPath(dir, MakeUniqueFilename(std::string(name)));
 
@@ -173,7 +173,7 @@ Status CreateFileForDumping(llvm::StringRef name,
   status = env->NewWritableFile(*filepath, &file);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create file '" << filepath << "': " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
   file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
   *os = std::make_unique<WritableFileRawStream>(std::move(file));

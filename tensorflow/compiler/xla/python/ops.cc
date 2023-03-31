@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -433,7 +436,12 @@ void BuildOpsSubmodule(py::module* m) {
         return std::make_tuple(svd.u, svd.d, svd.v);
       },
       py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
-  ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
+  ops.def(
+      "TopK",
+      [](XlaOp input, int64_t k) {
+        return TopK(input, k, /*index_type=*/PrimitiveType::S32);
+      },
+      py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
   ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),
           py::arg("left_side"), py::arg("lower"), py::arg("unit_diagonal"),

@@ -45,6 +45,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
+
 // Extracts the index from `filename`. If `filename` is `prefix_<index>`, this
 // returns <index>. If `filename` does not start with `prefix`, returns an
 // internal error.
@@ -84,6 +86,13 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
+  if (IsStreamAssignmentChanged(status)) {
+    LOG(INFO) << "Stopped writing distributed tf.data snapshot stream due to a "
+                 "transient error: "
+              << params_.DebugString()
+              << ". It will be retried. Status: " << status;
+    return;
+  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {
@@ -254,8 +263,9 @@ Status SnapshotStreamWriter::Save() {
             << params_.stream_index << ", chunk " << chunk_index_
             << ", chunk size in bytes: " << chunk_size_bytes_ << ".";
   std::string checkpoint_path = CheckpointPath(chunk_index_);
-  TF_ASSIGN_OR_RETURN(Tensor serialized_iterator, iterator_->Save());
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecord(
+  TF_ASSIGN_OR_RETURN(std::vector<Tensor> serialized_iterator,
+                      iterator_->Save());
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
       checkpoint_path, serialized_iterator, params_.compression, params_.env));
   return DeleteOutdatedCheckpoints();
 }
@@ -306,18 +316,12 @@ Status SnapshotStreamWriter::Restore() {
   TF_RETURN_IF_ERROR(checkpoint_index.status());
 
   std::string checkpoint_path = CheckpointPath(*checkpoint_index);
-  snapshot_util::TFRecordReader reader(checkpoint_path, params_.compression,
-                                       DataTypeVector{1, DT_VARIANT});
+  snapshot_util::TFRecordReaderImpl reader(checkpoint_path, params_.compression,
+                                           kTFRecordReaderOutputBufferSize);
   TF_RETURN_IF_ERROR(reader.Initialize(params_.env));
-  std::vector<Tensor> serialized_tensors;
-  TF_RETURN_IF_ERROR(reader.ReadTensors(&serialized_tensors));
-  if (serialized_tensors.size() != 1) {
-    return errors::Internal(
-        "A snapshot checkpoint file is expected to contain 1 Tensor. Got ",
-        serialized_tensors.size(),
-        " tensors from checkpoint file: ", checkpoint_path);
-  }
-  TF_RETURN_IF_ERROR(iterator_->Restore(serialized_tensors[0]));
+  TF_ASSIGN_OR_RETURN(std::vector<Tensor> serialized_tensors,
+                      reader.GetTensors());
+  TF_RETURN_IF_ERROR(iterator_->Restore(serialized_tensors));
   TF_RETURN_IF_ERROR(SyncCheckpointWithChunks(*checkpoint_index));
   chunk_index_ = *checkpoint_index + 1;
   LOG(INFO) << "Restored distributed tf.data snapshot writer. Stream "

@@ -33,7 +33,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -267,7 +269,7 @@ static tsl::Status InternalInit() {
   }
 
   Diagnostician::LogDiagnosticInformation();
-  return tsl::Status(tsl::error::ABORTED,
+  return tsl::Status(absl::StatusCode::kAborted,
                      absl::StrCat("failed call to cuInit: ", ToString(res)));
 }
 
@@ -400,7 +402,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     }
   }
 
-  return tsl::Status(tsl::error::INTERNAL, message);
+  return tsl::Status(absl::StatusCode::kInternal, message);
 }
 
 /* static */ void GpuDriver::DestroyContext(GpuContext* context) {
@@ -673,7 +675,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   }
 
   return tsl::Status(
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
@@ -972,7 +974,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 /* static */ tsl::Status GpuDriver::DestroyEvent(GpuContext* context,
                                                  CUevent* event) {
   if (*event == nullptr) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "input event cannot be null");
   }
 
@@ -997,7 +999,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult res = cuEventQuery(event);
   if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to query event: %s", ToString(res)));
   }
 
@@ -1196,9 +1198,40 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult result;
-  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
-  // This happens when the size is 0.
+
+  // Check if the stream is doing graph capture.
+  cudaStreamCaptureStatus stream_capture_status;
+  cudaError_t err =
+      cudaStreamGetCaptureInfo(stream, &stream_capture_status, /*pId=*/nullptr);
+  if (err != cudaSuccess) {
+    LOG(ERROR) << "Failed to get stream capture info: "
+               << cudaGetErrorString(err);
+    return false;
+  }
+
   if (gpu_dst == 0 || gpu_src == 0) {
+    // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+    // This happens when the size is 0.
+    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  } else if (stream_capture_status == cudaStreamCaptureStatusActive) {
+    // cuMemcpyPeerAsync is not supported during graph capture, so we use
+    // cuMemcpyDtoDAsync instead. This is only valid if UVA is supported.
+
+    // Check if UVA is enabled.
+    for (int i = 0; i < GetDeviceCount(); ++i) {
+      GpuDeviceAttribute attribute = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
+      auto result = GetDeviceAttribute(attribute, i);
+      if (!result.ok()) {
+        LOG(ERROR) << "Failed to get device attribute";
+        return false;
+      }
+
+      if (result.value() == 0) {
+        LOG(ERROR) << "Unified addressing is not enabled";
+        return false;
+      }
+    }
+
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
@@ -1266,11 +1299,11 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   if (res == CUDA_SUCCESS) {
     return ::tsl::OkStatus();
   } else if (res == CUDA_ERROR_OUT_OF_MEMORY) {
-    return tsl::Status(tsl::error::RESOURCE_EXHAUSTED,
+    return tsl::Status(absl::StatusCode::kResourceExhausted,
                        "could not create CUDA event: out of device memory");
   } else {
     return tsl::Status(
-        tsl::error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         absl::StrCat("could not create CUDA event: ", ToString(res)));
   }
 }
@@ -1302,14 +1335,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // error then the original one.
     if (context == nullptr) {
       return tsl::Status(
-          tsl::error::UNAVAILABLE,
+          absl::StatusCode::kUnavailable,
           "Empty context returned while querying context for device pointer");
     }
     return context;
   }
 
   return tsl::Status(
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat("failed to query context for device pointer: ",
                    ToString(result)));
 }
@@ -1327,13 +1360,13 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
         return MemorySpace::kHost;
       default:
         return tsl::Status(
-            tsl::error::INTERNAL,
+            absl::StatusCode::kInternal,
             absl::StrCat("unknown memory space provided by CUDA API: ", value));
     }
   }
 
   return tsl::Status(
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrCat("failed to query device pointer for memory space: ",
                    ToString(result)));
 }
@@ -1349,13 +1382,13 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // "there was an internal error while performing this operation" (return
     // below).
     return tsl::Status(
-        tsl::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrFormat("not a device pointer %p; %s",
                         reinterpret_cast<void*>(dptr), ToString(result)));
   }
 
   return tsl::Status(
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       absl::StrFormat("failed to get pointer into for device pointer %p; %s",
                       reinterpret_cast<void*>(dptr), ToString(result)));
 }
@@ -1380,7 +1413,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
   if (res != CUDA_SUCCESS) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed to get compute capability major for device: %s; %d",
             ToString(res), device));
@@ -1390,7 +1423,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device);
   if (res != CUDA_SUCCESS) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed to get compute capability minor for device: %s; %d",
             ToString(res), device));
@@ -1402,13 +1435,13 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 /* static */ tsl::Status GpuDriver::GetGpuISAVersion(int* version,
                                                      CUdevice device) {
   return tsl::Status{
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       "Feature not supported on CUDA platform (GetGpuISAVersion)"};
 }
 
 /* static */ tsl::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
   return tsl::Status{
-      tsl::error::INTERNAL,
+      absl::StatusCode::kInternal,
       "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
 }
 
@@ -1522,7 +1555,7 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
   CUresult res = cuDeviceGetAttribute(&val, attribute, device);
   if (res != CUDA_SUCCESS) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to get device attribute %d for device %d: %s",
                         attribute, device, ToString(res)));
   }
@@ -1631,7 +1664,7 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
   if (result != CUDA_SUCCESS &&
       result != CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED) {
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to enable peer access from %p to %p: %s", from,
                         to, ToString(result)));
   }

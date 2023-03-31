@@ -1169,10 +1169,10 @@ static Status IsProbablySafeToLoad(const string& path) {
   std::vector<std::string> platform_strings;
   int result = GetPlatformStrings(path, &platform_strings);
   if (result) {
-    return Status(error::Code::UNKNOWN, strerror(result));
+    return Status(absl::StatusCode::kUnknown, strerror(result));
   }
   if (platform_strings.empty()) {
-    return Status(error::Code::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "Didn't find any platform strings");
   }
   std::vector<std::string> missing_features;

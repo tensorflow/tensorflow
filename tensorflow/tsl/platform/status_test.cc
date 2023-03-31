@@ -20,9 +20,18 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/stack_frame.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tsl {
+namespace {
+
+using ::testing::IsEmpty;
+using ::tsl::testing::IsOk;
+using ::tsl::testing::StatusIs;
 
 TEST(ToStringTest, PayloadsArePrinted) {
   Status status = errors::Aborted("Aborted Error Message");
@@ -172,4 +181,42 @@ TEST(Status, OkStatusForEachPayloadNoIteration) {
   EXPECT_EQ(payloads.size(), 0);
 }
 
+TEST(Status, SaveOKStatusToProto) {
+  tensorflow::StatusProto status_proto = StatusToProto(OkStatus());
+  EXPECT_EQ(status_proto.code(), error::OK);
+  EXPECT_THAT(status_proto.message(), IsEmpty());
+}
+
+TEST(Status, SaveErrorStatusToProto) {
+  tensorflow::StatusProto status_proto =
+      StatusToProto(errors::NotFound("Not found"));
+  EXPECT_EQ(status_proto.code(), error::NOT_FOUND);
+  EXPECT_EQ(status_proto.message(), "Not found");
+}
+
+TEST(Status, SaveEmptyStatusToProto) {
+  tensorflow::StatusProto status_proto = StatusToProto(Status());
+  EXPECT_EQ(status_proto.code(), error::OK);
+  EXPECT_THAT(status_proto.message(), IsEmpty());
+}
+
+TEST(Status, MakeOKStatusFromProto) {
+  tensorflow::StatusProto status_proto;
+  status_proto.set_code(error::OK);
+  EXPECT_THAT(StatusFromProto(status_proto), IsOk());
+}
+
+TEST(Status, MakeErrorStatusFromProto) {
+  tensorflow::StatusProto status_proto;
+  status_proto.set_code(error::INVALID_ARGUMENT);
+  status_proto.set_message("Invalid argument");
+  EXPECT_THAT(StatusFromProto(status_proto),
+              StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
+}
+
+TEST(Status, MakeStatusFromEmptyProto) {
+  EXPECT_THAT(StatusFromProto(tensorflow::StatusProto()), IsOk());
+}
+
+}  // namespace
 }  // namespace tsl

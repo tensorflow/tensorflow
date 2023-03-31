@@ -18,22 +18,22 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 
-#ifdef TF_OPKERNEL_C_API_PASSTHROUGH
+#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_op_kernel.h"
 #else
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
-#endif  // TF_OPKERNEL_C_API_PASSTHROUGH
+#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 
 namespace tensorflow {
 
 inline PluginOpKernelConstruction* CreatePluginOpKernelConstruction(void* ctx) {
-#ifdef TF_OPKERNEL_C_API_PASSTHROUGH
+#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
   return new DirectPluginOpKernelConstruction(ctx);
 #else
   return new CPluginOpKernelConstruction(ctx);
-#endif  // TF_OPKERNEL_C_API_PASSTHROUGH
+#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 }
 
 inline void DeletePluginOpKernelConstruction(
@@ -42,11 +42,11 @@ inline void DeletePluginOpKernelConstruction(
 }
 
 inline PluginOpKernelContext* CreatePluginOpKernelContext(void* ctx) {
-#ifdef TF_OPKERNEL_C_API_PASSTHROUGH
+#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
   return new DirectPluginOpKernelContext(ctx);
 #else
   return new CPluginOpKernelContext(ctx);
-#endif  // TF_OPKERNEL_C_API_PASSTHROUGH
+#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
 }
 
 inline void DeletePluginOpKernelContext(PluginOpKernelContext* wrapper) {

@@ -255,10 +255,10 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
   if (also_export_trace_json) {
     tsl::profiler::TraceContainer container =
-        tsl::profiler::ConvertXSpaceToTraceEvents(xspace);
+        tsl::profiler::ConvertXSpaceToTraceContainer(xspace);
     return tsl::profiler::SaveGzippedToolData(
         repository_root, run, host, "trace.json.gz",
-        tsl::profiler::TraceEventsToJson(container));
+        tsl::profiler::TraceContainerToJson(container));
   }
   return OkStatus();
 }

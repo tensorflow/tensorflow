@@ -16,14 +16,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
-#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -150,11 +150,8 @@ struct TransformConvForCpuPass
 
     RewritePatternSet patterns(ctx);
     patterns.add<Conv2DNhwcHwcfOpTransformPattern>(ctx);
-    populateCollapseForallOpDimensionsPattern(patterns);
-
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 

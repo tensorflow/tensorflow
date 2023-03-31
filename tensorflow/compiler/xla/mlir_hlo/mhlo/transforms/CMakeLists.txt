@@ -250,6 +250,7 @@ add_mlir_library(MhloToLinalg
   HloToLinalgUtils
   LmhloDialect
   MhloDialect
+  MhloRngUtils
   MhloToArithmeticConversion
   MhloTypeConversion
   MLIRBufferizationDialect

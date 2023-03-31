@@ -110,7 +110,7 @@ inline void AddTraceEvent(const TraceEvent& event, string* json) {
 
 }  // namespace
 
-std::string TraceEventsToJson(const TraceContainer& container) {
+std::string TraceContainerToJson(const TraceContainer& container) {
   std::string json =
       R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)"
       R"("traceEvents":[)";

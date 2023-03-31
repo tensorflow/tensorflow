@@ -69,6 +69,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
@@ -203,6 +204,7 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
                       mlir::func::FuncDialect, mlir::AffineDialect,
                       mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
+  mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
 }
 
@@ -335,7 +337,15 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.experimental_deallocation =
+        GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
     options.cpu_name = llvm::sys::getHostCPUName();
+
+    if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+      options.enable_fusion_outlining = true;
+      options.experimental_deallocation = true;
+    }
+
     Status status = CreateHloXlaRuntimePipeline(passes, options);
     if (!status.ok()) {
       LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
@@ -671,10 +681,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //     accumulation happens in f32.
   if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
     pipeline.AddPass<ChangeOpDataType>(
-        F16, F32, [](const HloInstruction* instr) {
-          return instr->opcode() == HloOpcode::kDot ||
-                 instr->opcode() == HloOpcode::kConvolution;
-        });
+        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
   // Run the following passes to a fixed point.
@@ -1055,6 +1062,13 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
   }
 
+  if (DumpingEnabledForHloModule(*module)) {
+    pm.addInstrumentation(
+        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+            module->config().debug_options().xla_dump_to(), module->unique_id(),
+            module->name()));
+  }
+
   xla::runtime::PassManager xla_pm(&pm);
   HloXlaRuntimePipelineOptions options;
   options.enable_tiling_and_fusion =
@@ -1066,6 +1080,11 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   // TODO(b/271126383): The flag should depend on the lowering target.
   options.enable_avx2 = true;
   options.cpu_name = target.getTargetCPU();
+  if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+    options.enable_fusion_outlining = true;
+    options.sparse_bufferization = false;
+    options.experimental_deallocation = true;
+  }
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
@@ -1119,7 +1138,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   auto result_mapping = builder.getI32IntegerAttr(output_index);
   mlir_module->walk([&](mlir::func::FuncOp f) {
     if (f.getSymName() == "main") {
-      for (auto& p : llvm::enumerate(operand_mapping)) {
+      for (const auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value().first);
         if (export_mapping != nullptr) {
           auto index_attr = p.value().first.dyn_cast<mlir::IntegerAttr>();
@@ -1313,9 +1332,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                 subcomputation.allow_reassociation)
             .status());
   }
-  std::string function_name_prefix = entry_computation->name().empty()
-                                         ? "__compute"
-                                         : entry_computation->name();
+  absl::string_view function_name_prefix = entry_computation->name().empty()
+                                               ? "__compute"
+                                               : entry_computation->name();
   TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,

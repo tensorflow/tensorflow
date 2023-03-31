@@ -17,6 +17,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/debug/lib:debug_utils",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -102,9 +104,9 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/lib:debug_data",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )

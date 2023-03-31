@@ -15,27 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
 #include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
-#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
@@ -70,9 +64,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "triton/Conversion/TritonGPUToLLVM/ArithToIndexPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
@@ -339,7 +333,7 @@ std::optional<LaunchDimensions> MatMul(
   mlir::ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  const DotFusionAnalysis analysis(dot_instr);
+  const DotFusionAnalysis analysis(dot_instr, config.split_k());
   const HloInstruction* hlo_lhs_param = analysis.OperandToParameter(0);
   const HloInstruction* hlo_rhs_param = analysis.OperandToParameter(1);
 
@@ -347,18 +341,39 @@ std::optional<LaunchDimensions> MatMul(
   Type rhs_ty = TritonType(b, hlo_rhs_param->shape().element_type());
 
   // Rely on dot decomposer: there is just one contracting and one
-  // non-contracting dimension on each side + one batch optionally.
+  // non-contracting dimension on each side + batch ones optionally.
   CHECK_EQ(dims.lhs_contracting_dimensions_size(), 1);
   CHECK_EQ(dims.rhs_contracting_dimensions_size(), 1);
-  CHECK_LE(dims.lhs_batch_dimensions_size(), 1);
-  const bool batch = !dims.lhs_batch_dimensions().empty();
-  CHECK_EQ(dot_instr->operand(0)->shape().rank(), 2 + batch);
-  const int lhs_noncontracting_dim_idx =
-      NoncontractingDimensionIndex(dims.lhs_contracting_dimensions(0),
-                                   batch ? dims.lhs_batch_dimensions(0) : -1);
-  const int rhs_noncontracting_dim_idx =
-      NoncontractingDimensionIndex(dims.rhs_contracting_dimensions(0),
-                                   batch ? dims.rhs_batch_dimensions(0) : -1);
+
+  const bool have_split_k = config.split_k() > 1;
+  if (have_split_k) {
+    // Split-K dimension has to be the last batch one and have an index
+    // just before the contracting one.
+    // Size of this dimension has to match the split_k value.
+    CHECK_EQ(*dims.lhs_batch_dimensions().rbegin(),
+             dims.lhs_contracting_dimensions(0) - 1);
+    CHECK_EQ(*dims.rhs_batch_dimensions().rbegin(),
+             dims.rhs_contracting_dimensions(0) - 1);
+    CHECK_EQ(config.split_k(), dot_instr->operand(0)->shape().dimensions(
+                                   dims.lhs_contracting_dimensions(0) - 1));
+    CHECK_EQ(config.split_k(), dot_instr->operand(1)->shape().dimensions(
+                                   dims.rhs_contracting_dimensions(0) - 1));
+  }
+
+  CHECK_LE(dims.lhs_batch_dimensions_size(), 1 + have_split_k);
+  const bool have_batch = dims.lhs_batch_dimensions_size() - have_split_k;
+  CHECK_EQ(dot_instr->operand(0)->shape().rank(),
+           2 + have_split_k + have_batch);
+  const int64_t lhs_noncontracting_dim_idx =
+      GetNonContractingDims(dot_instr->operand(0)->shape(),
+                            dims.lhs_batch_dimensions(),
+                            dims.lhs_contracting_dimensions())
+          .value()[0];
+  const int64_t rhs_noncontracting_dim_idx =
+      GetNonContractingDims(dot_instr->operand(1)->shape(),
+                            dims.rhs_batch_dimensions(),
+                            dims.rhs_contracting_dimensions())
+          .value()[0];
 
   // Non-contracting dimension lengths.
   // Just the fastest-varying part of it if the dimension is split.
@@ -367,16 +382,17 @@ std::optional<LaunchDimensions> MatMul(
 
   // Contracting dimension length.
   const int k = dot_instr->operand(0)->shape().dimensions(
-      dims.lhs_contracting_dimensions(0));
+                    dims.lhs_contracting_dimensions(0)) *
+                config.split_k();
 
   // LHS non-contracting can be split into two.
   const bool lhs_nc_split =
       (analysis.IterSpec(0, lhs_noncontracting_dim_idx).size() > 1);
   CHECK_EQ(analysis.IterSpec(0, lhs_noncontracting_dim_idx).size(),
            1 + lhs_nc_split);
-  // For now split and batch are not supported simultaneously because they
-  // are implemented via same mechanism.
-  CHECK_LE(batch + lhs_nc_split, 1);
+  // For now split noncontracting and batch are not supported simultaneously
+  // because they are implemented via same mechanism.
+  CHECK_LE(have_batch + lhs_nc_split, 1);
   // Splitting of the other ones is not supported yet.
   CHECK_EQ(analysis.IterSpec(1, rhs_noncontracting_dim_idx).size(), 1);
   CHECK_EQ(analysis.IterSpec(0, dims.lhs_contracting_dimensions(0)).size(), 1);
@@ -399,7 +415,7 @@ std::optional<LaunchDimensions> MatMul(
     stride_batch_lhs =
         analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].stride;
     stride_batch_rhs = 0;
-  } else if (batch) {
+  } else if (have_batch) {
     // Batch dimension should have same length left and right.
     CHECK_EQ(analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count,
              analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].count);
@@ -412,10 +428,24 @@ std::optional<LaunchDimensions> MatMul(
 
   constexpr int64_t group_m = 8;
 
-  bool transpose_output =
-      !LayoutUtil::IsMonotonicWithDim0Major(dot_instr->shape().layout());
-  const int stride_out_m = transpose_output ? 1 : n;
-  const int stride_out_n = transpose_output ? m : 1;
+  int stride_out_m, stride_out_n;
+  // The only supported deviation from non-default output layout is a swap
+  // of non-contracting LHS and RHS dimensions. For example for rank 4 it can
+  // be either {3,2,1,0} or {2,3,1,0}.
+  auto compared_output_layout =
+      LayoutUtil::GetDefaultLayoutForShape(dot_instr->shape());
+  if (dot_instr->shape().layout() == compared_output_layout) {
+    stride_out_m = n;
+    stride_out_n = 1;
+  } else {
+    std::swap(compared_output_layout.mutable_minor_to_major()->at(0),
+              compared_output_layout.mutable_minor_to_major()->at(1));
+    CHECK_EQ(dot_instr->shape().layout(), compared_output_layout);
+    stride_out_m = 1;
+    stride_out_n = m;
+  }
+  const int stride_out_split_k = m * n;
+  const int stride_out_batch = m * n * config.split_k();
 
   const int block_m = config.block_m();
   const int block_k = config.block_k();
@@ -431,12 +461,8 @@ std::optional<LaunchDimensions> MatMul(
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
 
-  // TODO(b/266863137): handle atomic add for split_k > 1.
-  // This also requires output zero-init.
-  const unsigned int split_k = config.split_k();
-  CHECK_EQ(split_k, 1);
   const LaunchDimensions launch_dimensions{
-      {grid_m * grid_n, split_k, batch_size},
+      {grid_m * grid_n, config.split_k(), batch_size},
       {config.num_warps() * WarpSize(), 1, 1}};
   Type root_ty = TritonType(b, dot_instr->shape().element_type());
   // Data type to which dot() inputs are converted.
@@ -575,7 +601,7 @@ std::optional<LaunchDimensions> MatMul(
     Value zeros_like_rhs = nullptr;
     // TODO(b/269726484): Peel the loop instead of inserting a masked load in
     // every iteration, even the ones that do not need it.
-    if (k % (block_k * split_k) > 0) {
+    if (k % (block_k * config.split_k()) > 0) {
       zeros_like_lhs = CreateConst(b, lhs_ty, 0, shape_m_k);
       zeros_like_rhs = CreateConst(b, rhs_ty, 0, shape_k_n);
       auto elements_in_tile =
@@ -612,10 +638,12 @@ std::optional<LaunchDimensions> MatMul(
 
     mt::AddPtrOp lhs_ptrs_inc = build_addptr(
         lhs_ptrs,
-        CreateConst(b, i32_ty, block_k * split_k * stride_lhs_k, shape_m_k));
+        CreateConst(b, i32_ty, block_k * config.split_k() * stride_lhs_k,
+                    shape_m_k));
     mt::AddPtrOp rhs_ptrs_inc = build_addptr(
         rhs_ptrs,
-        CreateConst(b, i32_ty, block_k * split_k * stride_rhs_k, shape_k_n));
+        CreateConst(b, i32_ty, block_k * config.split_k() * stride_rhs_k,
+                    shape_k_n));
 
     b.create<mlir::scf::YieldOp>(
         mlir::ValueRange{lhs_ptrs_inc, rhs_ptrs_inc, acc_next});
@@ -624,7 +652,7 @@ std::optional<LaunchDimensions> MatMul(
       b.create<mlir::scf::ForOp>(
            /*lowerBound=*/b.create<ma::ConstantIndexOp>(0),
            /*upperBound=*/b.create<ma::ConstantIndexOp>(k),
-           /*step=*/b.create<ma::ConstantIndexOp>(block_k * split_k),
+           /*step=*/b.create<ma::ConstantIndexOp>(block_k * config.split_k()),
            /*iterArgs=*/
            mlir::ValueRange{lhs_ptrs_base, rhs_ptrs_base, acc_init},
            body_builder)
@@ -632,13 +660,17 @@ std::optional<LaunchDimensions> MatMul(
 
   // Output tile offsets.
   auto out_offset_batch =
-      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, m * n));
+      b.create<ma::MulIOp>(pid2, CreateConst(b, i32_ty, stride_out_batch));
+  auto out_offset_split_k =
+      b.create<ma::MulIOp>(pid1, CreateConst(b, i32_ty, stride_out_split_k));
   auto out_offset_m =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_m, 1),
                            CreateConst(b, i32_ty, stride_out_m, shape_m_1));
-  mt::AddPtrOp out_ptrs_m =
-      build_addptr(build_splat(build_addptr(out, out_offset_batch), shape_m_1),
-                   out_offset_m);
+  mt::AddPtrOp out_ptrs_m = build_addptr(
+      build_splat(
+          build_addptr(build_addptr(out, out_offset_batch), out_offset_split_k),
+          shape_m_1),
+      out_offset_m);
 
   auto out_offset_n =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_n, 0),

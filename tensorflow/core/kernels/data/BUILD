@@ -875,6 +875,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1537,13 +1538,13 @@ filegroup(
         "//tensorflow/core/data:dataset_utils.cc",
         "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:metric_utils.cc",
-        "//tensorflow/core/data:tfdataz_metrics.cc",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
         "//tensorflow/core/data:root_dataset.cc",
         "//tensorflow/core/data:serialization_utils.cc",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:stats_utils.cc",
+        "//tensorflow/core/data:tfdataz_metrics.cc",
         "//tensorflow/core/data:unbounded_thread_pool.cc",
         "//tensorflow/core/data:utils.cc",
         "//tensorflow/core/kernels/data/experimental:portable_all_op_kernels",

@@ -475,8 +475,8 @@ tf_cuda_cc_test(
     ),
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171341759): re-enable.
         "no_cuda",  # TODO(b/196608406): re-enable
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
         ":base_ops_test",
@@ -496,8 +496,8 @@ tf_cuda_cc_test(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171341759): re-enable.
         "no_cuda",  # TODO(b/196608406): re-enable
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
         ":base_ops_test",

@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
-// TODO(skyewm): remove when everything goes through C API
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -47,8 +45,6 @@ limitations under the License.
 
 namespace xla {
 
-bool kPjRtCApiBypass = false;
-
 // Helper macros
 
 // Return error status if not success and frees the PJRT_Error returned by
@@ -64,6 +60,19 @@ bool kPjRtCApiBypass = false;
     }                                                                   \
   } while (false)
 
+// Return error future if not success and frees the PJRT_Error returned by
+// `expr`.
+#define RETURN_FUTURE_IF_ERROR(expr, c_api)                             \
+  do {                                                                  \
+    PJRT_Error* error = (expr);                                         \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
+        error, pjrt::MakeErrorDeleter(c_api));                          \
+    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                \
+      return PjRtFuture<Status>(_status);                               \
+    }                                                                   \
+  } while (false)
+
 // ---------------------------------- Client -----------------------------------
 
 PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
@@ -76,10 +85,6 @@ PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = c_client_->client.get();
-  }
-
   InitDevices();
   LOG(INFO) << "PjRtCApiClient created.";
 }
@@ -319,13 +324,6 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return args.buffer_pointer;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
-    StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCApiBuffer>(
-      this, new PJRT_Buffer{std::move(buffer), pjrt_c_client()}));
-}
-
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
@@ -403,9 +401,6 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client), device_(device) {
-  if (kPjRtCApiBypass) {
-    wrapped_ = device_->device;
-  }
   InitAttributes();
 }
 
@@ -744,31 +739,29 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
 PJRT_SendCallbackInfo CppSendCallbackToC(
     const xla::SendCallback& cpp_send_callback,
     PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback_function) {
-  *send_callback_function = [&send_callback = cpp_send_callback.callback](
-                                PJRT_TransferMetadata* metadata,
-                                PJRT_Chunk* chunk, size_t total_size_in_bytes,
-                                bool done) -> bool {
-    // TODO(b/238999986) use `shape` with full information when available.
-    xla::Shape shape = metadata->device_shape;
-    xla::Status status =
-        send_callback(xla::PjRtTransferMetadata{shape},
-                      xla::PjRtChunk(chunk->data, chunk->size,
-                                     [deleter_arg = chunk->deleter_arg,
-                                      deleter = chunk->deleter](void* data) {
-                                       deleter(data, deleter_arg);
-                                     }),
-                      total_size_in_bytes, done);
+  *send_callback_function =
+      [&send_callback = cpp_send_callback.callback](
+          PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+          size_t total_size_in_bytes, bool done) -> PJRT_Error* {
+    // PJRT C API doesn't support
+    // use_major_to_minor_data_layout_for_callbacks = false
+    xla::Shape dummy_shape;
+    xla::Status status = send_callback(xla::PjRtTransferMetadata{dummy_shape},
+                                       ::pjrt::ConvertToCppChunk(*chunk),
+                                       total_size_in_bytes, done);
     if (!status.ok()) {
-      return false;
+      return (*callback_error)(pjrt::StatusCodeToPjrtErrorCode(status.code()),
+                               status.error_message().data(),
+                               status.error_message().size());
     }
-    return true;
+    return nullptr;
   };
   return PJRT_SendCallbackInfo{
       /*channel_id=*/cpp_send_callback.channel_id,
       /*user_arg=*/send_callback_function,
       /*send_callback=*/
-      [](PJRT_TransferMetadata* metadata, PJRT_Chunk* chunk,
-         size_t total_size_in_bytes, bool done, void* user_arg) -> bool {
+      [](PJRT_Chunk* chunk, PJRT_CallbackError* callback_error,
+         size_t total_size_in_bytes, bool done, void* user_arg) -> PJRT_Error* {
         // PJRT_SendCallback, `send_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -777,8 +770,64 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
         PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::SendCallbackFunction*>(
                 user_arg);
-        return (*send_callback)(metadata, chunk, total_size_in_bytes, done);
+        return (*send_callback)(chunk, callback_error, total_size_in_bytes,
+                                done);
       }};
+}
+
+CApiCopyToDeviceStream::CApiCopyToDeviceStream(
+    PJRT_CopyToDeviceStream* c_stream, const PJRT_Api* c_api)
+    : CopyToDeviceStream(/*total_bytes=*/0, /*granule_bytes=*/0),
+      c_stream_(c_stream),
+      c_api_(c_api) {
+  PJRT_CopyToDeviceStream_TotalBytes_Args total_bytes_args;
+  total_bytes_args.struct_size =
+      PJRT_CopyToDeviceStream_TotalBytes_Args_STRUCT_SIZE;
+  total_bytes_args.priv = nullptr;
+  total_bytes_args.stream = c_stream_;
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_CopyToDeviceStream_TotalBytes(&total_bytes_args), c_api_);
+  total_bytes_ = total_bytes_args.total_bytes;
+
+  PJRT_CopyToDeviceStream_GranuleSize_Args granule_size_args;
+  granule_size_args.struct_size =
+      PJRT_CopyToDeviceStream_GranuleSize_Args_STRUCT_SIZE;
+  granule_size_args.priv = nullptr;
+  granule_size_args.stream = c_stream_;
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_CopyToDeviceStream_GranuleSize(&granule_size_args), c_api_);
+  granule_bytes_ = granule_size_args.granule_size_in_bytes;
+}
+
+PjRtFuture<Status> CApiCopyToDeviceStream::AddChunk(PjRtChunk chunk) {
+  PJRT_Chunk c_chunk = ::pjrt::ConvertFromCppChunk(std::move(chunk));
+
+  PJRT_CopyToDeviceStream_AddChunk_Args add_chunk_args;
+  add_chunk_args.struct_size =
+      PJRT_CopyToDeviceStream_AddChunk_Args_STRUCT_SIZE;
+  add_chunk_args.priv = nullptr;
+  add_chunk_args.stream = c_stream_;
+  add_chunk_args.chunk = &c_chunk;
+
+  PJRT_CopyToDeviceStream_CurrentBytes_Args current_bytes_args;
+  current_bytes_args.struct_size =
+      PJRT_CopyToDeviceStream_CurrentBytes_Args_STRUCT_SIZE;
+  current_bytes_args.priv = nullptr;
+  current_bytes_args.stream = c_stream_;
+
+  {
+    absl::MutexLock lock(&mu_);
+    RETURN_FUTURE_IF_ERROR(
+        c_api_->PJRT_CopyToDeviceStream_AddChunk(&add_chunk_args), c_api_);
+    RETURN_FUTURE_IF_ERROR(
+        c_api_->PJRT_CopyToDeviceStream_CurrentBytes(&current_bytes_args),
+        c_api_);
+    current_bytes_ = current_bytes_args.current_bytes;
+  }
+
+  CHECK(add_chunk_args.transfer_complete != nullptr);
+  return ::pjrt::ConvertCEventToCppFuture(add_chunk_args.transfer_complete,
+                                          c_api_);
 }
 
 // Wraps original `xla::RecvCallback` inside `PJRT_RecvCallbackInfo` using
@@ -791,24 +840,21 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
 // TODO(yeounoh) move this to pjrt_c_api_helpers after implementing C API for
 // the opaque types `PJRT_Chunk` and `PJRT_CopyToDeviceStream`.
 PJRT_RecvCallbackInfo CppRecvCallbackToC(
-    const xla::RecvCallback& cpp_recv_callback,
+    const xla::RecvCallback& cpp_recv_callback, const PJRT_Api* c_api,
     PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback_function) {
-  *recv_callback_function = [&recv_callback = cpp_recv_callback.callback](
-                                PJRT_TransferMetadata* metadata,
-                                PJRT_CopyToDeviceStream* stream) {
-    // TODO(b/238999986) use `shape` with full information when available.
-    xla::Shape shape = metadata->device_shape;
-    recv_callback(xla::PjRtTransferMetadata{shape},
-                  // TODO(b/263390934) use PJRT_CopyToDeviceStream C API
-                  // instead of accessing the opaque type's field directly.
-                  std::move(stream->stream));
+  *recv_callback_function = [&recv_callback = cpp_recv_callback.callback,
+                             c_api](PJRT_CopyToDeviceStream* stream) {
+    // PJRT C API doesn't support
+    // use_major_to_minor_data_layout_for_callbacks = false
+    xla::Shape dummy_shape;
+    recv_callback(xla::PjRtTransferMetadata{dummy_shape},
+                  std::make_unique<CApiCopyToDeviceStream>(stream, c_api));
   };
   return PJRT_RecvCallbackInfo{
       /*channel_id=*/cpp_recv_callback.channel_id,
       /*user_arg=*/recv_callback_function,
       /*recv_callback=*/
-      [](PJRT_TransferMetadata* metadata, PJRT_CopyToDeviceStream* stream,
-         void* user_arg) {
+      [](PJRT_CopyToDeviceStream* stream, void* user_arg) {
         // PJRT_RecvCallback, `recv_callback` is internal C interface callback
         // representation that cpatures the client C++ callback in void*
         // `user_arg` and reinterprets in the lower-level runtime for execution.
@@ -817,7 +863,7 @@ PJRT_RecvCallbackInfo CppRecvCallbackToC(
         PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback =
             reinterpret_cast<PjRtCApiLoadedExecutable::RecvCallbackFunction*>(
                 user_arg);
-        (*recv_callback)(metadata, stream);
+        (*recv_callback)(stream);
       }};
 }
 
@@ -844,6 +890,7 @@ static void CppSendCallbackListsToC(
 
 static void CppRecvCallbackListsToC(
     absl::Span<const std::vector<xla::RecvCallback>> cpp_lists,
+    const PJRT_Api* c_api,
     std::vector<PjRtCApiLoadedExecutable::RecvCallbackFunction>&
         recv_callback_functions,
     std::vector<std::vector<PJRT_RecvCallbackInfo>>& c_lists) {
@@ -858,7 +905,7 @@ static void CppRecvCallbackListsToC(
     c_list.reserve(cpp_list.size());
     for (const auto& cpp_callback : cpp_list) {
       c_list.emplace_back(CppRecvCallbackToC(
-          cpp_callback, &recv_callback_functions[func_count++]));
+          cpp_callback, c_api, &recv_callback_functions[func_count++]));
     }
   }
 }
@@ -873,6 +920,12 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
     SendRecvCallbackData& callback_data) {
+  if (!options.use_major_to_minor_data_layout_for_callbacks) {
+    return Unimplemented(
+        "PJRT C API doesn't support "
+        "ExecuteOptions::use_major_to_minor_data_layout_for_callbacks = false");
+  }
+
   PJRT_LoadedExecutable_Execute_Args args;
   args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -932,7 +985,7 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     args.options->num_send_ops = options.send_callbacks[0].size();
   }
   if (!options.recv_callbacks.empty()) {
-    CppRecvCallbackListsToC(options.recv_callbacks,
+    CppRecvCallbackListsToC(options.recv_callbacks, pjrt_c_api(),
                             callback_data.recv_callback_functions,
                             callback_data.c_recv_callbacks);
     for (auto& c_recv_callback_list : callback_data.c_recv_callbacks) {
@@ -1006,7 +1059,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   if (!options.send_callbacks.empty() || !options.recv_callbacks.empty()) {
-    return Status(tensorflow::error::UNIMPLEMENTED,
+    return Status(absl::StatusCode::kUnimplemented,
                   "Send/recv callbacks not implemented for "
                   "PjRtCApiLoadedExecutable::ExecuteWithSingleDevice.");
   }
@@ -1120,15 +1173,15 @@ const Shape& PjRtCApiBuffer::on_device_shape() const {
   return shape_.value();
 }
 
-void PjRtCApiBuffer::set_shape() {
+static Shape GetDeviceShape(PJRT_Buffer* c_buffer, const PJRT_Api* api,
+                            bool is_logical_on_device_shape) {
   PJRT_Buffer_OnDeviceTrimmedShape_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_.get();
+  args.buffer = c_buffer;
+  args.is_logical_on_device_shape = is_logical_on_device_shape;
 
-  pjrt::LogFatalIfPjrtError(
-      client_->pjrt_c_api()->PJRT_Buffer_OnDeviceTrimmedShape(&args),
-      client_->pjrt_c_api());
+  pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_OnDeviceTrimmedShape(&args), api);
 
   xla::PrimitiveType element_type =
       static_cast<xla::PrimitiveType>(args.element_type);
@@ -1144,8 +1197,6 @@ void PjRtCApiBuffer::set_shape() {
   if (args.has_layout) {
     *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
   }
-
-  shape_ = trimmed_shape;
 
   // TODO(amangu): Refactor the deletion.
   if (args.dimensions.size > TPU_C_API_MAX_INLINED) {
@@ -1165,6 +1216,17 @@ void PjRtCApiBuffer::set_shape() {
       delete[] args.layout.tiles.heap;
     }
   }
+  return trimmed_shape;
+}
+
+void PjRtCApiBuffer::set_shape() {
+  shape_ = GetDeviceShape(buffer_.get(), client_->pjrt_c_api(),
+                          /*is_logical_on_device_shape=*/false);
+}
+
+StatusOr<Shape> PjRtCApiBuffer::logical_on_device_shape() {
+  return GetDeviceShape(buffer_.get(), client_->pjrt_c_api(),
+                        /*is_logical_on_device_shape=*/true);
 }
 
 PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {

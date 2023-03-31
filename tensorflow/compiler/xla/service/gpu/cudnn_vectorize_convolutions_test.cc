@@ -49,12 +49,6 @@ class CudnnVectorizeConvolutionsTest : public HloTestBase {
 
     return changed;
   }
-
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
-    return debug_options;
-  }
 };
 
 TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
@@ -444,6 +438,58 @@ TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
                       m::Reshape(m::Parameter(3))
                           .WithShape(S8, {10, 20, 30, 2, 32})))
                   .WithShape(S8, {10, 20, 30, 4, 32})),
+          m::Op())));
+
+  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
+                  ->reordered_int8_nchw_vect());
+}
+
+TEST_F(CudnnVectorizeConvolutionsTest, InputNHWC_OutputNCHW) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    input = s8[10,20,30,64] parameter(0)
+    filter = s8[2,2,64,128] parameter(1)
+    bias = f32[128] parameter(2)
+    side_input = s8[10,128,20,30] parameter(3)
+
+    ROOT result = (s8[10,128,20,30], u8[0]) custom-call(input, filter, bias, side_input),
+                  window={size=2x2}, dim_labels=b01f_01io->bf01,
+                  custom_call_target="__cudnn$convForward"
+  })")
+                    .value();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
+  EXPECT_TRUE(changed);
+
+  SCOPED_TRACE(module->ToString());
+  auto* root = module->entry_computation()->root_instruction();
+
+  const HloInstruction* conv = nullptr;
+  ASSERT_THAT(
+      root,
+      GmockMatch(m::Tuple(
+          m::Reshape(
+              m::GetTupleElement(
+                  m::CustomCall(
+                      &conv, {kCudnnConvForwardCallTarget},
+                      m::Reshape(m::Parameter(0))
+                          .WithShape(S8, {10, 20, 30, 2, 32}),
+                      m::Reshape(m::Transpose(m::Reshape(m::Parameter(1))))
+                          .WithShape(S8, {128, 2, 2, 2, 32}),
+                      m::Reshape(
+                          m::Transpose(m::Reshape(m::Parameter(2))
+                                           .WithShape(F32, {4, 4, 2, 4}))
+                              .WithShape(F32, {4, 2, 4, 4})
+                              .WithPredicate([](const HloInstruction* instr) {
+                                return absl::c_equal(
+                                    instr->dimensions(),
+                                    std::vector<int64_t>{0, 2, 1, 3});
+                              }))
+                          .WithShape(F32, {128}),
+                      m::Reshape(m::Parameter(3))
+                          .WithShape(S8, {10, 4, 32, 20, 30})))
+                  .WithShape(S8, {10, 4, 32, 20, 30})),
           m::Op())));
 
   EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()

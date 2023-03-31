@@ -26,15 +26,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sort_ops
-from tensorflow.python.ops.parallel_for import control_flow_ops as parallel_ops
 
 
 UNSPECIFIED = object()
@@ -48,6 +45,7 @@ map_registry = type_registry.TypeRegistry()
 filter_registry = type_registry.TypeRegistry()
 any_registry = type_registry.TypeRegistry()
 all_registry = type_registry.TypeRegistry()
+sorted_registry = type_registry.TypeRegistry()
 next_registry = type_registry.TypeRegistry()
 
 
@@ -275,8 +273,8 @@ def _tf_tensor_len(s):
     with ops.control_dependencies([control_flow_assert.Assert(False, [msg])]):
       return constant_op.constant(0, dtype=dtypes.int32)
 
-  return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],
-                               raise_zero_rank_error)
+  return cond.cond(rank > 0, lambda: array_ops.shape(s)[0],
+                   raise_zero_rank_error)
 
 
 def _py_len(s):
@@ -494,34 +492,10 @@ def _py_all(iterable):
 
 
 def sorted_(iterable, key=UNSPECIFIED, reverse=UNSPECIFIED):
-  if tensor_util.is_tf_type(iterable):
-    return _tf_sorted(iterable, key, reverse)
+  sorted_override = registry_lookup(sorted_registry, iterable)
+  if sorted_override is not None:
+    return sorted_override(iterable, key, reverse)
   return _py_sorted(iterable, key, reverse)
-
-
-def _tf_sorted(iterable, key, reverse):
-  """Overload of sorted_ for Tensor iterable."""
-  if reverse is UNSPECIFIED:
-    direction = 'ASCENDING'
-  else:
-    direction = 'DESCENDING'
-  if key is not UNSPECIFIED:
-    mapped = parallel_ops.vectorized_map(key, iterable)
-    if mapped.shape.rank is not None and mapped.shape.rank != 1:
-      raise ValueError('sort only supports only 1D tensors')
-    with ops.control_dependencies([
-        check_ops.assert_rank_v2(mapped, 1,
-                                 'sort only supports only 1D tensors')
-    ]):
-      order = sort_ops.argsort(mapped, direction=direction)
-      return array_ops.gather_v2(iterable, order)
-  if iterable.shape.rank is not None and iterable.shape.rank != 1:
-    raise ValueError('sort only supports only 1D tensors')
-  with ops.control_dependencies([
-      check_ops.assert_rank_v2(iterable, 1,
-                               'sort only supports only 1D tensors')
-  ]):
-    return sort_ops.sort(iterable, direction=direction)
 
 
 def _py_sorted(iterable, key, reverse):

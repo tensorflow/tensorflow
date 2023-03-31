@@ -405,7 +405,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);
 
-  for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
+  for (const auto& entry :
+       llvm::enumerate(computation.parameter_instructions())) {
     HloParameterInstruction* parameter =
         Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {

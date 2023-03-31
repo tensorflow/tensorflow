@@ -248,17 +248,24 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     shape = ops.convert_to_tensor(self.shape())
     return (device_idx // strides) % shape
 
-  @staticmethod
-  def from_proto(proto: layout_pb2.MeshProto) -> 'Mesh':
+  @classmethod
+  def from_proto(cls, proto: layout_pb2.MeshProto) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
-    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, proto)
+    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_proto=proto)
     return mesh
 
-  @staticmethod
-  def from_string(mesh_str: str) -> 'Mesh':
-    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str)
+  @classmethod
+  def from_string(cls, mesh_str: str) -> 'Mesh':
+    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str=mesh_str)
+    return mesh
+
+  @classmethod
+  def from_device(cls, device: str) -> 'Mesh':
+    """Constructs a single device mesh from a device string."""
+    mesh = _pywrap_dtensor_device.Mesh.__new__(cls)
+    _pywrap_dtensor_device.Mesh.__init__(mesh, single_device=device)
     return mesh
 
   # TODO(b/242201545): implement this in Mesh C++ class
@@ -361,7 +368,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
 
 # TODO(hthu): Consider making this class immutable.
 @tf_export('experimental.dtensor.Layout', v1=[])
-class Layout(object):
+class Layout(_pywrap_dtensor_device.Layout):
   """Represents the layout information of a DTensor.
 
   A layout describes how a distributed tensor is partitioned across a mesh (and
@@ -438,38 +445,44 @@ class Layout(object):
              'valid mesh dimension or UNSHARDED.').format(
                  dim_sharding=dim_sharding))
 
-    # Set object's state
-    self.sharding_specs = sharding_specs
-    self.rank = len(sharding_specs)
-    self.mesh = mesh
-    self.shape = [self.num_shards(i) for i in range(self.rank)]
-
-  def __eq__(self, other) -> bool:
-    return self.serialized_string() == other.serialized_string()
+    super().__init__(sharding_specs=sharding_specs, mesh=mesh)
 
   def __repr__(self) -> str:
     return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
 
-  def __hash__(self) -> int:
-    return hash(self.serialized_string())
+  def __hash__(self):
+    return hash(self.as_proto().SerializeToString(deterministic=True))
 
-  def as_proto(self) -> layout_pb2.LayoutProto:
-    """Create a proto representation of a layout."""
-    layout_proto = layout_pb2.LayoutProto()
+  # TODO(panzf): change to pybind11 pickle implementation in the last step
+  def __reduce__(self):
+    return Layout.from_string, (self.to_string(),)
 
-    for dim_sharding in self.sharding_specs:
-      tensor_dim = layout_proto.sharding_specs.add()
-      tensor_dim.sharding_spec = dim_sharding
+  # TODO(b/242201545): Find a way to return Mesh object from the pywrap module.
+  @property
+  def mesh(self):
+    return Mesh.from_proto(super().mesh.as_proto())
 
-    layout_proto.mesh_config.CopyFrom(self.mesh_proto())
+  @property
+  def shape(self):
+    return self.mesh.shape()
 
-    return layout_proto
-
-  @staticmethod
-  def batch_sharded(mesh: Mesh, batch_dim: str, rank: int) -> 'Layout':
+  @classmethod
+  def batch_sharded(
+      cls, mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
+  ) -> 'Layout':
     """Returns a layout sharded on batch dimension."""
-    return Layout([batch_dim] + [UNSHARDED] * (rank - 1), mesh)
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
+    _pywrap_dtensor_device.Layout.__init__(
+        # Watchout for the different ordering.
+        layout_obj,
+        mesh=mesh,
+        rank=rank,
+        batch_dim=batch_dim,
+        axis=axis,
+    )
+    return layout_obj
 
+  # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def delete(self, dims: List[int]) -> 'Layout':
     """Returns the layout with the give dimensions deleted."""
     if not isinstance(dims, list):
@@ -479,58 +492,40 @@ class Layout(object):
     ]
     return Layout(new_specs, self.mesh)
 
-  @staticmethod
-  def from_str(layout_str: bytes) -> 'Layout':
-    """Creates an instance from a serialized Protobuf binary string."""
-    layout_proto = layout_pb2.LayoutProto()
-    layout_proto.ParseFromString(layout_str)
-    sharding_specs = [
-        sharding_spec.sharding_spec
-        for sharding_spec in layout_proto.sharding_specs
-    ]
-    mesh = Mesh.from_proto(layout_proto.mesh_config)
-    return Layout(sharding_specs, mesh)
+  @classmethod
+  def from_proto(cls, layout_proto: layout_pb2.LayoutProto) -> 'Layout':
+    """Creates an instance from a LayoutProto."""
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
+    _pywrap_dtensor_device.Layout.__init__(
+        layout_obj, layout_proto=layout_proto
+    )
+    return layout_obj
 
-  @staticmethod
-  def from_string(layout_str: str) -> 'Layout':
+  @classmethod
+  def from_string(cls, layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
-    layout_parts = layout_str.split(' ')
-    if len(layout_parts) != 2:
-      raise ValueError(
-          'layout string must contain two parts: specs and mesh. But got {}.'
-          .format(layout_str))
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
+    _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str=layout_str)
+    return layout_obj
 
-    sharding_specs_str = layout_parts[0].replace('sharding_specs:', '')
-    mesh_str = layout_parts[1].replace('mesh:', '')
+  @classmethod
+  def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
+    """Returns a layout sharded on inner dimension."""
+    return cls.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
 
-    sharding_specs = sharding_specs_str.split(',')[:-1]
-
-    mesh = Mesh.from_string(mesh_str)
-    layout = Layout(sharding_specs, mesh)
+  @classmethod
+  def from_single_device_mesh(cls, mesh: Mesh) -> 'Layout':
+    """Constructs a single device layout from a single device mesh."""
+    layout = _pywrap_dtensor_device.Layout.__new__(cls)
+    _pywrap_dtensor_device.Layout.__init__(layout, mesh=mesh)
     return layout
 
-  @staticmethod
-  def inner_sharded(mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
-    """Returns a layout sharded on inner dimension."""
-    return Layout([UNSHARDED] * (rank - 1) + [inner_dim], mesh)
+  @classmethod
+  def from_device(cls, device: str) -> 'Layout':
+    """Constructs a single device layout from a single device mesh."""
+    return cls.from_single_device_mesh(Mesh.from_device(device))
 
-  def is_fully_replicated(self) -> bool:
-    """Returns True if all tensor axes are replicated."""
-    return all([self.num_shards(i) == 1 for i in range(self.rank)])
-
-  def mesh_proto(self) -> layout_pb2.MeshProto:
-    """Returns the underlying mesh in Protobuf format."""
-    return self.mesh.as_proto()
-
-  def num_shards(self, idx: int) -> int:
-    """Returns the number of shards for tensor dimension `idx`."""
-    dim_sharding = self.sharding_specs[idx]
-    if dim_sharding == UNSHARDED:
-      return 1
-    if dim_sharding == MATCH:
-      return -1
-    return self.mesh.dim_size(dim_sharding)
-
+  # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_to_shard(self):
     """Mapping from offset in a flattened list to shard index."""
     unravel_index = self.mesh.unravel_index()
@@ -543,8 +538,10 @@ class Layout(object):
         else:
           loc.append(mesh_loc[dim_sharding])
       locations[offset] = tuple(loc)
+
     return locations
 
+  # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_tuple_to_global_index(self, offset_tuple):
     """Mapping from offset to index in global tensor."""
     index = 0
@@ -555,23 +552,9 @@ class Layout(object):
       index = index + m * o
     return index
 
-  @staticmethod
-  def replicated(mesh: Mesh, rank: int) -> 'Layout':
+  @classmethod
+  def replicated(cls, mesh: Mesh, rank: int) -> 'Layout':
     """Returns a replicated layout of rank `rank`."""
-    return Layout([UNSHARDED] * rank, mesh)
-
-  def serialized_string(self) -> bytes:
-    """Returns a serialized Protobuf binary string representation."""
-    return self.as_proto().SerializeToString(deterministic=True)
-
-  # A layout with no sharding specs is acceptable, therefore we only check the
-  # mesh.
-  def to_string(self) -> str:
-    """Returns a human-readable string representation."""
-    sharding_spec_str = 'sharding_specs:'
-    # Add comma after each instruction.
-    for spec in self.sharding_specs:
-      sharding_spec_str += spec + ','
-
-    mesh_str = 'mesh:' + self.mesh.to_string()
-    return sharding_spec_str + ' ' + mesh_str
+    layout_obj = _pywrap_dtensor_device.Layout.__new__(cls)
+    _pywrap_dtensor_device.Layout.__init__(layout_obj, mesh=mesh, rank=rank)
+    return layout_obj

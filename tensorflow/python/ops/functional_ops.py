@@ -1138,7 +1138,7 @@ def partitioned_call(args,
   Args:
     args: The arguments of the function, including captured inputs.
     f: The function to execute; an instance of `_DefinedFunction` or
-      `_EagerDefinedFunction`.
+      `AtomicFunction`.
     tout: a list containing the output dtypes enums; if `None`, inferred from
       the signature of `f`.
     executing_eagerly: (Optional) A boolean indicating whether the context is
@@ -1169,7 +1169,7 @@ def partitioned_call(args,
     executor_type = ""
 
   if executing_eagerly:
-    if f.stateful_ops:
+    if f.stateful_ops:  # pylint: disable=protected-access
       outputs = gen_functional_ops.stateful_partitioned_call(
           args=args,
           Tout=tout,
@@ -1204,8 +1204,12 @@ def partitioned_call(args,
   config_proto = attr_value_pb2.AttrValue(s=config)
 
   graph = ops.get_default_graph()
-  f.add_to_graph(graph)
-  op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
+  graph._add_function_recursive(f)  # pylint: disable=protected-access
+  op_name = (
+      "StatefulPartitionedCall"
+      if f.stateful_ops  # pylint: disable=protected-access
+      else "PartitionedCall"
+  )
 
   # Propagate the attribute indicating the need to compile from function to the
   # call itself.
@@ -1217,8 +1221,8 @@ def partitioned_call(args,
       "config_proto": config_proto,
       "executor_type": executor_type_attr,
   }
-  if xla_compile_attr in f.definition.attr:
-    op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
+  if xla_compile_attr in f.cached_definition.attr:
+    op_attrs[xla_compile_attr] = f.cached_definition.attr[xla_compile_attr]
   op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
   outputs = op.outputs
   if hasattr(f, "graph"):

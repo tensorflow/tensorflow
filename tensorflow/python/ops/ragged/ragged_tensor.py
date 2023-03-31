@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -37,8 +38,8 @@ from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_config
@@ -56,9 +57,9 @@ from tensorflow.tools.docs import doc_controls
 _convert_row_partition = RowPartition._convert_row_partition
 # pylint: enable=protected-access
 
-#===============================================================================
+# ===============================================================================
 # RaggedTensor
-#===============================================================================
+# ===============================================================================
 
 
 @tf_export("RaggedTensor")
@@ -1738,7 +1739,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         # axes -- i.e., to be a no-op.)
         tensor_rank = array_ops.rank(tensor)
         reduce_axis = math_ops.range(2, tensor_rank)
-        has_default = control_flow_ops.cond(
+        has_default = cond.cond(
             tensor_rank > 2,
             lambda: math_ops.reduce_all(has_default_value, axis=reduce_axis),
             lambda: has_default_value)
@@ -2306,9 +2307,9 @@ def match_row_splits_dtypes(*tensors, **kwargs):
     return tensors
 
 
-#===============================================================================
+# ===============================================================================
 # RaggedTensorSpec
-#===============================================================================
+# ===============================================================================
 @tf_export("RaggedTensorSpec")
 @type_spec_registry.register("tf.RaggedTensorSpec")
 class RaggedTensorSpec(type_spec.BatchableTypeSpec):
@@ -2663,9 +2664,9 @@ type_spec.register_type_spec_from_value_converter(
     ragged_tensor_value.RaggedTensorValue, RaggedTensorSpec.from_value)
 
 
-#===============================================================================
+# ===============================================================================
 # Convert value -> tensor
-#===============================================================================
+# ===============================================================================
 def convert_to_tensor_or_ragged_tensor(value,
                                        dtype=None,
                                        preferred_dtype=None,
@@ -2705,8 +2706,9 @@ def convert_to_tensor_or_ragged_tensor(value,
       return RaggedTensor.from_nested_row_splits(
           flat_values, value.nested_row_splits, validate=False)
   else:
-    return ops.convert_to_tensor_v2_with_dispatch(
-        value=value, dtype=dtype, dtype_hint=preferred_dtype, name=name)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        value=value, dtype=dtype, dtype_hint=preferred_dtype, name=name
+    )
 
 
 def _convert_to_ragged_tensor_values(value):
@@ -2730,9 +2732,9 @@ def _convert_to_ragged_tensor_values(value):
     return convert_to_tensor_or_ragged_tensor(value, name="values")
 
 
-#===============================================================================
+# ===============================================================================
 # Register RaggedTensor for use with session.run.
-#===============================================================================
+# ===============================================================================
 def _ragged_tensor_value_from_components(components):
   components = list(components)
   value = components.pop()
@@ -2761,9 +2763,9 @@ session.register_session_run_conversion_functions(
     _ragged_tensor_session_feed_for_partial_run)
 
 
-#===============================================================================
+# ===============================================================================
 # RaggedTensorType
-#===============================================================================
+# ===============================================================================
 class RaggedTensorType:
   """Encoding of a static type for a `RaggedTensor`.
 
@@ -2794,9 +2796,9 @@ class RaggedTensorType:
                                              self.row_splits_dtype)
 
 
-#===============================================================================
+# ===============================================================================
 # Helper Functions
-#===============================================================================
+# ===============================================================================
 def _assert_sparse_indices_are_ragged_right(indices):
   """Checks that the given SparseTensor.indices tensor is ragged-right.
 

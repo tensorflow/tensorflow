@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-tiling="tile-sizes=2 op-label=root" --test-gml-st-greedy-fusion | \
-// RUN: FileCheck %s
+// RUN: --test-hlo-transform-dialect-interpreter --canonicalize -cse \
+// RUN: --test-gml-st-greedy-fusion |  FileCheck %s
 
 // CHECK-LABEL: func @fuse_broadcast_map
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<16xf32>, %[[ARG1:.*]]: tensor<16x32xf32>)
@@ -15,8 +15,13 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
   %result = linalg.map { arith.addf }
     ins(%bcast, %arg1 : tensor<16x32xf32>, tensor<16x32xf32>)
     outs(%init : tensor<16x32xf32>)
-    { op_label = "root" }
   func.return %result : tensor<16x32xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %forall_op, %tiled_op = transform.structured.tile_to_forall_op %0 num_threads [10, 20]
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
@@ -56,6 +61,12 @@ func.func @do_not_fuse_multiple_uses(%arg0: tensor<?xf32>,
     { op_label = "root" }
   func.return %result, %bcast : tensor<?x?xf32>, tensor<?x?xf32>
 }
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [0, 2]
+}
 
 // CHECK: tensor.empty
 // CHECK: %[[BCAST:.*]] = linalg.broadcast
@@ -79,8 +90,13 @@ func.func @do_not_fuse_map_reduce(%arg0: tensor<16x32xf32>, %arg1: tensor<16xf32
   %result = linalg.map { arith.addf }
     ins(%reduce, %arg1 : tensor<16xf32>, tensor<16xf32>)
     outs(%init : tensor<16xf32>)
-    { op_label = "root" }
   func.return %result : tensor<16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [2]
 }
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
@@ -155,6 +171,320 @@ func.func @fuse_fibonacci(%init : tensor<?xi64>) -> tensor<?xi64> {
   %37 = linalg.map { arith.addi } ins(%35, %36 : tensor<?xi64>, tensor<?xi64>) outs(%init : tensor<?xi64>)
   %38 = linalg.map { arith.addi } ins(%36, %37 : tensor<?xi64>, tensor<?xi64>) outs(%init : tensor<?xi64>)
   %39 = linalg.map { arith.addi } ins(%37, %38 : tensor<?xi64>, tensor<?xi64>) outs(%init : tensor<?xi64>)
-    { op_label = "root" }
+    {op_label="root"}
   func.return %39 : tensor<?xi64>
 }
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1]
+}
+
+// -----
+
+func.func @fuse_reshape_middle_unit_dim_map(%arg0: tensor<10x16xf32>,
+    %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty_3D = tensor.empty() : tensor<10x1x16xf32>
+  %expanded = tensor.expand_shape %arg0 [[0], [1, 2]] :
+              tensor<10x16xf32> into tensor<10x1x16xf32>
+  %abs = linalg.map { math.absf }
+         ins(%expanded: tensor<10x1x16xf32>)
+         outs(%empty_3D : tensor<10x1x16xf32>)
+
+  %empty_2D = tensor.empty() : tensor<10x16xf32>
+  %collapsed = tensor.collapse_shape %abs [[0], [1, 2]] :
+               tensor<10x1x16xf32> into tensor<10x16xf32>
+  %add = linalg.map { arith.addf }
+              ins(%collapsed, %arg1 : tensor<10x16xf32>, tensor<10x16xf32>)
+              outs(%empty_2D : tensor<10x16xf32>)
+    {op_label="root"}
+  return %add : tensor<10x16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @fuse_reshape_middle_unit_dim_map
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>, %[[ARG1:.*]]: tensor<10x16xf32>)
+// CHECK-NOT:      tensor.expand_shape
+// CHECK-NOT:      tensor.collapse_shape
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[ARG0]]
+// CHECK:            %[[EXPAND:.*]] = tensor.expand_shape %[[EXTRACT]]
+// CHECK:            %[[ABS:.*]] = linalg.map { math.absf } ins(%[[EXPAND]]
+// CHECK:            %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ABS]]
+// CHECK:            linalg.map { arith.addf } ins(%[[COLLAPSE]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return
+
+// -----
+
+func.func @fuse_reshape_trailing_unit_dim_map(%arg0: tensor<10x16xf32>,
+    %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty_5D = tensor.empty() : tensor<10x16x1x1x1xf32>
+  %expanded = tensor.expand_shape %arg0 [[0], [1, 2, 3, 4]] :
+              tensor<10x16xf32> into tensor<10x16x1x1x1xf32>
+  %abs = linalg.map { math.absf }
+         ins(%expanded: tensor<10x16x1x1x1xf32>)
+         outs(%empty_5D : tensor<10x16x1x1x1xf32>)
+
+  %empty_2D = tensor.empty() : tensor<10x16xf32>
+  %collapsed = tensor.collapse_shape %abs [[0], [1, 2, 3, 4]] :
+               tensor<10x16x1x1x1xf32> into tensor<10x16xf32>
+  %add = linalg.map { arith.addf }
+              ins(%collapsed, %arg1 : tensor<10x16xf32>, tensor<10x16xf32>)
+              outs(%empty_2D : tensor<10x16xf32>)
+    {op_label="root"}
+  return %add : tensor<10x16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @fuse_reshape_trailing_unit_dim_map
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>, %[[ARG1:.*]]: tensor<10x16xf32>)
+// CHECK-NOT:      tensor.expand_shape
+// CHECK-NOT:      tensor.collapse_shape
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[ARG0]]
+// CHECK:            %[[EXPAND:.*]] = tensor.expand_shape %[[EXTRACT]]
+// CHECK:            %[[ABS:.*]] = linalg.map { math.absf } ins(%[[EXPAND]]
+// CHECK:            %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ABS]]
+// CHECK:            linalg.map { arith.addf } ins(%[[COLLAPSE]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return
+
+// -----
+
+func.func @fuse_reshape_leading_unit_dim_map(%arg0: tensor<10x16xf32>,
+    %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty_5D = tensor.empty() : tensor<1x1x1x10x16xf32>
+  %expanded = tensor.expand_shape %arg0 [[0, 1, 2, 3], [4]] :
+              tensor<10x16xf32> into tensor<1x1x1x10x16xf32>
+  %abs = linalg.map { math.absf }
+         ins(%expanded: tensor<1x1x1x10x16xf32>)
+         outs(%empty_5D : tensor<1x1x1x10x16xf32>)
+
+  %empty_2D = tensor.empty() : tensor<10x16xf32>
+  %collapsed = tensor.collapse_shape %abs [[0, 1, 2, 3], [4]] :
+               tensor<1x1x1x10x16xf32> into tensor<10x16xf32>
+  %add = linalg.map { arith.addf }
+              ins(%collapsed, %arg1 : tensor<10x16xf32>, tensor<10x16xf32>)
+              outs(%empty_2D : tensor<10x16xf32>)
+    {op_label="root"}
+  return %add : tensor<10x16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @fuse_reshape_leading_unit_dim_map
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>, %[[ARG1:.*]]: tensor<10x16xf32>)
+// CHECK-NOT:      tensor.expand_shape
+// CHECK-NOT:      tensor.collapse_shape
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[ARG0]]
+// CHECK:            %[[EXPAND:.*]] = tensor.expand_shape %[[EXTRACT]]
+// CHECK:            %[[ABS:.*]] = linalg.map { math.absf } ins(%[[EXPAND]]
+// CHECK:            %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ABS]]
+// CHECK:            linalg.map { arith.addf } ins(%[[COLLAPSE]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return
+
+// -----
+
+func.func @fuse_reshape_multiple_unit_dims_map(%arg0: tensor<10x16xf32>,
+    %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty_4D = tensor.empty() : tensor<10x1x16x1xf32>
+  %expanded = tensor.expand_shape %arg0 [[0, 1], [2, 3]] :
+              tensor<10x16xf32> into tensor<10x1x16x1xf32>
+  %abs = linalg.map { math.absf }
+         ins(%expanded: tensor<10x1x16x1xf32>)
+         outs(%empty_4D : tensor<10x1x16x1xf32>)
+
+  %empty_2D = tensor.empty() : tensor<10x16xf32>
+  %collapsed = tensor.collapse_shape %abs [[0, 1], [2, 3]] :
+               tensor<10x1x16x1xf32> into tensor<10x16xf32>
+  %add = linalg.map { arith.addf }
+              ins(%collapsed, %arg1 : tensor<10x16xf32>, tensor<10x16xf32>)
+              outs(%empty_2D : tensor<10x16xf32>)
+    {op_label="root"}
+  return %add : tensor<10x16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @fuse_reshape_multiple_unit_dims_map
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>, %[[ARG1:.*]]: tensor<10x16xf32>)
+// CHECK-NOT:      tensor.expand_shape
+// CHECK-NOT:      tensor.collapse_shape
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[ARG0]]
+// CHECK:            %[[EXPAND:.*]] = tensor.expand_shape %[[EXTRACT]]
+// CHECK:            %[[ABS:.*]] = linalg.map { math.absf } ins(%[[EXPAND]]
+// CHECK:            %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ABS]]
+// CHECK:            linalg.map { arith.addf } ins(%[[COLLAPSE]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return
+
+// -----
+
+func.func @fuse_reshape_reassoc_only_unit_dims_map(%arg0: tensor<10x16xf32>)
+    -> tensor<10x16x1xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty_5D = tensor.empty() : tensor<10x1x16x1x1xf32>
+  %expanded = tensor.expand_shape %arg0 [[0, 1], [2, 3, 4]] :
+              tensor<10x16xf32> into tensor<10x1x16x1x1xf32>
+  %abs = linalg.map { math.absf }
+         ins(%expanded: tensor<10x1x16x1x1xf32>)
+         outs(%empty_5D : tensor<10x1x16x1x1xf32>)
+
+  %empty_3D = tensor.empty() : tensor<10x16x1xf32>
+  %collapsed = tensor.collapse_shape %abs [[0, 1], [2], [3, 4]] :
+               tensor<10x1x16x1x1xf32> into tensor<10x16x1xf32>
+  %neg = linalg.map { arith.negf }
+              ins(%collapsed : tensor<10x16x1xf32>)
+              outs(%empty_3D : tensor<10x16x1xf32>)
+    {op_label="root"}
+  return %neg : tensor<10x16x1xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @fuse_reshape_reassoc_only_unit_dims_map
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>)
+// CHECK-NOT:      tensor.expand_shape
+// CHECK-NOT:      tensor.collapse_shape
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[ARG0]]
+// CHECK:            %[[EXPAND:.*]] = tensor.expand_shape %[[EXTRACT]]
+// CHECK:            %[[ABS:.*]] = linalg.map { math.absf } ins(%[[EXPAND]]
+// CHECK:            %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ABS]]
+// CHECK:            linalg.map { arith.negf } ins(%[[COLLAPSE]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return
+
+// -----
+
+func.func @do_not_fuse_collapse_shape(%arg0: tensor<10x16xf32>,
+    %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty = tensor.empty() : tensor<10x1x4x4x1xf32>
+  %expanded = tensor.expand_shape %arg0 [[0, 1], [2, 3, 4]] :
+              tensor<10x16xf32> into tensor<10x1x4x4x1xf32>
+  %abs = linalg.map { math.absf }
+         ins(%expanded: tensor<10x1x4x4x1xf32>)
+         outs(%empty: tensor<10x1x4x4x1xf32>)
+
+  %empty_2D = tensor.empty() : tensor<10x16xf32>
+  %collapsed = tensor.collapse_shape %abs [[0, 1], [2, 3, 4]] :
+              tensor<10x1x4x4x1xf32> into tensor<10x16xf32>
+  %add = linalg.map { arith.addf }
+              ins(%collapsed, %arg1 : tensor<10x16xf32>, tensor<10x16xf32>)
+              outs(%empty_2D : tensor<10x16xf32>)
+    {op_label="root"}
+  return %add : tensor<10x16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @do_not_fuse_collapse_shape
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>, %[[ARG1:.*]]: tensor<10x16xf32>)
+// CHECK:          %[[EXPAND:.*]] = tensor.expand_shape %[[ARG0]]
+// CHECK:          %[[ABS:.*]] = linalg.map { math.absf } ins(%[[EXPAND]]
+// CHECK:          %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ABS]]
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[COLLAPSE]]
+// CHECK:            linalg.map { arith.addf } ins(%[[EXTRACT]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return
+
+//%test = tensor.collapse_shape %abs [[0, 1], [2]] :
+//             tensor<10x16x1xf32> into tensor<160x1xf32>
+
+// -----
+
+func.func @do_not_fuse_expand_shape(%arg0: tensor<10x16xf32>,
+    %arg1: tensor<10x16xf32>) -> tensor<10x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+
+  %empty = tensor.empty() : tensor<160xf32>
+  %collapsed = tensor.collapse_shape %arg0 [[0, 1]] :
+               tensor<10x16xf32> into tensor<160xf32>
+  %abs = linalg.map { math.absf }
+         ins(%collapsed: tensor<160xf32>)
+         outs(%empty: tensor<160xf32>)
+
+  %empty_2D = tensor.empty() : tensor<10x16xf32>
+  %expanded = tensor.expand_shape %abs [[0, 1]] :
+              tensor<160xf32> into tensor<10x16xf32>
+  %add = linalg.map { arith.addf }
+              ins(%expanded, %arg1 : tensor<10x16xf32>, tensor<10x16xf32>)
+              outs(%empty_2D : tensor<10x16xf32>)
+    {op_label="root"}
+  return %add : tensor<10x16xf32>
+}
+transform.sequence failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.map"]}
+                                    attributes{op_label="root"} in %arg1
+      : (!pdl.operation) -> !pdl.operation
+    %loop, %1 = transform.structured.tile_to_forall_op %0 tile_sizes [1, 8]
+}
+
+// CHECK-LABEL: func @do_not_fuse_expand_shape
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<10x16xf32>, %[[ARG1:.*]]: tensor<10x16xf32>)
+// CHECK:          %[[COLLAPSE:.*]] = tensor.collapse_shape %[[ARG0]]
+// CHECK:          %[[ABS:.*]] = linalg.map { math.absf } ins(%[[COLLAPSE]]
+// CHECK:          %[[EXPAND:.*]] = tensor.expand_shape %[[ABS]]
+// CHECK:          scf.forall
+// CHECK:            %[[EXTRACT:.*]] = tensor.extract_slice %[[EXPAND]]
+// CHECK:            linalg.map { arith.addf } ins(%[[EXTRACT]]
+// CHECK:            tensor.parallel_insert_slice
+// CHECK:          return

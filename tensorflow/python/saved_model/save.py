@@ -749,14 +749,17 @@ def _trace_gradient_functions(graph, saveable_view):
             )
           elif outer_capture.graph is outer_fn.graph:
             capture_name = outer_capture.name
-            # It's possible for EagerDefinedFunctions to save different names
+            # It's possible for AtomicFunctions to save different names
             # for input tensors when serialized to FunctionDef (all
             # non-alphanumeric characters are converted to '_').
-            if isinstance(outer_fn, defun._EagerDefinedFunction):  # pylint:disable=protected-access
+            if isinstance(outer_fn, defun.AtomicFunction):  # pylint:disable=protected-access
               try:
                 arg_index = outer_fn.graph.inputs.index(outer_capture)
                 capture_name = (
-                    outer_fn.signature.input_arg[arg_index].name + ":0"
+                    outer_fn.cached_definition.signature.input_arg[
+                        arg_index
+                    ].name
+                    + ":0"
                 )
               except ValueError:
                 pass
@@ -1044,7 +1047,7 @@ def _export_debug_info(exported_graph, export_dir):
   exported_operations = []
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
-    if not isinstance(fn, defun._EagerDefinedFunction):  # pylint: disable=protected-access
+    if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
 
     fn_graph = fn.graph

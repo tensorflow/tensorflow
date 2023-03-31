@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
+#include <limits>
+#include <utility>
+
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
@@ -26,7 +29,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-using tensorflow::profiler::Trace;
 using tensorflow::profiler::XSpace;
 
 void CreateXSpace(XSpace* space) {
@@ -66,7 +68,7 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   XSpace xspace;
   CreateXSpace(&xspace);
 
-  TraceContainer container = ConvertXSpaceToTraceEvents(xspace);
+  TraceContainer container = ConvertXSpaceToTraceContainer(xspace);
 
   ASSERT_EQ(container.trace().devices_size(), 2);
   EXPECT_EQ(
@@ -88,25 +90,9 @@ TEST(ConvertXPlaneToTraceEvents, SkipAsyncOps) {
   event1.SetTimestampNs(100);
   event1.SetDurationNs(1);
 
-  TraceContainer container = ConvertXSpaceToTraceEvents(xspace);
+  TraceContainer container = ConvertXSpaceToTraceContainer(xspace);
 
   ASSERT_THAT(container.UnsortedEvents(), ::testing::IsEmpty());
-}
-
-TEST(ConvertXPlaneToTraceEvents, Drop) {
-  TraceContainer container;
-  for (int i = 0; i < 100; i++) {
-    container.CreateEvent()->set_timestamp_ps((100 - i) % 50);
-  }
-
-  MaybeDropEventsForTraceViewer(container.YieldUnsortedEvents(), 150);
-  EXPECT_EQ(container.UnsortedEvents().size(), 100);  // No dropping.
-
-  MaybeDropEventsForTraceViewer(container.YieldUnsortedEvents(), 50);
-  EXPECT_EQ(container.UnsortedEvents().size(), 50);
-  for (const TraceEvent* const event : container.UnsortedEvents()) {
-    EXPECT_LT(event->timestamp_ps(), 25);
-  }
 }
 
 }  // namespace

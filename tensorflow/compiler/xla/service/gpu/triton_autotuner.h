@@ -15,10 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 
-#include <optional>
-#include <string>
-#include <variant>
-
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -37,6 +33,7 @@ class TritonAutotuner : public HloModulePass {
   absl::string_view name() const override { return "triton-autotuner"; }
 
   static void ClearAutotuneResults();
+  static void ClearCompilationCache();
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 

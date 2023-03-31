@@ -36,6 +36,9 @@ bool hasTensorSemantics(Operation *op) {
          llvm::all_of(op->getOperandTypes(), isATensor);
 }
 
+/// Peel `loopOp`. If peeling is taking place, this function updates `loopOp`
+/// (the main loop) upper bound in place, creates a remainder loop and puts it
+/// into `result`.
 LogicalResult peelLoop(RewriterBase &b, scf::ForallOp loopOp, int64_t idx,
                        scf::ForallOp &result, Value &splitBound) {
   if (!hasTensorSemantics(loopOp)) return failure();
@@ -131,23 +134,29 @@ GmlStPeelingResult peelAllLoops(scf::ForallOp loop,
                                 mlir::PatternRewriter &rewriter) {
   GmlStPeelingResult peelingResult;
 
-  bool hasMainLoop = true;
-  for (unsigned peeledIdx = 0; peeledIdx < loop.getRank(); ++peeledIdx) {
-    int64_t numLoops = loop.getRank();
-    if (peeledIdx < 0 || numLoops <= peeledIdx) continue;
+  // If upper bound is smaller than step for all iteration domains, we don't
+  // need to peel, as the original loop will eventually be canonicalized (loop
+  // of single iteration). Returning the original loop as a tail loop because
+  // some transformations (e.g. transformReduceForCpu) need to post-process the
+  // tail loops after peeling.
+  if (llvm::all_of(llvm::zip(loop.getMixedUpperBound(), loop.getMixedStep()),
+                   [](auto tuple) {
+                     auto ubInt = getConstantIntValue(std::get<0>(tuple));
+                     auto stepInt = getConstantIntValue(std::get<1>(tuple));
+                     return ubInt && stepInt && ubInt < stepInt;
+                   })) {
+    peelingResult.tailLoops.push_back(loop);
+    return peelingResult;
+  }
 
+  for (unsigned peeledIdx = 0; peeledIdx < loop.getRank(); ++peeledIdx) {
     OpFoldResult ubOfr = loop.getMixedUpperBound()[peeledIdx];
     OpFoldResult stepOfr = loop.getMixedStep()[peeledIdx];
     auto ubInt = getConstantIntValue(ubOfr);
     auto stepInt = getConstantIntValue(stepOfr);
 
-    // If the loop is smaller than the step, then append loop as tail. Needs to
-    // be done only once.
-    if (ubInt && stepInt && ubInt < stepInt) {
-      if (hasMainLoop) {
-        peelingResult.tailLoops.push_back(loop);
-        hasMainLoop = false;
-      }
+    // If the upper bound is smaller than the step, don't peel this dimension.
+    if (ubInt && stepInt && ubInt <= stepInt) {
       continue;
     }
 
@@ -160,20 +169,18 @@ GmlStPeelingResult peelAllLoops(scf::ForallOp loop,
       continue;
 
     // Rewrite affine.min and affine.max ops.
-    Value mainIv = loop.getInductionVars()[peeledIdx],
-          remainderIv = remainderLoop.getInductionVars()[peeledIdx];
+    Value mainIv = loop.getInductionVars()[peeledIdx];
+    Value remainderIv = remainderLoop.getInductionVars()[peeledIdx];
 
     rewriteAffineOpAfterPeeling<AffineMinOp>(rewriter, loop, remainderLoop,
                                              mainIv, remainderIv, ub, step);
     rewriteAffineOpAfterPeeling<AffineMaxOp>(rewriter, loop, remainderLoop,
                                              mainIv, remainderIv, ub, step);
 
-    // Mark the new loop if one was created.
     peelingResult.tailLoops.push_back(remainderLoop);
   }
 
-  // Update main loop if applicable.
-  if (hasMainLoop) peelingResult.mainLoop = loop;
+  peelingResult.mainLoop = loop;
 
   return peelingResult;
 }

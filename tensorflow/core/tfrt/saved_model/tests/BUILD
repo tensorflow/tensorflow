@@ -348,12 +348,12 @@ pytype_strict_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
@@ -372,6 +372,7 @@ pytype_strict_binary(
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -472,7 +473,7 @@ genrule(
         "$(location gen_while_v1) --saved_model_path=$(RULEDIR)/while_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_while_v1"],
+    tools = ["gen_while_v1"],
 )
 
 genrule(
@@ -486,7 +487,7 @@ genrule(
         "$(location gen_hash_table_asset_v1) --saved_model_path=$(RULEDIR)/hash_table_asset_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_hash_table_asset_v1"],
+    tools = ["gen_hash_table_asset_v1"],
 )
 
 genrule(
@@ -499,7 +500,7 @@ genrule(
         "$(location gen_error_v1) --saved_model_path=$(RULEDIR)/error_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_error_v1"],
+    tools = ["gen_error_v1"],
 )
 
 genrule(
@@ -512,7 +513,7 @@ genrule(
         "$(location gen_control_flow_v1) --saved_model_path=$(RULEDIR)/control_flow_v1",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_control_flow_v1"],
+    tools = ["gen_control_flow_v1"],
 )
 
 genrule(
@@ -525,7 +526,7 @@ genrule(
         "$(location gen_pow) --saved_model_path=$(RULEDIR)/pow",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_pow"],
+    tools = ["gen_pow"],
 )
 
 genrule(
@@ -538,7 +539,7 @@ genrule(
         "$(location gen_sparse_tensor_input) --saved_model_path=$(RULEDIR)/sparse_tensor_input",
         "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
     ),
-    exec_tools = ["gen_sparse_tensor_input"],
+    tools = ["gen_sparse_tensor_input"],
 )
 
 genrule(
@@ -548,7 +549,7 @@ genrule(
         "pow_v2/saved_model.pb",
     ],
     cmd = "$(location gen_pow_v2) --saved_model_path=$(RULEDIR)/pow_v2",
-    exec_tools = ["gen_pow_v2"],
+    tools = ["gen_pow_v2"],
 )
 
 genrule(
@@ -558,7 +559,7 @@ genrule(
         "data/saved_model.pb",
     ],
     cmd = "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
-    exec_tools = ["gen_data"],
+    tools = ["gen_data"],
 )
 
 cc_library(
@@ -603,17 +604,13 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
-        "//tensorflow/core/tfrt/mla:mla_test_utils",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",
         "@tf_runtime//:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
-        "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],
     alwayslink = 1,
 )

@@ -174,8 +174,8 @@ bazel test \
   ${EXTRA_TEST_FLAGS} \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu,-v1only \
-  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,-oss_excluded,gpu,-v1only \
+  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,-oss_excluded,gpu --build_tests_only \
   --test_size_filters=small,medium \
   --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \

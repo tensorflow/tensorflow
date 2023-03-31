@@ -139,5 +139,23 @@ TEST(FingerprintingTest, TestReadNonexistentFingerprint) {
   EXPECT_FALSE(ReadSavedModelFingerprint(export_dir).ok());
 }
 
+TEST(FingerprintingTest, TestSingleprint) {
+  const std::string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "VarsAndArithmeticObjectGraph");
+  const std::string const_singleprint =
+      "706963557435316516/5693392539583495303/12074714563970609759/"
+      "10788359570789890102";
+  EXPECT_EQ(Singleprint(export_dir), const_singleprint);
+  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_pb,
+                          ReadSavedModelFingerprint(export_dir));
+  EXPECT_EQ(Singleprint(fingerprint_pb), const_singleprint);
+  EXPECT_EQ(Singleprint(fingerprint_pb.graph_def_program_hash(),
+                        fingerprint_pb.signature_def_hash(),
+                        fingerprint_pb.saved_object_graph_hash(),
+                        fingerprint_pb.checkpoint_hash()),
+            const_singleprint);
+}
+
 }  // namespace
 }  // namespace tensorflow::saved_model::fingerprinting

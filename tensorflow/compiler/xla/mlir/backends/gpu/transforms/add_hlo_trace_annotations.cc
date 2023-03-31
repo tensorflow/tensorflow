@@ -17,9 +17,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
@@ -55,6 +58,19 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
     // Check if the callee is a custom call.
     auto callee = sym_table.lookup<func::FuncOp>(call.getCallee());
     if (!callee->hasAttr("rt.custom_call")) return;
+
+    // Drop multi-op trace for CUDA graphs since they are too large for xprof to
+    // display.
+    // TODO(b/275240695): Report the graph content once the Xprof team provides
+    // an API.
+    if (absl::StrContains(call.getCalleeAttr().getValue(),
+                          "xla.gpu.cuda.graph.launch")) {
+      auto capture = call->getAttr("capture").cast<FlatSymbolRefAttr>();
+      std::string op_name = "cuda_graph: @" + capture.getValue().str();
+      auto annotation = HloTraceAttr::get(ctx, std::move(op_name));
+      call->setAttr("rt.trace", annotation);
+      return;
+    }
 
     // HLO operation name is encoded in the operation location.
     std::string hlo_op = mlir::mhlo::GetDebugNameFromLocation(call->getLoc());

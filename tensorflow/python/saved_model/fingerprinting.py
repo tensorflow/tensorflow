@@ -68,13 +68,82 @@ class Fingerprint(object):
 
   @classmethod
   def from_proto(cls, proto):
-    return Fingerprint(
-        proto.saved_model_checksum,
-        proto.graph_def_program_hash,
-        proto.signature_def_hash,
-        proto.saved_object_graph_hash,
-        proto.checkpoint_hash,
-        proto.version)
+    """Constructs Fingerprint object from protocol buffer message."""
+    if isinstance(proto, bytes):
+      proto = fingerprint_pb2.FingerprintDef.FromString(proto)
+    try:
+      return Fingerprint(
+          proto.saved_model_checksum,
+          proto.graph_def_program_hash,
+          proto.signature_def_hash,
+          proto.saved_object_graph_hash,
+          proto.checkpoint_hash,
+          proto.version)
+    except AttributeError as e:
+      raise ValueError(
+          f"Given proto could not be deserialized as fingerprint."
+          f"{e}") from None
+
+  def __eq__(self, other):
+    if (isinstance(other, Fingerprint) or
+        isinstance(other, fingerprint_pb2.FingerprintDef)):
+      try:
+        return (
+            self.saved_model_checksum == other.saved_model_checksum and
+            self.graph_def_program_hash == other.graph_def_program_hash and
+            self.signature_def_hash == other.signature_def_hash and
+            self.saved_object_graph_hash == other.saved_object_graph_hash and
+            self.checkpoint_hash == other.checkpoint_hash)
+      except AttributeError:
+        pass
+    return False
+
+  def __str__(self):
+    return "\n".join([
+        f"SavedModel Fingerprint",
+        f"  saved_model_checksum: {self.saved_model_checksum}",
+        f"  graph_def_program_hash: {self.graph_def_program_hash}",
+        f"  signature_def_hash: {self.signature_def_hash}",
+        f"  saved_object_graph_hash: {self.saved_object_graph_hash}",
+        f"  checkpoint_hash: {self.checkpoint_hash}"
+    ])
+
+  def __repr__(self):
+    return (f"Fingerprint({self.saved_model_checksum}, "
+            f"{self.graph_def_program_hash}, "
+            f"{self.signature_def_hash}, "
+            f"{self.saved_object_graph_hash}, "
+            f"{self.checkpoint_hash})")
+
+  def singleprint(self):
+    """Canonical fingerprinting ID for a SavedModel.
+
+    Uniquely identifies a SavedModel based on the regularized fingerprint
+    attributes. (saved_model_checksum is sensitive to immaterial changes and
+    thus non-deterministic.)
+
+    Returns:
+      The string concatenation of `graph_def_program_hash`,
+      `signature_def_hash`, `saved_object_graph_hash`, and `checkpoint_hash`
+      fingerprint attributes (separated by '/').
+
+    Raises:
+      ValueError: If the fingerprint fields cannot be used to construct the
+      singleprint.
+    """
+    try:
+      return fingerprinting_pywrap.Singleprint(self.graph_def_program_hash,
+                                               self.signature_def_hash,
+                                               self.saved_object_graph_hash,
+                                               self.checkpoint_hash)
+    except (TypeError, fingerprinting_pywrap.FingerprintException) as e:
+      raise ValueError(
+          f"Encounted invalid fingerprint values when constructing singleprint."
+          f"graph_def_program_hash: {self.graph_def_program_hash}"
+          f"signature_def_hash: {self.signature_def_hash}"
+          f"saved_object_graph_hash: {self.saved_object_graph_hash}"
+          f"checkpoint_hash: {self.checkpoint_hash}"
+          f"{e}") from None
 
 
 @tf_export("saved_model.experimental.read_fingerprint", v1=[])
@@ -95,7 +164,7 @@ def read_fingerprint(export_dir):
     A `tf.saved_model.experimental.Fingerprint`.
 
   Raises:
-    FingerprintException: If no or an invalid fingerprint is found.
+    FileNotFoundError: If no or an invalid fingerprint is found.
   """
   try:
     fingerprint = fingerprinting_pywrap.ReadSavedModelFingerprint(export_dir)

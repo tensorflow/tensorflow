@@ -162,7 +162,7 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     const StrategyVector* src_strategies, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    StableHashMap<int64_t, std::vector<ShardingStrategy>>*
         trimmed_strategy_map) {
   std::unique_ptr<StrategyVector> strategies;
   if (src_strategies->is_tuple) {
@@ -183,24 +183,28 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     strategies->in_nodes.push_back(src_strategies);
     // Only follows the given strategy when there is no other strategy to be
     // restored.
-    if (!trimmed_strategy_map.contains(src_strategies->id)) {
+    if (trimmed_strategy_map == nullptr ||
+        !trimmed_strategy_map->contains(src_strategies->id)) {
       strategies->following = src_strategies;
     }
     strategies->leaf_vector.reserve(src_strategies->leaf_vector.size());
     // Creates the sharding strategies and restores the trimmed strategies if
     // there is any.
-    for (int64_t sid = 0;
-         sid < src_strategies->leaf_vector.size() +
-                   trimmed_strategy_map[src_strategies->id].size();
-         ++sid) {
+    size_t loop_bound =
+        src_strategies->leaf_vector.size() +
+        (trimmed_strategy_map != nullptr
+             ? (*trimmed_strategy_map)[src_strategies->id].size()
+             : 0);
+    for (int64_t sid = 0; sid < loop_bound; ++sid) {
       const HloSharding* output_spec;
       if (sid < src_strategies->leaf_vector.size()) {
         output_spec = &src_strategies->leaf_vector[sid].output_sharding;
       } else {
+        CHECK(trimmed_strategy_map != nullptr);
         output_spec =
-            &trimmed_strategy_map[src_strategies->id]
-                                 [sid - src_strategies->leaf_vector.size()]
-                                     .output_sharding;
+            &(*trimmed_strategy_map)[src_strategies->id]
+                                    [sid - src_strategies->leaf_vector.size()]
+                                        .output_sharding;
         VLOG(1) << "Adding outspec from the trimmed strategy map: "
                 << output_spec->ToString();
       }
@@ -904,9 +908,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         }
       }
       if (strategy_index >= 0) {
-        VLOG(1) << "Keeping strategy index: " << strategy_index;
         // Stores other strategies in the map, removes them in the vector and
         // only keeps the one we found.
+        VLOG(1) << "Keeping strategy index: " << strategy_index;
         ShardingStrategy found_strategy =
             strategies->leaf_vector[strategy_index];
         trimmed_strategy_map[strategies->id] = strategies->leaf_vector;
@@ -932,8 +936,18 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
             }
             // Set resharding cost to be 0 because there is only one choice and
             // the cost do not matter.
-            resharding_costs.push_back(std::vector<double>(
-                strategy_map.at(operand)->leaf_vector.size(), 0.0));
+            size_t resharding_costs_length;
+            if (ins->opcode() == HloOpcode::kGetTupleElement) {
+              CHECK(strategy_map.at(operand)->is_tuple);
+              resharding_costs_length = strategy_map.at(operand)
+                                            ->childs[ins->tuple_index()]
+                                            ->leaf_vector.size();
+            } else {
+              resharding_costs_length =
+                  strategy_map.at(operand)->leaf_vector.size();
+            }
+            resharding_costs.push_back(
+                std::vector<double>(resharding_costs_length, 0.0));
           }
         }
         double memory_cost =
@@ -1208,8 +1222,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                               device_mesh.dim(j)))) {
               continue;
             }
-            std::string name = absl::StrCat("S", std::to_string(index_dim),
-                                            " @ ", std::to_string(j));
+            std::string name = absl::StrCat("S", index_dim, " @ ", j);
 
             HloSharding output_spec =
                 Tile(shape, {index_dim}, {j}, device_mesh);
@@ -1672,12 +1685,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                   only_allow_divisible, " 1d", call_graph);
         }
 
-        if (strategies->leaf_vector.empty() || IsFollowedByBroadcast(ins)) {
-          // Replicate
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, replicated_penalty * 5);
-        }
-
+        // Replicate
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                              strategies, replicated_penalty * 5);
         break;
       }
       case HloOpcode::kTuple: {
@@ -1689,7 +1699,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           strategies->childs.push_back(MaybeFollowInsStrategyVector(
               src_strategies, operand->shape(), instruction_id,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-              trimmed_strategy_map));
+              /* trimmed_strategy_map */ nullptr));
         }
         break;
       }
@@ -1701,7 +1711,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             src_strategies->childs[ins->tuple_index()].get(), ins->shape(),
             instruction_id,
             /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-            trimmed_strategy_map);
+            /* trimmed_strategy_map */ nullptr);
         break;
       }
       case HloOpcode::kCustomCall: {
@@ -1712,7 +1722,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           strategies = MaybeFollowInsStrategyVector(
               src_strategies, ins->shape(), instruction_id,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-              trimmed_strategy_map);
+              &trimmed_strategy_map);
         } else if (ins->has_sharding()) {
           if (ins->shape().IsTuple()) {
             strategies = CreateTupleStrategyVector(instruction_id);
@@ -1732,7 +1742,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             strategies = MaybeFollowInsStrategyVector(
                 src_strategies, ins->shape(), instruction_id,
                 /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-                trimmed_strategy_map);
+                &trimmed_strategy_map);
           }
         } else {
           // TODO (b/258723035) Handle CustomCall ops for GPUs in a better way.
@@ -1767,7 +1777,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               src_strategies->childs[i].get(),
               ins->shape().tuple_shapes().at(i), instruction_id,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-              trimmed_strategy_map));
+              &trimmed_strategy_map));
         }
 
         break;
@@ -2006,8 +2016,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     if (s_follow[i] < 0) {
       var_vector_cnt += 1;
       // Creates variables for instructions that do not follow others.
-      solver->MakeBoolVarArray(
-          s_len[i], absl::StrCat("s[", std::to_string(i), "]"), &s[i]);
+      solver->MakeBoolVarArray(s_len[i], absl::StrCat("s[", i, "]"), &s[i]);
     }
   }
 
@@ -2021,10 +2030,9 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
 
   for (size_t i = 0; i < num_edges; ++i) {
     std::pair<int, int> edge = E[i];
-    solver->MakeBoolVarArray(s_len[edge.first] * s_len[edge.second],
-                             absl::StrCat("e[", std::to_string(edge.first), ",",
-                                          std::to_string(edge.second), "]"),
-                             &e[i]);
+    solver->MakeBoolVarArray(
+        s_len[edge.first] * s_len[edge.second],
+        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
   }
 
   // Objective
@@ -2639,6 +2647,36 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
         FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
                                     device_mesh, resharding_cache);
       }
+    } else if (inst->opcode() == HloOpcode::kTuple) {
+      auto output_sharding = inst->sharding();
+      CHECK(output_sharding.IsTuple());
+      for (size_t i = 0; i < inst->operand_count(); ++i) {
+        auto input_sharding = inst->operand(i)->sharding();
+        CHECK_EQ(output_sharding.tuple_elements()[i], input_sharding)
+            << "The sharding determined for element " << i
+            << " of the tuple instruction " << inst->name()
+            << " does not match the sharding determined for the instruction "
+            << inst->operand(i)->name()
+            << " that produces the element. The shardings are given below:\n"
+            << "Tuple sharding: " << output_sharding
+            << "\nElement sharding: " << input_sharding;
+      }
+    } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
+      auto output_sharding = inst->sharding();
+      auto input_sharding = inst->operand(0)->sharding();
+      CHECK(input_sharding.IsTuple());
+      auto input_tuple_element_sharding =
+          input_sharding.tuple_elements()[inst->tuple_index()];
+      CHECK_EQ(output_sharding, input_tuple_element_sharding)
+          << "The sharding determined for the get_tuple_element instruction "
+          << inst->name()
+          << " does not match the sharding of the corresponding element "
+             "(element"
+          << inst->tuple_index()
+          << ") of the "
+             "input tuple. The shardings are as follows:\n"
+          << "Input tuple sharding: " << input_sharding
+          << "\nGetTupleElement sharding:" << output_sharding;
     }
   }
 
@@ -2660,7 +2698,8 @@ std::string PrintLivenessSet(const LivenessSet& liveness_set) {
     std::vector<std::string> names;
     names.reserve(liveness_set[i].size());
     for (const HloValue* value : liveness_set[i]) {
-      names.push_back(value->instruction()->name() + value->index().ToString());
+      names.push_back(absl::StrCat(value->instruction()->name(),
+                                   value->index().ToString()));
     }
     std::sort(names.begin(), names.end());
     absl::StrAppend(&str, "Time ", i, ": ", absl::StrJoin(names, ", "), "\n");
@@ -3194,7 +3233,7 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
         continue;
       }
 
-      VLOG(10) << "SET:  " << output_spec.ToString();
+      VLOG(10) << "SET: " << output_spec.ToString();
 
       if (absl::StartsWith(strategy.name, "RR = RS x SR")) {
         // If set the sharding for this dot instruction, the SPMD

@@ -1,0 +1,195 @@
+# RUN: not tf_tfl_translate -tf-input-arrays=input0 -tf-input-shapes=-1 -tf-input-data-types=DT_FLOAT -tf-output-arrays=add %s 2>&1 | FileCheck %s
+# CHECK: error: The Graph contains unsupported `StatefulPartionedCallOp`(s)
+
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "args_0"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "spc1"
+  op: "StatefulPartitionedCall"
+  input: "input0"
+  input: "args_0"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "executor_type"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "function"
+      }
+    }
+  }
+}
+node {
+  name: "spc2"
+  op: "StatefulPartitionedCall"
+  input: "input0"
+  input: "args_0"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "executor_type"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "function"
+      }
+    }
+  }
+}
+node {
+  name: "add"
+  op: "Add"
+  input: "spc1"
+  input: "spc2"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "function"
+      input_arg {
+        name: "inputs"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "statefulpartitionedcall_args_1"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "identity"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "inputs"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "inputs"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+      }
+    }
+  }
+}
+versions {
+  producer: 121
+}

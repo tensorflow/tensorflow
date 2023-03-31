@@ -43,6 +43,7 @@ namespace data {
 
 namespace {
 constexpr char kPyFunc[] = "PyFunc";
+constexpr char kCardinalityOptions[] = "cardinality_options";
 }  // namespace
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
@@ -109,12 +110,22 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   result->scalar<tstring>()() = graph_def.SerializeAsString();
 }
 
+DatasetCardinalityOp::DatasetCardinalityOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx), cardinality_options_(new CardinalityOptions) {
+  if (ctx->HasAttr(kCardinalityOptions)) {
+    string options_serialized;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kCardinalityOptions, &options_serialized));
+    if (!options_serialized.empty())
+      cardinality_options_->ParseFromString(options_serialized);
+  }
+}
+
 void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-  result->scalar<int64_t>()() = dataset->Cardinality();
+  result->scalar<int64_t>()() = dataset->Cardinality(*cardinality_options_);
 }
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {

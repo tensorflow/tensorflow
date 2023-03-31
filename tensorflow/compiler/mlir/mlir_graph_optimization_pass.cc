@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {
 
@@ -54,6 +55,14 @@ auto* mlir_graph_optimization_pass_fallback_count = monitoring::Counter<1>::New(
     /* metric description */
     "Track success/failure of MLIR graph optimization pass runs when fallback "
     "used",
+    /* metric field */ "status");
+
+auto* mlir_function_pass_graph_conversion_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_function_pass_graph_conversion_count",
+    /* metric description */
+    "Track success/failure of Graph to MLIR conversions in function "
+    "optimization pass",
     /* metric field */ "status");
 
 // The status metric field is used to record success/failure of mlir
@@ -111,6 +120,13 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   VLOG(1) << "Dumped MLIR module to " << prefix;
 }
 
+static std::string GetModuleText(mlir::ModuleOp module) {
+  std::string module_txt;
+  llvm::raw_string_ostream os(module_txt);
+  module.print(os);
+  return module_txt;
+}
+
 MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
   static auto* global = new MlirOptimizationPassRegistry();
   return *global;
@@ -128,7 +144,8 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
 }
 
 Status MlirFunctionOptimizationPass::Run(
-    const DeviceSet& device_set, const ConfigProto& config_proto,
+    const std::string& function_name, const DeviceSet& device_set,
+    const ConfigProto& config_proto, absl::string_view xla_compile_device_type,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
@@ -199,6 +216,7 @@ Status MlirFunctionOptimizationPass::Run(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   import_config.enable_shape_inference = false;
+  import_config.xla_compile_device_type = xla_compile_device_type;
 
   static const char* kTfMlirCategory = "TfMlir";
   tensorflow::metrics::ScopedCounter<2> timings(
@@ -207,6 +225,9 @@ Status MlirFunctionOptimizationPass::Run(
 
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
+  mlir_function_pass_graph_conversion_count
+      ->GetCell(tsl::error_name(module_ref_status.status().code()))
+      ->IncrementBy(1);
   timings.ReportAndStop();
 
   if (!module_ref_status.ok()) {
@@ -228,9 +249,8 @@ Status MlirFunctionOptimizationPass::Run(
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    if (VLOG_IS_ON(1)) {
-      DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
-    }
+    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_before", name),
+                     GetModuleText(*module_ref), VLOG_IS_ON(1));
 
     Status pass_status = OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
@@ -239,8 +259,8 @@ Status MlirFunctionOptimizationPass::Run(
       VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
               << (*graph)->num_edges();
       timings.Reset({kTfMlirCategory, name.str()});
-      pass_status = pass_registration.pass->Run(config_proto, *module_ref,
-                                                **graph, *flib_def);
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, *module_ref, **graph, *flib_def);
       timings.ReportAndStop();
       if (pass_status.ok()) {
         VLOG(2) << "Finished MLIR graph optimization pass: "
@@ -258,8 +278,8 @@ Status MlirFunctionOptimizationPass::Run(
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
       timings.Reset({kTfMlirCategory, name.str() + "_fallback"});
-      pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
-                                                **graph, *flib_def);
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, module_ref_clone, **graph, *flib_def);
       timings.ReportAndStop();
 
       if (pass_status.ok()) {
@@ -296,9 +316,8 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    if (VLOG_IS_ON(1)) {
-      DumpModule(*module_ref, llvm::formatv("mlir_{0}_after_", name));
-    }
+    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_after", name),
+                     GetModuleText(*module_ref), VLOG_IS_ON(1));
   }
 
   if (!is_module_updated) {

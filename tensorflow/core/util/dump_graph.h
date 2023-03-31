@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 #define TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 
+#include <functional>
 #include <string>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
@@ -66,6 +67,13 @@ void SetGraphDumper(
                          WritableFile*)>
         dumper,
     string suffix = ".pbtxt");
+
+// Dump data to a file.
+// This function will create a WritableFile and pass it to the dumper.
+// The dumper callback will be responsible for writing data to the file.
+string DumpToFile(const string& name, const string& dirname,
+                  const string& suffix, const string& type_name,
+                  std::function<Status(WritableFile*)> dumper);
 
 }  // namespace tensorflow
 

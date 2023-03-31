@@ -651,7 +651,7 @@ struct DebugListener : public SpecializationListener {
     std::string message;
     llvm::raw_string_ostream os(message);
     os << "Specialized operands:\n";
-    for (auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+    for (const auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
       mlir::Type type = std::get<0>(tuple.value());
       mlir::Attribute attr = std::get<1>(tuple.value());
       os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";

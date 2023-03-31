@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
-#include <array>
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -55,8 +55,18 @@ enum class ResourceUsageType {
   kResourceRelease,
 };
 
+enum class ResourceHazardType {
+  kShareable = 0,
+  kUnshareable = 1,
+};
+
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
   return static_cast<int64_t>(resource_type);
+}
+
+constexpr int64_t ResourceUsageTypeToIndex(
+    ResourceUsageType resource_usage_type) {
+  return static_cast<int64_t>(resource_usage_type);
 }
 
 using ResourcePair = std::pair<int64_t, ResourceUsageType>;
@@ -78,6 +88,7 @@ struct SchedulerConfig {
   bool force_send_recv_to_use_same_resource = false;
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
+  bool enable_release_start_policy = false;
   uint64_t memory_limit = UINT64_MAX;
 };
 
@@ -152,6 +163,11 @@ class AsyncTracker {
   // Returns the name of the given resource
   virtual absl::string_view GetResourceName(int64_t resource_type) const;
 
+  // Returns the name of the given resource usage
+  absl::string_view GetResourceUsageName(int64_t resource_usage_type) const;
+  absl::string_view GetResourceUsageName(
+      ResourceUsageType resource_usage_type) const;
+
   // Returns the first target defined resource's id, regardless of if it exits
   static int64_t GetFirstTargetDefinedResource() {
     return static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
@@ -162,6 +178,11 @@ class AsyncTracker {
 
   // Returns how many instructions using the given resource_type we can overlap
   virtual int64_t GetNumAvailableResources(int64_t resource_type) const;
+
+  // Returns the hazard type that describes how to resolve the conflicts when
+  // multiple instructions attempt to use the given resource type concurrently.
+  // Default resources have a hazard type of kSerial.
+  virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
 
@@ -188,6 +209,7 @@ class HloEdge {
   HloEdge(LatencyEstimator::TimeCost latency, HloGraphNode* target)
       : latency_(latency), target_(target) {}
   LatencyEstimator::TimeCost Latency() const { return latency_; }
+  void SetLatency(LatencyEstimator::TimeCost latency) { latency_ = latency; }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
   std::string ToString() const;
@@ -234,6 +256,12 @@ class HloGraphNode {
       return resource.second == ResourceUsageType::kResourceRelease;
     });
   }
+  bool DoesReleaseResource(ResourceType res) const {
+    return absl::c_any_of(resources_, [res](const ResourcePair& resource) {
+      return resource.second == ResourceUsageType::kResourceRelease &&
+             resource.first == ResourceTypeToIndex(res);
+    });
+  }
   std::optional<ResourceUsageType> UsesResourceType(ResourceType res) const {
     int64_t res_type = ResourceTypeToIndex(res);
     for (const auto& [resource_type, usage_type] : resources_) {
@@ -264,7 +292,7 @@ class HloGraphNode {
   }
   void AddSuccessor(const HloEdge& e) { successors_.push_back(e); }
   int64_t GetOriginalPosition() const { return original_position_; }
-  std::string ToString() const {
+  std::string ToString(const AsyncTracker* async_tracker = nullptr) const {
     std::string result;
     absl::StrAppend(&result, "Instr: ", instr_->ToShortString(), "\n");
     absl::StrAppend(&result, "ReadyTime: ", ready_time_, "\n");
@@ -280,6 +308,14 @@ class HloGraphNode {
     absl::StrAppend(&result, "Successors:\n");
     for (const HloEdge& e : successors_) {
       absl::StrAppend(&result, e.ToString());
+    }
+    if (async_tracker != nullptr) {
+      absl::StrAppend(&result, "Resources:\n");
+      for (const auto& [resource, usage] : resources_) {
+        absl::StrAppend(
+            &result, "\tResource: ", async_tracker->GetResourceName(resource),
+            " usage: ", async_tracker->GetResourceUsageName(usage), "\n");
+      }
     }
     return result;
   }
@@ -329,7 +365,7 @@ class HloScheduleGraph {
                    const LatencyEstimator* latency_estimator,
                    const AsyncTracker* async_tracker);
 
-  std::string ToString() const;
+  std::string ToString(const AsyncTracker* async_tracker = nullptr) const;
 
   HloGraphNode& GetNode(const HloInstruction* instr) const;
 
@@ -587,18 +623,6 @@ class DefaultSchedulerCore : public SchedulerCore {
     return std::nullopt;
   }
 
-  DefaultSchedulerCore(HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
-                       const AsyncTracker* async_tracker,
-                       const LatencyEstimator* latency_estimator,
-                       const SchedulerConfig& config)
-      : shape_size_bytes_(shape_size_bytes),
-        async_tracker_(async_tracker),
-        latency_estimator_(latency_estimator),
-        config_(config) {}
-  Status InitializeScheduler(const HloModule* module) override;
-  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) override;
-
   // The scheduling state contains everything that is required for the
   // bookkeeping of the scheduling algorithm. Functions that perform operations
   // over the scheduling state can directly operate on the state contained into
@@ -649,9 +673,28 @@ class DefaultSchedulerCore : public SchedulerCore {
           latency_estimator(latency_estimator),
           async_tracker(async_tracker),
           memory_pressure_tracker(memory_pressure_tracker),
-          config(config) {
-    }
+          config(config) {}
   };
+
+  using PostProcessingFn = std::function<void(SchedulingState&)>;
+
+  DefaultSchedulerCore(
+      HloCostAnalysis::ShapeSizeFunction shape_size_bytes,
+      const AsyncTracker* async_tracker,
+      const LatencyEstimator* latency_estimator, const SchedulerConfig& config,
+      TargetSchedulingRule target_scheduling_rule = nullptr,
+      TargetSchedulingRule early_target_scheduling_rule = nullptr,
+      PostProcessingFn post_processing_fn = nullptr)
+      : shape_size_bytes_(shape_size_bytes),
+        async_tracker_(async_tracker),
+        latency_estimator_(latency_estimator),
+        config_(config),
+        target_scheduling_rule_(target_scheduling_rule),
+        early_target_scheduling_rule_(early_target_scheduling_rule),
+        post_processing_fn_(post_processing_fn) {}
+  Status InitializeScheduler(const HloModule* module) override;
+  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation) override;
 
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
@@ -673,10 +716,12 @@ class DefaultSchedulerCore : public SchedulerCore {
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  TargetSchedulingRule target_scheduling_rule_ = nullptr;
   const AsyncTracker* async_tracker_;
   const LatencyEstimator* latency_estimator_;
   SchedulerConfig config_;
+  TargetSchedulingRule target_scheduling_rule_ = nullptr;
+  TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
+  PostProcessingFn post_processing_fn_ = nullptr;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in
@@ -724,11 +769,6 @@ class LatencyHidingScheduler : public HloModulePass {
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
  private:
-  // Perform scheduling of the computation.
-  Status ScheduleAsyncComputation(HloComputation* comp,
-                                  const LatencyEstimator* latency_estimator,
-                                  HloAliasAnalysis* alias_analysis,
-                                  ModulePressureState* module_pressure_state);
   SchedulerConfig config_;
   std::unique_ptr<LatencyEstimator> latency_estimator_;
   std::unique_ptr<AsyncTracker> async_tracker_;

@@ -410,6 +410,13 @@ Offset<MinibenchmarkSettings> ConvertMinibenchmarkSettings(
       ConvertBenchmarkStoragePaths(settings.storage_paths(), builder));
 }
 
+const TFLiteSettings* ConvertFromProto(
+    const proto::TFLiteSettings& proto_settings, FlatBufferBuilder* builder) {
+  Offset<TFLiteSettings> settings =
+      ConvertTfliteSettings(proto_settings, *builder);
+  return flatbuffers::GetTemporaryPointer(*builder, settings);
+}
+
 const ComputeSettings* ConvertFromProto(
     const proto::ComputeSettings& proto_settings, FlatBufferBuilder* builder) {
   auto settings = CreateComputeSettings(

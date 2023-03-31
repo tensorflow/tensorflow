@@ -85,7 +85,7 @@ following header files:
 
 -   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/all_ops_resolver.h)
     provides the operations used by the interpreter to run the model.
--   [`micro_log.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_log.h)
+-   [`micro_log.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_log.h)
     outputs debug information.
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to load and run models.

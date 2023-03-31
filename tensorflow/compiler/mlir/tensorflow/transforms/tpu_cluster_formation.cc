@@ -494,7 +494,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   llvm::SmallVector<Value, 8> packed_inputs;
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> replicated_ops;
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> packed_ops;
-  for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
+  for (const auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
     bool is_packed = input.getIsPacked();
     const int num_operands = input->getNumOperands();

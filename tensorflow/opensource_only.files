@@ -15,7 +15,6 @@ tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
 tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
-tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/build_defs:.bzl
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal:.cc
@@ -311,7 +310,6 @@ third_party/mkl/BUILD:
 third_party/mkl/build_defs.bzl:
 third_party/mkl_dnn/LICENSE:
 third_party/mkl_dnn/build_defs.bzl:
-third_party/mkl_dnn/mkldnn.BUILD:
 third_party/mkl_dnn/mkldnn_acl.BUILD:
 third_party/mkl_dnn/mkldnn_v1.BUILD:
 third_party/mpi/.gitignore:

@@ -1040,10 +1040,7 @@ void BuildPjitSubmodule(py::module& m) {
       },
       py::is_method(cfun));
   cfun.attr("_clear_cache") = py::cpp_function(
-      [](py::handle self) -> xla::Status {
-        AsPjitFunction(self)->ClearCache();
-        return ::tsl::OkStatus();
-      },
+      [](py::handle self) { AsPjitFunction(self)->ClearCache(); },
       py::is_method(cfun));
 
   m.def(

@@ -222,6 +222,21 @@ class HloReplicaGroupsMatcher
   std::vector<std::vector<int64_t>> replica_groups_;
 };
 
+class HloSourceTargetPairsMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloSourceTargetPairsMatcher(
+      std::vector<std::pair<int64_t, int64_t>> source_target_pairs)
+      : source_target_pairs_(std::move(source_target_pairs)) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -529,6 +544,12 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ReplicaGroups(
     std::vector<std::vector<int64_t>> replica_groups) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloReplicaGroupsMatcher(std::move(replica_groups)));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> SourceTargetPairs(
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloSourceTargetPairsMatcher(
+      std::move(source_target_pairs)));
 }
 
 #undef HLO_MATCHER

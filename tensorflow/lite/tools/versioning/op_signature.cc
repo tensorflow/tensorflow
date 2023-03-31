@@ -189,6 +189,9 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.ext_options.mul.input2_scale = input2_qunt->scale()->Get(0);
         op_sig.ext_options.mul.output_scale = output_quant->scale()->Get(0);
       }
+      if (input1_quant || input2_qunt) {
+        op_sig.ext_options.mul.input_quantized = true;
+      }
     } break;
 
     case BuiltinOperator_CONV_2D: {

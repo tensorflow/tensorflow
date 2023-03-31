@@ -28,8 +28,8 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -136,7 +136,7 @@ class FunctionTest(xla_test.XLATestCase):
       # Check that the must-compile attribute gets correctly propagated to the
       # created derivatives.
       self.assertTrue(backward.function_def.attr['_XlaMustCompile'])
-      self.assertTrue(forward.definition.attr['_XlaMustCompile'])
+      self.assertTrue(forward.cached_definition.attr['_XlaMustCompile'])
 
   # Calling function with jit_compile=True from
   # jit_compile=False should compile the inner func.
@@ -365,8 +365,8 @@ class FunctionTest(xla_test.XLATestCase):
         x = ops.convert_to_tensor(x)
 
         def body(i, a):
-          return i + 1, control_flow_ops.cond(i > 2, lambda: a + (x**2),
-                                              lambda: a + 3)
+          return i + 1, cond.cond(i > 2, lambda: a + (x**2),
+                                  lambda: a + 3)
 
         return while_loop.while_loop(
             lambda i, *_: i < 10,
@@ -1153,7 +1153,7 @@ class FunctionTest(xla_test.XLATestCase):
 
         @polymorphic_function.function(jit_compile=True, autograph=False)
         def f(x):
-          return control_flow_ops.cond(
+          return cond.cond(
               math_ops.reduce_all(x > 1), lambda: 1. / x, lambda: x)
 
         v = variables.Variable([[2.]])

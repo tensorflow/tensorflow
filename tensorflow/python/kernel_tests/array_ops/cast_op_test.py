@@ -263,6 +263,30 @@ class SaturateCastTest(test.TestCase):
         correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
         self.assertAllEqual(correct, y)
 
+  def testSaturateAvoidsUndefinedBehavior(self):
+    # E.g. float32 -> uint32, float32 cannot represent uint32 max, so trying
+    # to clip to that range can introduce values still outside those
+    # representable by uint32, which result in UB when followed by a cast.
+    out_type = dtypes.uint32
+    in_type = dtypes.float32
+    lo, hi = out_type.min, out_type.max
+    x = constant_op.constant(
+        [lo - 1, lo, lo + 1, lo // 2, hi // 2, hi - 1, hi, hi + 1],
+        dtype=in_type,
+    )
+    y = math_ops.saturate_cast(x, out_type)
+    x, y = self.evaluate([x, y])
+
+    # Ensure that we are at most one representable input element away from the
+    # true answer.  Note that we need to undo numpy type promotion in clip().
+    np_out_type = out_type.as_numpy_dtype
+    np_in_type = in_type.as_numpy_dtype
+    abs_limit = np.nextafter(
+        np.abs(np.clip(x, out_type.min, out_type.max).astype(np_in_type)),
+        np_in_type(0),
+    ).astype(np_out_type)
+    self.assertTrue(np.all(np.abs(y) >= abs_limit))
+
   @test_util.disable_xla("Clamp is not implemented for C128 in XLA")
   def testSaturateComplexToComplex(self):
     in_types = (dtypes.complex64, dtypes.complex128)

@@ -79,7 +79,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
         loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
     Value array_ptr = rewriter->create<LLVM::AllocaOp>(
         loc, element_ptr_ty, array_size, /*alignment=*/0);
-    for (auto &e : llvm::enumerate(array_attr)) {
+    for (const auto &e : llvm::enumerate(array_attr)) {
       Value index = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, e.index()));
       Value element_ptr =

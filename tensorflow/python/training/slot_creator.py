@@ -38,9 +38,12 @@ update_mavg = mavg.assign_sub((mavg - var) * (1 - decay))
 from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 
 
@@ -63,7 +66,7 @@ def _create_slot_var(primary,
   shape = shape if callable(val) else None
   if resource_variable_ops.is_resource_variable(primary):
     use_resource = True
-  elif isinstance(primary, variables.RefVariable):
+  elif isinstance(primary, ref_variable.RefVariable):
     use_resource = False
   else:
     use_resource = None
@@ -263,7 +266,10 @@ def create_zeros_slot(primary,
         copy_xla_sharding=copy_xla_sharding)
   else:
     if isinstance(primary, variables.Variable):
-      slot_shape = array_ops.shape(primary.initialized_value())
+      slot_shape = array_ops.shape(
+          control_flow_ops.cond(
+              variable_v1.is_variable_initialized(primary), primary.read_value,
+              lambda: primary.initial_value))
     else:
       slot_shape = array_ops.shape(primary)
     val = array_ops.zeros(slot_shape, dtype=dtype)

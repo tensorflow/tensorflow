@@ -29,12 +29,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -458,11 +459,13 @@ class VariableScopeTest(test.TestCase):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
       variable_scope.enable_resource_variables()
-      self.assertTrue(isinstance(variables_lib.VariableV1(1.0),
-                                 resource_variable_ops.ResourceVariable))
+      self.assertIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
       variable_scope.disable_resource_variables()
-      self.assertFalse(isinstance(variables_lib.VariableV1(1.0),
-                                  resource_variable_ops.ResourceVariable))
+      self.assertNotIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
     finally:
       variable_scope._DEFAULT_USE_RESOURCE = old
 
@@ -488,7 +491,7 @@ class VariableScopeTest(test.TestCase):
         var_dict["v2"] = v2
         return v2 + v0
 
-      add = control_flow_ops.cond(
+      add = cond.cond(
           math_ops.less(v0, 10), var_in_then_clause, var_in_else_clause)
       v1 = var_dict["v1"]
       v2 = var_dict["v2"]

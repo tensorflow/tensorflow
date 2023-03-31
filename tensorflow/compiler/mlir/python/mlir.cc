@@ -119,7 +119,7 @@ std::string RunPassPipelineOnModule(mlir::ModuleOp module,
 
     mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext());
     if (failed(pm.run(module))) {
-      Set_TF_Status_from_Status(status, statusHandler.ConsumeStatus());
+      tsl::Set_TF_Status_from_Status(status, statusHandler.ConsumeStatus());
       return "// error";
     }
   }
@@ -137,13 +137,13 @@ static std::string ImportGraphDefImpl(const std::string& proto,
   GraphDef graphdef;
   auto s = tensorflow::LoadProtoFromBuffer(proto, &graphdef);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
   mlir::MLIRContext context;
   auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
   if (!module.ok()) {
-    Set_TF_Status_from_Status(status, module.status());
+    tsl::Set_TF_Status_from_Status(status, module.status());
     return "// error";
   }
 
@@ -158,7 +158,7 @@ std::string ImportFunction(const std::string& functiondef_proto,
   FunctionDef functiondef;
   auto s = tensorflow::LoadProtoFromBuffer(functiondef_proto, &functiondef);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
 
@@ -168,7 +168,7 @@ std::string ImportFunction(const std::string& functiondef_proto,
   const tensorflow::FunctionDef* fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
     s = tensorflow::errors::NotFound("Cannot find function ", function_name);
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
 
@@ -176,14 +176,14 @@ std::string ImportFunction(const std::string& functiondef_proto,
   s = FunctionDefToBodyHelper(*fdef, tensorflow::AttrSlice(), &flib_def,
                               &fbody);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
 
   mlir::MLIRContext context;
   auto module = ConvertFunctionToMlir(fbody.get(), flib_def, &context);
   if (!module.ok()) {
-    Set_TF_Status_from_Status(status, module.status());
+    tsl::Set_TF_Status_from_Status(status, module.status());
     return "// error";
   }
 
@@ -211,7 +211,7 @@ std::string ImportGraphDef(const std::string& proto,
   auto s = ParseInputArrayInfo(input_names, input_data_types, input_data_shapes,
                                &specs.inputs);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }
   if (!output_names.empty()) {
@@ -230,7 +230,7 @@ std::string ExperimentalConvertSavedModelToMlir(
   auto load_status =
       tensorflow::SavedModelV2Bundle::Load(saved_model_path, &bundle);
   if (!load_status.ok()) {
-    Set_TF_Status_from_Status(status, load_status);
+    tsl::Set_TF_Status_from_Status(status, load_status);
     return "// error";
   }
 
@@ -242,7 +242,7 @@ std::string ExperimentalConvertSavedModelToMlir(
   auto module_or = ConvertSavedModelToMlir(
       &bundle, &context, absl::Span<std::string>(exported_names));
   if (!module_or.status().ok()) {
-    Set_TF_Status_from_Status(status, module_or.status());
+    tsl::Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
   }
 
@@ -266,7 +266,7 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
       saved_model_path, tag_set, absl::Span<std::string>(exported_names),
       &context, import_options);
   if (!module_or.status().ok()) {
-    Set_TF_Status_from_Status(status, module_or.status());
+    tsl::Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
   }
 
@@ -275,7 +275,8 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 
 std::string ExperimentalConvertSavedModelV1ToMlir(
     const std::string& saved_model_path, const std::string& exported_names_str,
-    const std::string& tags, bool lift_variables, bool upgrade_legacy,
+    const std::string& tags, bool lift_variables,
+    bool include_variables_in_initializers, bool upgrade_legacy,
     bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
@@ -286,7 +287,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   auto load_status =
       tensorflow::LoadSavedModel({}, {}, saved_model_path, tag_set, &bundle);
   if (!load_status.ok()) {
-    Set_TF_Status_from_Status(status, load_status);
+    tsl::Set_TF_Status_from_Status(status, load_status);
     return "// error";
   }
 
@@ -297,11 +298,13 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   import_options.lift_variables = lift_variables;
+  import_options.include_variables_in_initializers =
+      include_variables_in_initializers;
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, absl::Span<std::string>(exported_names),
                                 &context, import_options);
   if (!module_or.status().ok()) {
-    Set_TF_Status_from_Status(status, module_or.status());
+    tsl::Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
   }
 
@@ -317,7 +320,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module))) {
-    Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
     return "// error";
   }
   return MlirModuleToString(*module, show_debug_info);
@@ -336,7 +339,8 @@ std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
     if (!module) {
-      Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+      tsl::Set_TF_Status_from_Status(status,
+                                     diagnostic_handler.ConsumeStatus());
       return "// error";
     }
   }
@@ -353,7 +357,7 @@ std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module))) {
-    Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
     return "// error";
   }
   return MlirModuleToString(*module, show_debug_info);
@@ -369,7 +373,8 @@ void ExperimentalWriteBytecode(const std::string& filename,
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
     if (!module) {
-      Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+      tsl::Set_TF_Status_from_Status(status,
+                                     diagnostic_handler.ConsumeStatus());
       return;
     }
   }

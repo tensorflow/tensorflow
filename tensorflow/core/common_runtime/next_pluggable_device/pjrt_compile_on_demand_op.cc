@@ -69,6 +69,7 @@ static DeviceType GetDeviceType(OpKernelContext* ctx) {
   return DeviceType(device->device_type());
 }
 
+// LINT.IfChange
 static XlaCompiler::Options GenerateXlaCompilerOptions(
     const FunctionLibraryRuntime& function_library, DeviceBase* device_base) {
   XlaCompiler::Options options;
@@ -79,6 +80,11 @@ static XlaCompiler::Options GenerateXlaCompilerOptions(
       dynamic_cast<NextPluggableDevice*>(device_base->UnderlyingDevice());
   // TODO(b/267499840): support setting compilation device type and
   // shape_determination_fns for non-NextPluggableDevice case.
+  // TODO(b/273348427): Set these fields in a XlaDevice::Metadata and set
+  // XlaCompiler::Options using the XlaDevice::Metadata instead.
+  // XlaDevice::Metadata should be moved out of XlaDevice and made more general
+  // so that it could be used with other devices that support XLA compilation
+  // (eg. NextPluggableDevice).
   if (next_pluggable_device != nullptr) {
     options.device_type =
         DeviceType(next_pluggable_device->GetCompilationDeviceType());
@@ -91,6 +97,7 @@ static XlaCompiler::Options GenerateXlaCompilerOptions(
   options.detailed_logging = false;
   return options;
 }
+// LINT.ThenChange(//tensorflow/compiler/jit/xla_compiler_options_util.cc)
 
 static std::vector<xla::PjRtBuffer*> PrepareExecutableArguments(
     int xla_input_sizes, const std::vector<int>& input_mapping,
@@ -225,6 +232,12 @@ Status PjRtCompileOnDemandOp::Run(
   xla::ExecuteOptions options;
   options.arguments_are_tupled = false;
   options.untuple_result = true;
+  // Note: TF does not use PJRT host callbacks as of today. Setting this option
+  // to true to workaround an ExecuteOptions check: [1].
+  //
+  // [1]:
+  // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
+  options.use_major_to_minor_data_layout_for_callbacks = true;
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
       pjrt_client->LookupAddressableDevice(GetDeviceOrdinal(ctx->device())));

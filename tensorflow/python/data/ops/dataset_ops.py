@@ -50,8 +50,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import gen_parsing_ops
@@ -1017,7 +1017,7 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def zip(datasets, name=None):
+  def zip(*args, datasets=None, name=None):
     """Creates a `Dataset` by zipping together the given datasets.
 
     This method has similar semantics to the built-in `zip()` function
@@ -1026,14 +1026,14 @@ class DatasetV2(
     nesting mechanisms are documented
     [here] (https://www.tensorflow.org/guide/data#dataset_structure).
 
-    >>> # The nested structure of the `datasets` argument determines the
-    >>> # structure of elements in the resulting dataset.
+    >>> # The datasets or nested structure of datasets `*args` argument
+    >>> # determines the structure of elements in the resulting dataset.
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
-    >>> ds = tf.data.Dataset.zip((a, b))
+    >>> ds = tf.data.Dataset.zip(a, b)
     >>> list(ds.as_numpy_iterator())
     [(1, 4), (2, 5), (3, 6)]
-    >>> ds = tf.data.Dataset.zip((b, a))
+    >>> ds = tf.data.Dataset.zip(b, a)
     >>> list(ds.as_numpy_iterator())
     [(4, 1), (5, 2), (6, 3)]
     >>>
@@ -1041,7 +1041,7 @@ class DatasetV2(
     >>> c = tf.data.Dataset.range(7, 13).batch(2)  # ==> [ [7, 8],
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
-    >>> ds = tf.data.Dataset.zip((a, b, c))
+    >>> ds = tf.data.Dataset.zip(a, b, c)
     >>> for element in ds.as_numpy_iterator():
     ...   print(element)
     (1, 4, array([7, 8]))
@@ -1051,12 +1051,16 @@ class DatasetV2(
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
-    >>> ds = tf.data.Dataset.zip((a, d))
+    >>> ds = tf.data.Dataset.zip(a, d)
     >>> list(ds.as_numpy_iterator())
     [(1, 13), (2, 14)]
 
     Args:
-      datasets: A (nested) structure of datasets.
+      *args: Datasets or nested structures of datasets to zip together. This
+        can't be set if `datasets` is set.
+      datasets: A (nested) structure of datasets. This can't be set if `*args`
+        is set. Note that this exists only for backwards compatibility and it is
+        preferred to use *args.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
@@ -1066,6 +1070,15 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import zip_op
+
+    if not args and datasets is None:
+      raise TypeError("Must pass at least one dataset to `zip`.")
+    if args and datasets is not None:
+      raise TypeError("Both `*args` and `datasets` cannot be set.")
+    if len(args) == 1:
+      datasets = args[0]
+    elif len(args) > 1:
+      datasets = args
     return zip_op._zip(datasets, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
@@ -1699,6 +1712,10 @@ class DatasetV2(
           implementation creates a `tf.train.Checkpoint` object internally, so
           users should not set the `checkpoint` argument in `checkpoint_args`.
 
+    Returns:
+      An operation which when executed performs the save. When writing
+      checkpoints, returns None. The return value is useful in unit tests.
+
     Raises:
       ValueError if `checkpoint` is passed into `checkpoint_args`.
     """
@@ -1706,7 +1723,7 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import save_op
-    save_op._save(self, path, compression, shard_func, checkpoint_args)
+    return save_op._save(self, path, compression, shard_func, checkpoint_args)
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
@@ -3937,8 +3954,8 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
-  def zip(datasets, name=None):
-    return DatasetV1Adapter(DatasetV2.zip(datasets, name=name))
+  def zip(*args, datasets=None, name=None):
+    return DatasetV1Adapter(DatasetV2.zip(*args, datasets=datasets, name=name))
 
   @functools.wraps(DatasetV2.concatenate)
   def concatenate(self, dataset, name=None):
@@ -4675,6 +4692,14 @@ class _NumpyIterator(tracking_base.Trackable):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
 
+  def _save(self):
+    # pylint: disable=protected-access
+    return self._iterator._save()
+
+  def _restore(self, state):
+    # pylint: disable=protected-access
+    return self._iterator._restore(state)
+
 
 class _VariantTracker(resource_lib.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
@@ -4856,7 +4881,7 @@ def _filter_ds(dataset,
 
   def maybe_warn_on_large_rejection(accept_dist, initial_dist):
     proportion_rejected = math_ops.reduce_sum((1 - accept_dist) * initial_dist)
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.less(proportion_rejected, .5),
         lambda: accept_dist,
         lambda: logging_ops.Print(  # pylint: disable=g-long-lambda

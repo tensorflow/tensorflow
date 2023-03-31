@@ -36,8 +36,8 @@ from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
@@ -50,6 +50,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
@@ -57,6 +58,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.nn_ops import bias_add
@@ -319,7 +321,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testVariableRefGradient(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0)
-      var = variables.VariableV1(init)
+      var = variable_v1.VariableV1(init)
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
@@ -943,7 +945,7 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
       return output
 
     training = array_ops.placeholder_with_default(True, shape=())
-    output = control_flow_ops.cond(
+    output = cond.cond(
         training, TestFn, lambda: inputs)
 
     loss = output
@@ -1030,7 +1032,7 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
     with context.graph_mode():
       init = constant_op.constant(100.0)
       var = variable_scope.variable(init, name="a/replica_1")
-      if isinstance(var, variables.RefVariable):
+      if isinstance(var, ref_variable.RefVariable):
         var._variable = array_ops.identity(var, name="a")
       else:
         var._handle = array_ops.identity(var, name="a")
@@ -1442,7 +1444,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           dtype="float32")
 
       conditional = array_ops.placeholder_with_default(True, shape=())
-      output = control_flow_ops.cond(
+      output = cond.cond(
           conditional, lambda: alpha * 2, lambda: alpha * 3)
 
       g, = gradients_impl.gradients(output, alpha)

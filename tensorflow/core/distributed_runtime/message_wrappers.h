@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -496,7 +497,7 @@ class MutableRunGraphResponseWrapper {
 
   // Returned status if requested.
   virtual Status status() const = 0;
-  virtual errors::Code status_code() const = 0;
+  virtual absl::StatusCode status_code() const = 0;
   virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
 
@@ -530,7 +531,7 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   GraphDef* mutable_partition_graph(size_t i) override;
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
-  errors::Code status_code() const override;
+  absl::StatusCode status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
@@ -564,7 +565,7 @@ class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   GraphDef* mutable_partition_graph(size_t i) override;
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
-  errors::Code status_code() const override;
+  absl::StatusCode status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
@@ -592,7 +593,7 @@ class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   GraphDef* mutable_partition_graph(size_t i) override;
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
-  errors::Code status_code() const override;
+  absl::StatusCode status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
@@ -646,7 +647,7 @@ class MutableRunStepResponseWrapper {
 
   // Returned status if requested.
   virtual Status status() const = 0;
-  virtual errors::Code status_code() const = 0;
+  virtual absl::StatusCode status_code() const = 0;
   virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
 
@@ -678,7 +679,7 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
   Status status() const override;
-  errors::Code status_code() const override;
+  absl::StatusCode status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
@@ -708,7 +709,7 @@ class OwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
   Status status() const override;
-  errors::Code status_code() const override;
+  absl::StatusCode status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
@@ -734,7 +735,7 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
   Status status() const override;
-  errors::Code status_code() const override;
+  absl::StatusCode status_code() const override;
   const string& status_error_message() const override;
   void set_status(const Status& status) override;
 

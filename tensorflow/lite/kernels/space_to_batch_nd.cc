@@ -104,8 +104,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
-  if (!IsConstantTensor(op_context.block_shape) ||
-      !IsConstantTensor(op_context.paddings)) {
+  if (!IsConstantOrPersistentTensor(op_context.block_shape) ||
+      !IsConstantOrPersistentTensor(op_context.paddings)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }

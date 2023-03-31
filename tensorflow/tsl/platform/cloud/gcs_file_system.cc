@@ -1374,10 +1374,10 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
-    } else if (status.code() == error::NOT_FOUND) {
+    } else if (status.code() == absl::StatusCode::kNotFound) {
       // New file, there is no existing content in it.
       break;
-    } else if (status.code() == error::OUT_OF_RANGE) {
+    } else if (status.code() == absl::StatusCode::kOutOfRange) {
       // Expected, this means we reached EOF.
       old_content << read_chunk;
       break;
@@ -2074,7 +2074,7 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   if (!IsDirectory(dirname, token).ok()) {
     *undeleted_dirs = 1;
     return Status(
-        error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         strings::StrCat(dirname, " doesn't exist or not a directory."));
   }
   std::vector<string> all_objects;

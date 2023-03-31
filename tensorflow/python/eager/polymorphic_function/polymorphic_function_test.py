@@ -21,6 +21,7 @@ import pickle
 import re
 import sys
 import time
+import timeit
 import unittest
 import weakref
 
@@ -62,9 +63,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
@@ -920,7 +921,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return n - 1
 
     @polymorphic_function.function(input_signature=signature)
-    def cond(n):
+    def cond_fn(n):
       return n > 0
 
     # Instead of calling the send & recv functions directly we want to call them
@@ -928,9 +929,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # while boundary.
     @polymorphic_function.function
     def fn(n):
-      functional_ops.While([n], cond.get_concrete_function(),
+      functional_ops.While([n], cond_fn.get_concrete_function(),
                            send_body.get_concrete_function())
-      return functional_ops.While([n], cond.get_concrete_function(),
+      return functional_ops.While([n], cond_fn.get_concrete_function(),
                                   recv_body.get_concrete_function())
 
     # Use a graph context since functions will not be automatically inlined
@@ -1101,7 +1102,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     v = variables.Variable(1.0)
 
     def trivial_function():
-      return control_flow_ops.cond(
+      return cond.cond(
           array_ops.placeholder_with_default(True, ()), v.read_value,
           v.read_value)
 
@@ -1878,7 +1879,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*py_composite.*',
@@ -4590,6 +4591,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(RecursionError):
       recursive_fn(constant_op.constant(5))
 
+  @test_util.run_v2_only
+  def test_grappler_optimization(self):
+    @polymorphic_function.function
+    def brancher(inp):
+      x = constant_op.constant(1)
+      for _ in range(1000):
+        if inp:
+          x = x + constant_op.constant(1)
+        else:
+          x = x + constant_op.constant(2)
+      return x
+
+    @polymorphic_function.function
+    def brancher_true():
+      left = constant_op.constant(True)
+      x = constant_op.constant(1)
+      for _ in range(1000):
+        if left:
+          x = x + constant_op.constant(1)
+        else:
+          x = x + constant_op.constant(2)
+      return x
+
+    x = constant_op.constant(True)
+    self.assertEqual(brancher(x), brancher_true())  # Trace each function once.
+
+    benchmark = min(timeit.repeat(lambda: brancher(x), repeat=5, number=100))
+    opt_benchmark = min(timeit.repeat(brancher_true, repeat=5, number=100))
+
+    # Constant folded execution is usually 15 - 20 times faster. Here we check
+    # for a 5x speedup to account for various machines the test might run on.
+    self.assertLess(opt_benchmark * 5, benchmark)
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -4923,46 +4957,8 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
-  def testMaybeCreateCapturePlaceholderWithValidCapture(self):
-
-    @polymorphic_function.function
-    def f():
-      func = lambda: x
-      # TODO(b/263520817): Remove access to private attribute.
-      return ops.get_default_graph(
-          )._function_captures._create_capture_placeholder(func)
-
-    x = {
-        'tensor': constant_op.constant(0),
-        'list': [constant_op.constant(1), 2],
-        'dict': {
-            'float': constant_op.constant(0.5)
-        }
-    }
-
-    out = f()
-    # tf.function output should have same structure/values with the side input
-    self.assertEqual(x['tensor'].numpy(), out['tensor'].numpy())
-    self.assertEqual(x['list'][0].numpy(), out['list'][0].numpy())
-    self.assertEqual(x['list'][1], out['list'][1].numpy())
-    self.assertEqual(x['dict']['float'].numpy(), out['dict']['float'].numpy())
-
-  def testMaybeCreateCapturePlaceholderWithInvalidCapture(self):
-
-    @polymorphic_function.function
-    def f():
-      func = lambda: x
-      # TODO(b/263520817): Remove access to private attribute.
-      return ops.get_default_graph(
-          )._function_captures._create_capture_placeholder(func)
-
-    # Set is not supported
-    x = set([1, 2])
-    with self.assertRaises(NotImplementedError):
-      f()
-
   @parameterized.parameters(
-      (1, int, 2, int, 2),
+      (1, int, 2, int, 1),
       (1, constant_op.constant, 2, constant_op.constant, 1))
   def testRetraceLogicWithSideInputs(self, val_before, type_before, val_after,
                                      type_after, expected_len):
@@ -4991,7 +4987,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     _ = f()
     x = 2
     _ = f()
-    self.assertLen(total_function_cache(f), 2)
+    self.assertLen(total_function_cache(f), 1)
 
   def testFunctoolsLruCache(self):
     self.skipTest(
