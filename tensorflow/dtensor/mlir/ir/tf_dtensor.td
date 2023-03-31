@@ -668,8 +668,9 @@ def TF_DTensorAllToAllOp : TF_Op<"DTensorAllToAll", [Pure]> {
   let summary = "Mutually exchanges the input to match the given layout.";
 
   let description = [{
-This op takes both an input and an output layout. The output layout must be equally
-sharded as the input layout.
+This op takes both an input and an output layout. There can be one mesh
+dimension which is becoming unsharded in one axis while becoming sharded 
+in another axis."
   }];
 
   let arguments = (ins
