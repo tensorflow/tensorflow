@@ -155,7 +155,7 @@ struct GemmOpCapture : public OpCapturePattern {
   }
 };
 
-struct MemrefOpCapture : public OpCapturePattern {
+struct MemcpyOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
     if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
       // We use a heuristic to identify the direction of the memcpy operation,
@@ -418,7 +418,7 @@ void OutlineCudaGraphsPass::runOnOperation() {
     patterns.emplace_back(new LaunchFuncOpCapture());
     patterns.emplace_back(new ConstantOpCapture());
     patterns.emplace_back(new ViewOpCapture());
-    patterns.emplace_back(new MemrefOpCapture());
+    patterns.emplace_back(new MemcpyOpCapture());
   }
 
   if (cuda_graph_level_ >= 2) {
