@@ -28,6 +28,9 @@ namespace {
 constexpr char kImagePreprocessingStageName[] = "inception_preprocessing_stage";
 constexpr char kTestImage[] =
     "tensorflow/lite/tools/evaluation/stages/testdata/"
+    "grace_hopper.jpg";
+constexpr char kTestImagePng[] =
+    "tensorflow/lite/tools/evaluation/stages/testdata/"
     "grace_hopper.png";
 constexpr int kImageDim = 224;
 
@@ -295,6 +298,87 @@ TEST(ImagePreprocessingStage, TestImagePreprocessingSubtractMean) {
   EXPECT_EQ(preprocessed_image_ptr[0], -78);
   EXPECT_EQ(preprocessed_image_ptr[1], -88);
   EXPECT_EQ(preprocessed_image_ptr[2], -83);
+  EXPECT_EQ(metrics.num_runs(), 1);
+  const auto& last_latency =
+      metrics.process_metrics().total_latency().last_us();
+  EXPECT_GT(last_latency, 0);
+  EXPECT_LT(last_latency, 1e7);
+  EXPECT_EQ(metrics.process_metrics().total_latency().max_us(), last_latency);
+  EXPECT_EQ(metrics.process_metrics().total_latency().min_us(), last_latency);
+  EXPECT_EQ(metrics.process_metrics().total_latency().sum_us(), last_latency);
+  EXPECT_EQ(metrics.process_metrics().total_latency().avg_us(), last_latency);
+}
+
+TEST(ImagePreprocessingStage, TestImagePngPreprocessingFloat) {
+  std::string image_path = kTestImagePng;
+
+  ImagePreprocessingConfigBuilder builder(kImagePreprocessingStageName,
+                                          kTfLiteFloat32);
+  builder.AddCroppingStep(0.875);
+  builder.AddResizingStep(224, 224, false);
+  builder.AddNormalizationStep(127.5, 1.0 / 127.5);
+  ImagePreprocessingStage stage = ImagePreprocessingStage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+
+  // Pre-run.
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
+
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
+
+  float* preprocessed_image_ptr =
+      static_cast<float*>(stage.GetPreprocessedImageData());
+  EXPECT_NE(preprocessed_image_ptr, nullptr);
+  // We check raw values computed from central-cropping & bilinear interpolation
+  // on the test image. The interpolation math is similar to Unit Square formula
+  // here: https://en.wikipedia.org/wiki/Bilinear_interpolation#Unit_square
+  // These values were verified by running entire image classification pipeline
+  // & ensuring output is accurate. We test 3 values, one for each of R/G/B
+  // channels.
+  EXPECT_FLOAT_EQ(preprocessed_image_ptr[0], -0.74901962);
+  EXPECT_FLOAT_EQ(preprocessed_image_ptr[1], -0.74901962);
+  EXPECT_FLOAT_EQ(preprocessed_image_ptr[2], -0.68627453);
+  EXPECT_EQ(metrics.num_runs(), 1);
+  const auto& last_latency =
+      metrics.process_metrics().total_latency().last_us();
+  EXPECT_GT(last_latency, 0);
+  EXPECT_LT(last_latency, 1e7);
+  EXPECT_EQ(metrics.process_metrics().total_latency().max_us(), last_latency);
+  EXPECT_EQ(metrics.process_metrics().total_latency().min_us(), last_latency);
+  EXPECT_EQ(metrics.process_metrics().total_latency().sum_us(), last_latency);
+  EXPECT_EQ(metrics.process_metrics().total_latency().avg_us(), last_latency);
+}
+
+TEST(ImagePreprocessingStage, TestImagePngPreprocessingUInt8Quantized) {
+  std::string image_path = kTestImagePng;
+
+  ImagePreprocessingConfigBuilder builder(kImagePreprocessingStageName,
+                                          kTfLiteUInt8);
+  builder.AddCroppingStep(0.875);
+  builder.AddResizingStep(224, 224, false);
+  ImagePreprocessingStage stage = ImagePreprocessingStage(builder.build());
+  EXPECT_EQ(stage.Init(), kTfLiteOk);
+
+  // Pre-run.
+  EXPECT_EQ(stage.GetPreprocessedImageData(), nullptr);
+
+  stage.SetImagePath(&image_path);
+  EXPECT_EQ(stage.Run(), kTfLiteOk);
+  EvaluationStageMetrics metrics = stage.LatestMetrics();
+
+  uint8_t* preprocessed_image_ptr =
+      static_cast<uint8_t*>(stage.GetPreprocessedImageData());
+  EXPECT_NE(preprocessed_image_ptr, nullptr);
+  // We check raw values computed from central-cropping & bilinear interpolation
+  // on the test image. The interpolation math is similar to Unit Square formula
+  // here: https://en.wikipedia.org/wiki/Bilinear_interpolation#Unit_square
+  // These values were verified by running entire image classification pipeline
+  // & ensuring output is accurate. We test 3 values, one for each of R/G/B
+  // channels.
+  EXPECT_EQ(preprocessed_image_ptr[0], 32);
+  EXPECT_EQ(preprocessed_image_ptr[1], 32);
+  EXPECT_EQ(preprocessed_image_ptr[2], 40);
   EXPECT_EQ(metrics.num_runs(), 1);
   const auto& last_latency =
       metrics.process_metrics().total_latency().last_us();
