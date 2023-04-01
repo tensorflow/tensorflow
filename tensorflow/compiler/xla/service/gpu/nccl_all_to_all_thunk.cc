@@ -48,14 +48,20 @@ NcclAllToAllConfig GetNcclAllToAllConfig(OpT op) {
 }
 
 template <typename OpT>
-bool CanImplement(OpT op) {
-  return absl::c_all_of(op.getInputs(), [&op](mlir::Value operand) {
+Status CheckImplementable(OpT op) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  std::optional<uint64_t> split_dim = op.getSplitDimension();
+  for (mlir::Value operand : op.getInputs()) {
+    TF_RETURN_IF_ERROR(IsValidOperand(operand, Thunk::kNcclAllToAll));
     Shape shape = GetShape(operand);
-    return LayoutUtil::IsDenseArray(shape) &&
-           IsTypeSupportedByNccl(shape.element_type(), Thunk::kNcclAllToAll) &&
-           (!op.getSplitDimension() ||
-            LayoutUtil::MinorToMajor(shape).back() == *op.getSplitDimension());
-  });
+    if (split_dim &&
+        !ShapeUtil::IsEffectivelyMostMajorDimension(shape, *split_dim)) {
+      return tsl::errors::Unimplemented(
+          "all-to-all split dim %u is not the most major in input shape %s",
+          *split_dim, shape.ToString(/*print_layout=*/true));
+    }
+  }
+  return OkStatus();
 }
 }  // namespace impl
 
@@ -85,8 +91,11 @@ NcclAllToAllThunk::NcclAllToAllThunk(
                             impl::GetNcclAllToAllConfig(op),
                             std::move(buffers)) {}
 
-/*static*/ bool NcclAllToAllThunk::CanImplement(mlir::lmhlo::AllToAllOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclAllToAllThunk::CheckImplementable(
+    mlir::lmhlo::AllToAllOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclAllToAllThunk>(impl::CheckImplementable(op), op,
+                                             replica_count, partition_count);
 }
 
 /*static*/ bool NcclAllToAllThunk::IsDegenerate(mlir::lmhlo::AllToAllOp op,
@@ -113,9 +122,11 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
                             impl::GetNcclAllToAllConfig(op),
                             std::move(buffers)) {}
 
-/*static*/ bool NcclAllToAllStartThunk::CanImplement(
-    mlir::lmhlo_gpu::AllToAllStartOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclAllToAllStartThunk::CheckImplementable(
+    mlir::lmhlo_gpu::AllToAllStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclAllToAllStartThunk>(
+      impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclAllToAllStartThunk::IsDegenerate(

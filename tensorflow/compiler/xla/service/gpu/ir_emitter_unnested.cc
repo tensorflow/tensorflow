@@ -3034,7 +3034,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   OpT op = mlir::cast<OpT>(untyped_op);
   int64_t replica_count = hlo_module_config_.replica_count();
   int64_t partition_count = hlo_module_config_.num_partitions();
-  VLOG(2) << NcclThunkType::GetName() << "; replica count: " << replica_count
+  VLOG(2) << NcclThunkType::GetHloOpName()
+          << "; replica count: " << replica_count
           << "; partition count: " << partition_count
           << "; operand count: " << op.getOperands().size()
           << "; NCCL is enabled: " << NcclThunkType::NcclIsEnabled();
@@ -3044,8 +3045,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // and we can just copy the input to the output.
   bool is_degenerate =
       NcclThunkType::IsDegenerate(op, replica_count, partition_count);
-  bool should_use_nccl_thunk =
-      !is_degenerate && NcclThunkType::CanImplement(op);
+  Status implementable_status =
+      NcclThunkType::CheckImplementable(op, replica_count, partition_count);
+  bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
 
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
@@ -3078,32 +3080,18 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     return OkStatus();
   }
 
+  if (!is_degenerate) {
+    return implementable_status;
+  }
+
   // Signal that start thunk not created with nullptr.
   if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({untyped_op, nullptr});
   }
 
-  if (!is_degenerate) {
-    CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
-
-    std::string message = absl::StrFormat(
-        "Requested %s not implemented on GPU; replica_count: %d; "
-        "partition_count: %d, group_mode: %s, operand_count: %d; NCCL support: "
-        "%d",
-        NcclThunkType::GetName(), replica_count, partition_count,
-        CollectiveOpGroupModeToString(group_mode), op.getOperands().size(),
-        NcclThunkType::NcclIsEnabled());
-    if (!op.getOperands().empty()) {
-      const Shape shape = GetShape(op.getOperands().front());
-      absl::StrAppendFormat(&message, "; first operand array element-type: %s",
-                            PrimitiveType_Name(shape.element_type()));
-    }
-    return Unimplemented("%s", message);
-  }
-
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
-  // All-gather with one replica is simply the identity function. Buffer
+  // Degenerate collectives are simply identity function. Buffer
   // assignment expects a copy, so that's what we do.
   ThunkSequence thunks;
   for (int64_t i = 0; i < buffers.size(); i++) {
