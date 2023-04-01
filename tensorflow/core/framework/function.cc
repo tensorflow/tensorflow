@@ -1489,6 +1489,11 @@ Status FunctionLibraryDefinition::AddLibrary(
 
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionDefLibrary& lib_def) {
+  return AddLibrary(lib_def, /*stack_traces=*/{});
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    const FunctionDefLibrary& lib_def, const StackTracesMap& stack_traces) {
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   mutex_lock l(mu_);
@@ -1497,7 +1502,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (const FunctionDef& fdef : lib_def.function()) {
-    s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
+    s = AddFunctionDefHelper(fdef, stack_traces, &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
       if (!remove_status.ok()) {

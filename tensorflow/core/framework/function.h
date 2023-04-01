@@ -505,9 +505,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
+  // Duplicate functions and gradients are ignored. This overload adds the
+  // functions with no stack traces. This operation is atomic.
+  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+
+  // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(const FunctionDefLibrary& lib_def,
+                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
