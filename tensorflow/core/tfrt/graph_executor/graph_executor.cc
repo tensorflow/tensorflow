@@ -704,8 +704,8 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
           if (module_with_op_keys != nullptr) {
             *module_with_op_keys = module.clone();
           }
-          pm.clear();
         }
+        pm.clear();
         pm.addPass(
             mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(
                 options));
