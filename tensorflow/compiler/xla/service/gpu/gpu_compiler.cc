@@ -767,19 +767,29 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
     }
 
-    bool async_all_reduce = debug_options.xla_gpu_enable_async_all_reduce();
-    bool async_collective_permute =
-        debug_options.xla_gpu_enable_async_collective_permute();
+    {
+      bool async_all_reduce = debug_options.xla_gpu_enable_async_all_reduce();
+      bool async_collective_permute =
+          debug_options.xla_gpu_enable_async_collective_permute();
+      bool async_all_gather = debug_options.xla_gpu_enable_async_all_gather();
+      bool async_reduce_scatter =
+          debug_options.xla_gpu_enable_async_reduce_scatter();
+      bool async_all_to_all = debug_options.xla_gpu_enable_async_all_to_all();
 
-    if (async_all_reduce || async_collective_permute) {
-      AsyncCollectiveCreator::CollectiveCreatorConfig config;
-      config.convert_all_reduce = [=](const HloInstruction*) {
-        return async_all_reduce;
-      };
-      config.convert_collective_permute = [=](const HloInstruction*) {
-        return async_collective_permute;
-      };
-      pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
+      if (async_all_reduce || async_collective_permute || async_all_gather ||
+          async_reduce_scatter || async_all_to_all) {
+        AsyncCollectiveCreator::CollectiveCreatorConfig config;
+        auto convert_op = [](bool flag) {
+          return [=](const HloInstruction*) { return flag; };
+        };
+        config.convert_all_reduce = convert_op(async_all_reduce);
+        config.convert_collective_permute =
+            convert_op(async_collective_permute);
+        config.convert_all_gather = convert_op(async_all_gather);
+        config.convert_reduce_scatter = convert_op(async_reduce_scatter);
+        config.convert_all_to_all = convert_op(async_all_to_all);
+        pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
+      }
     }
 
     if (!hlo_module->config().use_spmd_partitioning()) {

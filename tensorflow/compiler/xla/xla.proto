@@ -362,11 +362,12 @@ message DebugOptions {
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
-  // Convert synchronous all-reduces ops into asynchronous.
+  // Convert synchronous collective ops into asynchronous.
   bool xla_gpu_enable_async_all_reduce = 152;
-
-  // Convert synchronous collective-permute ops into asynchronous.
   bool xla_gpu_enable_async_collective_permute = 183;
+  bool xla_gpu_enable_async_all_gather = 199;
+  bool xla_gpu_enable_async_reduce_scatter = 200;
+  bool xla_gpu_enable_async_all_to_all = 201;
 
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
@@ -485,7 +486,7 @@ message DebugOptions {
 
   bool xla_gpu_allow_all_reduce_kernel = 193;
 
-  // Next id: 199
+  // Next id: 202
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
