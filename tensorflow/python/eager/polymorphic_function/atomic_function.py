@@ -21,6 +21,8 @@ from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -58,6 +60,23 @@ class _InterpolateFunctionError(object):
     if g:
       exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
     return False
+
+
+def _set_read_only_resource_inputs_attr(op, func_graph):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: PartitionedCall Operation.
+    func_graph: FuncGraph.
+  """
+  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        read_only_indices)
+
+# TODO(b/232961485): Remove after quarantined `add_function_callback` removed.
+function_callbacks = set()
 
 
 # TODO(fmuham): Lower to FunctionRecord or remove otherwise.
@@ -193,9 +212,6 @@ class AtomicFunction:
       # Replace empty list with None
       outputs = outputs or None
     else:
-      # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
-      # creates `PartitionedCallOp` kernels by default, or remove the previous
-      # branch if a TPU kernel is registered for `PartitionedCall`.
       with _InterpolateFunctionError(self):
         with ops.control_dependencies(self._graph_artifacts.control_captures):
           # The caller must use record_operation to record this operation in the
@@ -204,14 +220,28 @@ class AtomicFunction:
           # registered for PartitionedCall, so recording this operation confuses
           # forwardprop code (GradientTape manages to ignore it).
           with tape.stop_recording():
-            outputs = functional_ops.partitioned_call(
+            graph = ops.get_default_graph()
+            graph._add_function_recursive(self)  # pylint: disable=protected-access
+
+            op = functional_ops.partitioned_call_op(
+                name=self.name,
                 args=args,
-                f=self,
+                is_stateful=len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
                 tout=self._graph_artifacts.output_types,
-                executing_eagerly=executing_eagerly,
                 config=config,
                 executor_type=executor_type,
+                xla_compile_attr=self.cached_definition.attr.get(
+                    attributes_lib.XLA_COMPILE, None
+                ),
             )
+            _set_read_only_resource_inputs_attr(op, self.graph)
+            if hasattr(self.graph, "collective_manager_ids_used"):
+              ops.set_int_list_attr(
+                  op,
+                  acd.COLLECTIVE_MANAGER_IDS,
+                  self.graph.collective_manager_ids_used,
+              )
+            outputs = op.outputs if op.outputs else op
 
     for i, func_graph_output in enumerate(
         self._graph_artifacts.func_graph_outputs
