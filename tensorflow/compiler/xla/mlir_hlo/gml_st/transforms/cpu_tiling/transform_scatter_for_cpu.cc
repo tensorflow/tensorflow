@@ -46,15 +46,8 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
 
     // Tile everything to points and fuse.
     scf::SCFTilingOptions opts;
-    opts.setTileSizeComputationFunction([](OpBuilder &b, Operation *op) {
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointToStart(
-          &op->getParentOfType<func::FuncOp>().getBody().front());
-
-      auto loops = cast<TilingInterface>(op).getLoopIteratorTypes();
-      return SmallVector<Value>(
-          loops.size(), b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
-    });
+    opts.setTileSizes(
+        SmallVector<int64_t>(scatterOp.getLoopIteratorTypes().size(), 1));
 
     auto fuseFilterFn = [](Operation *op) {
       return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
