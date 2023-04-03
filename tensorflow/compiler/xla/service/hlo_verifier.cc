@@ -99,11 +99,6 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
-  // empty replica groups imply all replicas form a single group.
-  int64_t replica_subgroup_size =
-      hlo->replica_groups().empty()
-          ? 0
-          : hlo->replica_groups()[0].replica_ids_size();
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica:
     case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
@@ -118,7 +113,8 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
       return replica_subgroup_size;
     }
     case CollectiveOpGroupMode::kFlattenedID:
-      return replica_subgroup_size;
+      // Empty replica groups not allowed in this mode.
+      return hlo->replica_groups()[0].replica_ids_size();
     case CollectiveOpGroupMode::kCrossPartition:
       return hlo->replica_groups().empty()
                  ? config.num_partitions()
@@ -561,15 +557,15 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-
+  const int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
   if (all_to_all->split_dimension()) {
-    int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
     TF_RET_CHECK(hlo->operand_count() == 1);
     return CheckShape(
         hlo, ShapeInference::InferAllToAllShape(
                  hlo->operand(0)->shape(), *all_to_all->split_dimension(),
                  *all_to_all->split_dimension(), split_count));
   } else {
+    TF_RET_CHECK(hlo->operand_count() == split_count);
     std::vector<const Shape*> operand_shapes;
     for (const HloInstruction* operand : hlo->operands()) {
       operand_shapes.push_back(&operand->shape());
