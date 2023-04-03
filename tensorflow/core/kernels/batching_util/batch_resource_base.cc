@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
 #include <sstream>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -60,14 +61,28 @@ void RecordPaddingSize(int32_t padding_size, const string& model_name,
 
 void RecordPaddingSizeV2(int32_t padding_size, const string& model_name,
                          int32_t execution_batch_size, const string& op_name) {
+  // Bucket containing 0 has bounds [-2/3, 2/3).
+  // Remaining buckets are centered at powers of 2 and have bounds:
+  // [(2/3) * 2^i, (4/3) * 2^i) for i = 1, ..., 13.
+  // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
+
+  std::vector<double> bucket_limits;
+  // populate bound for zero bucket
+  bucket_limits.push_back(-2.0 / 3.0);
+  // populate rest of bounds
+  double bound = 2.0 / 3.0;
+  double growth_factor = 2;
+  for (int i = 0; i < 16; i++) {
+    bucket_limits.push_back(bound);
+    bound *= growth_factor;
+  }
+
   static auto* cell = tensorflow::monitoring::Sampler<3>::New(
       {"/tensorflow/serving/batching/padding_size_v2",
        "Tracks the padding size distribution on batches by model_name (if "
        "available).",
        "model_name", "execution_batch_size", "op_name"},
-      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
-      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
-      monitoring::Buckets::Exponential(1, 2, 14));
+      monitoring::Buckets::Explicit(bucket_limits));
   cell->GetCell(model_name, absl::StrCat(execution_batch_size), op_name)
       ->Add(static_cast<double>(padding_size));
 }
@@ -92,9 +107,10 @@ void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
        "Tracks the batch size distribution on the inputs by model_name (if "
        "available).",
        "model_name", "op_name"},
-      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
-      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
-      monitoring::Buckets::Exponential(1, 2, 14));
+      // Buckets centered at powers of 2, and have bounds:
+      // [(2/3) * 2^i, (4/3) * 2^i] for i = 0, ..., 13.
+      // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
+      monitoring::Buckets::Exponential(2.0 / 3.0, 2, 15));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
