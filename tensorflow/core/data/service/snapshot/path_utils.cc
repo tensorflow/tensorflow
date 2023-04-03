@@ -72,9 +72,9 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
       absl::StrCat("split_", local_index, "_", global_index));
 }
 
-tsl::StatusOr<std::pair<int64_t, int64_t>> SplitIndex(
-    absl::string_view split_path) {
-  std::vector<std::string> tokens = absl::StrSplit(split_path, '_');
+tsl::StatusOr<std::pair<int64_t, int64_t>> SplitIndices(
+    absl::string_view split_filename) {
+  std::vector<std::string> tokens = absl::StrSplit(split_filename, '_');
   int64_t local_split_index = 0, global_split_index = 0;
   if (tokens.size() != 3 || tokens[0] != "split" ||
       !absl::SimpleAtoi(tokens[1], &local_split_index) ||
@@ -82,16 +82,31 @@ tsl::StatusOr<std::pair<int64_t, int64_t>> SplitIndex(
       !absl::SimpleAtoi(tokens[2], &global_split_index) ||
       global_split_index < 0) {
     return tsl::errors::InvalidArgument(
-        "Invalid split file name: ", split_path,
+        "Invalid split file name: ", split_filename,
         ". Expected split_<local_split_index>_<global_split_index>.");
   }
   if (local_split_index > global_split_index) {
     return tsl::errors::InvalidArgument(
-        "Invalid split file name: ", split_path, ". The local split index ",
+        "Invalid split file name: ", split_filename, ". The local split index ",
         local_split_index, " exceeds the global split index ",
         global_split_index, ".");
   }
   return std::make_pair(local_split_index, global_split_index);
+}
+
+tsl::StatusOr<std::pair<int64_t, int64_t>> ChunkIndices(
+    absl::string_view chunk_filename) {
+  std::vector<std::string> tokens = absl::StrSplit(chunk_filename, '_');
+  int64_t stream_index = 0, stream_chunk_index = 0;
+  if (tokens.size() != 3 || tokens[0] != "chunk" ||
+      !absl::SimpleAtoi(tokens[1], &stream_index) || stream_index < 0 ||
+      !absl::SimpleAtoi(tokens[2], &stream_chunk_index) ||
+      stream_chunk_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid chunk file name: ", chunk_filename,
+        ". Expected chunk_<stream_index>_<stream_chunk_index>.");
+  }
+  return std::make_pair(stream_index, stream_chunk_index);
 }
 
 std::string SnapshotMetadataFilePath(absl::string_view snapshot_path_) {

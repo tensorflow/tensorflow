@@ -225,11 +225,8 @@ Status SnapshotManager::ReadOnDiskSource(
   bool unused_end_of_splits;
   for (const auto& split_filename : split_filenames) {
     std::string split_path = io::JoinPath(source_path, split_filename);
-
-    // `split_filename` must have this format:
-    // "split_<local_split_index>_<global_split_index>".
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_filename));
-    auto [local_split_index, global_split_index] = split_index;
+    TF_ASSIGN_OR_RETURN(auto split_indices, SplitIndices(split_filename));
+    auto [local_split_index, global_split_index] = split_indices;
     if (local_split_index > split_filenames.size() - 1) {
       return InvalidArgument(
           "found conflict between the number of splits and name of ",

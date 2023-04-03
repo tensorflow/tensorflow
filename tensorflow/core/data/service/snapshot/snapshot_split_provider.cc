@@ -138,8 +138,8 @@ SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
   TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
                       GetChildren(splits_directory, env_));
   for (const std::string& split_file : split_files) {
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_file));
-    auto [local_split_index, global_split_index] = split_index;
+    TF_ASSIGN_OR_RETURN(auto split_indices, SplitIndices(split_file));
+    auto [local_split_index, global_split_index] = split_indices;
     if (local_split_index >= next_split_index_) {
       splits[local_split_index] =
           tsl::io::JoinPath(splits_directory, split_file);

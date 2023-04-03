@@ -57,32 +57,60 @@ TEST(PathUtilsTest, SplitPath) {
           "/path/to/snapshot.streams.stream_0.splits.source_1.split_2_3"));
 }
 
-TEST(PathUtilsTest, SplitIndex) {
-  EXPECT_THAT(SplitIndex("split_0_1"), IsOkAndHolds(Pair(0, 1)));
+TEST(PathUtilsTest, SplitIndices) {
+  EXPECT_THAT(SplitIndices("split_0_1"), IsOkAndHolds(Pair(0, 1)));
 }
 
 TEST(PathUtilsTest, InvalidSplitFile) {
   EXPECT_THAT(
-      SplitIndex(""),
+      SplitIndices(""),
       StatusIs(error::INVALID_ARGUMENT,
                HasSubstr(
                    "Expected split_<local_split_index>_<global_split_index>")));
   EXPECT_THAT(
-      SplitIndex("split_123"),
+      SplitIndices("split_123"),
       StatusIs(error::INVALID_ARGUMENT,
                HasSubstr(
                    "Expected split_<local_split_index>_<global_split_index>")));
   EXPECT_THAT(
-      SplitIndex("split_-1_(-1)"),
+      SplitIndices("split_-1_(-1)"),
       StatusIs(error::INVALID_ARGUMENT,
                HasSubstr(
                    "Expected split_<local_split_index>_<global_split_index>")));
   EXPECT_THAT(
-      SplitIndex("split_5_0"),
+      SplitIndices("chunk_1_2"),
+      StatusIs(error::INVALID_ARGUMENT,
+               HasSubstr(
+                   "Expected split_<local_split_index>_<global_split_index>")));
+  EXPECT_THAT(
+      SplitIndices("split_5_0"),
       StatusIs(
           error::INVALID_ARGUMENT,
           HasSubstr(
               "The local split index 5 exceeds the global split index 0")));
+}
+
+TEST(PathUtilsTest, InvalidChunkFile) {
+  EXPECT_THAT(
+      ChunkIndices(""),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr("Expected chunk_<stream_index>_<stream_chunk_index>")));
+  EXPECT_THAT(
+      ChunkIndices("chunk_123"),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr("Expected chunk_<stream_index>_<stream_chunk_index>")));
+  EXPECT_THAT(
+      ChunkIndices("chunk_-1_(-1)"),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr("Expected chunk_<stream_index>_<stream_chunk_index>")));
+  EXPECT_THAT(
+      ChunkIndices("split_1_2"),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          HasSubstr("Expected chunk_<stream_index>_<stream_chunk_index>")));
 }
 
 TEST(PathUtilsTest, StreamDoneFilePath) {

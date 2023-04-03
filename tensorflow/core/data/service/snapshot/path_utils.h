@@ -48,10 +48,16 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
                       int64_t global_index);
 
 // Returns a pair of {local_split_index, global_split_index} of the split. The
-// expected format of `split_path` is:
+// expected format of `split_filename` is:
 // split_<local_split_index>_<global_split_index>
-tsl::StatusOr<std::pair<int64_t, int64_t>> SplitIndex(
-    absl::string_view split_path);
+tsl::StatusOr<std::pair<int64_t, int64_t>> SplitIndices(
+    absl::string_view split_filename);
+
+// Returns a pair of {stream_index, stream_chunk_index} of the chunk. The
+// expected format of `chunk_filename` is:
+// chunk_<stream_index>_<stream_chunk_index>
+tsl::StatusOr<std::pair<int64_t, int64_t>> ChunkIndices(
+    absl::string_view chunk_filename);
 
 // Returns the path of the DONE file of a snapshot stream.
 std::string StreamDoneFilePath(absl::string_view snapshot_path,
