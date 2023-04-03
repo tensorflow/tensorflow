@@ -2,9 +2,8 @@
 // RUN:                 -hlo-buffer-reuse | \
 // RUN:   FileCheck %s
 
-func.func @simple_reuse() {
-  %condition = "test.make_condition"() : () -> i1
-  scf.if %condition {
+func.func @simple_reuse(%cond: i1) {
+  scf.if %cond {
     %alloc0 = memref.alloc() : memref<2xf32>
     "test.use"(%alloc0) : (memref<2xf32>) -> ()
     memref.dealloc %alloc0 : memref<2xf32>
@@ -16,11 +15,10 @@ func.func @simple_reuse() {
 }
 
 // CHECK-LABEL: @simple_reuse
-//      CHECK: scf.if
-// CHECK-NEXT:   %[[ALLOC:.*]] = memref.alloc()
-// CHECK-NEXT:   "test.use"(%[[ALLOC]])
-// CHECK-NEXT:   "test.use"(%[[ALLOC]])
-// CHECK-NEXT:   memref.dealloc %[[ALLOC]]
+// CHECK-NEXT: %[[ALLOCA:.*]] = memref.alloca()
+// CHECK-NEXT: scf.if
+// CHECK-NEXT:   "test.use"(%[[ALLOCA]])
+// CHECK-NEXT:   "test.use"(%[[ALLOCA]])
 // CHECK-NEXT: }
 
 // -----
@@ -433,3 +431,33 @@ func.func @copy_to_alloc() {
 // CHECK-NEXT: some.op
 // CHECK-NEXT: some.op
 // CHECK-NEXT: return
+
+// -----
+
+// TODO(jreiffers): Implement subview optimization (allocate memref<3xf32>, take
+// a subview in the then branch).
+func.func @hoist_from_if(%cond: i1) {
+  scf.if %cond {
+    %a = memref.alloc() : memref<i32>
+    %b = memref.alloc() : memref<2xf32>
+    "some.op"(%a, %b) : (memref<i32>, memref<2xf32>) -> ()
+    memref.dealloc %a : memref<i32>
+    memref.dealloc %b : memref<2xf32>
+  } else {
+    %a = memref.alloc() : memref<3xf32>
+    %b = memref.alloc() : memref<i32>
+    "some.op"(%a, %b) : (memref<3xf32>, memref<i32>) -> ()
+    memref.dealloc %a : memref<3xf32>
+    memref.dealloc %b : memref<i32>
+  }
+  return
+}
+
+// CHECK-LABEL: @hoist_from_if
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: scf.if
+// CHECK-NEXT: some.op
+// CHECK-NEXT: else
+// CHECK-NEXT: some.op
