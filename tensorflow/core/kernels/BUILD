@@ -1515,6 +1515,7 @@ tf_kernel_library(
     srcs = ["cudnn_rnn_ops.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cast_op",
         ":gpu_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
