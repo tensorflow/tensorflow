@@ -127,6 +127,15 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "nccl_rpath_stub",
+    visibility = ["//visibility:public"],
+    linkopts = if_cuda_is_configured([
+        "-Wl,-rpath='$$ORIGIN/../../nvidia/nccl/lib'",
+        "-Wl,-rpath='$$ORIGIN/../nvidia/nccl/lib'",
+    ]),
+)
+
 alias(
     name = "cudnn_lib",
     actual = select({

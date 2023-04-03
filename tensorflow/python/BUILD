@@ -774,6 +774,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/tsl/cuda:cudnn_stub",
         "//tensorflow/tsl/cuda:cufft_stub",
         "//tensorflow/tsl/cuda:curand_stub",
+        "//tensorflow/tsl/cuda:nccl_rpath_stub",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
