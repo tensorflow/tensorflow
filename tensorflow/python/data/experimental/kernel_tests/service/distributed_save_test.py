@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -62,7 +63,8 @@ class DistributedSaveTest(
     dataset = dataset_ops.Dataset.range(10)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()))
-    self._wait_for_snapshot(cluster)
+    _wait_for_snapshot(self._test_dir)
+
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, list(range(10)))
 
@@ -81,7 +83,7 @@ class DistributedSaveTest(
         cluster.dispatcher_address(),
         compression=compression,
     ))
-    self._wait_for_snapshot(cluster)
+    _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, list(range(10)))
@@ -99,7 +101,7 @@ class DistributedSaveTest(
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()
     ))
-    self._wait_for_snapshot(cluster)
+    _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
@@ -116,7 +118,7 @@ class DistributedSaveTest(
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()
     ))
-    self._wait_for_snapshot(cluster)
+    _wait_for_snapshot(self._test_dir)
 
     chunks_dir = os.path.join(self._test_dir, "chunks")
     files = os.listdir(chunks_dir)
@@ -147,7 +149,7 @@ class DistributedSaveTest(
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()
     ))
-    self._wait_for_snapshot(cluster)
+    _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
     dataset = dataset.apply(
@@ -167,7 +169,7 @@ class DistributedSaveTest(
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()
     ))
-    self._wait_for_error(cluster)
+    _wait_for_error(self._test_dir)
 
   @combinations.generate(test_base.default_test_combinations())
   def testBadDispatcherAddress(self):
@@ -189,13 +191,57 @@ class DistributedSaveTest(
           dataset, self._test_dir, cluster.dispatcher_address()
       ))
 
-  def _wait_for_snapshot(self, cluster):
-    while not os.path.exists(os.path.join(self._test_dir, "DONE")):
-      time.sleep(0.1)
 
-  def _wait_for_error(self, cluster):
-    while not os.path.exists(os.path.join(self._test_dir, "ERROR")):
-      time.sleep(0.1)
+class LoadCheckpointTest(
+    data_service_test_base.TestBase,
+    parameterized.TestCase,
+    checkpoint_test_base.CheckpointTestBase,
+):
+
+  def setUp(self):
+    super().setUp()
+    self._test_dir = os.path.join(
+        tempfile.mkdtemp(dir=self.get_temp_dir()),
+        "distributed_save_test",
+    )
+
+  def tearDown(self):
+    super().tearDown()
+    try:
+      shutil.rmtree(self._test_dir)
+    except FileNotFoundError:
+      pass
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+      )
+  )
+  def testLoadCheckpoint(self, verify_fn):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._test_dir, cluster.dispatcher_address()
+        )
+    )
+    _wait_for_snapshot(self._test_dir)
+
+    def _build_ds():
+      return dataset_ops.Dataset.load(self._test_dir)
+
+    verify_fn(self, _build_ds, num_outputs=10)
+
+
+def _wait_for_snapshot(snapshot_path):
+  while not os.path.exists(os.path.join(snapshot_path, "DONE")):
+    time.sleep(0.1)
+
+
+def _wait_for_error(snapshot_path):
+  while not os.path.exists(os.path.join(snapshot_path, "ERROR")):
+    time.sleep(0.1)
 
 
 if __name__ == "__main__":
