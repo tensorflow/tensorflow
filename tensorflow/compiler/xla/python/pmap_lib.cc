@@ -1067,14 +1067,14 @@ void BuildPmapSubmodule(py::module& m) {
   m.attr("PmapFunction") = cfun_type;
 
   cfun.attr("__signature__") =
-      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
-        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+      property_readonly([](py::handle self) -> py::object {
+        PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return fun->PythonSignature();
       });
   // Required by `post_hook`.
   cfun.attr("_cache_miss") =
-      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
-        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+      property_readonly([](py::handle self) -> py::object {
+        PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return fun->cache_miss();
       });
   cfun.attr("__getstate__") = py::cpp_function(
@@ -1115,14 +1115,14 @@ void BuildPmapSubmodule(py::module& m) {
 
   // This is only for testing/debugging purposes.
   cfun.attr("_cache_size") =
-      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
-        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+      property_readonly([](py::handle self) -> py::object {
+        PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return py::cast<int>(fun->cache_size());
       });
 
   cfun.attr("_debug_cache_keys") = py::cpp_function(
-      [](py::handle self) -> xla::StatusOr<std::string> {
-        TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
+      [](py::handle self) -> std::string {
+        PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return fun->DebugCacheKeys();
       },
       py::is_method(cfun_type));

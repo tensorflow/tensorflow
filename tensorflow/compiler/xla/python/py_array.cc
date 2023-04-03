@@ -864,15 +864,19 @@ Status PyArray::RegisterTypes(py::module& m) {
   type.attr("_npy_value") =
       jax::property(&PyArray::npy_value, &PyArray::set_npy_value);
   type.attr("_committed") = jax::property_readonly(&PyArray::committed);
-  type.attr("unsafe_buffer_pointer") =
-      py::cpp_function([](PyArray self) { return self.UnsafeBufferPointer(); },
-                       py::is_method(type));
+  type.attr("unsafe_buffer_pointer") = py::cpp_function(
+      [](PyArray self) {
+        return xla::ValueOrThrow(self.UnsafeBufferPointer());
+      },
+      py::is_method(type));
   type.attr("__cuda_array_interface__") = jax::property_readonly(
       [](PyArray self) { return self.CudaArrayInterface(); });
-  type.attr("on_device_size_in_bytes") =
-      py::cpp_function(&PyArray::GetOnDeviceSizeInBytes, py::is_method(type));
+  type.attr("on_device_size_in_bytes") = py::cpp_function(
+      xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
+      py::is_method(type));
   type.attr("_single_device_array_to_np_array") = py::cpp_function(
-      &PyArray::SingleDeviceArrayToNumpyArray, py::is_method(type));
+      xla::ValueOrThrowWrapper(&PyArray::SingleDeviceArrayToNumpyArray),
+      py::is_method(type));
   type.attr("_copy_single_device_array_to_host_async") = py::cpp_function(
       [](PyArray& self) {
         xla::ThrowIfError(self.CopySingleDeviceArrayToHostAsync());
@@ -888,7 +892,8 @@ Status PyArray::RegisterTypes(py::module& m) {
       [](PyArray self) { return self.ifrt_array()->client()->platform_name(); },
       py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
-      [](PyArray self) { return self.IsReady(); }, py::is_method(type));
+      [](PyArray self) { return xla::ValueOrThrow(self.IsReady()); },
+      py::is_method(type));
   type.attr("is_deleted") =
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
@@ -903,8 +908,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         for (auto& d : dst_devices) {
           devices.push_back(d.get());
         }
-        return self.CopyToDeviceWithSharding(ifrt::DeviceList(devices),
-                                             std::move(sharding));
+        return xla::ValueOrThrow(self.CopyToDeviceWithSharding(
+            ifrt::DeviceList(devices), std::move(sharding)));
       });
   m.attr("array_result_handler") = py::cpp_function(
       [](py::object aval, py::object sharding, bool committed,

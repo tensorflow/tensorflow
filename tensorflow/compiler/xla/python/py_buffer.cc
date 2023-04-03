@@ -758,22 +758,22 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return SpanToTuple(self.buf()->ifrt_array()->shape().dims());
       });
   type.attr("dtype") =
-      property_readonly([](PyBuffer::object self) -> StatusOr<py::dtype> {
-        TF_ASSIGN_OR_RETURN(
-            auto primitive_type,
-            ifrt::ToPrimitiveType(self.buf()->ifrt_array()->dtype()));
-        return PrimitiveTypeToDtype(primitive_type);
-      });
-  type.attr("size") =
-      property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
-        return self.buf()->size();
-      });
+      property_readonly(xla::ValueOrThrowWrapper(xla::ValueOrThrowWrapper(
+          [](PyBuffer::object self) -> StatusOr<py::dtype> {
+            TF_ASSIGN_OR_RETURN(
+                auto primitive_type,
+                ifrt::ToPrimitiveType(self.buf()->ifrt_array()->dtype()));
+            return PrimitiveTypeToDtype(primitive_type);
+          })));
+  type.attr("size") = property_readonly([](PyBuffer::object self) -> int64_t {
+    return xla::ValueOrThrow(self.buf()->size());
+  });
   type.attr("ndim") = property_readonly(
       [](PyBuffer::object self) -> int { return self.buf()->ndim(); });
-  type.attr("_value") = property_readonly(
-      [](PyBuffer::object self) -> StatusOr<pybind11::object> {
+  type.attr("_value") =
+      property_readonly([](PyBuffer::object self) -> pybind11::object {
         GlobalPyRefManager()->CollectGarbage();
-        return self.buf()->AsNumPyArray(self);
+        return xla::ValueOrThrow(self.buf()->AsNumPyArray(self));
       });
   type.attr("copy_to_device") = py::cpp_function(
       [](PyBuffer::object self, const ClientAndPtr<PjRtDevice>& dst_device) {
@@ -791,32 +791,40 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
 
   type.attr("on_device_size_in_bytes") = py::cpp_function(
-      [](PyBuffer::object self) -> StatusOr<size_t> {
-        return self.buf()->OnDeviceSizeInBytes();
+      [](PyBuffer::object self) -> size_t {
+        return xla::ValueOrThrow(self.buf()->OnDeviceSizeInBytes());
       },
       py::is_method(type));
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->IsReady(); },
+      [](PyBuffer::object self) {
+        return xla::ValueOrThrow(self.buf()->IsReady());
+      },
       py::is_method(type));
   type.attr("is_known_ready") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->IsKnownReady(); },
+      [](PyBuffer::object self) {
+        return xla::ValueOrThrow(self.buf()->IsKnownReady());
+      },
       py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {
-        TF_RETURN_IF_ERROR(self.buf()->BlockHostUntilReady());
-        return std::move(self);
+      [](PyBuffer::object self) -> PyBuffer::object {
+        xla::ThrowIfError(self.buf()->BlockHostUntilReady());
+        return self;
       },
       py::is_method(type));
   type.attr("copy_to_host_async") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->CopyToHostAsync(); },
+      [](PyBuffer::object self) {
+        return xla::ThrowIfError(self.buf()->CopyToHostAsync());
+      },
       py::is_method(type));
   type.attr("xla_shape") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->shape(); },
       py::is_method(type));
   type.attr("xla_dynamic_shape") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->xla_dynamic_shape(); },
+      [](PyBuffer::object self) {
+        return xla::ValueOrThrow(self.buf()->xla_dynamic_shape());
+      },
       py::is_method(type));
   type.attr("client") = property_readonly(
       [](PyBuffer::object self) { return self.buf()->client(); });
@@ -830,10 +838,14 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self) { return self.buf()->is_deleted(); },
       py::is_method(type));
   type.attr("unsafe_buffer_pointer") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->UnsafeBufferPointer(); },
+      [](PyBuffer::object self) {
+        return xla::ValueOrThrow(self.buf()->UnsafeBufferPointer());
+      },
       py::is_method(type));
-  type.attr("__cuda_array_interface__") = property_readonly(
-      [](PyBuffer::object self) { return self.buf()->CudaArrayInterface(); });
+  type.attr("__cuda_array_interface__") =
+      property_readonly([](PyBuffer::object self) {
+        return xla::ValueOrThrow(self.buf()->CudaArrayInterface());
+      });
   type.attr("traceback") = property_readonly(
       [](PyBuffer::object self) { return self.buf()->traceback(); });
   type.attr("clone") = py::cpp_function(
