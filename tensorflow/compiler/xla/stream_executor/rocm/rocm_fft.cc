@@ -185,13 +185,8 @@ tsl::Status ROCMFftPlan::Initialize(
                                    ROCMFftType(type), 1 /* = batch */);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 1d plan:" << ret;
-<<<<<<< HEAD
-            return tsl::Status(absl::StatusCode::kInternal,
-                               "Failed to create rocFFT 1d plan.");
-=======
             return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 1d plan."};
->>>>>>> upstream/master
           }
           return tsl::OkStatus();
         case 2:
@@ -200,13 +195,8 @@ tsl::Status ROCMFftPlan::Initialize(
                                    elem_count_[1], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 2d plan:" << ret;
-<<<<<<< HEAD
-            return tsl::Status(absl::StatusCode::kInternal,
-                               "Failed to create rocFFT 2d plan.");
-=======
             return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 2d plan."};
->>>>>>> upstream/master
           }
           return tsl::OkStatus();
         case 3:
@@ -216,49 +206,29 @@ tsl::Status ROCMFftPlan::Initialize(
                                  elem_count_[2], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 3d plan:" << ret;
-<<<<<<< HEAD
-            return tsl::Status(absl::StatusCode::kInternal,
-                               "Failed to create rocFFT 3d plan.");
-=======
             return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to create rocFFT 3d plan."};
->>>>>>> upstream/master
           }
           return tsl::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-<<<<<<< HEAD
-          return tsl::Status(absl::StatusCode::kInvalidArgument,
-                             "hipfftPlan only takes rank 1, 2, or 3.");
-=======
           return tsl::Status{absl::StatusCode::kInvalidArgument,
                              "hipfftPlan only takes rank 1, 2, or 3."};
->>>>>>> upstream/master
       }
     } else {
       ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT plan:" << ret;
-<<<<<<< HEAD
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to create rocFFT plan.");
-=======
         return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT plan."};
->>>>>>> upstream/master
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for rocFFT plan:" << ret;
-<<<<<<< HEAD
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to set auto allocation for rocFFT plan.");
-=======
         return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to set auto allocation for rocFFT plan."};
->>>>>>> upstream/master
       }
       switch (rank) {
         case 1:
@@ -267,13 +237,8 @@ tsl::Status ROCMFftPlan::Initialize(
                                        &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 1d plan:" << ret;
-<<<<<<< HEAD
-            return tsl::Status(absl::StatusCode::kInternal,
-                               "Failed to make rocFFT 1d plan.");
-=======
             return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 1d plan."};
->>>>>>> upstream/master
           }
           break;
         case 2:
@@ -282,13 +247,8 @@ tsl::Status ROCMFftPlan::Initialize(
                                        &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 2d plan:" << ret;
-<<<<<<< HEAD
-            return tsl::Status(absl::StatusCode::kInternal,
-                               "Failed to make rocFFT 2d plan.");
-=======
             return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 2d plan."};
->>>>>>> upstream/master
           }
           break;
         case 3:
@@ -297,26 +257,16 @@ tsl::Status ROCMFftPlan::Initialize(
                                        ROCMFftType(type), &scratch_size_bytes_);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 3d plan:" << ret;
-<<<<<<< HEAD
-            return tsl::Status(absl::StatusCode::kInternal,
-                               "Failed to make rocFFT 3d plan.");
-=======
             return tsl::Status{absl::StatusCode::kInternal,
                                "Failed to make rocFFT 3d plan."};
->>>>>>> upstream/master
           }
           break;
         default:
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-<<<<<<< HEAD
-          return tsl::Status(absl::StatusCode::kInvalidArgument,
-                             "hipfftPlan only takes rank 1, 2, or 3.");
-=======
           return tsl::Status{absl::StatusCode::kInvalidArgument,
                              "hipfftPlan only takes rank 1, 2, or 3."};
->>>>>>> upstream/master
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
@@ -330,39 +280,23 @@ tsl::Status ROCMFftPlan::Initialize(
           output_distance, ROCMFftType(type), batch_count);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
-<<<<<<< HEAD
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to create rocFFT batched plan.");
-=======
         return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT batched plan."};
->>>>>>> upstream/master
       }
     } else {
       auto ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
-<<<<<<< HEAD
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to create rocFFT batched plan.");
-=======
         return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to create rocFFT batched plan."};
->>>>>>> upstream/master
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for rocFFT batched plan:"
                    << ret;
-<<<<<<< HEAD
-        return tsl::Status(
-            absl::StatusCode::kInternal,
-            "Failed to set auto allocation for rocFFT batched plan.");
-=======
         return tsl::Status{
             absl::StatusCode::kInternal,
             "Failed to set auto allocation for rocFFT batched plan."};
->>>>>>> upstream/master
       }
       ret = wrap::hipfftMakePlanMany(
           parent, plan_, rank, elem_count_,
@@ -372,13 +306,8 @@ tsl::Status ROCMFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to make rocFFT batched plan:" << ret;
-<<<<<<< HEAD
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to make rocFFT batched plan.");
-=======
         return tsl::Status{absl::StatusCode::kInternal,
                            "Failed to make rocFFT batched plan."};
->>>>>>> upstream/master
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }

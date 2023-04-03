@@ -58,53 +58,35 @@ string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version) {
 tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
   std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() != 2 && pieces.size() != 3) {
-<<<<<<< HEAD
-    return tsl::Status(
-                    absl::StatusCode::kInvalidArgument,
-                    absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
-=======
     return tsl::Status{absl::StatusCode::kInvalidArgument,
                        absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
->>>>>>> upstream/master
                                        "for driver version; got \"%s\"",
-                                       value.c_str()));
+                                       value.c_str())};
   }
 
   int major;
   int minor;
   int patch = 0;
   if (!absl::SimpleAtoi(pieces[0], &major)) {
-<<<<<<< HEAD
-    return tsl::Status(
-=======
     return tsl::Status{
->>>>>>> upstream/master
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
-                        pieces[0].c_str(), value.c_str()));
+                        pieces[0].c_str(), value.c_str())};
   }
   if (!absl::SimpleAtoi(pieces[1], &minor)) {
-<<<<<<< HEAD
-    return tsl::Status(
-=======
     return tsl::Status{
->>>>>>> upstream/master
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
-                        pieces[1].c_str(), value.c_str()));
+                        pieces[1].c_str(), value.c_str())};
   }
   if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
-<<<<<<< HEAD
-    return tsl::Status(
-=======
     return tsl::Status{
->>>>>>> upstream/master
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
-                        pieces[2].c_str(), value.c_str()));
+                        pieces[2].c_str(), value.c_str())};
   }
 
   DriverVersion result{major, minor, patch};
@@ -171,15 +153,9 @@ void Diagnostician::LogDiagnosticInformation() {
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
 // driver-interfacing DSO version number. Returns it as a string.
 tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
-<<<<<<< HEAD
-  tsl::StatusOr<DriverVersion> result(tsl::Status(
-      absl::StatusCode::kNotFound,
-      "was unable to find librocm.so DSO loaded into this program"));
-=======
   tsl::StatusOr<DriverVersion> result{tsl::Status{
       absl::StatusCode::kNotFound,
       "was unable to find librocm.so DSO loaded into this program"}};
->>>>>>> upstream/master
 
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
@@ -221,15 +197,11 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   static const char* kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == string::npos) {
-<<<<<<< HEAD
-    return tsl::Status(
-=======
     return tsl::Status{
->>>>>>> upstream/master
         absl::StatusCode::kNotFound,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
-                     driver_version_file_contents, "\""));
+                     driver_version_file_contents, "\"")};
   }
 
   string version_and_rest = driver_version_file_contents.substr(
@@ -258,13 +230,8 @@ void Diagnostician::WarnOnDsoKernelMismatch(
 }
 
 tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
-<<<<<<< HEAD
-  auto status = tsl::Status(absl::StatusCode::kUnimplemented,
-                            "kernel reported driver version not implemented");
-=======
   auto status = tsl::Status{absl::StatusCode::kUnimplemented,
                             "kernel reported driver version not implemented"};
->>>>>>> upstream/master
   return status;
 }
 

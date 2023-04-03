@@ -1170,21 +1170,13 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
-<<<<<<< HEAD
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ] + if_rocm_is_configured([
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/rocm:miopen_plugin"
-    ]) + if_static(
-=======
     ] + if_static(
->>>>>>> upstream/master
         ["//tensorflow/core/platform:tensor_float_32_utils"],
         ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
     ) + if_rocm_is_configured([
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor/rocm:miopen_plugin"
     ]),
 )
 

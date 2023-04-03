@@ -752,13 +752,9 @@ tsl::Status MIOpenSupport::Init() {
     }
   }
 
-<<<<<<< HEAD
-  return tsl::Status(absl::StatusCode::kInternal,
-=======
   return tsl::Status{absl::StatusCode::kInternal,
->>>>>>> upstream/master
                      absl::StrCat("miopen library could not create a handle: ",
-                                  ToString(status)));
+                                  ToString(status))};
 }
 
 tsl::StatusOr<perftools::gputools::dnn::VersionInfo>
@@ -1889,11 +1885,7 @@ class MixinBase<void> {};
 #define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                              \
   if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
     string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
-<<<<<<< HEAD
-    SetFailure(::tsl::Status(absl::StatusCode::kUnknown, error_msg));           \
-=======
     SetFailure(::tsl::Status(absl::StatusCode::kUnknown, error_msg));    \
->>>>>>> upstream/master
     LOG(ERROR) << error_msg;                                             \
     return;                                                              \
   }
@@ -3183,12 +3175,8 @@ class RocmConvRunner : public dnn::ConvRunner {
       // on to this stream. So it could take multiple profiling measurements.
       if (!timer->Start(AsGpuStream(stream))) {
         timer->Destroy();
-<<<<<<< HEAD
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to start timer");
-=======
         return tsl::Status(absl::StatusCode::kInternal,
                            "Failed to start timer");
->>>>>>> upstream/master
       }
     }
 

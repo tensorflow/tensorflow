@@ -770,16 +770,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
     }
     i++;
   }
-
-  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-  bool a_status =
-      gather ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-             : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-  if (!a_status)
-    return tsl::Status(
-        absl::StatusCode::kInternal,
-        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+  fflush(stdout);
   return tsl::OkStatus();
 }
 

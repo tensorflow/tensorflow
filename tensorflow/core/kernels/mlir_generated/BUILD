@@ -476,11 +476,7 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda",  # TODO(b/196608406): re-enable
-<<<<<<< HEAD
-	"no_rocm",  # broken for ROCM @llvm/llvm-project@6a63e21cf4e6
-=======
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
->>>>>>> upstream/master
     ],
     deps = [
         ":base_ops_test",
