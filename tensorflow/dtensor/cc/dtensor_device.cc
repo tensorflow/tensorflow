@@ -501,6 +501,8 @@ class DTensorDevice {
 
   // Dispatchs functions for TensorFlow.
   std::unique_ptr<EagerExecutor> eager_executor_;
+
+  mutable mutex mu_;  // Mutex for dtensor_device->execute
 };
 
 int64_t FingerprintShape(const absl::Span<const int64_t> shape) {
@@ -1765,6 +1767,7 @@ void DTensorDevice::ExecuteRegularOperation(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
     int* num_outputs, TFE_TensorHandle** outputs, TF_Status* status) {
+  mutex_lock lock(mu_);
   ASSIGN_OR_RETURN_C_STATUS(auto eager_attributes, FetchAttributes(attributes),
                             status);
 
@@ -2242,8 +2245,12 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
 
     if (t->const_value_node() != nullptr &&
         !t->const_value_node()->const_value().has_value()) {
-      std::optional<NodeDef> const_value =
-          ExtractSmallTensorValue(context, input, t->layout(), status);
+      std::optional<NodeDef> const_value = std::nullopt;
+      {
+        mutex_lock lock(mu_);
+        const_value =
+            ExtractSmallTensorValue(context, input, t->layout(), status);
+      }
       if (TF_GetCode(status) != TF_OK) return;
       if (const_value.has_value()) {
         t->const_value_node()->set_const_value(const_value.value());

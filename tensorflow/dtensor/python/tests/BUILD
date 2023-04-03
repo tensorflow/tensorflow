@@ -167,6 +167,7 @@ dtensor_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -174,6 +175,7 @@ dtensor_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

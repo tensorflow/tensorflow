@@ -13,11 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DTensorDevice in python."""
+import threading
 from absl.testing import parameterized
-
 import numpy as np
 
 from tensorflow.dtensor.python import api
+
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
@@ -104,6 +105,34 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     with self.assertRaises(errors_impl.UnimplementedError):
       a + big  # pylint:disable=pointless-statement
     a + small  # pylint:disable=pointless-statement
+
+  def test_concurrent_execute(self):
+    results = {}
+
+    def func(thread_id):
+      @polymorphic_function.function
+      def update_variable(initial_value, num_round):
+        y = math_ops.multiply(initial_value, num_round)
+        return math_ops.add(initial_value, y)
+
+      for n in range(10):
+        with api._dtensor_device()._experimental_default_mesh(self.mesh):
+          x = stateless_random_ops.stateless_random_uniform(
+              [10], seed=(1, 2), minval=0, maxval=255
+          )
+          y = api.copy_to_mesh(x, Layout.replicated(self.mesh, rank=1))
+          y = update_variable(y, n + 1)
+          results[thread_id] = y
+
+    threads = {}
+    for a in range(10):
+      t = threading.Thread(target=func, args=(a,))
+      threads[a] = t
+      t.start()
+
+    for thrad_id, thread in threads.items():
+      thread.join()
+      self.assertIsNotNone(results[thrad_id])
 
   def testNoImplicitCopyOnForScalarVariableOnNonCPUMesh(self):
     self.skipForTfrt("b/235088250")
