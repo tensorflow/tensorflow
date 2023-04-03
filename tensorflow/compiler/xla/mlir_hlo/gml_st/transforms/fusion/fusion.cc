@@ -594,11 +594,16 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   // 1. Find operands and results of the cluster op.
   SetVector<Value> clusterOperands;
   SmallVector<Value> clusterResults;
+  SmallVector<Value> constantOps;
   auto visitOpOperand = [&](OpOperand* operand) {
     auto* definingOp = operand->get().getDefiningOp();
 
+    if (auto constantOp = dyn_cast_or_null<arith::ConstantOp>(definingOp)) {
+      constantOps.push_back(constantOp);
+      return;
+    }
+
     if (fusionCluster.operations.contains(definingOp)) return;
-    if (isa_and_nonnull<arith::ConstantOp>(definingOp)) return;
     if (llvm::is_contained(initOperands, operand->get())) return;
 
     clusterOperands.insert(operand->get());
@@ -638,8 +643,15 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
   IRMapping mapper;
   mapper.map(clusterOperands, block->getArguments());
 
-  // 4. Copy ops into the cluster region in topoligical order to avoid swapping
-  // depending ops.
+  // 4. Copy ops into the cluster region.
+  // 4.1. Copy arith.constant ops.
+  for (auto v : constantOps) {
+    auto newOp = cast<arith::ConstantOp>(rewriter.clone(*v.getDefiningOp()));
+    mapper.map(v, newOp);
+  }
+
+  // 4.2. Copy ops into the cluster region in topoligical order to avoid
+  // swapping depending ops.
   SmallVector<Operation*> clusterOps(fusionCluster.operations.begin(),
                                      fusionCluster.operations.end());
 
@@ -648,6 +660,7 @@ FailureOr<gml_st::FusionOp> wrapFusionCluster(
     rewriter.clone(*op, mapper);
   }
 
+  // 4.3 Create terminator gml_st.yield.
   SmallVector<Value> yieldOpOperands = llvm::to_vector(llvm::map_range(
       clusterResults, [&](Value v) { return mapper.lookupOrDefault(v); }));
   auto yieldOp = rewriter.create<gml_st::YieldOp>(loc, yieldOpOperands);
