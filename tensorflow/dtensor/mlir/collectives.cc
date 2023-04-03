@@ -311,11 +311,6 @@ StatusOr<mlir::Value> EmitRelayout(
         "Attempted to relayout to a different global shape.");
   }
 
-  absl::flat_hash_set<std::string> src_sharding_dims;
-  for (int i = 0; i < src_layout.rank(); ++i) {
-    src_sharding_dims.emplace(src_layout.sharding_spec(i));
-  }
-
   mlir::OpBuilder builder(input.getContext());
   TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
 
@@ -327,6 +322,10 @@ StatusOr<mlir::Value> EmitRelayout(
                                      newly_created_ops));
     return all_to_all_result;
   }
+
+  absl::flat_hash_set<std::string> src_sharding_dims;
+  for (int i = 0; i < src_layout.rank(); ++i)
+    src_sharding_dims.emplace(src_layout.sharding_spec(i));
 
   std::vector<ShardingSpec> intermediate_specs_1(src_layout.rank());
   for (int i = 0; i < src_layout.rank(); ++i) {
