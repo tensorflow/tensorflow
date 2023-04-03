@@ -37,8 +37,10 @@ void OptimizationPassRegistry::Register(
 
 Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
-  auto dump_graph = [&](const std::string& func_name, const std::string& tag,
+  auto dump_graph = [&](std::string func_name, const std::string& tag,
                         bool bypass_filter) {
+    if (func_name.empty()) func_name = "unknown_graph";
+
     if (options.graph) {
       DUMP_GRAPH(func_name, tag, options.graph->get(), options.flib_def,
                  bypass_filter);
