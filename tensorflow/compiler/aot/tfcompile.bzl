@@ -395,6 +395,7 @@ def _tf_library(
             ]),
             tags = tags,
             extra_copts = copts,
+            visibility = visibility,
         )
 
     if gen_benchmark:
@@ -441,6 +442,7 @@ def _tf_library(
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),
             tags = tags,
+            visibility = visibility,
         )
 
 def tf_library(
