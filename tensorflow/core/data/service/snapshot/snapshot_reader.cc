@@ -125,12 +125,15 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = false;
-      Status s = reader_->ReadTensors(out_tensors);
-      if (errors::IsOutOfRange(s)) {
+      Status status = reader_->ReadTensors(out_tensors);
+      if (errors::IsOutOfRange(status)) {
         *end_of_sequence = true;
         return OkStatus();
       }
-      return s;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          status,
+          " Failed to read tf.data snapshot file: ", dataset()->chunk_file_);
+      return status;
     }
 
     Status SaveInternal(SerializationContext* ctx,
