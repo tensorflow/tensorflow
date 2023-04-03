@@ -224,7 +224,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
        ++out_dim) {
     if (operand_remaining_size >= out_dim->size) {
       if (operand_remaining_size % out_dim->size) {
-        return Unimplemented("Unsupported bitcast.");
+        return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
       }
       // Output dimension fragment completely fits into the operand one:
       // just copy it as is.
@@ -242,7 +242,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
         // If there is a remaining fragment of a previous operand dimension
         // assign it first.
         if (out_remaining_size % operand_remaining_size) {
-          return Unimplemented("Unsupported bitcast.");
+          return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
         }
         operand_dim_order.push_back(
             {out_dim->target_dim_number, subdim_index, operand_remaining_size});
@@ -260,7 +260,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
           // assign the remainder of the output and carry over the remainder
           // of the operand.
           if (operand_dim_size % out_remaining_size) {
-            return Unimplemented("Unsupported bitcast.");
+            return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
           }
           operand_remaining_size = operand_dim_size / out_remaining_size;
           new_fragment_size = out_remaining_size;
@@ -281,7 +281,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   int subdim_index = operand_dim_order.back().subdim_number + 1;
   while (operand_dim_iter != operand_shape.layout().minor_to_major().cend()) {
     if (operand_shape.dimensions(*operand_dim_iter) != 1) {
-      return Unimplemented("Unsupported bitcast.");
+      return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
     }
     operand_dim_order.push_back(
         {operand_dim_order.back().target_dim_number, subdim_index, 1});
