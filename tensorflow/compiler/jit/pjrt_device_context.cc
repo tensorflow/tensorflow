@@ -129,11 +129,10 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     done(buffer_or.status());
     return;
   }
-  std::unique_ptr<xla::PjRtBuffer> device_buffer = std::move(buffer_or.value());
+  result_tensor->SetBuffer(std::move(*buffer_or));
   // TODO(b/244666476): evaluate the performance impact of marking ready when
   // the data in device buffer is computed.
-  device_buffer->GetReadyFuture().OnReady(std::move(done));
-  result_tensor->SetBuffer(std::move(device_buffer));
+  result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
 }
 
 void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
