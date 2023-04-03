@@ -356,7 +356,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
-            const auto& coord_task = coord_agent->GetOwnTask().value();
+            const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
                 "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
                 absl::StrCat("/job:", coord_task.job_name(),
