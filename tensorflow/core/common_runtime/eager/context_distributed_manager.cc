@@ -723,6 +723,25 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       coordination_service_agent_ = session_mgr->GetCoordinationServiceAgent();
       LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
           coordination_service_agent_));
+      // Start preemption notifier that will propagate preemption signals to the
+      // cluster.
+      preemption_notifier_ = tsl::PreemptionNotifier::CreatePreemptionNotifier(
+          "sigterm", Env::Default());
+      preemption_notifier_->WillBePreemptedAtAsync(
+          [coord_agent = coordination_service_agent_](
+              StatusOr<absl::Time> time_or_status) {
+            if (time_or_status.ok()) {
+              const auto coord_task = coord_agent->GetOwnTask().value();
+              Status s = coord_agent->InsertKeyValue(
+                  "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
+                  absl::StrCat("/job:", coord_task.job_name(),
+                               "/task:", coord_task.task_id()));
+              if (!s.ok()) {
+                LOG(INFO) << "Preemption not exported to coordination service: "
+                          << s;
+              }
+            }
+          });
     }
 
     LOG_AND_RETURN_IF_ERROR(server->Start());
