@@ -912,8 +912,8 @@ Status DoForward<Eigen::bfloat16>(
   functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
   auto allocate_and_cast_to_float = [&](const Tensor* tensor,
                                         Tensor* casted_tensor) {
-    TF_RETURN_IF_ERROR(context, context->allocate_temp(
-                                    DT_FLOAT, tensor->shape(), casted_tensor));
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DT_FLOAT, tensor->shape(), casted_tensor));
     cast(device, casted_tensor->template flat<float>(),
          tensor->template flat<Eigen::bfloat16>());
     return OkStatus();
@@ -921,15 +921,13 @@ Status DoForward<Eigen::bfloat16>(
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input, &casted_input));
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input_h, &casted_input_h));
   TF_RETURN_IF_ERROR(allocate_and_cast_to_float(params, &casted_params));
-  TF_RETURN_IF_ERROR(context, context->allocate_temp(DT_FLOAT, output->shape(),
-                                                     &casted_output));
   TF_RETURN_IF_ERROR(
-      context,
+      context->allocate_temp(DT_FLOAT, output->shape(), &casted_output));
+  TF_RETURN_IF_ERROR(
       context->allocate_temp(DT_FLOAT, output_h->shape(), &casted_output_h));
   if (model_types.HasInputC()) {
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input_c, &casted_input_c));
     TF_RETURN_IF_ERROR(
-        context,
         context->allocate_temp(DT_FLOAT, output_c->shape(), &casted_output_c));
   }
 
@@ -1118,8 +1116,8 @@ Status DoBackward<Eigen::bfloat16>(
   functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
   auto allocate_and_cast_to_float = [&](const Tensor* tensor,
                                         Tensor* casted_tensor) {
-    TF_RETURN_IF_ERROR(context, context->allocate_temp(
-                                    DT_FLOAT, tensor->shape(), casted_tensor));
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(DT_FLOAT, tensor->shape(), casted_tensor));
     cast(device, casted_tensor->template flat<float>(),
          tensor->template flat<Eigen::bfloat16>());
     return OkStatus();
@@ -1133,30 +1131,25 @@ Status DoBackward<Eigen::bfloat16>(
       allocate_and_cast_to_float(output_backprop, &casted_output_backprop));
   TF_RETURN_IF_ERROR(
       allocate_and_cast_to_float(output_h_backprop, &casted_output_h_backprop));
-  TF_RETURN_IF_ERROR(context,
-                     context->allocate_temp(DT_FLOAT, input_backprop->shape(),
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_FLOAT, input_backprop->shape(),
                                             &casted_input_backprop));
-  TF_RETURN_IF_ERROR(context,
-                     context->allocate_temp(DT_FLOAT, input_h_backprop->shape(),
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_FLOAT, input_h_backprop->shape(),
                                             &casted_input_h_backprop));
-  TF_RETURN_IF_ERROR(context,
-                     context->allocate_temp(DT_FLOAT, params_backprop->shape(),
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_FLOAT, params_backprop->shape(),
                                             &casted_params_backprop));
   if (model_types.HasInputC()) {
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(input_c, &casted_input_c));
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_c, &casted_output_c));
     TF_RETURN_IF_ERROR(allocate_and_cast_to_float(output_c_backprop,
                                                   &casted_output_c_backprop));
-    TF_RETURN_IF_ERROR(
-        context, context->allocate_temp(DT_FLOAT, input_c_backprop->shape(),
-                                        &casted_input_c_backprop));
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DT_FLOAT, input_c_backprop->shape(), &casted_input_c_backprop));
   }
   // Reserve space doesn't have to be casted, but the size in bytes needs to
   // match.
   int64_t num_float_elements =
       Eigen::divup(reserve_space->TotalBytes(), sizeof(float));
-  TF_RETURN_IF_ERROR(context,
-                     context->allocate_temp(DT_FLOAT, {num_float_elements},
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_FLOAT, {num_float_elements},
                                             &casted_reserve_space));
 
   TF_RETURN_IF_ERROR(DoBackwardImpl<float>(
