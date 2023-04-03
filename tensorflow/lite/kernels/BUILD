@@ -1041,8 +1041,9 @@ cc_test(
 
 cc_test(
     name = "add_test",
-    size = "small",
+    size = "medium",
     srcs = ["add_test.cc"],
+    shard_count = 10,
     tags = [
         "tflite_nnapi",
         "tflite_xnnpack",

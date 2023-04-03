@@ -49,6 +49,7 @@
     *   Add 8-bit/16-bit/32-bit int/uint support for the built-in op `right_shift`
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
+    *   `add_op` supports broadcasting up to 6 dimensions.
 
 *   `tf.keras`
 
