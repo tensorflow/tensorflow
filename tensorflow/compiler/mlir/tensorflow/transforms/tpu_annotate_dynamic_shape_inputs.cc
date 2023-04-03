@@ -19,8 +19,14 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -63,7 +69,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
     llvm::SmallVector<int, 4> dynamic_shape_arg_index;
 
     // Traverse the operands of the cluster func op and find which operand
-    // is returned by TPUCopyWithDynamicShapeOp.
+    // is returned by TPUAnnotateTensorsWithDynamicShapeOp.
     for (const auto& cluster_func_operand :
          llvm::enumerate(cluster_func_op.getOperands())) {
       auto device_launch_op = llvm::dyn_cast<tf_device::LaunchOp>(
@@ -73,7 +79,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
                device_launch_op.getResults(),
                device_launch_op.GetBody().getTerminator()->getOperands())) {
         if (std::get<0>(result) == cluster_func_operand.value() &&
-            llvm::isa<TF::TPUCopyWithDynamicShapeOp>(
+            llvm::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(
                 std::get<1>(result).getDefiningOp())) {
           dynamic_shape_arg_index.push_back(cluster_func_operand.index());
         }
@@ -109,6 +115,17 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
     func.setType(
         FunctionType::get(func.getContext(), arg_types,
                           func.front().getTerminator()->getOperandTypes()));
+    return WalkResult::advance();
+  });
+
+  // Remove the annotate op after since it is just a placeholder.
+  getOperation().walk([&](Operation* op) {
+    if (llvm::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(op)) {
+      for (auto result : llvm::zip(op->getOperands(), op->getResults())) {
+        std::get<1>(result).replaceAllUsesWith(std::get<0>(result));
+      }
+      op->erase();
+    }
     return WalkResult::advance();
   });
 }
