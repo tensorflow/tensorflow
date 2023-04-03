@@ -235,11 +235,6 @@ tf_py_test(
     size = "medium",
     srcs = ["distributed_save_ft_test.py"],
     shard_count = 17,
-    # TODO(b/250921378): Fix sanitizers.
-    tags = [
-        "noasan",
-        "nomsan",
-    ],
     deps = [
         ":test_base",
         "//tensorflow/python:platform_test",

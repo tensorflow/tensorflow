@@ -195,15 +195,18 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testWorkersRetainStreamAssignmentsAfterDispatcherRestart(self):
+  def testStreamsReassignedAfterDispatcherRestart(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=10000)
-    assignments = get_stream_assignments(cluster, n)
-    cluster.restart_dispatcher()
-    while len(cluster.snapshot_streams(self._path)) != n:
+    get_streams = lambda: cluster.snapshot_streams(self._path)
+    while len(get_streams()) != n:
       time.sleep(0.1)
-    for i in range(n):
-      self.assertEqual(get_stream_assignment(cluster, i), assignments[i])
+    cluster.restart_dispatcher()
+    streams = get_streams()
+    while len(streams) != n:
+      time.sleep(0.1)
+      streams = get_streams()
+    self.assertCountEqual([stream.index for stream in streams], range(n))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testOrphanGetsReassigned(self):
@@ -214,8 +217,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     while cluster.snapshot_streams(self._path)[assignments[0]].state != _ORPHAN:
       time.sleep(0.1)
     cluster.add_worker(start=True)
+    get_stream_assignment(cluster, n)
     self.assertCountEqual(
-        [get_stream_assignment(cluster, i) for i in range(1, n + 1)],
+        [stream.index for stream in cluster.snapshot_streams(self._path)],
         range(n),
     )
 
