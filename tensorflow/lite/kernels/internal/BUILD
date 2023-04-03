@@ -1289,6 +1289,16 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "runtime_shape_test",
+    srcs = ["runtime_shape_test.cc"],
+    deps = [
+        ":types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 filegroup(
     name = "optimized_op_headers",
     srcs = glob([
