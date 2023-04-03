@@ -90,6 +90,7 @@ export TF_GPU_STREAM_GROUP_COUNT=3
 export TF_GPU_STREAM_MERGE=true
 export TF_GPU_CONTEXT_COUNT=3
 export TF_PER_STREAM_HOST_ALLOCATOR=true
+export TF_SEGMENT_OWN_CONST=true
 export TF_GPU_THREAD_MODE=gpu_private
 export TF_GPU_THREAD_COUNT=1
 
@@ -107,6 +108,8 @@ echo quit | nvidia-cuda-mps-control
 Set `TF_GPU_CONTEXT_COUNT=N` to create the N stream groups in N CUDA contexts to reduce contention for the context lock. Enabling MPS by `nvidia-cuda-mps-control -d` is needed if multi-context is used.
 
 Set `TF_PER_STREAM_HOST_ALLOCATOR=true` to create an exclusive GPU host allocator for every stream group. Caution: This may cause undefined behavior when multiple GPUs are used for one model.
+
+Set `TF_SEGMENT_OWN_CONST=true` to let the Op Segment in the device hold the Constant Op. This is helpful to save memory when the multi-stream is opened. Otherwise, the constant buffers would have to be copied multiple times. However, with multiple CUDA contexts on, this may cause cross-context memory copying, introducing more stream synchronization overhead.
 
 If you set `use_xla` to 1, XLA JIT will be used for model compilation. This is useful for models with a lot of small kernels. (Doesn't work for our demo model because it's too small.)
 

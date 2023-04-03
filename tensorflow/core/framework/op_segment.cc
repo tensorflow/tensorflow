@@ -22,8 +22,20 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+bool OpSegOwnConstOp() {
+  static const bool should_own_const_op = [] {
+    bool should_own_const_op;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_SEGMENT_OWN_CONST",
+                                   /*default_val=*/false,
+                                   &should_own_const_op));
+    return should_own_const_op;
+  }();
+  return should_own_const_op;
+}
 
 OpSegment::Item::~Item() {
   for (const auto& kv : name_kernel) delete kv.second;
@@ -104,7 +116,8 @@ bool OpSegment::ShouldOwnKernel(FunctionLibraryRuntime* lib,
                                 const string& node_op) {
   // OpSegment should not own kernel if the node is stateless, or a function, or
   // it's not a Const Op.
-  return (lib->IsStateful(node_op) || node_op == "Const") &&
+  return (lib->IsStateful(node_op) ||
+          (node_op == "Const" && OpSegOwnConstOp())) &&
          lib->GetFunctionLibraryDefinition()->Find(node_op) == nullptr &&
          node_op != "PartitionedCall" && node_op != "StatefulPartitionedCall";
 }
