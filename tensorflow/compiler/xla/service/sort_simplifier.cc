@@ -145,9 +145,7 @@ StatusOr<bool> SortSimplifier::Run(
   std::vector<HloInstruction*> sort_instrs;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(sort_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kSort;
-                    });
+                    HloPredicateIsOp<HloOpcode::kSort>);
   }
 
   for (HloInstruction* sort_instr : sort_instrs) {

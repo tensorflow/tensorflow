@@ -1945,9 +1945,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testAddFunctionCallback(self):
     functions = []
 
-    def function_callback(f, name, graph, inputs, outputs):
-      del name, graph, inputs, outputs
+    def function_callback(f):
       functions.append(f)
+      return f
 
     @polymorphic_function.function
     def plus_one(x):
@@ -1972,13 +1972,21 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testFunctionCallbackAddOps(self):
     file_name = os.path.join(self.get_temp_dir(), 'test')
 
-    def function_callback(f, name, graph, inputs, outputs):
-      del f, name, inputs
-
-      with graph.as_default():
+    def function_callback(f):
+      with f.graph.as_default():
         printer = logging_ops.print_v2(
-            'hello', output_stream='file://' + file_name)
-        outputs[0].op._add_control_input(printer)
+            'hello', output_stream='file://' + file_name
+        )
+        f._graph_artifacts.outputs[0].op._add_control_input(printer)
+
+        return atomic_function.from_func_graph_no_transforms(
+            f.name,
+            f.graph,
+            f._graph_artifacts.inputs,
+            f._graph_artifacts.outputs,
+            f._graph_artifacts.attrs,
+            overwrite=True,
+        )
 
     @polymorphic_function.function
     def plus_one(x):
@@ -1996,15 +2004,15 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testRemoveFunctionCallback(self):
     functions_1 = []
 
-    def function_callback_1(f, name, graph, inputs, outputs):
-      del name, graph, inputs, outputs
+    def function_callback_1(f):
       functions_1.append(f)
+      return f
 
     functions_2 = []
 
-    def function_callback_2(f, name, graph, inputs, outputs):
-      del name, graph, inputs, outputs
+    def function_callback_2(f):
       functions_2.append(f)
+      return f
 
     @polymorphic_function.function
     def plus_one(x):
@@ -2028,9 +2036,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testClearFunctionCallbacks(self):
     quarantine.add_function_callback(lambda f: None)
     quarantine.add_function_callback(lambda f: None)
-    self.assertLen(atomic_function.function_callbacks, 2)
+    self.assertLen(atomic_function.FUNCTION_TRANSFORMS, 2)
     quarantine.clear_function_callbacks()
-    self.assertEmpty(atomic_function.function_callbacks)
+    self.assertEmpty(atomic_function.FUNCTION_TRANSFORMS)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNoneGradient(self):

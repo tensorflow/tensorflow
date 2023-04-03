@@ -106,6 +106,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",

@@ -53,12 +53,9 @@ using ::tfrt::AsyncValue;
 using ::tfrt::BEFFile;
 using ::tfrt::ExecutionContext;
 using ::tfrt::Function;
-using ::tfrt::HostContext;
 using ::tfrt::MakeAvailableAsyncValueRef;
 using ::tfrt::RCReference;
-using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::ResourceContext;
 
 using ::tensorflow::Env;
 using ::tensorflow::thread::ThreadPool;

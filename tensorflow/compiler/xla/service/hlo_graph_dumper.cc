@@ -891,7 +891,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     std::string constant_name;
     if (absl::StartsWith(constant->name(), "constant")) {
-      constant_name = constant->name();
+      constant_name = std::string(constant->name());
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
@@ -928,7 +928,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
                       operand->operand(0)->name(),
                       ShapeUtil::HumanStringWithLayout(operand->shape()));
       } else {
-        operand_str = operand->name();
+        operand_str = std::string(operand->name());
       }
     }
 

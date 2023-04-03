@@ -485,7 +485,7 @@ def _maybe_get_dtype(x):
   # value (not just dtype) of np.ndarray to decide the result type.
   if isinstance(x, numbers.Real):
     return x
-  if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
+  if isinstance(x, indexed_slices.IndexedSlices) or tensor_util.is_tf_type(x):
     return _to_numpy_type(x.dtype)
   if isinstance(x, dtypes.DType):
     return x.as_numpy_dtype

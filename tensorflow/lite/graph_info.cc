@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 
 #include <algorithm>
-#include <set>
 #include <vector>
 
 #include "tensorflow/lite/context_util.h"
@@ -26,17 +25,8 @@ namespace {
 
 template <class T>
 void Uniquefy(std::vector<T>* items) {
-  std::set<T> seen;
-  size_t size = 0;
-  for (size_t i = 0; i < items->size(); ++i) {
-    const T& item = (*items)[i];
-    if (seen.find(item) == seen.end()) {
-      seen.insert(item);
-      (*items)[size] = item;
-      ++size;
-    }
-  }
-  items->resize(size);
+  std::sort(items->begin(), items->end());
+  items->erase(std::unique(items->begin(), items->end()), items->end());
 }
 
 // Helper class that actually performs partitioning by node sub set.

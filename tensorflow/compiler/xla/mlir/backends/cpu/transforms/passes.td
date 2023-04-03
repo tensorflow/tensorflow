@@ -120,7 +120,8 @@ def SparseCustomCallRewritingPass :
   }];
 
   let dependentDialects = [
-      "mlir::sparse_tensor::SparseTensorDialect"
+      "mlir::sparse_tensor::SparseTensorDialect",
+      "mlir::chlo::ChloDialect",
   ];
 
   let constructor = "createSparseCustomCallRewritingPass()";

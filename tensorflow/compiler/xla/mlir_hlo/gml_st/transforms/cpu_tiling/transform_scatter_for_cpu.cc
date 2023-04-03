@@ -44,11 +44,6 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(scatterOp, kTransformedLabel)) return failure();
 
-    if (isa<scf::ForOp>(scatterOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          scatterOp, "has already been tiled by another pass.");
-    }
-
     // Tile everything to points and fuse.
     scf::SCFTilingOptions opts;
     opts.setTileSizeComputationFunction([](OpBuilder &b, Operation *op) {
@@ -103,10 +98,6 @@ struct TransformScatterForCpuPass
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    // Ensure we drop the marker in the end.
-    f.walk([](thlo::ScatterOp scatterOp) {
-      removeLabel(scatterOp, kTransformedLabel);
-    });
   }
 };
 

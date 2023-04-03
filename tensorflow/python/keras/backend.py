@@ -74,6 +74,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -1185,7 +1186,7 @@ def _initialize_variables(session):
     # This step is expensive, so we only run it on variables not already
     # marked as initialized.
     is_initialized = session.run(
-        [variables_module.is_variable_initialized(v) for v in candidate_vars])
+        [variable_v1.is_variable_initialized(v) for v in candidate_vars])
     # TODO(kathywu): Some metric variables loaded from SavedModel are never
     # actually used, and do not have an initializer.
     should_be_initialized = [

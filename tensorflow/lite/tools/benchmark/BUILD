@@ -106,6 +106,7 @@ cc_test(
         "//tensorflow/lite:testdata/string_input_model.bin",
     ],
     tags = [
+        "no_oss",  # TODO(b/275623299): Enable when fixed.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],

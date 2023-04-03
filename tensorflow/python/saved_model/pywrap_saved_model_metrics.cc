@@ -109,7 +109,7 @@ void DefineMetricsModule(py::module main_module) {
         FingerprintDef fingerprint_def;
         fingerprint_def.ParseFromString(std::string(fingerprint));
         metrics::SavedModelReadFingerprint().Set(
-            metrics::MakeFingerprintJson(fingerprint_def));
+            metrics::MakeFingerprintJson(fingerprint_def).c_str());
       },
       py::kw_only(), py::arg("fingerprint"),
       py::doc("Set the '/tensorflow/core/saved_model/read/fingerprint' gauge "
@@ -127,7 +127,7 @@ void DefineMetricsModule(py::module main_module) {
         FingerprintDef fingerprint_def;
         fingerprint_def.ParseFromString(std::string(fingerprint));
         metrics::SavedModelWriteFingerprint().Set(
-            metrics::MakeFingerprintJson(fingerprint_def));
+            metrics::MakeFingerprintJson(fingerprint_def).c_str());
       },
       py::kw_only(), py::arg("fingerprint"),
       py::doc("Set the '/tensorflow/core/saved_model/write/fingerprint' gauge "

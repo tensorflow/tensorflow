@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/peeling/peeling.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
@@ -72,7 +70,7 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
   const int64_t operandRank =
       operands[0]->get().getType().cast<RankedTensorType>().getRank();
   if (operandRank != expectedRank) {
-    return rewriter.notifyMatchFailure(reduceOp, [&](::mlir::Diagnostic &diag) {
+    return rewriter.notifyMatchFailure(reduceOp, [&](Diagnostic &diag) {
       diag << "expects rank " << expectedRank << ". " << operandRank
            << "received.";
     });
@@ -83,23 +81,18 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
 struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
   using OpRewritePattern<linalg::ReduceOp>::OpRewritePattern;
 
-  explicit Reduce1DTransformPattern(MLIRContext *context, int64_t vectorSize,
-                                    int64_t tileSize,
+  explicit Reduce1DTransformPattern(MLIRContext *context, int64_t tileSize,
+                                    int64_t splitRatio,
                                     PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::ReduceOp>(context, benefit),
-        vectorSize(vectorSize),
-        tileSize(tileSize) {}
+        tileSize(tileSize),
+        splitRatio(splitRatio) {}
 
   LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(reduceOp, kTransformedLabel)) {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
-    }
-
-    if (isa<scf::ForallOp, scf::ForOp>(reduceOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          reduceOp, "has already been tiled by another pass.");
     }
 
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
@@ -129,11 +122,11 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     Value remainderSize =
         getRemainderSize(rewriter, loc, tileableBound, inputSize);
 
-    // Create tensor<VECTOR_SIZExELEM_TYPE> with neutral elements for tile loop
+    // Create tensor<SPLIT_RATIOxELEM_TYPE> with neutral elements for tile loop
     // init.
     Type elementType = neutralValue.getType();
     Value emptyVector = rewriter.create<tensor::EmptyOp>(
-        loc, llvm::ArrayRef({vectorSize}), elementType);
+        loc, llvm::ArrayRef({splitRatio}), elementType);
     Value filledVector =
         rewriter.create<linalg::FillOp>(loc, neutralValue, emptyVector)
             .getResult(0);
@@ -141,15 +134,15 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     auto tiledLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
                                     ValueRange inits) {
       // Tile input as tensor<TILE_SIZExELEM_TYPE> and reshape into
-      // tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE>.
+      // tensor<(TILE_SIZE/SPLIT_RATIO)xSPLIT_RATIOxELEM_TYPE>.
       Value inputSlice = tileAndReshapeInput(b, loc, iv, input, elementType);
 
       tensor::ExtractSliceOp initSlice = create1DSlice(
-          b, loc, inits.front(), b.getIndexAttr(0), b.getIndexAttr(vectorSize));
+          b, loc, inits.front(), b.getIndexAttr(0), b.getIndexAttr(splitRatio));
 
       // Create `linalg.reduce` to combine
-      // `tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE> input with the
-      // `tensor<VECTOR_SIZExELEM_TYPE>` accumulator.
+      // `tensor<(TILE_SIZE/SPLIT_RATIO)xSPLIT_RATIOxELEM_TYPE> input with the
+      // `tensor<SPLIT_RATIOxELEM_TYPE>` accumulator.
       auto tiledReduceOp = b.create<linalg::ReduceOp>(
           loc, ValueRange{inputSlice}, ValueRange{initSlice},
           /*dimensions=*/SmallVector<int64_t>{0},
@@ -168,7 +161,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                     filledVector, tiledLoopBodyBuilder);
     setLabel(tiledLoop, kPerfectlyTiledLoopLabel);
 
-    // Create `linalg.reduce` from tensor<VECTOR_SIZExELEM_TYPE> to
+    // Create `linalg.reduce` from tensor<SPLIT_RATIOxELEM_TYPE> to
     // tensor<ELEM_TYPE>.
     auto horizontalReduce =
         cloneReduceOp(rewriter, reduceOp, tiledLoop.getResult(0),
@@ -251,13 +244,13 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         create1DSlice(b, loc, input, iv, b.getIndexAttr(tileSize));
 
     auto reshapeType =
-        RankedTensorType::get({tileSize / vectorSize, vectorSize}, elementType);
+        RankedTensorType::get({tileSize / splitRatio, splitRatio}, elementType);
     SmallVector<ReassociationIndices> ri = {{0, 1}};
     return b.create<tensor::ExpandShapeOp>(loc, reshapeType, inputSlice, ri);
   }
 
-  int64_t vectorSize;
   int64_t tileSize;
+  int64_t splitRatio;
 };
 
 /// Pattern to tile `linalg.reduce` and fuse `linalg.fill` into generated
@@ -417,19 +410,10 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
 struct TransformReduceForCpuPass
     : public impl::TransformReduceForCpuPassBase<TransformReduceForCpuPass> {
-  TransformReduceForCpuPass() = default;
-
-  explicit TransformReduceForCpuPass(int64_t reduceVectorSize = 8,
-                                     int64_t reduceTileSize1D = 32,
-                                     ArrayRef<int64_t> reduceTileSizes2D = {}) {
-    vectorSize = reduceVectorSize;
-    tileSize1D = reduceTileSize1D;
-    tileSizes2D = reduceTileSizes2D;
-  }
+  using Base::Base;
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    linalg::LinalgDialect, scf::SCFDialect,
+    registry.insert<arith::ArithDialect, linalg::LinalgDialect, scf::SCFDialect,
                     tensor::TensorDialect>();
     linalg::registerTilingInterfaceExternalModels(registry);
   }
@@ -438,33 +422,20 @@ struct TransformReduceForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    if (tileSizes2D.empty()) {
-      tileSizes2D = {4, 2};
-    }
-
-    assert(tileSizes2D.size() == 2 &&
-           "Tiling sizes for Reduce should have 2 element.");
-
     RewritePatternSet patterns(ctx);
-    patterns.add<Reduce1DTransformPattern>(ctx, vectorSize, tileSize1D);
-    patterns.add<Reduce2DTransformPattern>(ctx, tileSizes2D[0], tileSizes2D[1]);
+    patterns.add<Reduce1DTransformPattern>(ctx, tileSize1D, splitRatio1D);
+    patterns.add<Reduce2DTransformPattern>(ctx, parallelDimTileSize2D,
+                                           reductionDimTileSize2D);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-
-    // Ensure we drop the marker in the end.
-    f.walk([](linalg::ReduceOp reduceOp) {
-      removeLabel(reduceOp, kTransformedLabel);
-    });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformReduceForCpuPass(int64_t vectorSize, int64_t tileSize1D,
-                                ArrayRef<int64_t> tileSizes2D) {
-  return std::make_unique<mlir::gml_st::TransformReduceForCpuPass>(
-      vectorSize, tileSize1D, tileSizes2D);
+std::unique_ptr<Pass> createTransformReduceForCpuPass(
+    const TransformReduceForCpuPassOptions &opts) {
+  return std::make_unique<TransformReduceForCpuPass>(opts);
 }
 
 }  // namespace mlir::gml_st

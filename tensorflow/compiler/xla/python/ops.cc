@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 

@@ -441,6 +441,13 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklMaxPoolingOp<CPUDevice, qint8, true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_QuantizedMaxPool3D").Device(DEVICE_CPU).TypeConstraint<quint8>("T"),
+    MklMaxPoolingOp<CPUDevice, quint8, true>);
+REGISTER_KERNEL_BUILDER(
+    Name("_QuantizedMaxPool3D").Device(DEVICE_CPU).TypeConstraint<qint8>("T"),
+    MklMaxPoolingOp<CPUDevice, qint8, true>);
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

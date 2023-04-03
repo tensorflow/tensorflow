@@ -845,11 +845,11 @@ cc_library(
            }) + [
         ":custom_registry",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 

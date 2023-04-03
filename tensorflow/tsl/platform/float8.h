@@ -40,34 +40,48 @@ class float8_e5m2;
 
 template <typename Derived>
 class float8_base {
- protected:
-  // Constructor tag to allow constexpr construction from bit representation.
-  struct ConstructFromRepTag {};
-
-  constexpr float8_base() : rep_(0) {}
-  constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
-
  public:
+  constexpr float8_base() : rep_(0) {}
+
+  template <typename T,
+            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
+  explicit EIGEN_DEVICE_FUNC float8_base(T f)
+      : float8_base(ConvertFrom(static_cast<float>(f)).rep(),
+                    ConstructFromRepTag{}) {}
+  explicit EIGEN_DEVICE_FUNC float8_base(double f64)
+      : float8_base(ConvertFrom(f64).rep(), ConstructFromRepTag{}) {}
+  explicit EIGEN_DEVICE_FUNC float8_base(float f32)
+      : float8_base(ConvertFrom(f32).rep(), ConstructFromRepTag{}) {}
+  explicit EIGEN_DEVICE_FUNC float8_base(Eigen::bfloat16 bf16)
+      : float8_base(ConvertFrom(bf16).rep(), ConstructFromRepTag{}) {}
+  explicit EIGEN_DEVICE_FUNC float8_base(Eigen::half f16)
+      : float8_base(ConvertFrom(f16).rep(), ConstructFromRepTag{}) {}
+
   constexpr uint8_t rep() const { return rep_; }
+
+  template <typename T,
+            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
+  explicit EIGEN_DEVICE_FUNC operator T() const {
+    return static_cast<T>(static_cast<float>(derived()));
+  }
+  explicit EIGEN_DEVICE_FUNC operator double() const {
+    return ConvertTo<double>(derived());
+  }
+  explicit EIGEN_DEVICE_FUNC operator float() const {
+    return ConvertTo<float>(derived());
+  }
+  explicit EIGEN_DEVICE_FUNC operator Eigen::bfloat16() const {
+    return ConvertTo<Eigen::bfloat16>(derived());
+  }
+  explicit EIGEN_DEVICE_FUNC operator Eigen::half() const {
+    return ConvertTo<Eigen::half>(derived());
+  }
+  explicit EIGEN_DEVICE_FUNC operator bool() const {
+    return (rep() & 0x7F) != 0;
+  }
 
   constexpr Derived operator-() const {
     return Derived(static_cast<uint8_t>(rep() ^ 0x80), ConstructFromRepTag{});
-  }
-
-  constexpr bool operator==(const Derived& other) const {
-    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
-      return false;
-    }
-    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
-    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
-    if (lhs_mag == 0 && rhs_mag == 0) {
-      return true;
-    }
-    return rep() == other.rep();
-  }
-
-  constexpr bool operator!=(const Derived& other) const {
-    return !(derived() == other);
   }
 
   constexpr const Derived& derived() const {
@@ -108,60 +122,33 @@ class float8_base {
     return Derived{float{derived()} / float{other}};
   }
 
+  constexpr bool operator==(const Derived& other) const {
+    return Compare(derived(), other) == Ordering::kEquivalent;
+  }
+
+  constexpr bool operator!=(const Derived& other) const {
+    return Compare(derived(), other) != Ordering::kEquivalent;
+  }
+
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator<(
       const Derived& other) const {
-    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
-      return false;
-    }
-    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
-    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
-    if (lhs_mag == 0 && rhs_mag == 0) {
-      return false;
-    }
-    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) <
-           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
+    return Compare(derived(), other) == Ordering::kLess;
   }
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator<=(
       const Derived& other) const {
-    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
-      return false;
-    }
-    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
-    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
-    if (lhs_mag == 0 && rhs_mag == 0) {
-      return true;
-    }
-    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) <=
-           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
+    return Compare(derived(), other) <= Ordering::kEquivalent;
   }
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>(
       const Derived& other) const {
-    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
-      return false;
-    }
-    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
-    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
-    if (lhs_mag == 0 && rhs_mag == 0) {
-      return false;
-    }
-    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) >
-           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
+    return Compare(derived(), other) == Ordering::kGreater;
   }
 
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>=(
       const Derived& other) const {
-    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
-      return false;
-    }
-    auto [lhs_sign, lhs_mag] = SignAndMagnitude(derived());
-    auto [rhs_sign, rhs_mag] = SignAndMagnitude(other);
-    if (lhs_mag == 0 && rhs_mag == 0) {
-      return true;
-    }
-    return SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag) >=
-           SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
+    Ordering ordering = Compare(derived(), other);
+    return ordering == Ordering::kGreater || ordering == Ordering::kEquivalent;
   }
 
   // Compound assignment.
@@ -190,6 +177,11 @@ class float8_base {
   }
 
  private:
+  // Constructor tag to allow constexpr construction from bit representation.
+  struct ConstructFromRepTag {};
+
+  constexpr float8_base(uint8_t rep, ConstructFromRepTag) : rep_{rep} {}
+
   static EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC std::pair<uint8_t, uint8_t>
   SignAndMagnitude(Derived x) {
     const uint8_t x_abs_bits =
@@ -202,9 +194,71 @@ class float8_base {
   SignAndMagnitudeToTwosComplement(uint8_t sign, uint8_t magnitude) {
     return magnitude ^ (static_cast<int8_t>(sign) < 0 ? -1 : 0);
   }
+
+  enum Ordering : int8_t {
+    kLess = -1,
+    kEquivalent = 0,
+    kGreater = 1,
+    kUnordered = 2,
+  };
+
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC friend Ordering Compare(
+      const Derived& lhs, const Derived& rhs) {
+    if (Eigen::numext::isnan(lhs) || Eigen::numext::isnan(rhs)) {
+      return Ordering::kUnordered;
+    }
+    auto [lhs_sign, lhs_mag] = SignAndMagnitude(lhs);
+    auto [rhs_sign, rhs_mag] = SignAndMagnitude(rhs);
+    if (lhs_mag == 0 && rhs_mag == 0) {
+      return Ordering::kEquivalent;
+    }
+    int8_t lhs_twos_complement =
+        SignAndMagnitudeToTwosComplement(lhs_sign, lhs_mag);
+    int8_t rhs_twos_complement =
+        SignAndMagnitudeToTwosComplement(rhs_sign, rhs_mag);
+    if (lhs_twos_complement < rhs_twos_complement) {
+      return Ordering::kLess;
+    }
+    if (lhs_twos_complement > rhs_twos_complement) {
+      return Ordering::kGreater;
+    }
+    return Ordering::kEquivalent;
+  }
+
   uint8_t rep_;
 };
 
+template <typename Derived, typename T>
+using EnableIsFloat8Subtype =
+    std::enable_if_t<std::is_base_of_v<float8_base<Derived>, Derived>, T>;
+
+}  // namespace float8_internal
+}  // namespace tsl
+
+// Eigen-specific overrides.
+namespace Eigen {
+namespace numext {
+
+// NOLINTBEGIN: bit_cast expects to take its parameter by reference.
+template <typename Tgt>
+constexpr tsl::float8_internal::EnableIsFloat8Subtype<Tgt, Tgt> bit_cast(
+    const uint8_t& src) {
+  return Tgt::FromRep(src);
+}
+// NOLINTEND
+
+template <typename Float8>
+constexpr uint8_t bit_cast(
+    const tsl::float8_internal::float8_base<Float8>& src) {
+  return src.rep();
+}
+
+}  // namespace numext
+}  // namespace Eigen
+
+namespace tsl {
+
+namespace float8_internal {
 class float8_e4m3fn : public float8_base<float8_e4m3fn> {
   // Exponent: 4, Mantissa: 3, bias: 7.
   // Extended range: no inf, NaN represented by 0bS111'1111.
@@ -215,50 +269,13 @@ class float8_e4m3fn : public float8_base<float8_e4m3fn> {
  private:
   using Base = float8_base<float8_e4m3fn>;
   friend class float8_base<float8_e4m3fn>;
-
-  constexpr float8_e4m3fn(uint8_t rep, ConstructFromRepTag)
-      : Base(rep, ConstructFromRepTag{}) {}
+  using Base::Base;
 
  public:
-  constexpr float8_e4m3fn() = default;
-
-  template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
-  explicit EIGEN_DEVICE_FUNC float8_e4m3fn(T f)
-      : float8_e4m3fn(ConvertFrom(static_cast<float>(f))) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3fn(double f64)
-      : float8_e4m3fn(ConvertFrom(f64)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3fn(float f32)
-      : float8_e4m3fn(ConvertFrom(f32)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3fn(Eigen::bfloat16 bf16)
-      : float8_e4m3fn(ConvertFrom(bf16)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3fn(Eigen::half f16)
-      : float8_e4m3fn(ConvertFrom(f16)) {}
   explicit EIGEN_DEVICE_FUNC float8_e4m3fn(const float8_e5m2& f8)
       : float8_e4m3fn(ConvertFrom(f8)) {}
   explicit EIGEN_DEVICE_FUNC float8_e4m3fn(const float8_e4m3b11& f8)
       : float8_e4m3fn(ConvertFrom(f8)) {}
-
-  template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
-  explicit EIGEN_DEVICE_FUNC operator T() const {
-    return static_cast<T>(static_cast<float>(*this));
-  }
-  explicit EIGEN_DEVICE_FUNC operator double() const {
-    return ConvertTo<double>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator float() const {
-    return ConvertTo<float>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator Eigen::bfloat16() const {
-    return ConvertTo<Eigen::bfloat16>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator Eigen::half() const {
-    return ConvertTo<Eigen::half>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator bool() const {
-    return (rep() & 0x7F) != 0;
-  }
 };
 
 class float8_e4m3b11 : public float8_base<float8_e4m3b11> {
@@ -267,25 +284,9 @@ class float8_e4m3b11 : public float8_base<float8_e4m3b11> {
  private:
   using Base = float8_base<float8_e4m3b11>;
   friend class float8_base<float8_e4m3b11>;
-
-  constexpr float8_e4m3b11(uint8_t rep, ConstructFromRepTag)
-      : Base(rep, ConstructFromRepTag{}) {}
+  using Base::Base;
 
  public:
-  constexpr float8_e4m3b11() = default;
-
-  template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
-  explicit EIGEN_DEVICE_FUNC float8_e4m3b11(T f)
-      : float8_e4m3b11(ConvertFrom(static_cast<float>(f))) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3b11(double f64)
-      : float8_e4m3b11(ConvertFrom(f64)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3b11(float f32)
-      : float8_e4m3b11(ConvertFrom(f32)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3b11(Eigen::bfloat16 bf16)
-      : float8_e4m3b11(ConvertFrom(bf16)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e4m3b11(Eigen::half f16)
-      : float8_e4m3b11(ConvertFrom(f16)) {}
   explicit EIGEN_DEVICE_FUNC float8_e4m3b11(const float8_e5m2& f8)
       : float8_e4m3b11(ConvertFrom(f8)) {}
   explicit EIGEN_DEVICE_FUNC float8_e4m3b11(const float8_e4m3fn& f8)
@@ -293,7 +294,7 @@ class float8_e4m3b11 : public float8_base<float8_e4m3b11> {
 
   constexpr float8_e4m3b11 operator-() const {
     if ((rep() & 0x7f) == 0x00) {
-      return float8_e4m3b11(rep(), ConstructFromRepTag{});
+      return *this;
     }
     return Base::operator-();
   }
@@ -302,23 +303,6 @@ class float8_e4m3b11 : public float8_base<float8_e4m3b11> {
     return Base::operator-(other);
   }
 
-  template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
-  explicit EIGEN_DEVICE_FUNC operator T() const {
-    return static_cast<T>(static_cast<float>(*this));
-  }
-  explicit EIGEN_DEVICE_FUNC operator double() const {
-    return ConvertTo<double>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator float() const {
-    return ConvertTo<float>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator Eigen::bfloat16() const {
-    return ConvertTo<Eigen::bfloat16>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator Eigen::half() const {
-    return ConvertTo<Eigen::half>(*this);
-  }
   explicit EIGEN_DEVICE_FUNC operator bool() const { return rep() != 0; }
 };
 
@@ -328,51 +312,75 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
  private:
   using Base = float8_base<float8_e5m2>;
   friend class float8_base<float8_e5m2>;
-
-  constexpr float8_e5m2(uint8_t rep, ConstructFromRepTag)
-      : Base(rep, ConstructFromRepTag{}) {}
+  using Base::Base;
 
  public:
-  constexpr float8_e5m2() = default;
-
-  template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
-  explicit EIGEN_DEVICE_FUNC float8_e5m2(T f)
-      : float8_e5m2(ConvertFrom(static_cast<float>(f))) {}
-  explicit EIGEN_DEVICE_FUNC float8_e5m2(double f64)
-      : float8_e5m2(ConvertFrom(f64)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e5m2(float f32)
-      : float8_e5m2(ConvertFrom(f32)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e5m2(Eigen::bfloat16 bf16)
-      : float8_e5m2(ConvertFrom(bf16)) {}
-  explicit EIGEN_DEVICE_FUNC float8_e5m2(Eigen::half f16)
-      : float8_e5m2(ConvertFrom(f16)) {}
   explicit EIGEN_DEVICE_FUNC float8_e5m2(float8_e4m3fn f8)
       : float8_e5m2(ConvertFrom(f8)) {}
   explicit EIGEN_DEVICE_FUNC float8_e5m2(float8_e4m3b11 f8)
       : float8_e5m2(ConvertFrom(f8)) {}
-
-  template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
-  explicit EIGEN_DEVICE_FUNC operator T() const {
-    return static_cast<T>(static_cast<float>(*this));
-  }
-  explicit EIGEN_DEVICE_FUNC operator double() const {
-    return ConvertTo<double>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator float() const {
-    return ConvertTo<float>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator Eigen::bfloat16() const {
-    return ConvertTo<Eigen::bfloat16>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator Eigen::half() const {
-    return ConvertTo<Eigen::half>(*this);
-  }
-  explicit EIGEN_DEVICE_FUNC operator bool() const {
-    return (rep() & 0x7F) != 0;
-  }
 };
+
+constexpr double ConstexprAbs(double x) { return x < 0.0 ? -x : x; }
+
+constexpr double ConstexprCeil(double x) {
+  constexpr double kIntegerThreshold =
+      uint64_t{1} << (std::numeric_limits<double>::digits - 1);
+  // Too big or NaN inputs get returned unchanged.
+  if (!(ConstexprAbs(x) < kIntegerThreshold)) {
+    return x;
+  }
+  const double x_trunc = static_cast<double>(static_cast<int64_t>(x));
+  return x_trunc < x ? x_trunc + 1.0 : x_trunc;
+}
+
+constexpr double ConstexprFloor(double x) { return -ConstexprCeil(-x); }
+
+constexpr double kLog10Of2 = 0.3010299956639812;
+// C17 5.2.4.2.2p11:
+// "number of decimal digits, q, such that any floating-point number with q
+// decimal digits can be rounded into a floating-point number with p radix b
+// digits and back again without change to the q decimal digits"
+// floor((p - 1) * log10(2));
+constexpr int Digits10FromDigits(int digits) {
+  return static_cast<int>(ConstexprFloor((digits - 1) * kLog10Of2));
+}
+
+// C17 5.2.4.2.2p11:
+// "number of decimal digits, n, such that any floating-point number with p
+// radix b digits can be rounded to a floating-point number with n decimal
+// digits and back again without change to the value"
+// ceil(1 + p * log10(2));
+constexpr int MaxDigits10FromDigits(int digits) {
+  return static_cast<int>(ConstexprCeil(1.0 + (digits * kLog10Of2)));
+}
+
+// C17 5.2.4.2.2p11:
+// "minimum negative integer such that 10 raised to that power is in the range
+// of normalized floating-point numbers"
+// ceil(log10(2**(emin - 1))) == ceil((emin - 1) * log10(2));
+constexpr int MinExponent10FromMinExponent(int min_exponent) {
+  return static_cast<int>(ConstexprCeil((min_exponent - 1) * kLog10Of2));
+}
+
+// C17 5.2.4.2.2p11:
+// "maximum integer such that 10 raised to that power is in the range of
+// representable finite floating-point numbers"
+// floor(log10((1 - 2**-p) * 2**emax)) == floor(log10(1 - 2**-p) +
+// emax * log10(2))
+constexpr int MaxExponent10FromMaxExponentAndDigits(int max_exponent,
+                                                    int digits) {
+  // We only support digits in {3,4}. This table would grow if we wanted to
+  // handle more values.
+  constexpr double kLog10OfOnePredecessor[] = {
+      // log10(1 - 2**-3)
+      -0.057991946977686754,
+      // log10(1 - 2**-4)
+      -0.028028723600243537,
+  };
+  return static_cast<int>(ConstexprFloor(kLog10OfOnePredecessor[digits - 3] +
+                                         max_exponent * kLog10Of2));
+}
 
 // Structures for use in specializing std::numeric_limits.
 struct numeric_limits_float8_base {
@@ -393,12 +401,6 @@ struct numeric_limits_float8_base {
   static inline constexpr const bool traps = std::numeric_limits<float>::traps;
   static inline constexpr const bool tinyness_before =
       std::numeric_limits<float>::tinyness_before;
-  // NOLINTEND
-};
-
-template <typename Derived>
-struct numeric_limits_float8 {
-  // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 0;
   static inline constexpr const int digits10 = 0;
   static inline constexpr const int max_digits10 = 0;
@@ -412,9 +414,7 @@ struct numeric_limits_float8 {
   // NOLINTEND
 };
 
-template <>
-struct numeric_limits_float8<float8_e4m3fn>
-    : public numeric_limits_float8_base {
+struct numeric_limits_float8_e4m3fn : public numeric_limits_float8_base {
  private:
   static inline constexpr const int kExponentBias = 7;
   static inline constexpr const int kMantissaBits = 3;
@@ -422,13 +422,16 @@ struct numeric_limits_float8<float8_e4m3fn>
  public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 4;
-  static inline constexpr const int digits10 = 0;      // floor(3 * log10(2));
-  static inline constexpr const int max_digits10 = 3;  // ceil(4 * log10(2) + 1)
+  static inline constexpr const int digits10 = Digits10FromDigits(digits);
+  static inline constexpr const int max_digits10 =
+      MaxDigits10FromDigits(digits);
   static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
-  static inline constexpr const int min_exponent10 = -1;
+  static inline constexpr const int min_exponent10 =
+      MinExponent10FromMinExponent(min_exponent);
   static inline constexpr const int max_exponent =
       (0b1111 - 7) + 1;  // Extended format.
-  static inline constexpr const int max_exponent10 = 2;
+  static inline constexpr const int max_exponent10 =
+      MaxExponent10FromMaxExponentAndDigits(max_exponent, digits);
   static inline constexpr const bool is_iec559 = false;
   static inline constexpr const bool has_infinity = false;
   static inline constexpr const bool has_signaling_NaN = false;
@@ -471,9 +474,7 @@ struct numeric_limits_float8<float8_e4m3fn>
   }
 };
 
-template <>
-struct numeric_limits_float8<float8_e4m3b11>
-    : public numeric_limits_float8_base {
+struct numeric_limits_float8_e4m3b11 : public numeric_limits_float8_base {
  private:
   static inline constexpr const int kExponentBias = 11;
   static inline constexpr const int kMantissaBits = 3;
@@ -481,13 +482,16 @@ struct numeric_limits_float8<float8_e4m3b11>
  public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 4;
-  static inline constexpr const int digits10 = 0;      // floor(3 * log10(2));
-  static inline constexpr const int max_digits10 = 3;  // ceil(4 * log10(2) + 1)
+  static inline constexpr const int digits10 = Digits10FromDigits(digits);
+  static inline constexpr const int max_digits10 =
+      MaxDigits10FromDigits(digits);
   static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
-  static inline constexpr const int min_exponent10 = -2;
+  static inline constexpr const int min_exponent10 =
+      MinExponent10FromMinExponent(min_exponent);
   static inline constexpr const int max_exponent =
       (0b1111 - kExponentBias) + 1;  // Extended format.
-  static inline constexpr const int max_exponent10 = 1;
+  static inline constexpr const int max_exponent10 =
+      MaxExponent10FromMaxExponentAndDigits(max_exponent, digits);
   static inline constexpr const bool is_iec559 = false;
   static inline constexpr const bool has_infinity = false;
   static inline constexpr const bool has_signaling_NaN = false;
@@ -530,8 +534,7 @@ struct numeric_limits_float8<float8_e4m3b11>
   }
 };
 
-template <>
-struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
+struct numeric_limits_float8_e5m2 : public numeric_limits_float8_base {
  private:
   static inline constexpr const int kExponentBias = 15;
   static inline constexpr const int kMantissaBits = 2;
@@ -539,12 +542,15 @@ struct numeric_limits_float8<float8_e5m2> : public numeric_limits_float8_base {
  public:
   // NOLINTBEGIN: these names must match std::numeric_limits.
   static inline constexpr const int digits = 3;
-  static inline constexpr const int digits10 = 0;      // floor(2 * log10(2))
-  static inline constexpr const int max_digits10 = 2;  // ceil(3 * log10(2) + 1)
+  static inline constexpr const int digits10 = Digits10FromDigits(digits);
+  static inline constexpr const int max_digits10 =
+      MaxDigits10FromDigits(digits);
   static inline constexpr const int min_exponent = (1 - kExponentBias) + 1;
-  static inline constexpr const int min_exponent10 = -4;
+  static inline constexpr const int min_exponent10 =
+      MinExponent10FromMinExponent(min_exponent);
   static inline constexpr const int max_exponent = 0b11111 - kExponentBias;
-  static inline constexpr const int max_exponent10 = 4;
+  static inline constexpr const int max_exponent10 =
+      MaxExponent10FromMaxExponentAndDigits(max_exponent, digits);
   static inline constexpr const bool is_iec559 = true;
   static inline constexpr const bool has_infinity = true;
   static inline constexpr const bool has_signaling_NaN = true;
@@ -599,18 +605,15 @@ namespace std {
 // Standard-library overrides.  Note that these are picked up by Eigen as well.
 template <>
 struct numeric_limits<tsl::float8_internal::float8_e4m3fn>
-    : public tsl::float8_internal::numeric_limits_float8<
-          tsl::float8_internal::float8_e4m3fn> {};
+    : public tsl::float8_internal::numeric_limits_float8_e4m3fn {};
 
 template <>
 struct numeric_limits<tsl::float8_internal::float8_e4m3b11>
-    : public tsl::float8_internal::numeric_limits_float8<
-          tsl::float8_internal::float8_e4m3b11> {};
+    : public tsl::float8_internal::numeric_limits_float8_e4m3b11 {};
 
 template <>
 struct numeric_limits<tsl::float8_internal::float8_e5m2>
-    : public tsl::float8_internal::numeric_limits_float8<
-          tsl::float8_internal::float8_e5m2> {};
+    : public tsl::float8_internal::numeric_limits_float8_e5m2 {};
 }  // namespace std
 
 namespace tsl {
@@ -621,7 +624,7 @@ constexpr inline float8_e4m3fn abs(const float8_e4m3fn& a) {
   return float8_e4m3fn::FromRep(a.rep() & 0b0'1111'111);
 }
 
-constexpr inline bool isnan(const float8_e4m3fn& a) {
+constexpr inline bool(isnan)(const float8_e4m3fn& a) {
   return abs(a).rep() == std::numeric_limits<float8_e4m3fn>::quiet_NaN().rep();
 }
 
@@ -631,7 +634,7 @@ constexpr inline float8_e4m3b11 abs(const float8_e4m3b11& a) {
              : float8_e4m3b11::FromRep(a.rep() & 0b0'1111'111);
 }
 
-constexpr inline bool isnan(const float8_e4m3b11& a) {
+constexpr inline bool(isnan)(const float8_e4m3b11& a) {
   return a.rep() == std::numeric_limits<float8_e4m3b11>::quiet_NaN().rep();
 }
 
@@ -639,23 +642,88 @@ constexpr inline float8_e5m2 abs(const float8_e5m2& a) {
   return float8_e5m2::FromRep(a.rep() & 0b0'11111'11);
 }
 
-constexpr inline bool isnan(const float8_e5m2& a) {
+constexpr inline bool(isnan)(const float8_e5m2& a) {
   return abs(a).rep() > std::numeric_limits<float8_e5m2>::infinity().rep();
 }
 
-template <typename T>
-constexpr inline std::enable_if_t<std::is_base_of_v<float8_base<T>, T>, bool>
-isinf(const T& a) {
-  return std::numeric_limits<T>::has_infinity
-             ? abs(a).rep() == std::numeric_limits<T>::infinity().rep()
+template <typename Float8>
+constexpr inline bool(isinf)(const float8_base<Float8>& a) {
+  return std::numeric_limits<Float8>::has_infinity
+             ? abs(a.derived()).rep() ==
+                   std::numeric_limits<Float8>::infinity().rep()
              : false;  // No inf representation.
 }
 
-template <typename T>
-constexpr inline std::enable_if_t<std::is_base_of_v<float8_base<T>, T>, bool>
-isfinite(const T& a) {
-  return !isnan(a) && !isinf(a);
+template <typename Float8>
+constexpr inline bool(isfinite)(const float8_base<Float8>& a) {
+  return !isnan(a.derived()) && !isinf(a.derived());
 }
+
+}  // namespace float8_internal
+}  // namespace tsl
+
+namespace Eigen {
+namespace numext {
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isinf)(
+    const tsl::float8_internal::float8_e4m3fn& x) {
+  return (tsl::float8_internal::isinf)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isinf)(
+    const tsl::float8_internal::float8_e4m3b11& x) {
+  return (tsl::float8_internal::isinf)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isinf)(
+    const tsl::float8_internal::float8_e5m2& x) {
+  return (tsl::float8_internal::isinf)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isnan)(
+    const tsl::float8_internal::float8_e4m3fn& x) {
+  return (tsl::float8_internal::isnan)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isnan)(
+    const tsl::float8_internal::float8_e4m3b11& x) {
+  return (tsl::float8_internal::isnan)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isnan)(
+    const tsl::float8_internal::float8_e5m2& x) {
+  return (tsl::float8_internal::isnan)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isfinite)(
+    const tsl::float8_internal::float8_e4m3fn& x) {
+  return (tsl::float8_internal::isfinite)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isfinite)(
+    const tsl::float8_internal::float8_e4m3b11& x) {
+  return (tsl::float8_internal::isfinite)(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool(isfinite)(
+    const tsl::float8_internal::float8_e5m2& x) {
+  return (tsl::float8_internal::isfinite)(x);
+}
+
+}  // namespace numext
+}  // namespace Eigen
+
+namespace tsl {
+namespace float8_internal {
 
 template <typename Float8>
 std::ostream& operator<<(std::ostream& os, const float8_base<Float8>& f8) {
@@ -708,13 +776,11 @@ struct TraitsBase {
   static constexpr BitsType kExponentMask = ((BitsType{1} << kExponentBits) - 1)
                                             << kMantissaBits;
   static constexpr BitsType kMantissaMask = (BitsType{1} << kMantissaBits) - 1;
+  static constexpr int kExponentBias = (1 << (kExponentBits - 1)) - 1;
 };
 
 template <typename Float>
-struct Traits : public TraitsBase<Float> {
-  using Base = TraitsBase<Float>;
-  static constexpr int kExponentBias = (1 << (Base::kExponentBits - 1)) - 1;
-};
+struct Traits : public TraitsBase<Float> {};
 
 template <>
 struct Traits<float8_e4m3b11> : public TraitsBase<float8_e4m3b11> {
@@ -967,94 +1033,5 @@ using float8_e4m3b11 = float8_internal::float8_e4m3b11;
 using float8_e5m2 = float8_internal::float8_e5m2;
 
 }  // namespace tsl
-
-// Eigen-specific overrides.
-namespace Eigen {
-namespace numext {
-
-template <>
-EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC tsl::float8_e4m3fn
-bit_cast<tsl::float8_e4m3fn, uint8_t>(const uint8_t& src) {
-  return tsl::float8_e4m3fn::FromRep(src);
-}
-
-template <>
-EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint8_t
-bit_cast<uint8_t, tsl::float8_e4m3fn>(const tsl::float8_e4m3fn& src) {
-  return src.rep();
-}
-
-template <>
-EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC tsl::float8_e5m2
-bit_cast<tsl::float8_e5m2, uint8_t>(const uint8_t& src) {
-  return tsl::float8_e5m2::FromRep(src);
-}
-
-template <>
-EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC uint8_t
-bit_cast<uint8_t, tsl::float8_e5m2>(const tsl::float8_e5m2& src) {
-  return src.rep();
-}
-
-}  // namespace numext
-
-// Work-around for isinf/isnan/isfinite issue on aarch64.
-namespace internal {
-template <>
-EIGEN_DEVICE_FUNC inline bool isinf_impl<tsl::float8_e4m3fn>(
-    const tsl::float8_e4m3fn& x) {
-  return tsl::float8_internal::isinf(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isinf_impl<tsl::float8_e4m3b11>(
-    const tsl::float8_e4m3b11& x) {
-  return tsl::float8_internal::isinf(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isinf_impl<tsl::float8_e5m2>(
-    const tsl::float8_e5m2& x) {
-  return tsl::float8_internal::isinf(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isnan_impl<tsl::float8_e4m3fn>(
-    const tsl::float8_e4m3fn& x) {
-  return tsl::float8_internal::isnan(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isnan_impl<tsl::float8_e4m3b11>(
-    const tsl::float8_e4m3b11& x) {
-  return tsl::float8_internal::isnan(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isnan_impl<tsl::float8_e5m2>(
-    const tsl::float8_e5m2& x) {
-  return tsl::float8_internal::isnan(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isfinite_impl<tsl::float8_e4m3fn>(
-    const tsl::float8_e4m3fn& x) {
-  return tsl::float8_internal::isfinite(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isfinite_impl<tsl::float8_e4m3b11>(
-    const tsl::float8_e4m3b11& x) {
-  return tsl::float8_internal::isfinite(x);
-}
-
-template <>
-EIGEN_DEVICE_FUNC inline bool isfinite_impl<tsl::float8_e5m2>(
-    const tsl::float8_e5m2& x) {
-  return tsl::float8_internal::isfinite(x);
-}
-
-}  // namespace internal
-}  // namespace Eigen
 
 #endif  // TENSORFLOW_TSL_PLATFORM_FLOAT8_H_

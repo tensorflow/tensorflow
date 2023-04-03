@@ -438,7 +438,7 @@ class LSTMBlockCellOp : public OpKernel {
     OP_REQUIRES(
         ctx, wcf_tensor->dims() == 1,
         errors::InvalidArgument("wcf_tensor must be rank 1 but is rank ",
-                                wci_tensor->dims(), "."));
+                                wcf_tensor->dims(), "."));
     OP_REQUIRES(
         ctx, wco_tensor->dims() == 1,
         errors::InvalidArgument("wco_tensor must be rank 1 but is rank ",

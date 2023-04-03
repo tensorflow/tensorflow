@@ -593,7 +593,11 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
                                    AsGpuEvent(event)->gpu_event())) {
     return tsl::OkStatus();
   } else {
+<<<<<<< HEAD
     return tsl::Status(
+=======
+    return tsl::Status{
+>>>>>>> upstream/master
         absl::StatusCode::kInternal,
         absl::StrFormat("error recording waiting for ROCM event on stream %p",
                         stream));

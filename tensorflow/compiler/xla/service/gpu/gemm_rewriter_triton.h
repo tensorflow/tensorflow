@@ -22,9 +22,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
+
+// Apply split K configuration from the tiling to the fused dot() computation:
+// bitcast the operands, change the output shape and the dot dimensions.
+Status MakeDotComputationSplitKBatch(
+    HloComputation* computation,
+    const tensorflow::AutotuneResult::TritonGemmKey& tiling);
+
+// Apply split K configuration from the tiling to the fusion instruction:
+// in addition to MakeDotComputationSplitKBatch on its computation add the
+// necessary reduction after it.
+Status MakeDotSplitKBatch(
+    HloInstruction* dot_fusion,
+    const tensorflow::AutotuneResult::TritonGemmKey& tiling);
 
 // Filters GEMMs which are better to handle using Triton.
 bool IsTritonHandledGEMM(const HloInstruction&,
@@ -45,7 +59,9 @@ class DotFusionAnalysis {
   using IterationSpec = std::vector<IterationSpecFragment>;
 
   // Execute analysis of fusion rooted with the instruction.
-  explicit DotFusionAnalysis(const HloInstruction*);
+  // split_k indicates whether this operation was converted to the split-K
+  // form and tells the analysis how to interpret the batch dimensions.
+  explicit DotFusionAnalysis(const HloInstruction* root, int64_t split_k = 1);
 
   // Description of iteration of given dimension of given operand of `root`.
   const IterationSpec& IterSpec(const int operand_number,

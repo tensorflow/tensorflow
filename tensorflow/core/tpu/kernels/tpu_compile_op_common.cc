@@ -180,7 +180,7 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
   Status status = CompileLocallyAndFillHostCacheInternal(
       flib_runtime, session_metadata, mesh_state, dynamic_shapes,
       guaranteed_constants, key, tpu_program_group);
-  OkOrSetErrorCounterPayload(
+  tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
   return status;
 }

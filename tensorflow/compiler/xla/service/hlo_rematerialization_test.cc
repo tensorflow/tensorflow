@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -1195,6 +1196,79 @@ ENTRY %entry {
   ASSERT_THAT(
       root, op::Tuple(op::Reduce(),
                       op::Fusion(AllOf(op::Fusion(), ::testing::Ne(fusion0)))));
+}
+
+TEST_F(HloRematerializationTest, RematFusionUpdateSchedule) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%custom_call_comp {
+  %p = f32[1024]{0} parameter(0)
+  ROOT %n = f32[1024]{0} negate(p)
+}
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  %c = f32[1024] custom-call(%mul), custom_call_target="SomeCall", called_computations={custom_call_comp}
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %c)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
+  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1
+  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add.2 = f32[1024]{0} add(f32[1024]{0} %mul, f32[1024]{0} %gte.2)
+  ROOT %mul.2 = f32[1024]{0} multiply(f32[1024]{0} %add.2, f32[1024]{0} %gte.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloComputation* computation = module->entry_computation();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* add = computation->root_instruction();
+  const HloInstruction* fusion = add->operand(0)->operand(0);
+  ASSERT_THAT(
+      add,
+      op::Multiply(
+          op::Add(op::Multiply(), op::GetTupleElement(AllOf(
+                                      op::Fusion(), ::testing::Ne(fusion)))),
+          op::GetTupleElement(AllOf(op::Fusion(), ::testing::Ne(fusion)))));
+  // Check that the rematerialized fusion is the same for both ops.
+  const HloInstruction* fusion0 = add->operand(0)->operand(1)->operand(0);
+  const HloInstruction* fusion1 = add->operand(1)->operand(0);
+  auto it = std::find_if(fusion0->fused_instructions().begin(),
+                         fusion0->fused_instructions().end(),
+                         [](const HloInstruction* instr) {
+                           return instr->opcode() == HloOpcode::kCustomCall;
+                         });
+  ASSERT_NE(it, fusion0->fused_instructions().end());
+  auto it2 = std::find_if(fusion1->fused_instructions().begin(),
+                          fusion1->fused_instructions().end(),
+                          [](const HloInstruction* instr) {
+                            return instr->opcode() == HloOpcode::kCustomCall;
+                          });
+  ASSERT_NE(it2, fusion1->fused_instructions().end());
+  EXPECT_TRUE(module->schedule().is_computation_scheduled(
+      (*it)->called_computations()[0]));
+  EXPECT_TRUE(module->schedule().is_computation_scheduled(
+      (*it2)->called_computations()[0]));
 }
 
 }  // namespace

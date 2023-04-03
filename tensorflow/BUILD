@@ -1350,6 +1350,7 @@ tf_cc_shared_library(
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/framework:full_type_util",
         "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/clusters:single_machine",

@@ -2145,6 +2145,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
@@ -2164,6 +2165,7 @@ tf_xla_py_test(
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2249,6 +2251,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/tpu",
     ],
 )
 
@@ -2256,7 +2259,10 @@ tf_xla_py_test(
     name = "where_op_tpu_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    args = ["--tpu_use_tfrt=true"],
+    args = [
+        "--tpu_use_tfrt=true",
+        # TODO(b/274633087): Set tf_use_pjrt=true after fixing bug.
+    ],
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
@@ -2277,6 +2283,7 @@ tf_xla_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/tpu",
     ],
 )
 

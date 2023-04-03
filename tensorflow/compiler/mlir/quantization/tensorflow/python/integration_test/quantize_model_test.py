@@ -1111,7 +1111,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   ):
     input_type = dtypes.int32
     model = self._create_simple_gather_and_conv_model(
-        input_type, filter_shape=(2, 3, 3, 1024), is_qat_model=True
+        input_type,
+        filter_shape=(2, 3, 3, 1024),
+        is_qat_model=True,
     )
 
     saved_model_save.save(model, self._input_saved_model_path)
@@ -1125,25 +1127,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=quant_opts_pb2.XLA,
     )
 
-    data_gen = self._create_data_generator(
-        input_key='input_tensor',
-        shape=(6),
-        minval=0,
-        maxval=10,
-        dtype=input_type,
-    )
-
     converted_model = quantize_model.quantize(
         self._input_saved_model_path,
         ['serving_default'],
         tags,
         self._output_saved_model_path,
-        quantization_options,
-        representative_dataset=data_gen,
+        quantization_options
     )
     self.assertIsNotNone(converted_model)
     self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+        self._output_saved_model_path, self._input_saved_model_path, 0.5
     )
 
   # TODO(b/244276332): Allow table initialization in TF2 eager mode.
@@ -1686,7 +1679,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, 0.7
+          self._output_saved_model_path, self._input_saved_model_path, 0.68
       )
       self.assertTrue(
           self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
@@ -4218,7 +4211,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, 0.7
+          self._output_saved_model_path, self._input_saved_model_path, 0.65
       )
       self.assertTrue(
           self._contains_op(

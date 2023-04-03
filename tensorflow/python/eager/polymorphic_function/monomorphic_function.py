@@ -136,7 +136,7 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
       attributes_lib.BACKWARD_FUNCTION:
       backward_function.name})
   forward_function_attr.update(common_attributes)
-  forward_function = atomic_function.EagerDefinedFunction(
+  forward_function = atomic_function.from_func_graph(
       forward_function_name, forward_graph, forward_graph.inputs,
       forward_graph.outputs, forward_function_attr)
   return forward_function, backward_function
@@ -152,7 +152,7 @@ class _DelayedRewriteGradientFunctions(object):
     # function generation.
     self._cached_function_pairs = {}
     self._func_graph = func_graph
-    self._inference_function = atomic_function.EagerDefinedFunction(
+    self._inference_function = atomic_function.from_func_graph(
         _inference_name(self._func_graph.name), self._func_graph,
         self._func_graph.inputs, self._func_graph.outputs, attrs)
     self._attrs = attrs
@@ -186,7 +186,7 @@ class _DelayedRewriteGradientFunctions(object):
     Returns:
       A pair of (forward_function, backward_function):
         forward_function: A re-generated inference function (an
-          EagerDefinedFunction) to account for new side outputs, if any extra
+          AtomicFunction) to account for new side outputs, if any extra
           were required when building the backward pass.
         backward_function: A ConcreteFunction that Takes `num_doutputs`
           arguments and returns gradients with respect to inputs of the forward
@@ -245,12 +245,17 @@ class _DelayedRewriteGradientFunctions(object):
     # pylint: disable=protected-access
     # Rewrite an inference call op to be a forward call op
     op._set_func_attr("f", forward_function.name)
-    op._set_type_list_attr("Tout", forward_function._output_types)
+    op._set_type_list_attr(
+        "Tout", forward_function._graph_artifacts.output_types
+    )
     op._add_outputs(
-        forward_function._output_types[len(op.outputs):],
-        forward_function._output_shapes[len(op.outputs):])
+        forward_function._graph_artifacts.output_types[len(op.outputs) :],
+        forward_function._graph_artifacts.output_shapes[len(op.outputs) :],
+    )
     for i in range(len(op.outputs)):
-      func_graph_output = forward_function._func_graph_outputs[i]
+      func_graph_output = forward_function._graph_artifacts.func_graph_outputs[
+          i
+      ]
       handle_data_util.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
@@ -307,7 +312,7 @@ class _DelayedRewriteGradientFunctions(object):
         instead.
 
     Returns:
-      An atomic_function.EagerDefinedFunction.
+      An atomic_function.AtomicFunction.
     """
     del inference_args  # unused
     if input_tangents:
@@ -693,7 +698,7 @@ class _TapeGradientFunctions(object):
         `inference_args`.
 
     Returns:
-      A forward atomic_function.EagerDefinedFunction.
+      A forward atomic_function.AtomicFunction.
     """
     if self._forward is None:
       (self._forward, self._forward_graph, self._backward,
@@ -1624,7 +1629,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     Returns:
       An object with a `forward` method returning a tuple of (forward_function :
-      EagerDefinedFunction, augmented_arguments : List), and a corresponding
+      AtomicFunction, augmented_arguments : List), and a corresponding
       `record` method which takes outputs from the forward function and records
       the operation. forward_function should be called with augmented_arguments.
     """

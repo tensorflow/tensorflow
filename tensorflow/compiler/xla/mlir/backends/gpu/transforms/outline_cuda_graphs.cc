@@ -53,11 +53,19 @@ using mlir::gpu::LaunchFuncOp;
 
 class OutlineCudaGraphsPass
     : public impl::OutlineCudaGraphsPassBase<OutlineCudaGraphsPass> {
+ public:
+  OutlineCudaGraphsPass() = default;
+  explicit OutlineCudaGraphsPass(int cuda_graph_level)
+      : cuda_graph_level_(cuda_graph_level) {}
+
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<func::FuncDialect, runtime::RuntimeDialect>();
   }
+
+ private:
+  int cuda_graph_level_ = 3;
 };
 
 //===----------------------------------------------------------------------===//
@@ -147,7 +155,7 @@ struct GemmOpCapture : public OpCapturePattern {
   }
 };
 
-struct MemrefOpCapture : public OpCapturePattern {
+struct MemcpyOpCapture : public OpCapturePattern {
   FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
     if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
       // We use a heuristic to identify the direction of the memcpy operation,
@@ -404,16 +412,24 @@ void OutlineCudaGraphsPass::runOnOperation() {
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
   OpCapturePatternSet patterns;
-  patterns.emplace_back(new LaunchFuncOpCapture());
-  patterns.emplace_back(new ConvForwardOpCapture());
-  patterns.emplace_back(new ConvBackwardInputOpCapture());
-  patterns.emplace_back(new ConvBackwardFilterOpCapture());
-  patterns.emplace_back(new ConvForwardFusedOpCapture());
-  patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
-  patterns.emplace_back(new ConstantOpCapture());
-  patterns.emplace_back(new GemmOpCapture());
-  patterns.emplace_back(new ViewOpCapture());
-  patterns.emplace_back(new MemrefOpCapture());
+
+  if (cuda_graph_level_ >= 1) {
+    // Enable capturing fusions and memcpies.
+    patterns.emplace_back(new LaunchFuncOpCapture());
+    patterns.emplace_back(new ConstantOpCapture());
+    patterns.emplace_back(new ViewOpCapture());
+    patterns.emplace_back(new MemcpyOpCapture());
+  }
+
+  if (cuda_graph_level_ >= 2) {
+    // Enable capturing conv/gemms.
+    patterns.emplace_back(new ConvForwardOpCapture());
+    patterns.emplace_back(new ConvBackwardInputOpCapture());
+    patterns.emplace_back(new ConvBackwardFilterOpCapture());
+    patterns.emplace_back(new ConvForwardFusedOpCapture());
+    patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
+    patterns.emplace_back(new GemmOpCapture());
+  }
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
@@ -424,6 +440,11 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass() {
   return std::make_unique<OutlineCudaGraphsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass(
+    int cuda_graph_level) {
+  return std::make_unique<OutlineCudaGraphsPass>(cuda_graph_level);
 }
 
 }  // namespace gpu

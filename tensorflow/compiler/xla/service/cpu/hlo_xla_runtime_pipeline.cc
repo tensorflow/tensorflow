@@ -57,7 +57,8 @@ namespace {
 
 using mlir::func::FuncOp;
 
-mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
+mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
+    bool new_deallocator) {
   using mlir::bufferization::BufferizationOptions;
   using mlir::bufferization::LayoutMapOption;
   using mlir::bufferization::OneShotBufferizationOptions;
@@ -66,6 +67,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
   options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
+  options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
@@ -75,7 +77,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   return options;
 }
 
-void AddSparsificationPasses(mlir::OpPassManager& pm) {
+void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
@@ -83,14 +85,19 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::createPreSparsificationRewritePass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
-      GetBufferizationOptions(), mlir::SparsificationOptions(),
-      mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
+      GetBufferizationOptions(new_deallocator), mlir::SparsificationOptions(),
+      mlir::SparseTensorConversionOptions(), /*createSparseDeallocs=*/false,
+      /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
       /*enableSIMDIndex32*/ false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
+}
+
+void AddSparsificationPassPipeline(mlir::OpPassManager& pm) {
+  AddSparsificationPasses(pm, false);
 }
 
 }  // namespace
@@ -120,6 +127,14 @@ static Status CreateHloXlaPipeline(
   // Some early sparse rewriting rules.
   if (options.sparse_bufferization) {
     pm.addNestedPass<FuncOp>(createSparseCustomCallRewritingPass());
+    // We wrap some CHLO unary operations with custom calls to preserve the
+    // sparsity information for those operations during the roundtrip. We now
+    // invoke the needed passes to lower such CHLO operations to HLO after we
+    // rewrite the custom calls back to such CHLO unary operations.
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createSparseRewritingPass());
   }
@@ -168,6 +183,7 @@ static Status CreateHloXlaPipeline(
   if (options.enable_tiling_and_fusion) {
     mlir::gml_st::GmlStCPUTilingOptions opts =
         mlir::gml_st::getDefaultCPUPipelineOptions(options.cpu_name);
+    opts.matmulTileSizes = options.matmul_tile_sizes;
     if (options.enable_fusion_outlining) {
       opts.enableFusionClusters = true;
       opts.enableFusionClusterOutlining = true;
@@ -201,16 +217,16 @@ static Status CreateHloXlaPipeline(
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
 
+  if (options.experimental_deallocation) {
+    // Experimental deallocation needs input IR without any buffer reuse to
+    // work optimally. This pass ensures that's the case.
+    pm.addNestedPass<FuncOp>(mlir::deallocation::createSplitAllocTensorsPass());
+  }
+
   if (options.sparse_bufferization) {
     // Convert Sparse tensors.
-    AddSparsificationPasses(pm);
+    AddSparsificationPasses(pm, options.experimental_deallocation);
   } else {
-    if (options.experimental_deallocation) {
-      // Experimental deallocation needs input IR without any buffer reuse to
-      // work optimally. This pass ensures that's the case.
-      pm.addNestedPass<FuncOp>(
-          mlir::deallocation::createSplitAllocTensorsPass());
-    }
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
   pm.addNestedPass<mlir::func::FuncOp>(createRewriteReallocToAllocPass());
@@ -236,15 +252,16 @@ static Status CreateHloXlaPipeline(
   }
 
   if (options.experimental_deallocation) {
-    CHECK(!options.sparse_bufferization)
-        << "Sparse bufferization and experimental deallocation are mutually "
-           "exclusive.";
     pm.addNestedPass<FuncOp>(
         mlir::deallocation::createXlaBufferArgRewritePass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocatePass());
-    pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createDeallocationSimplificationPass());
+    // Remove SCF iter args that became redundant after simplification.
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferReusePass());
-    pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(
+        mlir::deallocation::createDeallocationSimplificationPass());
     pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocationToScfPass());
   } else {
     pm.addNestedPass<FuncOp>(
@@ -273,8 +290,6 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeI1VectorTransferOpsPass());
   pm.addNestedPass<FuncOp>(
       xla::cpu::createConvertXlaCpuMemRefElementCastToLLVMPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::deallocation::createConvertDeallocationOpsToLLVM());
   return OkStatus();
 }
 
@@ -317,7 +332,7 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
 static mlir::PassPipelineRegistration<> sparsification_pipeline(
     "hlo-xla-runtime-sparsification",
     "Sparsification passes from HLO-XLA Runtime pipeline",
-    AddSparsificationPasses);
+    AddSparsificationPassPipeline);
 
 }  // namespace cpu
 }  // namespace xla

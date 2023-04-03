@@ -36,7 +36,7 @@ const absl::string_view kCheckpointCallbackManagerResourceName =
 
 namespace {
 
-const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*$";
+const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*";
 const absl::string_view kCheckpointTempDirRegex = "-[0-9]*_temp$";
 const absl::string_view kCheckpointDirRegex = "-[0-9]*$";
 const absl::string_view kCheckpointTempDirSuffix = "_temp";

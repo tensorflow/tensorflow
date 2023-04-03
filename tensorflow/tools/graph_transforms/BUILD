@@ -336,8 +336,8 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:_pywrap_transform_graph",
+        "//tensorflow/python/util:compat",
     ],
 )
 

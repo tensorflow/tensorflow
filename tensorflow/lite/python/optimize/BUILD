@@ -59,7 +59,7 @@ py_library(
         "//tensorflow/lite/python:convert_phase",
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
 )

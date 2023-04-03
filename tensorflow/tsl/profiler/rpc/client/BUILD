@@ -1,4 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
@@ -13,9 +14,9 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -24,11 +25,11 @@ cc_library(
     srcs = ["capture_profile.cc"],
     hdrs = ["capture_profile.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-    ],
+    ]),
     deps = [
         ":profiler_client_for_pybind",
         ":remote_profiler_session_manager",
@@ -53,11 +54,11 @@ cc_library(
     srcs = ["save_profile.cc"],
     hdrs = ["save_profile.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/tsl/profiler:internal",
         "//tensorflow/tsl/profiler/rpc:__pkg__",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/lib/io:zlib_compression_options",
         "//tensorflow/tsl/lib/io:zlib_outputbuffer",
@@ -77,20 +78,20 @@ cc_library(
 tf_profiler_pybind_cc_library_wrapper(
     name = "profiler_client_for_pybind",
     actual = ":profiler_client",
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-    ],
+    ]),
     deps = [
         ":profiler_client_impl",
         "//tensorflow/tsl/platform:status",
@@ -109,11 +110,11 @@ cc_library(
         "profiler_client.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-    ],
+    ]),
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -137,12 +138,12 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "//tensorflow/tsl/profiler/lib:profiler_session",
-        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
     ] + tf_protos_profiler_service(),
 )
 
@@ -154,8 +155,8 @@ tsl_cc_test(
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
         "@com_google_absl//absl/time",
-        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -204,9 +205,9 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory_impl",
         "//tensorflow/tsl/profiler/lib:profiler_session_impl",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/profiler/utils:time_utils_impl",

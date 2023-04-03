@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "json/json.h"
+#include "json/reader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -129,6 +131,32 @@ TEST(MetricsTest, TestReadPathAndSingleprint) {
       ParseSavedModelPathAndSingleprint("path/model:name:singleprint");
   EXPECT_EQ(path, "path/model:name");
   EXPECT_EQ(singleprint, "singleprint");
+}
+
+TEST(MetricsTest, TestMakeFingerprintJson) {
+  FingerprintDef fingerprint;
+  fingerprint.set_saved_model_checksum(1);
+  fingerprint.set_graph_def_program_hash(2);
+  fingerprint.set_signature_def_hash(3);
+  fingerprint.set_saved_object_graph_hash(4);
+  fingerprint.set_checkpoint_hash(5);
+
+  string serialized_fingerprint_json = MakeFingerprintJson(fingerprint);
+
+  EXPECT_EQ(
+      serialized_fingerprint_json,
+      "{\n\t\"checkpoint_hash\" : 5,\n\t\"graph_def_program_hash\" : "
+      "2,\n\t\"saved_model_checksum\" : 1,\n\t\"saved_object_graph_hash\" : "
+      "4,\n\t\"signature_def_hash\" : 3\n}");
+
+  Json::Value fingerprint_json = Json::objectValue;
+  Json::Reader reader = Json::Reader();
+  reader.parse(serialized_fingerprint_json, fingerprint_json);
+  EXPECT_EQ(fingerprint_json["saved_model_checksum"].asUInt64(), 1);
+  EXPECT_EQ(fingerprint_json["graph_def_program_hash"].asUInt64(), 2);
+  EXPECT_EQ(fingerprint_json["signature_def_hash"].asUInt64(), 3);
+  EXPECT_EQ(fingerprint_json["saved_object_graph_hash"].asUInt64(), 4);
+  EXPECT_EQ(fingerprint_json["checkpoint_hash"].asUInt64(), 5);
 }
 
 }  // namespace metrics

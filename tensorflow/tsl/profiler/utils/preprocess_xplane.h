@@ -39,6 +39,8 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
+static constexpr uint32_t kRunIdMask = (1U << 27) - 1;
+
 /*
  * Subclass of this interface will perform different mutatation to the event.
  * Checking eligibilities of event mutation is not responsible of this class.
@@ -283,6 +285,57 @@ class XplaneConnectedEventMutatorFactory : public XplaneEventMutatorFactory {
     XStatMetadata* context_type_metadata_;
     XStatMetadata* context_id_metadata_;
     StatsAccessors accessors_;
+  };
+};
+
+template <HostEventType event_type>
+class HostRunIdMutatorFactory : public XplaneEventMutatorFactory {
+ public:
+  static std::unique_ptr<XplaneEventMutatorFactory> CreateFactory() {
+    return absl::WrapUnique(new HostRunIdMutatorFactory());
+  }
+
+  std::vector<std::unique_ptr<XplaneEventMutator>> CreateMutators(
+      XPlaneBuilder* xplane) const override {
+    std::vector<std::unique_ptr<XplaneEventMutator>> mutators;
+    XEventMetadata* event_metadata =
+        xplane->GetEventMetadata(GetHostEventTypeStr(event_type));
+    if (event_metadata == nullptr) return {};
+    XContextStatsAccessor<int64_t, StatType::kRunId> run_id_stats_accessor;
+    run_id_stats_accessor.Initialize(xplane);
+    XStatMetadata* run_id_metadata =
+        xplane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kRunId));
+    mutators.emplace_back(std::make_unique<HostRunIdMutator>(
+        event_metadata, run_id_stats_accessor, run_id_metadata));
+    return mutators;
+  }
+
+ private:
+  HostRunIdMutatorFactory() = default;
+  class HostRunIdMutator : public XplaneEventMutator {
+   public:
+    HostRunIdMutator(
+        XEventMetadata* event_metadata,
+        XContextStatsAccessor<int64_t, StatType::kRunId> run_id_stats_accessor,
+        XStatMetadata* run_id_metadata)
+        : XplaneEventMutator(event_metadata),
+          run_id_stats_accessor_(run_id_stats_accessor),
+          run_id_metadata_(run_id_metadata) {}
+
+    void Mutate(XEventBuilder* event_builder) override {
+      auto run_id = run_id_stats_accessor_.GetStat(event_builder);
+      if (!run_id) return;
+      int64_t fixed_run_id = ((uint64_t)run_id.value() & kRunIdMask);
+      event_builder->SetOrAddStatValue(*run_id_metadata_, fixed_run_id);
+    }
+
+    void MutateEventsInLine(XLineBuilder* line) override {
+      CHECK(false);  // Crash OK
+    }
+
+   private:
+    XContextStatsAccessor<int64_t, StatType::kRunId> run_id_stats_accessor_;
+    XStatMetadata* run_id_metadata_;
   };
 };
 

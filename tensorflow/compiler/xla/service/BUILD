@@ -1095,8 +1095,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -4131,27 +4129,32 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "hlo_activation_analysis",
-    srcs = ["hlo_activation_analysis.cc"],
-    hdrs = ["hlo_activation_analysis.h"],
+    name = "hlo_value_semantics_analysis",
+    srcs = ["hlo_value_semantics_analysis.cc"],
+    hdrs = ["hlo_value_semantics_analysis.h"],
     deps = [
+        ":hlo_value",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 xla_cc_test(
-    name = "hlo_activation_analysis_test",
-    srcs = ["hlo_activation_analysis_test.cc"],
+    name = "hlo_value_semantics_analysis_test",
+    srcs = ["hlo_value_semantics_analysis_test.cc"],
     deps = [
-        ":hlo_activation_analysis",
+        ":hlo_value_semantics_analysis",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

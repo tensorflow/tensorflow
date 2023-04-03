@@ -198,8 +198,8 @@ cc_library(
     srcs = ["gpu_compatibility.cc"],
     hdrs = ["gpu_compatibility.h"],
     deps = [
-        ":canonicalize_value",
         ":android_info",
+        ":canonicalize_value",
         ":database_fbs",
         ":devicedb",
         ":gpu_compatibility_binary_embed",

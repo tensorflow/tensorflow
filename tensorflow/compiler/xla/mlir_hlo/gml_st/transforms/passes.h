@@ -26,11 +26,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
+namespace mlir::gml_st {
+
 #define GEN_PASS_DECL
 #include "gml_st/transforms/passes.h.inc"
-
-namespace mlir {
-namespace gml_st {
 
 /// Pass to fuse producers into a tiled consumer.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
@@ -59,7 +58,8 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 createComposeExtractInsertSlicePass();
 
 /// Pass to vectorize compute ops and scf.for loops that are tiled perfectly.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
+    int64_t numElementsThreshold = 1024);
 
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
@@ -103,9 +103,8 @@ createTransformElementwiseForCpuPass(int64_t vectorSize = 8,
                                      bool fuseDegenerateReshapes = false);
 
 /// Pass to transform a linalg.reduce op for CPU backend.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
-                                ArrayRef<int64_t> tileSizes2D = {});
+std::unique_ptr<Pass> createTransformReduceForCpuPass(
+    const TransformReduceForCpuPassOptions &option = {});
 
 /// Pass to create fusion clusters.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -133,6 +132,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAddDebugInfoPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> createCollectStatsPass(
     int64_t level = 0);
 
+/// Pass to remove all transformed labels from tiled ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createRemoveLabelPass();
+
 /// Populate pattern to remove single/zero iteration scf.forall dimensions.
 void populateCollapseForallOpDimensionsPattern(RewritePatternSet &patterns);
 
@@ -143,7 +146,10 @@ struct GmlStCPUTilingOptions
     this->lowerToMmt4d = opts.lowerToMmt4d;
     this->matmulTileSizes = opts.matmulTileSizes;
     this->reduction1DTileSize = opts.reduction1DTileSize;
-    this->reduction2DTileSizes = opts.reduction2DTileSizes;
+    this->reduction1DSplitRatio = opts.reduction1DSplitRatio;
+    this->reduction2DParallelDimTileSize = opts.reduction2DParallelDimTileSize;
+    this->reduction2DReductionDimTileSize =
+        opts.reduction2DReductionDimTileSize;
     this->vectorSize = opts.vectorSize;
     this->enableFusionClusters = opts.enableFusionClusters;
     this->statsDetailLevel = opts.statsDetailLevel;
@@ -159,16 +165,36 @@ struct GmlStCPUTilingOptions
       *this, "reduction-1d-tile-size",
       llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
 
-  ListOption<int64_t> reduction2DTileSizes{
-      *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."),
-      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
+  Option<int64_t> reduction1DSplitRatio{
+      *this, "reduction-1d-split-ratio",
+      llvm::cl::desc("Ratio used to split the reduction dimension"),
+      llvm::cl::init(8)};
+
+  Option<int64_t> reduction2DParallelDimTileSize{
+      *this, "reduction-2d-parallel-dim-tile-size",
+      llvm::cl::desc("Tile size for the parallel dimension of a 2D reduction."),
+      llvm::cl::init(4)};
+
+  Option<int64_t> reduction2DReductionDimTileSize{
+      *this, "reduction-2d-reduction-dim-tile-size",
+      llvm::cl::desc(
+          "Tile size for the reduction dimension of a 2D reduction."),
+      llvm::cl::init(4)};
 
   ListOption<int64_t> matmulTileSizes{
       *this, "matmul-tile-sizes",
       llvm::cl::desc("Tile sizes for `linalg.matmul`. Leave empty to determine "
                      "sizes automatically."),
       llvm::cl::list_init<int64_t>({}), llvm::cl::ZeroOrMore};
+
+  Option<int64_t> vectorizationSizeThreshold{
+      *this, "vectorization-size-threshold",
+      llvm::cl::desc("Threshold size for vectorization."), llvm::cl::init(128)};
+
+  Option<int64_t> vectorizationTiledSizeThreshold{
+      *this, "vectorization-tiled-size-threshold",
+      llvm::cl::desc("Threshold size for vectorization after tiling."),
+      llvm::cl::init(1024)};
 
   Option<bool> lowerToMmt4d{
       *this, "lower-to-mmt4d",
@@ -219,7 +245,6 @@ void addDefaultCPUTilingPipeline(OpPassManager &pm, StringRef cpuName,
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st
 
 #endif  // MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H

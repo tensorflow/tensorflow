@@ -17,7 +17,7 @@ py_library(
     srcs = ["public_api.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )
@@ -43,7 +43,7 @@ py_library(
     srcs = ["traverse.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )
