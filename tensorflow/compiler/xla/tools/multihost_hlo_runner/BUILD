@@ -33,7 +33,6 @@ xla_cc_binary(
     deps = [
         ":functional_hlo_runner",
         ":hlo_runner_flags",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/tsl/platform:logging",
@@ -41,6 +40,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([

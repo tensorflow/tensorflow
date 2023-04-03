@@ -482,9 +482,9 @@ cc_library(
     deps = [
         ":numeric_types",
         ":type_traits",
+        "//tensorflow/tsl/framework:allocator",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/tsl/framework:allocator",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",

@@ -99,9 +99,6 @@ cc_library(
         ":cluster_function_library_runtime",
         ":remote_mgr",
         ":remote_tensor_handle",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
@@ -119,6 +116,9 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ] + tf_grpc_cc_dependencies(),
 )
 

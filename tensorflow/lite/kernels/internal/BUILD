@@ -934,8 +934,8 @@ cc_library(
     deps = [
         ":cpu_check",
         ":tensor_utils_no_eigen",
-        "//third_party/eigen3",
         "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
     ] + selects.with_or({
         (
             ":arm_any",

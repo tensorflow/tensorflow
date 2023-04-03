@@ -372,9 +372,9 @@ cc_library(
     hdrs = ["memory_mapper.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/tsl/platform",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Support",
-        "//tensorflow/tsl/platform",
     ] + tf_platform_deps(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",

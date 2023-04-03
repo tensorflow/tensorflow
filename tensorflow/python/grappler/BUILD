@@ -114,12 +114,12 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
     deps = [
-        "@pybind11",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@pybind11",
     ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
 )
 

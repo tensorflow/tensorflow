@@ -44,13 +44,6 @@ tf_python_pybind_extension(
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
-        "@com_google_absl//absl/types:optional",
-        "//third_party/eigen3",
-        "//third_party/py/numpy:headers",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-        "//third_party/python_runtime:headers",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -64,6 +57,13 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/tsl/python/lib/core:numpy",
+        "//third_party/eigen3",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",

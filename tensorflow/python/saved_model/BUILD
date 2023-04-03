@@ -534,7 +534,6 @@ cuda_py_test(
     deps = [
         ":load",
         ":save",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -550,6 +549,7 @@ cuda_py_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/util:tf_decorator",
+        "@absl_py//absl/testing:parameterized",
     ] + if_google([
         "//tensorflow/cc/experimental/tf2:runtime_pybind",
     ]),

@@ -23,14 +23,14 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ]) + [
-        "@com_google_protobuf//:protobuf",
-        "@com_google_absl//absl/memory",
-        "@flatbuffers",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_protobuf//:protobuf",
+        "@flatbuffers",
     ],
 )
 

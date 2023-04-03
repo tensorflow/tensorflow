@@ -100,8 +100,8 @@ tf_python_pybind_extension(
     srcs = ["runtime_client_pybind.cc"],
     deps = [
         ":runtime_client_headers",
-        "@pybind11",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/framework:function_proto_cc",

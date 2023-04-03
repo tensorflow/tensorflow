@@ -106,7 +106,6 @@ tf_cuda_library(
         ":custom_device",
         ":eager_executor",
         ":kernel_and_device",
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
@@ -115,12 +114,12 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/nccl:collective_communicator",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "@com_google_absl//absl/types:optional",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -137,6 +136,7 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime:worker_cache",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "@com_google_absl//absl/types:optional",
         ],
     }),
 )
@@ -287,10 +287,6 @@ tf_cuda_library(
         ":eager_executor",
         ":kernel_and_device",
         ":tensor_handle",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
@@ -301,6 +297,10 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/util:managed_stack_trace",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -340,10 +340,10 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core/profiler/lib:traceme",
+            "@com_google_absl//absl/types:variant",
         ],
     }),
 )
@@ -378,8 +378,6 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/types:variant",
             "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
             "//tensorflow/core:core_cpu_lib",
@@ -391,6 +389,8 @@ tf_cuda_library(
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
             "//tensorflow/core/profiler/lib:traceme",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:variant",
         ],
     }),
 )
@@ -536,6 +536,10 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -544,10 +548,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/compiler/jit:common",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -699,6 +699,13 @@ cc_library(
         ":kernel_and_device",
         ":placement_utils",
         ":tensor_handle",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:abstract_function",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -707,13 +714,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/c/eager:abstract_function",
-        "//tensorflow/compiler/jit:common",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
