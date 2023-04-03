@@ -450,8 +450,15 @@ std::string MemoryCheckpoint::DebugString() const {
                                     "root=",
                                     (is_root_ ? "true" : "false"), "\n");
   absl::StrAppend(&result, "number of integers: ", int_values_.size(), "\n");
-
+  for (const auto& [k, v] : int_values_) {
+    absl::StrAppend(&result, "  ", id_registry_->Get(k).first, ":",
+                    id_registry_->Get(k).second, ": ", v, "\n");
+  }
   absl::StrAppend(&result, "number of strings: ", str_values_.size(), "\n");
+  for (const auto& [k, v] : str_values_) {
+    absl::StrAppend(&result, "  ", id_registry_->Get(k).first, ":",
+                    id_registry_->Get(k).second, ": ", v, "\n");
+  }
   absl::StrAppend(&result, "number of tensors: ", tensor_values_.size(), "\n");
 
   absl::StrAppend(
