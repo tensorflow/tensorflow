@@ -20,14 +20,11 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
-#include <iterator>
 #include <optional>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -182,7 +179,7 @@ class AllReduceLauncher {
   std::atomic<int> num_complete_ = 0;
   std::array<se::Stream*, kMaxNumGpus> streams_;
   std::array<Buffers, kMaxBuffers> buffers_;
-  std::unordered_set<se::StreamExecutor*> executors_;
+  absl::flat_hash_set<se::StreamExecutor*> executors_;
 };
 
 #endif  // TENSORFLOW_USE_ROCM
