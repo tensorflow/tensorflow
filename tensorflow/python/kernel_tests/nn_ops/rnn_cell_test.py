@@ -46,6 +46,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -172,8 +173,8 @@ class TestStateSaverWithCounters(TestStateSaver):
   @test_util.run_v1_only("b/124229375")
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
-    self._num_state_calls = variables_lib.VariableV1(0)
-    self._num_save_state_calls = variables_lib.VariableV1(0)
+    self._num_state_calls = variable_v1.VariableV1(0)
+    self._num_save_state_calls = variable_v1.VariableV1(0)
 
   def state(self, name):
     with ops.control_dependencies(
