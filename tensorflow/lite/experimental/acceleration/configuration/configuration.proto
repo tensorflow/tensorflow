@@ -518,6 +518,12 @@ message GoogleEdgeTpuSettings {
     PRIORITY_HIGH = 3;
   }
 
+  enum TriState {
+    TRISTATE_UNDEFINED = 0;
+    TRISTATE_FALSE = 1;
+    TRISTATE_TRUE = 2;
+  }
+
   // Controls the verbosity level of the delegate log messages. Set to -1 to let
   // the delegate choose. Otherwise, it must range from 0 to 10 (inclusive),
   // where lower values indicate less verbosity. A higher verbosity level may
@@ -559,6 +565,26 @@ message GoogleEdgeTpuSettings {
   // Both Model A and B will be cached separately, and coexist for efficient
   // lookups.
   optional string model_identifier = 5 [default = ""];
+
+  // If set to true, the user must use TFLite Async API to run the inference.
+  optional bool use_async_api = 6 [default = false];
+
+  // Specifies whether or not the delegate should handle cache management for
+  // the imported input or output buffers with TFLite Async API. These
+  // options have no effect if the user is not using the TFLite Async API.
+  optional bool delegate_should_manage_cache_for_inputs = 7 [default = true];
+  optional bool delegate_should_manage_cache_for_outputs = 8 [default = true];
+
+  // Specifies whether or not cache coherency is preferred for the imported
+  // input or output buffers with TFLite Async API. These options are purely
+  // advisory. Even if the user specifies that cache coherency is preferred,
+  // the delegate may still choose to use cache incoherent memory under certain
+  // circumstances, e.g. hardware limitation. If it is set to
+  // TRISTATE_UNDEFINED, the delegate will use the default value based on the
+  // device type. These options have no effect if the user is not using the
+  // TFLite Async API.
+  optional TriState prefer_cache_coherency_for_inputs = 9;
+  optional TriState prefer_cache_coherency_for_outputs = 10;
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
