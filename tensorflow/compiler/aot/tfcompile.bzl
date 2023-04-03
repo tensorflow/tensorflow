@@ -271,7 +271,7 @@ def _tf_library(
         tfcompile_config = config,
         entry_point = ep,
         cpp_class = cpp_class,
-        target_cpu = tfcompile_target_cpu(),
+        target_cpu = tfcompile_target_cpu(name),
         target_triple = target_llvm_triple(),
         flags = flags,
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
