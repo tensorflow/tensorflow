@@ -571,10 +571,13 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceFolder>();
-    collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>();
     collectives_pipeline.AddPass<ReduceScatterCreator>();
     collectives_pipeline.AddPass<AllReduceReassociate>();
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
+    collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
+        /*enable_reduce_scatter=*/hlo_module->config()
+            .debug_options()
+            .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the

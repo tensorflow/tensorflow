@@ -41,6 +41,19 @@ DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
   return assn;
 }
 
+class CollectiveOpsTestE2E : public HloTestBase {
+ public:
+  StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
+                                                   int64_t num_replicas) {
+    DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
+    return HloTestBase::ExecuteReplicated(
+        /*executable_provider*/ [&](int64_t) { return executable; },
+        /*argument_count_provider*/ [](int64_t) { return 0; },
+        /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
+        num_replicas, /*run_hlo_passes=*/false, &device_assignment);
+  }
+};
+
 // E2E tests for collective ops. These will generally verify some HLO transform
 // for collectives (for example, sync -> async conversion) and correct
 // execution of the transformed HLO.
@@ -49,7 +62,7 @@ DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
 // and disabled. Verify that async collective is generated when enabled
 // in the end-to-end compilation for GPU's and that the execution produces
 // correct result.
-class AsyncCollectiveOps : public HloTestBase,
+class AsyncCollectiveOps : public CollectiveOpsTestE2E,
                            public ::testing::WithParamInterface<bool> {
  public:
   AsyncCollectiveOps() : num_devices_(backend().device_count()) {
@@ -77,15 +90,6 @@ class AsyncCollectiveOps : public HloTestBase,
     return debug_options;
   }
 
-  StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
-                                                   int64_t num_replicas) {
-    DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
-    return HloTestBase::ExecuteReplicated(
-        /*executable_provider*/ [&](int64_t) { return executable; },
-        /*argument_count_provider*/ [](int64_t) { return 0; },
-        /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
-        num_replicas, /*run_hlo_passes=*/false, &device_assignment);
-  }
 
   const int64_t num_devices_;
 };
@@ -388,6 +392,114 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
 
 INSTANTIATE_TEST_SUITE_P(AsyncCollectiveOps, AsyncCollectiveOps,
                          ::testing::Bool());
+
+// Tests for HLO level transforms.
+TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  %add {
+    %x = u32[] parameter(0)
+    %y = u32[] parameter(1)
+    ROOT %add = u32[] add(%x, %y)
+  }
+
+  %cond {
+    %param = (u32[], u32[2], u32[1]) parameter(0)
+    %count = get-tuple-element(%param), index=0
+    %limit = u32[] constant(3)
+    ROOT %result = pred[] compare(%count, %limit), direction=LT
+  }
+
+  %body {
+    %param = (u32[], u32[2], u32[1]) parameter(0)
+
+    %count = u32[] get-tuple-element(%param), index=0
+    %increment = u32[] constant(1)
+    %new_count = u32[] add(%count, %increment)
+
+    // iter0: replica0 = {10, 15}, replica1 = {11, 16}
+    // iter1: replica0 = {11, 17}, replica1 = {12, 18}
+    // iter2: replica0 = {12, 19}, replica1 = {13, 20}
+
+    %rs_input = u32[2] get-tuple-element(%param), index=1
+
+    // iter0: replica0 = 21, replica1 = 31
+    // iter1: replica0 = 23, replica1 = 35
+    // iter2: replicq0 = 25, replica1 = 39
+    %rs = u32[1] reduce-scatter(%rs_input), replica_groups={{0,1}}, to_apply=%add, dimensions={0}
+
+    // iter0: replica0 = 5, replica1 = 5
+    // iter1: replica0 = 26, replica1 = 36
+    // iter2: replica0 = 49, replica1 = 70
+    %old_accum = u32[1] get-tuple-element(%param), index=2
+
+    // iter0: replica0 = 26, replica1 = 36
+    // iter1: replica0 = 49, replica1 = 71
+    // iter2: replica0 = 74, replica1 = 110
+    %new_accum = u32[1] add(%rs, %old_accum)
+
+    %input_inc = u32[2] constant({1, 2})
+
+    // iter0: replica0 = {11, 17}, replica1 = {12, 18}
+    // iter1: replica0 = {12, 19}, replica1 = {13, 20}
+    // iter2: replica0 = {13, 21}, replica1 = {14, 22}
+    %new_rs_input = u32[2] add(%rs_input, %input_inc)
+
+    ROOT ret = (u32[], u32[2], u32[1]) tuple(%new_count, %new_rs_input, %new_accum)
+  }
+
+  ENTRY test_computation {
+    // loop that executes 3 times.
+    %count = u32[] constant(0)
+    %id = u32[] replica-id()
+    %id2 = u32[2] broadcast(id), dimensions={}
+    %a0 = u32[2] constant({10, 15})
+    // replica0: {10, 15}, replica1 : {11, 16}
+    %init_rs_input = u32[2] add(id2, a0)
+    %init_rs_accum = u32[1] constant({5})
+    %while_init = (u32[], u32[2], u32[1]) tuple(%count, %init_rs_input, %init_rs_accum)
+    %while_result = (u32[], u32[2], u32[1]) while(%while_init), body=%body, condition=%cond
+    ROOT gte = u32[1] get-tuple-element(%while_result), index=2
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  config.set_replica_count(kNumReplicas);
+  config.set_num_partitions(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_TRUE(executable->has_module());
+  HloModule* executable_module = &executable->module();
+
+  // Verify that the reduce-scatter get hoisted out of the while loop.
+  const HloInstruction* while_loop =
+      FindInstruction(executable_module, HloOpcode::kWhile);
+  ASSERT_THAT(while_loop, NotNull());
+  const HloInstruction* reduce_scatter =
+      FindInstruction(executable_module, HloOpcode::kReduceScatter);
+  ASSERT_THAT(reduce_scatter, NotNull());
+
+  // Verify that the reduce-scatter has been hoisted out of the while loop and
+  // into the entry computation.
+  const HloComputation* entry = executable_module->entry_computation();
+  EXPECT_EQ(reduce_scatter->parent(), entry);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({74}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({110}, results[1]);
+}
 
 }  // namespace
 }  // namespace xla

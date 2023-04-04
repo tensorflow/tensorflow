@@ -382,6 +382,9 @@ message DebugOptions {
   // disable all-reduce decomposition.
   int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
 
+  // Enable hoisting of reduce-scatter out of while loops.
+  bool xla_gpu_enable_while_loop_reduce_scatter_code_motion = 203;
+
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
@@ -491,7 +494,7 @@ message DebugOptions {
 
   bool xla_gpu_allow_all_reduce_kernel = 193;
 
-  // Next id: 203
+  // Next id: 204
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
