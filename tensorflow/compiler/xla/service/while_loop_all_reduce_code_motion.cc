@@ -964,6 +964,7 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
   // The while instruction's parent could be a while body for another while
   // loop. We recursively sink the all-reduce through nested while loops if
   // applicable by repeating this process.
+  uint32_t count_all_reduce = 0, count_reduce_scatter = 0;
   while (run_next_pass) {
     run_next_pass = false;
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
@@ -1041,11 +1042,18 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(
       for (const auto& all_reduce_accumulations_pair :
            all_reduce_to_accumulations) {
         HloInstruction* all_reduce = all_reduce_accumulations_pair.first;
+        if (all_reduce->opcode() == HloOpcode::kAllReduce) {
+          count_all_reduce++;
+        } else {
+          count_reduce_scatter++;
+        }
         TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
             all_reduce, all_reduce->mutable_operand(0)));
       }
     }
   }
+  VLOG(2) << "Hoisted " << count_all_reduce << " all-reduce and "
+          << count_reduce_scatter << " reduce-scatter out of while loops";
   return is_changed;
 }
 
