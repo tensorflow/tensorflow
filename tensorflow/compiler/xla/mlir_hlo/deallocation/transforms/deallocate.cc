@@ -91,6 +91,7 @@ struct Deallocator {
   FailureOr<breaks_if_you_move_ops::ValueSet> transformIfImplicitCapture(
       scf::IfOp op, TransformResult& ifResult, TransformResult& elseResult);
   void setOwnershipIndicator(Value owned, Value indicator);
+  Value findOwnershipIndicator(Value v);
 
   breaks_if_you_move_ops::ValueEquivalenceClasses aliases;
   // Tracked value -> corresponding ownership indicator.
@@ -100,6 +101,18 @@ struct Deallocator {
 void Deallocator::setOwnershipIndicator(Value owned, Value indicator) {
   ownershipIndicatorsForValues[owned] = indicator;
   aliases.unionSets(owned, indicator);
+}
+
+Value Deallocator::findOwnershipIndicator(Value v) {
+  if (llvm::isa_and_nonnull<memref::SubViewOp, memref::ViewOp,
+                            memref::CollapseShapeOp, memref::ExpandShapeOp,
+                            memref::TransposeOp, memref::ReinterpretCastOp>(
+          v.getDefiningOp())) {
+    return findOwnershipIndicator(v.getDefiningOp()->getOperand(0));
+  }
+  auto it = ownershipIndicatorsForValues.find(v);
+  if (it != ownershipIndicatorsForValues.end()) return it->second;
+  return {};
 }
 
 FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
@@ -124,12 +137,13 @@ FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
     if (failed(opResult)) return failure();
     // Remove released memrefs.
     for (auto v : opResult->released) {
-      auto owned = llvm::find_if(ownedMemrefs, [&](Value owned) {
-        return aliases.isEquivalent(v, owned);
-      });
+      auto owned = llvm::find(ownedMemrefs, v);
       // If we don't own the released value, pass the release on to the parent.
       if (owned == ownedMemrefs.end()) {
-        blockResult.released.insert(v);
+        if (!blockResult.released.insert(v).second) {
+          block.getParentOp()->emitOpError("same value released twice");
+          return failure();
+        }
       } else {
         ownedMemrefs.erase(owned);
       }
@@ -211,22 +225,17 @@ Deallocator::transformIfImplicitCapture(scf::IfOp op, TransformResult& ifResult,
     }
     auto* terminator = region.front().getTerminator();
     auto operands = terminator->getOperands();
-    auto it = llvm::find(operands, v);
+    auto it = llvm::find_if(operands, [&](Value operand) {
+      return findOwnershipIndicator(operand) == v;
+    });
     if (it == operands.end()) {
       op.emitOpError("released value not yielded on other branch");
-      return failure();
-    }
-    auto ownershipIndicator = ownershipIndicatorsForValues[v];
-    if (!ownershipIndicator) {
-      op.emitOpError(
-          "no ownership indicator found for value. Same value reallocated "
-          "twice?");
       return failure();
     }
     ownershipIndicatorsForValues.erase(v);
 
     auto index = std::count_if(operands.begin(), it, isMemref);
-    result.acquired[index] = ownershipIndicator;
+    result.acquired[index] = v;
     return success();
   };
 
@@ -316,15 +325,14 @@ FailureOr<TransformResult> Deallocator::transformOp(
       return true;
     };
 
-    auto eq = [&](Value v) { return aliases.isEquivalent(v, operand); };
-    auto releasable = llvm::find_if(ownedMemrefs, eq);
-    bool isReleasable =
-        releasable != ownedMemrefs.end() && llvm::none_of(released, eq);
-    if (isReleasable && isLastUse()) {
+    Value ownershipIndicator = findOwnershipIndicator(operand);
+    if (ownershipIndicator &&
+        !llvm::is_contained(released, ownershipIndicator) &&
+        llvm::is_contained(ownedMemrefs, ownershipIndicator) && isLastUse()) {
       // This is an alloc that is not used again, so we can pass ownership
       // to the loop.
-      op->insertOperands(op->getNumOperands(), *releasable);
-      released.insert(*releasable);
+      op->insertOperands(op->getNumOperands(), ownershipIndicator);
+      released.insert(ownershipIndicator);
     } else {
       // Either the operand is not an alloc or it's reused.
       op->insertOperands(op->getNumOperands(), b.create<NullOp>().getResult());
@@ -385,7 +393,12 @@ FailureOr<TransformResult> Deallocator::transformOp(
         result.acquired.push_back(owned);
       }
       for (const auto& free : frees) {
-        result.released.insert(free.getValue());
+        auto ownershipIndicator = findOwnershipIndicator(free.getValue());
+        if (!ownershipIndicator) {
+          op->emitOpError("unable to find ownership indicator for operand");
+          return failure();
+        }
+        result.released.insert(ownershipIndicator);
       }
       return result;
     }
