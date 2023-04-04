@@ -42,7 +42,8 @@ config_setting(
     name = "build_with_onednn_v2",
     define_values = {
         # We are not defining 'build_with_mkl' since this config can be invoked
-        # on x86_64 platforms without --config=mkl
+        # on x86_64 platforms without --config=mkl (through Eigen contraction
+        # kernel)
         "build_with_onednn_v2": "true",
     },
     visibility = ["//visibility:public"],

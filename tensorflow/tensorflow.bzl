@@ -3210,7 +3210,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@mkl_dnn_v1//:__subpackages__",
-        "@onednn_v3//:__subpackages__",
         "@nsync//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
@@ -3231,6 +3230,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@com_google_benchmark//:__subpackages__",
         "@com_google_googletest//:__subpackages__",
     ]
+    static_deps += if_onednn_v3(["@onednn_v3//:__subpackages__"])
     return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args
