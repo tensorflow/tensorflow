@@ -57,6 +57,13 @@ class HasRank<int n> : Constraint<
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
+def HasSameStaticShapes : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
+          "$1.getType().cast<ShapedType>().hasStaticShape() && "
+          "$0.getType().cast<ShapedType>().getShape() =="
+          "$1.getType().cast<ShapedType>().getShape()">,
+    "have the same static shape">;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -862,6 +869,20 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   def Optimize#SelectOp#Not : Pat<
     (SelectOp (TFL_LogicalNotOp $condition), $input1, $input2),
     (SelectOp $condition, $input2, $input1)>;
+
+  // Fuse select(broadcast_to(input, shape), x, y) -> selectV2(input, x, y)
+  // Also, fuse selectv2(broadcast_to(input, shape), x, y) -> selectV2(input, x, y)
+  // It is safe to perform this transform here because-
+  // the shapes of `pre_broadcast` and `dim` must be broadcast
+  // compatible for the `broadcast_to` op to be valid.
+  // And considering, `shape(post_broadcast)` == `shape(%input1)`,
+  // `post_broadcast` is broadcast compatible with `input1`.
+  def FuseBroadcastInto#SelectOp : Pat<
+    (SelectOp
+      (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim),
+      AnyStaticShapeTensor:$input1, AnyStaticShapeTensor:$input2),
+    (TFL_SelectV2Op $pre_broadcast, $input1, $input2),
+    [(HasSameStaticShapes $post_broadcast, $input1)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<
