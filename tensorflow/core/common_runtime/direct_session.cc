@@ -552,8 +552,11 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  if (run_metadata != nullptr &&
-      options_.config.experimental().has_session_metadata()) {
+  if (run_metadata == nullptr) {
+    return errors::Internal("Metadata output is not set.");
+  }
+
+  if (options_.config.experimental().has_session_metadata()) {
     *run_metadata->mutable_session_metadata() =
         options_.config.experimental().session_metadata();
   }
