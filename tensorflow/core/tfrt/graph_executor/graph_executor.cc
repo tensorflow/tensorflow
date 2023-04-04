@@ -27,7 +27,7 @@ limitations under the License.
 
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute/attribute.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/assign_op_key.h"
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_await_pass.h"
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/fuse_mlrt_ops.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/parallelization.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/tf_to_mlrt.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/context.h"
@@ -410,6 +410,9 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   graph_execution_state_options.use_bridge_for_gpu =
       options.compile_options.use_bridge_for_gpu;
 
+  options.compile_options.fuse_get_resource_ops_in_hoisting =
+      !options.enable_mlrt;
+
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
@@ -716,7 +719,7 @@ StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
 
         // Perform optimizations in the lowered MLIR.
         pm.addNestedPass<mlir::func::FuncOp>(
-            mlrt_compiler::CreateFuseAwaitPass());
+            mlrt_compiler::CreateFuseMlrtOpPass());
         pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
         pm.addPass(mlir::createInlinerPass());
         pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());

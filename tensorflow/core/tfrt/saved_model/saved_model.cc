@@ -581,6 +581,10 @@ void UpdateCompileOptions(SavedModel::Options& options) {
     // remove the obsolete TFRT GPU runtime as well.
     options.graph_execution_options.compile_options.use_bridge_for_gpu = true;
   }
+
+  options.graph_execution_options.compile_options
+      .fuse_get_resource_ops_in_hoisting =
+      !options.graph_execution_options.enable_mlrt;
 }
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
