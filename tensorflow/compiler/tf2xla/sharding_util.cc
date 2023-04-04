@@ -117,7 +117,7 @@ StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
     return tensorflow::errors::InvalidArgument(
-        "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString());
+        "Null src for ParseShardingFromEdgeSource edge");
   }
   TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       ParseShardingFromDevice(
