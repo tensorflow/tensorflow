@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -2764,6 +2765,71 @@ StatusOr<bool> HloVerifier::Run(
   return Status(status_or_changed.status().code(),
                 absl::StrCat("during context [", context_, "]: ",
                              status_or_changed.status().error_message()));
+}
+
+MetadataTracker::MetadataTracker(absl::string_view prefix) : prefix_(prefix) {}
+
+MetadataTracker::~MetadataTracker() {
+  if (instruction_count_ == 0) {
+    return;
+  }
+  const std::map<std::string, double> values = {
+      {"instruction_count", 1.0 * instruction_count_},
+      {"op_type_coverage", 1.0 * has_op_type_count_ / instruction_count_},
+      {"op_name_coverage", 1.0 * has_op_name_count_ / instruction_count_},
+      {"source_file_coverage",
+       1.0 * has_source_file_count_ / instruction_count_},
+      {"source_line_coverage",
+       1.0 * has_source_line_count_ / instruction_count_},
+      {"creation_pass_coverage",
+       1.0 * has_creation_pass_id_count_ / instruction_count_},
+      {"logical_creation_pass_coverage",
+       1.0 * has_logical_creation_pass_id_count_ / instruction_count_},
+      {"size_of_generated_code_in_bytes_coverage",
+       1.0 * has_size_of_generated_code_in_bytes_count_ / instruction_count_},
+      {"size_of_memory_working_set_in_bytes_coverage",
+       1.0 * has_size_of_memory_working_set_in_bytes_count_ /
+           instruction_count_},
+      {"profile_info_coverage",
+       1.0 * has_profile_info_count_ / instruction_count_}};
+  LOG(INFO) << prefix_ << " "
+            << absl::StrJoin(values, ",", absl::PairFormatter("="));
+}
+
+void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
+  ++instruction_count_;
+  if (!metadata.op_type().empty()) {
+    ++has_op_type_count_;
+  }
+  if (!metadata.op_name().empty()) {
+    ++has_op_name_count_;
+  }
+  if (!metadata.source_file().empty()) {
+    ++has_source_file_count_;
+  }
+  if (metadata.source_line() != 0) {
+    ++has_source_line_count_;
+  }
+  if (metadata.creation_pass_id() != 0) {
+    ++has_creation_pass_id_count_;
+  }
+  if (metadata.logical_creation_pass_id() != 0) {
+    ++has_logical_creation_pass_id_count_;
+  }
+  if (metadata.size_of_generated_code_in_bytes() != 0) {
+    ++has_size_of_generated_code_in_bytes_count_;
+  }
+  if (metadata.size_of_memory_working_set_in_bytes() != 0) {
+    ++has_size_of_memory_working_set_in_bytes_count_;
+  }
+  if (metadata.has_profile_info()) {
+    ++has_profile_info_count_;
+  }
+}
+
+Status MetadataTracker::DefaultAction(HloInstruction* instruction) {
+  HandleMetadata(instruction->metadata());
+  return OkStatus();
 }
 
 }  // namespace xla
