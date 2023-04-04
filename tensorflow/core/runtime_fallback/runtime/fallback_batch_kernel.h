@@ -15,16 +15,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_FALLBACK_BATCH_KERNEL_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "util/task/status_macros.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -102,10 +113,18 @@ class BatchFunctionFallbackKernel : public BatchFunctionFallbackKernelBase {
 template <typename BatchResourceType>
 void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
     OpKernelContext* c, DoneCallback done) {
-  BatchResourceType* br;
-  std::function<Status(BatchResourceType**)> creator;
+  OP_REQUIRES_VALUE(tfrt::ResourceContext * client_graph_resource_context, c,
+                    BatchResourceType::GetClientGraphResourceContext(c));
+  OP_REQUIRES_ASYNC(
+      c, client_graph_resource_context != nullptr,
+      errors::FailedPrecondition("client graph resource context not found"),
+      done);
+  std::function<
+      absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>>()>
+      creator;
   if (adaptive_batch_scheduler_options_ != std::nullopt) {
-    creator = [this, c](BatchResourceType** r) {
+    creator = [this, c]()
+        -> absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>> {
       serving::AdaptiveSharedBatchScheduler<
           serving::BatchResourceBase::BatchTask>::Options
           adaptive_shared_batch_scheduler_options;
@@ -136,34 +155,34 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
       adaptive_shared_batch_scheduler_options.fifo_scheduling = true;
 
       std::unique_ptr<BatchResourceType> new_resource;
-      TF_RETURN_IF_ERROR(BatchResourceType::Create(
+      auto status = BatchResourceType::Create(
           c, adaptive_shared_batch_scheduler_options, max_batch_size_,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
-          batch_function_, disable_padding_, &new_resource));
-      *r = new_resource.release();
-
-      return OkStatus();
+          batch_function_, disable_padding_, &new_resource);
+      if (!status.ok()) return tsl::ToAbslStatus(status);
+      return tensorflow::core::RefCountPtr<BatchResourceType>(
+          new_resource.release());
     };
   } else {
-    creator = [this, c](BatchResourceType** r) {
+    creator = [this, c]()
+        -> absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>> {
       std::unique_ptr<BatchResourceType> new_resource;
-      TF_RETURN_IF_ERROR(BatchResourceType::Create(
+      auto status = BatchResourceType::Create(
           c, num_batch_threads_, max_batch_size_, batch_timeout_micros_,
           max_enqueued_batches_, allowed_batch_sizes_, batch_function_,
-          enable_large_batch_splitting_, disable_padding_, &new_resource));
-      *r = new_resource.release();
-
-      return OkStatus();
+          enable_large_batch_splitting_, disable_padding_, &new_resource);
+      if (!status.ok()) return tsl::ToAbslStatus(status);
+      return tensorflow::core::RefCountPtr<BatchResourceType>(
+          new_resource.release());
     };
   }
-  OP_REQUIRES_OK_ASYNC(c,
-                       c->resource_manager()->LookupOrCreate(
-                           container_, shared_name_, &br, creator),
-                       done);
 
+  auto br = client_graph_resource_context->GetOrCreateResource<
+      tensorflow::core::RefCountPtr<BatchResourceType>>(shared_name_, creator);
+  if (!br.ok()) OP_REQUIRES_OK_ASYNC(c, tsl::FromAbslStatus(br.status()), done);
   auto expected_name = BatchResourceType::GetBatchFunctionName(batch_function_);
   auto received_name =
-      BatchResourceType::GetBatchFunctionName(br->batch_function());
+      BatchResourceType::GetBatchFunctionName((*br)->get()->batch_function());
 
   // TODO(b/187173237): When we can guarantee only 1 copy of BEF function is
   // generated for the batched function, we can assert the pointers are equal
@@ -173,10 +192,9 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           "Provided BEF function doesn't match with BatchResource. Expected:",
           expected_name, " Received:", received_name)),
       done);
-  Status status = br->RegisterInput(
+  Status status = (*br)->get()->RegisterInput(
       random::New64(), c, batcher_queue_,
       [c]() { return BatchResourceType::CreateBatchTask(c); }, done);
-  br->Unref();
   OP_REQUIRES_OK_ASYNC(c, status, done);
   // Assume br calls done, so nothing to do here.
 }

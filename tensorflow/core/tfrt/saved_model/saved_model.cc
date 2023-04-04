@@ -245,7 +245,8 @@ tensorflow::Status RunBytecodeInitializers(
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(/*run_options=*/{}, model_metadata, runtime,
-                        runtime.work_queue(), resource_context, runner_table,
+                        runtime.work_queue(), resource_context,
+                        /*client_graph_resource_context=*/nullptr, runner_table,
                         resource_array, fallback_state));
 
   std::vector<tensorflow::Tensor> outputs;
@@ -264,7 +265,8 @@ tensorflow::Status RunBytecodeInitializers(
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
         options, /*run_options=*/{}, initializer_name, nullptr,
         &loaded_executable, initializer_inputs, &outputs, resource_context,
-        runner_table, resource_array, runtime, fallback_state,
+        /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
+        runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -288,7 +290,8 @@ tensorflow::Status RunBefInitializers(
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(/*run_options=*/{}, model_metadata, runtime,
-                        runtime.work_queue(), resource_context, runner_table,
+                        runtime.work_queue(), resource_context,
+                        /*client_graph_resource_context=*/nullptr, runner_table,
                         resource_array, fallback_state));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
@@ -310,7 +313,9 @@ tensorflow::Status RunBefInitializers(
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
         options, /*run_options=*/{}, initializer_name, func,
         /*loaded_executable=*/nullptr, initializer_inputs, &outputs,
-        resource_context, runner_table, resource_array, runtime, fallback_state,
+        resource_context,
+        /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
+        runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
     DCHECK(outputs.empty());
   }
@@ -873,8 +878,9 @@ tensorflow::Status SavedModelImpl::Run(
 
   return GraphExecutionRunOnFunction(
       options_.graph_execution_options, run_options, name, func,
-      loaded_executable, inputs, outputs, resource_context, runner_table,
-      resource_array, runtime(), *fallback_state_, &req_deadline_tracker_);
+      loaded_executable, inputs, outputs, resource_context,
+      /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
+      runtime(), *fallback_state_, &req_deadline_tracker_);
 }
 
 struct SavedModelImpl::JoinedSignature {
