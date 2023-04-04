@@ -1285,57 +1285,33 @@ func.func @collective_permute_invalid_source_target_pairs(%arg0: tensor<128x32xf
 
 // -----
 
-func.func @concat_0D(%arg0: tensor<i32>, %arg1: tensor<i32>)  -> tensor<2xi32> {
-  // expected-error@+1 {{rank-0 values cannot be concatenated}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
-  func.return %0 : tensor<2xi32>
-}
-
-// -----
-
-func.func @concat_no_operands()  -> tensor<2xi32> {
-  // expected-error@+1 {{expected 1 or more operands, but found 0}}
-  %0 = "mhlo.concatenate"() { dimension = 0 : i64 } : () -> tensor<2xi32>
-  func.return %0 : tensor<2xi32>
-}
-
-// -----
-
-// CHECK-LABEL: @concat_1D
-func.func @concat_1D(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
+// CHECK-LABEL: @concatenate_1D
+func.func @concatenate_1D(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
 }
 
 // -----
 
-// CHECK-LABEL: @concat_1D
+// CHECK-LABEL: @concatenate_1D
 // Verifies that an error is not thrown if the inferred type is compatible with
 // the result type.
-func.func @concat_1D(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<3xi32> {
+func.func @concatenate_1D(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<3xi32> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
 }
 
 // -----
 
-func.func @concat_1D_type_error(%arg0: tensor<1xi32>, %arg1: tensor<2xf32>)  -> tensor<3xi32> {
-  // expected-error@+1 {{'mhlo.concatenate' op requires the same element type for all operands and results}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xf32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-
-// -----
-
-// CHECK-LABEL: @concat_1D_unranked
-func.func @concat_1D_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
+// CHECK-LABEL: @concatenate_1D_unranked
+func.func @concatenate_1D_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
 }
 
 // -----
 
-func.func @concat_1D_error(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<4xi32> {
+func.func @concatenate_c1_c5(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<4xi32> {
   // expected-error@+1 {{op inferred type(s) 'tensor<3xi32>' are incompatible with return type(s) of operation 'tensor<4xi32>'}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<4xi32>
   func.return %0 : tensor<4xi32>
@@ -1343,31 +1319,7 @@ func.func @concat_1D_error(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tenso
 
 // -----
 
-func.func @concat_nagetive_dim(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
-  // expected-error@+1 {{dimension -1 is negative}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-
-// -----
-
-func.func @concat_nagetive_dim_with_all_unranked_operands(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
-  // expected-error@+1 {{dimension -1 is negative}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
-}
-
-// -----
-
-func.func @concat_outofbounds_dim(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
-  // expected-error@+1 {{dimension 10 is out-of-bounds for input rank 1}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 10 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
-  func.return %0 : tensor<3xi32>
-}
-
-// -----
-
-func.func @concat_mismatch_rank(%arg0: tensor<1xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3xi32> {
+func.func @concatenate_c2(%arg0: tensor<1xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3xi32> {
   // expected-error@+1 {{operands (0) and (1) do not match rank}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2x2xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
@@ -1375,7 +1327,47 @@ func.func @concat_mismatch_rank(%arg0: tensor<1xi32>, %arg1: tensor<2x2xi32>)  -
 
 // -----
 
-func.func @concat_mismatch_dim(%arg0: tensor<1x3xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3x3xi32> {
+func.func @concatenate_c3()  -> tensor<2xi32> {
+  // expected-error@+1 {{expected 1 or more operands, but found 0}}
+  %0 = "mhlo.concatenate"() { dimension = 0 : i64 } : () -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
+func.func @concatenate_c4(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{dimension -1 is negative}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @concatenate_c4(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
+  // expected-error@+1 {{dimension -1 is negative}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = -1 : i64 } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  func.return %0 : tensor<*xi32>
+}
+
+// -----
+
+func.func @concatenate_c4(%arg0: tensor<i32>, %arg1: tensor<i32>)  -> tensor<2xi32> {
+  // expected-error@+1 {{rank-0 values cannot be concatenated}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
+func.func @concatenate_c4(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{dimension 10 is out-of-bounds for input rank 1}}
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 10 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @concatenate_c6(%arg0: tensor<1x3xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3x3xi32> {
   // expected-error@+1 {{shapes of operand (0) and (1) do not match at non-concat index: (1, 3) != (2, 2) at non-concat index 1}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1x3xi32>, tensor<2x2xi32>) -> tensor<3x3xi32>
   func.return %0 : tensor<3x3xi32>
