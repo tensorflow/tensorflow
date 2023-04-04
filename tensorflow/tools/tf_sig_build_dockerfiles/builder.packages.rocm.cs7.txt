@@ -6,3 +6,15 @@ libffi-devel
 centos-release-scl 
 hdf5-devel
 wget
+make
+patch
+zlib-devel
+bzip2
+bzip2-devel
+readline
+readline-devel
+sqlite
+sqlite-devel
+openssl-devel
+tk-devel
+xz-devel
