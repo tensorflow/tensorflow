@@ -226,56 +226,10 @@ xla::StatusOr<ShardArgResult> ShardArg(
   auto py_array_or_bufs = python_fallback(arg, py_devices, input_spec.indices,
                                           input_spec.array_sharding);
 
-  if (py_array_or_bufs.get_type() == xla::PyArray::type()) {
-    auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
-    ShardArgResult result;
-    result.owning_sda = py_array_or_bufs;
-    result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
-    return result;
-  }
-
-  // This fallback is better than nothing, but ideally we should be able to
-  // convert the argument in C++. At least, we can call the C++ DevicePut from
-  // Python.
-  auto per_device_pybuffers = py::cast<py::list>(py_array_or_bufs);
+  auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
   ShardArgResult result;
-  result.owning_sda = py::reinterpret_borrow<py::object>(per_device_pybuffers);
-  if (!per_device_pybuffers.empty()) {
-    std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
-    per_device_arrays.reserve(per_device_pybuffers.size());
-    xla::ifrt::DeviceList::Devices devices;
-    devices.reserve(per_device_pybuffers.size());
-    // TODO(hyeontaek): The created array will never be disassembled. We should
-    // omit collecting shapes and make the OpaqueSharding non-disassemblable?
-    std::vector<xla::ifrt::Shape> shapes;
-    shapes.reserve(per_device_pybuffers.size());
-
-    // The JAX Python shard_arg function is expected to return JAX PyBuffer
-    // objects. If executing a JAX extension, it should have fallbacked to
-    // Python well before this point.
-    TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
-    for (py::handle per_device_pybuffer : per_device_pybuffers) {
-      auto b = xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value();
-      per_device_arrays.push_back(tsl::FormRef(b->ifrt_array()));
-      devices.push_back(per_device_arrays.back()->sharding().devices().front());
-      shapes.push_back(per_device_arrays.back()->shape());
-    }
-    TF_ASSIGN_OR_RETURN(
-        result.ifrt_array,
-        per_device_arrays.front()
-            ->client()
-            ->AssembleArrayFromSingleDeviceArrays(
-                // TODO(hyeontaek): The logical shape here is inaccurate. We
-                // may want to avoid creating a new Array or specialize Array
-                // to disallow access to the logical shape.
-                per_device_arrays.front()->shape(),
-                xla::ifrt::OpaqueSharding::Create(
-                    xla::ifrt::DeviceList(std::move(devices)),
-                    xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-                        std::move(shapes))),
-                absl::MakeSpan(per_device_arrays),
-                xla::ifrt::ArrayCopySemantics::kReuseInput));
-  }
+  result.owning_sda = py_array_or_bufs;
+  result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
   return result;
 }
 

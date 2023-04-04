@@ -43,42 +43,6 @@ namespace {
 
 namespace py = pybind11;
 
-tsl::RCReference<ifrt::Array> CreateIfRtArrayFromPyBuffers(
-    py::dtype dtype, absl::Span<const int64_t> shape,
-    absl::Span<const PyBuffer::object> py_buffers) {
-  if (py_buffers.empty()) {
-    // TODO(hyeontaek): Return a Status.
-    throw py::value_error("At least one buffer must be provided.");
-  }
-
-  auto* ifrt_client = py_buffers.front().buf()->client()->ifrt_client();
-
-  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
-  ifrt_arrays.reserve(py_buffers.size());
-  ifrt::DeviceList::Devices devices;
-  devices.reserve(py_buffers.size());
-  std::vector<ifrt::Shape> shapes;
-  shapes.reserve(py_buffers.size());
-
-  for (const auto& py_buffer : py_buffers) {
-    ifrt_arrays.push_back(tsl::FormRef(py_buffer.buf()->ifrt_array()));
-    devices.push_back(ifrt_arrays.back()->sharding().devices()[0]);
-    shapes.push_back(ifrt_arrays.back()->shape());
-  }
-  auto ifrt_array = ifrt_client->AssembleArrayFromSingleDeviceArrays(
-      ifrt::Shape(shape),
-      ifrt::OpaqueSharding::Create(
-          ifrt::DeviceList(std::move(devices)),
-          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
-              std::move(shapes))),
-      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
-  if (!ifrt_array.ok()) {
-    // TODO(hyeontaek): Return a Status.
-    throw py::value_error(ifrt_array.status().ToString());
-  }
-  return *std::move(ifrt_array);
-}
-
 tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     py::object dtype, absl::Span<const int64_t> shape,
     absl::Span<const PyArray> py_arrays) {
@@ -297,25 +261,6 @@ void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
   }
 }
 
-void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
-                     absl::Span<const PyBuffer::object> py_buffers,
-                     bool committed, bool skip_checks) {
-  auto dtype = aval.attr("dtype");
-  auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
-  auto ifrt_array = CreateIfRtArrayFromPyBuffers(dtype, shape, py_buffers);
-  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()), aval,
-            pybind11::cast<bool>(aval.attr("weak_type")), std::move(dtype),
-            std::move(shape), std::move(sharding), committed,
-            py_buffers.at(0).buf()->client(), Traceback::Get(),
-            std::move(ifrt_array));
-
-  PyArray py_array = self;
-
-  if (!skip_checks) {
-    py_array.CheckAndRearrange();
-  }
-}
-
 void PyArray::PyInit(py::object self, DisableFastpath) {
   Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
             PyArray_Storage::DisableFastpath());
@@ -352,12 +297,6 @@ PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
   weak_type_ = pybind11::cast<bool>(aval_.attr("weak_type"));
   dtype_ = aval_.attr("dtype");
   shape_ = pybind11::cast<std::vector<int64_t>>(aval_.attr("shape"));
-}
-
-PyArray PyArrayResultHandler::Call(
-    absl::Span<const PyBuffer::object> py_buffers) const {
-  return Call(py_buffers.at(0).buf()->client(),
-              CreateIfRtArrayFromPyBuffers(dtype_, shape_, py_buffers));
 }
 
 PyArray PyArrayResultHandler::Call(absl::Span<const PyArray> py_arrays) const {
@@ -434,9 +373,9 @@ const std::vector<PyArray>& PyArray::py_arrays_cached() {
 
 py::object PyArray::arrays() {
   // For performance, we only keep pjrt buffers by default. But on python side
-  // "_arrays" returns PyBuffers instead, and subsequent calls to "_arrays"
-  // should return the same PyBuffers (to avoid duplicate device to host
-  // transfers). So we create PyBuffers the first time it is called and reuse
+  // "_arrays" returns PyArrays instead, and subsequent calls to "_arrays"
+  // should return the same PyArrays (to avoid duplicate device to host
+  // transfers). So we create PyArrays the first time it is called and reuse
   // them later.
   if (ifrt_array() == nullptr) return py::none();
 
@@ -474,15 +413,7 @@ Status PyArray::set_arrays(py::object obj) {
   std::vector<ifrt::Shape> shapes;
   shapes.reserve(list.size());
   for (py::handle obj : list) {
-    if (obj.get_type().ptr() == PyBuffer::type()) {
-      auto* py_buffer = PyBuffer::AsPyBufferUnchecked(obj);
-      DCHECK_EQ(py_buffer->client(), py_client());
-      // TODO(hyeontaek): This should return an error instead of failing.
-      CHECK(py_buffer->ifrt_array() != nullptr);
-      ifrt_arrays.push_back(tsl::FormRef(py_buffer->ifrt_array()));
-      devices.push_back(ifrt_arrays.back()->sharding().devices().front());
-      shapes.push_back(ifrt_arrays.back()->shape());
-    } else if (obj.get_type().is(PyArray::type())) {
+    if (obj.get_type().is(PyArray::type())) {
       auto py_array = py::reinterpret_borrow<PyArray>(obj);
       if (py_array.py_client() != py_client()) {
         return InvalidArgument("Client mismatch when assigning to _arrays.");
@@ -834,10 +765,6 @@ Status PyArray::RegisterTypes(py::module& m) {
           auto py_arrays = py::cast<std::vector<PyArray>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding), py_arrays,
                           committed, skip_checks);
-        } else if (arrays[0].get_type().ptr() == PyBuffer::type()) {
-          auto py_buffers = py::cast<std::vector<PyBuffer::object>>(arrays);
-          PyArray::PyInit(self, std::move(aval), std::move(sharding),
-                          py_buffers, committed, skip_checks);
         } else {
           throw py::type_error(
               absl::StrCat("Unsupported type for elements in `arrays`: ",
@@ -923,11 +850,6 @@ Status PyArray::RegisterTypes(py::module& m) {
   py::class_<PyArrayResultHandler>(m, "ResultHandler")
       .def("__call__", [](const PyArrayResultHandler& self,
                           PyArray arg) { return self.Call(arg); })
-      .def("__call__",
-           [](const PyArrayResultHandler& self,
-              std::vector<PyBuffer::object> py_arrays) {
-             return self.Call(py_arrays);
-           })
       .def("__call__",
            [](const PyArrayResultHandler& self,
               std::vector<PyArray> py_arrays) { return self.Call(py_arrays); });

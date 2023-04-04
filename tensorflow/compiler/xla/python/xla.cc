@@ -223,7 +223,7 @@ PYBIND11_MODULE(xla_extension, m) {
              PythonDeprecationWarning(
                  "Per device live_buffers() is going to be deprecated. Please "
                  "use the jax.live_arrays() for jax.Arrays instead.");
-             return device.client->LiveBuffersOnDevice(device.get());
+             return py::list();
            })
       .def(
           "__getattr__",
@@ -435,7 +435,6 @@ PYBIND11_MODULE(xla_extension, m) {
   });
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
-  TF_CHECK_OK(PyBuffer::RegisterTypes(m));
   TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);
 

@@ -670,31 +670,6 @@ def TestFactory(xla_backend,
               "BlockHostUntilReady() called on deleted or donated buffer")):
         buffer.block_until_ready()
 
-    @unittest.skipIf(pjrt_c_api, "b/264472918")
-    def testDeviceArrayBaseSignatures(self):
-      # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
-      # and thus needs to correctly implement the following methods.
-      arg = np.array([[1., 2., 3.]], np.float32)
-      buffer = self.backend.buffer_from_pyval(arg)
-      if not isinstance(buffer, xla_client.DeviceArrayBase):
-        raise unittest.SkipTest(
-            "The objectof type {} do not extend DeviceArrayBase".format(
-                type(buffer)))
-
-      self.assertEqual(buffer.__array_priority__, 100)
-      self.assertEqual(buffer.shape, (1, 3))
-      self.assertEqual(buffer.dtype, np.float32)
-      self.assertEqual(buffer.size, 3)
-      self.assertEqual(buffer.ndim, 2)
-
-      self.assertIs(buffer, buffer.block_until_ready())
-      self.assertTrue(buffer.is_ready())
-      buffer.delete()
-      with self.assertRaises(xla_client.XlaRuntimeError):
-        buffer.block_until_ready()
-      with self.assertRaises(xla_client.XlaRuntimeError):
-        buffer.is_ready()
-
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support OnDeviceSizeInBytes.")
@@ -2950,18 +2925,14 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens([])
       self.assertLen(results, 1)
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
     def testExecuteShardedOverloadBufferInput(self):
       arg = np.arange(12, dtype=np.int16).reshape(3, 4)
@@ -2980,9 +2951,7 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
       results, _ = compiled_c.execute_sharded_on_local_devices_with_tokens(
           [[buffer]])
@@ -2990,9 +2959,7 @@ def TestFactory(xla_backend,
       self.assertIsInstance(results[0], list)
       self.assertLen(results[0], 1)
       results[0][0].block_until_ready()
-      self.assertIsInstance(
-          results[0][0], (xla_client.Buffer, xla_client.ArrayImpl)
-      )
+      self.assertIsInstance(results[0][0], xla_client.ArrayImpl)
 
   tests.append(ExecuteShardedOverloadTest)
 
