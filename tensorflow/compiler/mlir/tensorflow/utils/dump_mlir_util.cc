@@ -318,7 +318,11 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path) {
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (!mlir::succeeded(mlir::applyPassManagerCLOptions(pm))) {
+    LOG(ERROR) << "cannot apply MLIR pass manager CL options";
+    return;
+  }
   SetCrashReproducer(pm, dir_path);
 }
 
