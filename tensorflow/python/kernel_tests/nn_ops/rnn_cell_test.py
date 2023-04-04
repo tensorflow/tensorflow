@@ -1361,6 +1361,25 @@ class LSTMTest(test.TestCase):
               use_peephole=use_peephole))
 
   @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellEmptyInputRaisesError(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "is empty"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=constant_op.constant(0, shape=[2, 16], dtype=dtypes.half),
+              cs_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              h_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              w=constant_op.constant(0, shape=[16, 0], dtype=dtypes.half),
+              wci=constant_op.constant(0, shape=[5], dtype=dtypes.half),
+              wcf=constant_op.constant(0, shape=[16], dtype=dtypes.half),
+              wco=constant_op.constant(0, shape=[13], dtype=dtypes.half),
+              b=constant_op.constant(0, shape=[0], dtype=dtypes.half),
+              forget_bias=112.66590343649887,
+              cell_clip=67.12389445926587,
+              use_peephole=False,
+          )
+      )
+
+  @test_util.run_in_graph_and_eager_modes
   def testLSTMBlockCellGradErrorHandling(self):
     use_peephole = False
     seq_len_max = constant_op.constant(1, shape=[], dtype=dtypes.int64)
