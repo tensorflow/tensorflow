@@ -12,7 +12,7 @@ ARG ROCM_VERSION=5.4.0
 ARG CUSTOM_INSTALL
 ARG ROCM_PATH=/opt/rocm-${ROCM_VERSION}
 ENV ROCM_PATH=${ROCM_PATH}
-COPY ${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE} /tf/pkg
+COPY ${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE} /${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE}
 COPY ${CUSTOM_INSTALL} /${CUSTOM_INSTALL}
 COPY setup.packages.sh /setup.packages.sh
 COPY setup.rocm.sh /setup.rocm.sh
@@ -36,7 +36,7 @@ ENV TF_NEED_ROCM=1
 ENV TF_ROCM_GCC=1
 ENV ROCM_TOOLKIT_PATH=${ROCM_PATH}
 
-RUN pip install --no-cache-dir ${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE}
+RUN pip install --no-cache-dir /${TF_PKGS_DIR}/${TENSORFLOW_PACKAGE}
 RUN echo 'ALL ALL=NOPASSWD:ALL' | tee /etc/sudoers.d/sudo-nopasswd
 
 RUN git clone https://github.com/tensorflow/models.git
