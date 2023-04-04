@@ -131,6 +131,8 @@ class PSUnavailableError(errors.UnavailableError):
 
   def __init__(self, original_exception):
     assert isinstance(original_exception, errors.UnavailableError)
+    # TF Errors should have init args set as attributes for serialization.
+    self.original_exception = original_exception
     super().__init__(
         original_exception.node_def,
         original_exception.op,
@@ -1701,6 +1703,8 @@ def _extract_failed_ps_instances(err_msg):
 
 def _is_ps_failure(error):
   """Whether the error is considered a parameter server failure."""
+  if isinstance(error, PSUnavailableError):
+    return True
 
   # For an `ClosureInputError` or `ClosureAbortedError`, extract
   # the original error and assess it accordingly.
