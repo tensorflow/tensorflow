@@ -83,11 +83,11 @@ void* LoadSymbolFromSharedLibrary(const std::string& delegate_path,
                      << ", using dlopen with RTLD_NODELETE.";
   }
   // Exports the path of the folder containing the stable delegate shared
-  // library to the STABLE_DELEGATE_LIBRARY_PATH environment variable.
+  // library to the TFLITE_STABLE_DELEGATE_LIBRARY_PATH environment variable.
   setLibraryPathEnvironmentVariable(delegate_path);
-  // On the one hand, the handld would not be closed in production. The resource
-  // will be release when the process is killed. On the other hand, it may cause
-  // issue for leak detection in testing.
+  // On the one hand, the handle would not be closed in production. The resource
+  // will be released when the process is killed. On the other hand, it may
+  // cause issues for leak detection in testing.
   // TODO(b/268483011): Better support for cleanup the shared library handle.
   delegate_lib_handle = dlopen(delegate_path.c_str(), dlopen_flags);
   if (!delegate_lib_handle) {
