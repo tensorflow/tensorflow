@@ -83,6 +83,7 @@ inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
     max = 7;
   }
 
+  q.reserve(data.size());
   for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
         min, std::min<float>(max, std::round(zero_point + (f / scale))))));
@@ -697,6 +698,10 @@ class SingleOpModel {
   int CountNumberOfDelegatedPartitions() const;
   int GetNumberOfAppliedDelegates() const { return num_applied_delegates_; }
 
+  // Tell TF Lite runtime to apply default delegates (i.e. XNNPACK delegate)
+  // when handling this op-level model.
+  void SetApplyDefaultDelegates() { bypass_default_delegates_ = false; }
+
  protected:
   int32_t GetTensorSize(int index) const;
 
@@ -1029,7 +1034,8 @@ class SingleOpModel {
 
   // Whether to bypass the application of TF Lite default delegates (i.e.
   // XNNPACK delegate) at rutnime.
-  bool bypass_default_delegates_ = false;
+  // True by default as delegated graphs are tested elsewhere.
+  bool bypass_default_delegates_ = true;
 };
 
 // Populate string tensors.
