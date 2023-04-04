@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_folder.h"
 #include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
-#include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
@@ -410,7 +409,6 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("optimization");
     AddHloVerifier(&pipeline);
     pipeline.AddPass<TopkDecomposer>();
-    pipeline.AddPass<AllToAllDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
       return !stream_exec->GetDeviceDescription()

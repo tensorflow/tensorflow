@@ -2119,6 +2119,7 @@ xla_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/tsl/platform:test",
     ],
