@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+   http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -920,30 +920,36 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         if (strategies->in_nodes.empty()) {
           resharding_costs = {};
         } else {
+          HloInstruction* ins = instructions.at(strategies->instruction_id);
           for (size_t i = 0; i < strategies->in_nodes.size(); i++) {
             HloInstruction* operand =
                 instructions.at(strategies->in_nodes.at(i)->instruction_id);
-            HloInstruction* ins = instructions.at(strategies->instruction_id);
             std::optional<HloSharding> input_sharding_or =
                 ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
                                                          true, call_graph);
             if (input_sharding_or.has_value()) {
               input_shardings.push_back(input_sharding_or.value());
             }
-            // Set resharding cost to be 0 because there is only one choice and
-            // the cost do not matter.
-            size_t resharding_costs_length;
+            StrategyVector* operand_strategies;
             if (ins->opcode() == HloOpcode::kGetTupleElement) {
-              CHECK(strategy_map.at(operand)->is_tuple);
-              resharding_costs_length = strategy_map.at(operand)
-                                            ->childs[ins->tuple_index()]
-                                            ->leaf_vector.size();
+              operand_strategies =
+                  strategy_map.at(operand)->childs[ins->tuple_index()].get();
             } else {
-              resharding_costs_length =
-                  strategy_map.at(operand)->leaf_vector.size();
+              operand_strategies = strategy_map.at(operand).get();
             }
-            resharding_costs.push_back(
-                std::vector<double>(resharding_costs_length, 0.0));
+            std::vector<double> in_resharding_costs =
+                ReshardingCostVector(operand_strategies, operand->shape(),
+                                     existing_sharding, cluster_env);
+            // If there is only one option for resharding, and the cost
+            // computed for that option is kInfinityCost, set the cost to
+            // zero. This is okay because there is only one option anyway, and
+            // having the costs set to kInfinityCost is problematic for the
+            // solver.
+            if (in_resharding_costs.size() == 1 &&
+                in_resharding_costs[0] == kInfinityCost) {
+              in_resharding_costs[0] = 0;
+            }
+            resharding_costs.push_back(in_resharding_costs);
           }
         }
         double memory_cost =
@@ -3967,6 +3973,7 @@ StatusOr<bool> AutoSharding::Run(
           CallSolver(sequence, liveness_set, strategy_map, leaf_strategies,
                      cost_graph, alias_set, option_.memory_budget_per_device));
       std::tie(s_val, e_val, objective) = solution;
+      this->solver_optimal_objective_value_ = objective;
     } else {
       s_val = option_.strategy_vector;
     }
