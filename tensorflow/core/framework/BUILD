@@ -56,6 +56,7 @@ exports_files(
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
         "kernel_def_util.h",
+        "local_rendezvous.h",
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",

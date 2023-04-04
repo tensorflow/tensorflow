@@ -619,9 +619,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
             VLOG(6)
                 << "Creating rendezvous using the worker_env's rendezvous_mgr.";
             // TODO(hhb): Add a Create method and use it here.
-            auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
+            auto remote_r = worker_env_->rendezvous_mgr->Find(step_id);
             remote_r->Initialize(worker_session_.get()).IgnoreError();
-            *r = remote_r;
+            *r = remote_r.release();
             return OkStatus();
           },
           [this](const int64_t step_id) {

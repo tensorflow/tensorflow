@@ -600,7 +600,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   auto session_name = strings::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   if (reset_context) {
-    RemoteRendezvous* r =
+    tsl::core::RefCountPtr<RemoteRendezvous> r =
         server->worker_env()->rendezvous_mgr->Find(context_id);
     auto* device_mgr = server->worker_env()->device_mgr;
     std::shared_ptr<WorkerSession> worker_session;
@@ -623,8 +623,8 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
         std::move(new_server), server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
-        std::move(remote_mgr)));
+        remote_workers, context_id, r.release(), device_mgr, keep_alive_secs,
+        cluster_flr, std::move(remote_mgr)));
 
     // NOTE: We start the server after all other initialization, because the
     // GrpcServer cannot be destroyed after it is started.

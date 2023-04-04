@@ -1562,6 +1562,7 @@ filegroup(
 filegroup(
     name = "framework_internal_public_headers",
     srcs = [
+        "//tensorflow/core/framework:local_rendezvous.h",
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:ref_var.h",
