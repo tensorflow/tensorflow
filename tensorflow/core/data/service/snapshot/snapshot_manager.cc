@@ -285,8 +285,8 @@ std::optional<int64_t> SnapshotManager::MaybeAssignOrphanStream(
     int64_t stream_index = *orphans_.begin();
     orphans_.erase(orphans_.begin());
     assignments_[worker_address] = stream_index;
-    VLOG(1) << "assigning an existing stream, " << stream_index
-            << ", to worker " << worker_address;
+    LOG(INFO) << "assigning an existing stream, " << stream_index
+              << ", to worker " << worker_address;
     return stream_index;
   }
   return std::nullopt;
@@ -301,15 +301,15 @@ StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
   }
   streams_.push_back(Stream(num_sources()));
   assignments_[worker_address] = new_stream_index;
-  VLOG(1) << "assigning a new stream, " << new_stream_index << ", to worker "
-          << worker_address;
+  LOG(INFO) << "assigning a new stream, " << new_stream_index << ", to worker "
+            << worker_address;
   return new_stream_index;
 }
 
 void SnapshotManager::ReassignPreviouslyAssignedStream(
     int64_t stream_index, absl::string_view worker_address) {
-  VLOG(1) << "reassigning a previous assignment of stream " << stream_index
-          << " to worker " << worker_address;
+  LOG(INFO) << "reassigning a previous assignment of stream " << stream_index
+            << " to worker " << worker_address;
   assignments_[worker_address] = stream_index;
   orphans_.erase(stream_index);
   unknowns_.erase(stream_index);
