@@ -36,23 +36,32 @@ PYBIND11_MODULE(runtime_client_pybind, m) {
         &tensorflow::core::function::GlobalPythonEagerContext,
         pybind11::return_value_policy::reference);
 
-  pybind11::class_<tensorflow::core::function::Runtime>(m, "Runtime")
-      .def(pybind11::init<tensorflow::EagerContext&>())
-      // TODO(mdan): Rename to GetFunctionProto once pybind11_protobuf available
-      .def(
-          "GetFunctionProtoString",
-          [](tensorflow::core::function::Runtime& r, const std::string& name) {
-            return pybind11::bytes(
-                r.GetFunctionProto(name)->SerializeAsString());
-          },
-          pybind11::return_value_policy::reference)
-      // TODO(mdan): Rename to CreateFunction once pybind11_protobuf available
-      .def("CreateFunctionFromString",
-           [](tensorflow::core::function::Runtime& r, const std::string& def) {
-             tensorflow::FunctionDef proto;
-             proto.ParseFromString(def);
-             return r.CreateFunction(proto);
-           })
-      .def("TransformFunction",
-           &tensorflow::core::function::Runtime::TransformFunction);
+  pybind11::class_<tensorflow::core::function::Runtime> runtime(m, "Runtime");
+
+  pybind11::enum_<tensorflow::core::function::Runtime::Dialect>(runtime,
+                                                                "Dialect")
+      .value("TFG", tensorflow::core::function::Runtime::Dialect::TFG)
+      .value("TF", tensorflow::core::function::Runtime::Dialect::TF);
+
+  runtime.def(pybind11::init<tensorflow::EagerContext&>());
+  // TODO(mdan): Rename to GetFunctionProto once pybind11_protobuf available
+  runtime.def(
+      "GetFunctionProtoString",
+      [](tensorflow::core::function::Runtime& r, const std::string& name) {
+        return pybind11::bytes(r.GetFunctionProto(name)->SerializeAsString());
+      },
+      pybind11::return_value_policy::reference);
+  // TODO(mdan): Rename to CreateFunction once pybind11_protobuf available
+  runtime.def(
+      "CreateFunctionFromString",
+      [](tensorflow::core::function::Runtime& r, const std::string& def) {
+        tensorflow::FunctionDef proto;
+        proto.ParseFromString(def);
+        return r.CreateFunction(proto);
+      });
+  runtime.def("TransformFunction",
+              &tensorflow::core::function::Runtime::TransformFunction,
+              pybind11::arg("name"), pybind11::arg("pipeline_name"),
+              pybind11::arg("dialect") =
+                  tensorflow::core::function::Runtime::Dialect::TFG);
 }
