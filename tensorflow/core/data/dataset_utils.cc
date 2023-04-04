@@ -952,7 +952,8 @@ bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<5>, IndependentHostTasks);
+                            RandomJobSamplePercentage<25>,
+                            IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
