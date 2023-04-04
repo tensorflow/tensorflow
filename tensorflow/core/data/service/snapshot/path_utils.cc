@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>

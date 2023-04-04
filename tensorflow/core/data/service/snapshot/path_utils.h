@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_PATH_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_PATH_UTILS_H_
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
