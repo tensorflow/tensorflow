@@ -5735,7 +5735,6 @@ xla_cc_test(
     deps = [
         ":hlo_verifier",
         ":while_loop_all_reduce_code_motion",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",

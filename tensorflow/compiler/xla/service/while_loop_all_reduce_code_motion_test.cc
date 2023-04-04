@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -43,7 +42,15 @@ using ::testing::NotNull;
 using ::testing::Property;
 using ::testing::SizeIs;
 
-class WhileLoopAllReduceCodeMotionTest : public HloTestBase {};
+class WhileLoopAllReduceCodeMotionTest : public HloTestBase {
+ public:
+  template <HloOpcode op>
+  HloInstruction* find_op(HloComputation* computation) {
+    return *std::find_if(computation->instructions().begin(),
+                         computation->instructions().end(),
+                         HloPredicateIsOp<op>);
+  }
+};
 
 TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulate) {
   constexpr absl::string_view kHloModule = R"(
@@ -94,42 +101,29 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
               Each(Not(op::AllReduce())));
   HloInstruction* accumulation_buffer =
       transformed_while->mutable_operand(0)->mutable_operand(3);
   EXPECT_THAT(accumulation_buffer, op::Constant());
-  HloAllReduceInstruction* moved_all_reduce = DynCast<HloAllReduceInstruction>(
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) {
-                       return Value(instruction, op::AllReduce());
-                     })));
+  HloAllReduceInstruction* moved_all_reduce =
+      DynCast<HloAllReduceInstruction>(find_op<HloOpcode::kAllReduce>(entry));
   ASSERT_THAT(moved_all_reduce, NotNull());
   EXPECT_THAT(moved_all_reduce->operand(0), op::GetTupleElement());
   EXPECT_EQ(DynCast<HloGetTupleElementInstruction>(
                 moved_all_reduce->mutable_operand(0))
                 ->tuple_index(),
             3);
-  EXPECT_THAT(moved_all_reduce->replica_groups(), SizeIs(1));
-  EXPECT_TRUE(
-      std::equal(moved_all_reduce->replica_groups()[0].replica_ids().begin(),
-                 moved_all_reduce->replica_groups()[0].replica_ids().end(),
-                 std::vector<int>{0, 1, 2, 3}.begin()));
+  EXPECT_THAT(moved_all_reduce, op::ReplicaGroups({{0, 1, 2, 3}}));
   EXPECT_FALSE(moved_all_reduce->constrain_layout());
   EXPECT_TRUE(moved_all_reduce->use_global_device_ids());
   HloComputation* reduction_computation =
       module->GetComputationWithName("reduction");
   ASSERT_THAT(reduction_computation, NotNull());
-  EXPECT_EQ(moved_all_reduce->called_computations()[0], reduction_computation);
+  EXPECT_EQ(moved_all_reduce->to_apply(), reduction_computation);
 }
 
 TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterAccumulate) {
@@ -183,11 +177,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *std::find_if(module->entry_computation()->instructions().begin(),
-                    module->entry_computation()->instructions().end(),
-                    HloPredicateIsOp<HloOpcode::kWhile>);
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
               Each(Not(op::ReduceScatter())));
@@ -197,9 +188,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterAccumulate) {
   // Verify that the accumulation buffer's shape changed.
   EXPECT_THAT(accumulation_buffer, op::Shape("f32[4096, 1024]"));
   auto* moved_reduce_scatter = DynCast<HloReduceScatterInstruction>(
-      *std::find_if(module->entry_computation()->instructions().begin(),
-                    module->entry_computation()->instructions().end(),
-                    HloPredicateIsOp<HloOpcode::kReduceScatter>));
+      find_op<HloOpcode::kReduceScatter>(entry));
   ASSERT_THAT(moved_reduce_scatter, NotNull());
   EXPECT_THAT(moved_reduce_scatter->operand(0), op::GetTupleElement());
   EXPECT_EQ(DynCast<HloGetTupleElementInstruction>(
@@ -324,22 +313,15 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
               Each(Not(op::AllReduce())));
   std::vector<HloInstruction*> hoisted_all_reduces;
   absl::c_copy_if(module->entry_computation()->instructions(),
                   std::back_inserter(hoisted_all_reduces),
-                  [](HloInstruction* instruction) {
-                    return Value(instruction, op::AllReduce());
-                  });
+                  HloPredicateIsOp<HloOpcode::kAllReduce>);
   EXPECT_THAT(hoisted_all_reduces, SizeIs(3));
   ASSERT_THAT(
       hoisted_all_reduces,
@@ -403,12 +385,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulateUse) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
 
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
@@ -519,41 +497,25 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, TypeCastAllReduceAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
               Each(Not(op::AllReduce())));
   HloInstruction* accumulation_buffer =
       transformed_while->mutable_operand(0)->mutable_operand(3);
   EXPECT_THAT(accumulation_buffer, op::Constant());
-  HloAllReduceInstruction* moved_all_reduce = DynCast<HloAllReduceInstruction>(
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) {
-                       return Value(instruction, op::AllReduce());
-                     })));
-  EXPECT_TRUE(ShapeUtil::Equal(moved_all_reduce->shape(),
-                               ShapeUtil::MakeShape(BF16, {1024, 1024})));
+  HloAllReduceInstruction* moved_all_reduce =
+      DynCast<HloAllReduceInstruction>(find_op<HloOpcode::kAllReduce>(entry));
+  EXPECT_THAT(moved_all_reduce, op::Shape("bf16[1024, 1024]"));
 
-  HloInstruction* add_delta_to_old_buffer =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::Add());
-                     }));
+  HloInstruction* add_delta_to_old_buffer = find_op<HloOpcode::kAdd>(entry);
   ASSERT_THAT(add_delta_to_old_buffer, NotNull());
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(0)->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(1)->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
+  EXPECT_THAT(add_delta_to_old_buffer, op::Shape("f32[1024, 1024]"));
+  EXPECT_THAT(add_delta_to_old_buffer->operand(0),
+              op::Shape("f32[1024, 1024]"));
+  EXPECT_THAT(add_delta_to_old_buffer->operand(1),
+              op::Shape("f32[1024, 1024]"));
 }
 
 TEST_F(WhileLoopAllReduceCodeMotionTest, SelectAllReduceAccumulate) {
@@ -609,41 +571,25 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectAllReduceAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
               Each(Not(op::AllReduce())));
   HloInstruction* accumulation_buffer =
       transformed_while->mutable_operand(0)->mutable_operand(3);
   EXPECT_THAT(accumulation_buffer, op::Constant());
-  HloAllReduceInstruction* moved_all_reduce = DynCast<HloAllReduceInstruction>(
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) {
-                       return Value(instruction, op::AllReduce());
-                     })));
-  EXPECT_TRUE(ShapeUtil::Equal(moved_all_reduce->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
+  HloAllReduceInstruction* moved_all_reduce =
+      DynCast<HloAllReduceInstruction>(find_op<HloOpcode::kAllReduce>(entry));
+  EXPECT_THAT(moved_all_reduce, op::Shape("f32[1024,1024]"));
 
-  HloInstruction* add_delta_to_old_buffer =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::Add());
-                     }));
+  HloInstruction* add_delta_to_old_buffer = find_op<HloOpcode::kAdd>(entry);
   ASSERT_THAT(add_delta_to_old_buffer, NotNull());
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(0)->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(1)->shape(),
-                               ShapeUtil::MakeShape(F32, {1024, 1024})));
+  EXPECT_THAT(add_delta_to_old_buffer, op::Shape("f32[1024, 1024]"));
+  EXPECT_THAT(add_delta_to_old_buffer->operand(0),
+              op::Shape("f32[1024, 1024]"));
+  EXPECT_THAT(add_delta_to_old_buffer->operand(1),
+              op::Shape("f32[1024, 1024]"));
 }
 
 TEST_F(WhileLoopAllReduceCodeMotionTest, SelectReduceScatterAccumulate) {
@@ -703,10 +649,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectReduceScatterAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     HloPredicateIsOp<HloOpcode::kWhile>));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
 
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
@@ -716,14 +660,9 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectReduceScatterAccumulate) {
   EXPECT_THAT(accumulation_buffer, op::Constant());
   EXPECT_THAT(accumulation_buffer, op::Shape("f32[1024,4096]"));
   auto* moved_reduce_scatter = DynCast<HloReduceScatterInstruction>(
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     HloPredicateIsOp<HloOpcode::kReduceScatter>)));
+      find_op<HloOpcode::kReduceScatter>(entry));
   EXPECT_THAT(moved_reduce_scatter, op::Shape("f32[1024,1024]"));
-  HloInstruction* add_delta_to_old_buffer =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     HloPredicateIsOp<HloOpcode::kAdd>));
+  HloInstruction* add_delta_to_old_buffer = find_op<HloOpcode::kAdd>(entry);
   ASSERT_THAT(add_delta_to_old_buffer, NotNull());
   EXPECT_THAT(add_delta_to_old_buffer, op::Shape("f32[1024,1024]"));
 }
@@ -843,13 +782,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleLoopCalls) {
   EXPECT_EQ(absl::c_count_if(module->entry_computation()->instructions(),
                              Matches(op::AllReduce())),
             2);
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
               Each(Not(op::AllReduce())));
@@ -915,13 +849,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   // Both all-reduces should have been sinked.
   EXPECT_THAT(transformed_while->while_body()->instructions(),
@@ -996,11 +925,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleReduceScatterAccumulate) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *std::find_if(module->entry_computation()->instructions().begin(),
-                    module->entry_computation()->instructions().end(),
-                    HloPredicateIsOp<HloOpcode::kWhile>);
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   // Both reduce-scatters should have been sinked.
   EXPECT_THAT(transformed_while->while_body()->instructions(),
@@ -1085,13 +1011,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MixMovableAllReduceWithNotMovable) {
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
-
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
   ASSERT_THAT(transformed_while, NotNull());
   // One all-reduce is movable and the other is not movable.
   EXPECT_EQ(absl::c_count_if(transformed_while->while_body()->instructions(),
@@ -1168,12 +1089,8 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
-  HloInstruction* transformed_while =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::While());
-                     }));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* transformed_while = find_op<HloOpcode::kWhile>(entry);
 
   ASSERT_THAT(transformed_while, NotNull());
   EXPECT_THAT(transformed_while->while_body()->instructions(),
@@ -1181,28 +1098,17 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
   HloInstruction* accumulation_buffer =
       transformed_while->mutable_operand(0)->mutable_operand(3);
   EXPECT_THAT(accumulation_buffer, op::Constant());
-  HloAllReduceInstruction* moved_all_reduce = DynCast<HloAllReduceInstruction>(
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) {
-                       return Value(instruction, op::AllReduce());
-                     })));
-  EXPECT_TRUE(ShapeUtil::Equal(moved_all_reduce->shape(),
-                               ShapeUtil::MakeShape(BF16, {2, 1024, 1024})));
+  HloAllReduceInstruction* moved_all_reduce =
+      DynCast<HloAllReduceInstruction>(find_op<HloOpcode::kAllReduce>(entry));
+  EXPECT_THAT(moved_all_reduce, op::Shape("bf16[2, 1024, 1024]"));
 
-  HloInstruction* add_delta_to_old_buffer =
-      *(std::find_if(module->entry_computation()->instructions().begin(),
-                     module->entry_computation()->instructions().end(),
-                     [](HloInstruction* instruction) -> bool {
-                       return Value(instruction, op::Add());
-                     }));
+  HloInstruction* add_delta_to_old_buffer = find_op<HloOpcode::kAdd>(entry);
   ASSERT_THAT(add_delta_to_old_buffer, NotNull());
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->shape(),
-                               ShapeUtil::MakeShape(F32, {2, 1024, 1024})));
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(0)->shape(),
-                               ShapeUtil::MakeShape(F32, {2, 1024, 1024})));
-  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(1)->shape(),
-                               ShapeUtil::MakeShape(F32, {2, 1024, 1024})));
+  EXPECT_THAT(add_delta_to_old_buffer, op::Shape("f32[2, 1024, 1024]"));
+  EXPECT_THAT(add_delta_to_old_buffer->operand(0),
+              op::Shape("f32[2, 1024, 1024]"));
+  EXPECT_THAT(add_delta_to_old_buffer->operand(1),
+              op::Shape("f32[2, 1024, 1024]"));
 }
 
 // This test is almost the same as the one above but we change the all-reduce
