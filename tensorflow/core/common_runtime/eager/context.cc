@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -996,6 +997,12 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
                                     const bool add_to_local_only,
                                     const StackTracesMap& stack_traces) {
+  auto fdefs_to_add = small_constants_optimizer::FoldInputTensors(fdef);
+  for (const auto& fdef_to_add : fdefs_to_add) {
+    TF_RETURN_IF_ERROR(
+        AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
+  }
+
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
