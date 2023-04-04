@@ -333,7 +333,7 @@ class DTensorDevice {
                                  TF_Status* status);
 
   std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
-  Disassemble(TensorWithLayout* t, TF_Status* status);
+  Disassemble(TFE_Context* context, TensorWithLayout* t, TF_Status* status);
 
  private:
   DTensorDevice(absl::string_view name,
@@ -668,6 +668,21 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
   }
 
   if (!parallel_executor_) {
+    if (mesh.IsSingleDevice()) {
+      StatusOr<Layout> single_device_layout =
+          Layout::GetSingleDeviceLayout(mesh);
+      if (!single_device_layout.ok()) {
+        Set_TF_Status_from_Status(status, single_device_layout.status());
+        return nullptr;
+      }
+      TensorHandlePtr single_tensor(
+          TFE_TensorHandleCopySharingTensor(input, status));
+      if (TF_GetCode(status) != TF_OK) {
+        return nullptr;
+      }
+      return TensorWithLayoutTf::Wrap(std::move(single_tensor),
+                                      *single_device_layout, status);
+    }
     return TensorWithLayoutTf::Broadcast(context, input,
                                          *mesh_to_device_map_[mesh], status);
   }
@@ -791,7 +806,7 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
   }
 
   std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
-      tensor_with_layouts = Disassemble(t, status);
+      tensor_with_layouts = Disassemble(context, t, status);
   if (TF_GetCode(status) != TF_OK) {
     return outputs;
   }
@@ -1219,7 +1234,8 @@ void DTensorDevice::SetIteratorElementLayouts(
 }
 
 std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
-DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
+DTensorDevice::Disassemble(TFE_Context* context, TensorWithLayout* t,
+                           TF_Status* status) {
   if (parallel_executor_) {
     StatusOr<
         std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
@@ -1263,11 +1279,7 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
     const std::string& underlying_device =
         parallel_device
             .underlying_devices()[output_index % num_underlying_devices];
-    TFE_TensorHandle* copied_tensor =
-        TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
-    if (TF_GetCode(status) != TF_OK) {
-      return tensor_with_layouts;
-    }
+
     StatusOr<Mesh> single_device_mesh =
         Mesh::GetSingleDeviceMesh(underlying_device);
     if (!single_device_mesh.ok()) {
@@ -1277,19 +1289,9 @@ DTensorDevice::Disassemble(TensorWithLayout* t, TF_Status* status) {
                        .c_str());
       return tensor_with_layouts;
     }
-    StatusOr<Layout> single_device_layout =
-        Layout::GetSingleDeviceLayout(*single_device_mesh);
-    if (!single_device_layout.ok()) {
-      TF_SetStatus(status, TF_INTERNAL,
-                   absl::StrCat("Failed to create single device layout ",
-                                single_device_layout.status().ToString())
-                       .c_str());
-      return tensor_with_layouts;
-    }
-    TensorHandlePtr single_tensor(copied_tensor);
-    std::unique_ptr<TensorWithLayoutTf> tensor_with_layout =
-        TensorWithLayoutTf::Wrap(std::move(single_tensor),
-                                 *single_device_layout, status);
+
+    std::unique_ptr<TensorWithLayout> tensor_with_layout = Broadcast(
+        context, t->get_tensor(output_index), *single_device_mesh, status);
     if (TF_GetCode(status) != TF_OK) {
       return tensor_with_layouts;
     }
