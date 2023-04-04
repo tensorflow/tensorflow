@@ -146,6 +146,17 @@ def TransformConvForCpuPass :
   let constructor = "createTransformConvForCpuPass()";
 }
 
+def TransformBatchMatmulForCpuPass :
+    Pass<"xla-cpu-transform-batch-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform batch_matmul ops for running on CPU";
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "scf::SCFDialect",
+    "tensor::TensorDialect"
+  ];
+  let constructor = "createTransformBatchMatmulForCpuPass()";
+}
+
 def TransformElementwiseForCpuPass :
     Pass <"xla-cpu-tranform-elementwise", "mlir::func::FuncOp"> {
   let summary = "Transform elementwise ops for running on CPU";

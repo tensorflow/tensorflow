@@ -77,6 +77,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
 /// Pass to transform a conv op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformConvForCpuPass();
 
+/// Pass to transform a batch_matmul op for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTransformBatchMatmulForCpuPass();
+
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 

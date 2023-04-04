@@ -68,6 +68,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
+  pm.addNestedPass<FuncOp>(createTransformBatchMatmulForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
 
