@@ -910,6 +910,7 @@ tsl_pybind_extension(
     }),
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
             "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
             "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
             "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
