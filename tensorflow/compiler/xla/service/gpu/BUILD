@@ -1878,6 +1878,71 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_float_support",
+    srcs = ["gpu_float_support.cc"],
+    hdrs = ["gpu_float_support.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:float_support",
+    ],
+)
+
+cc_library(
+    name = "compile_module_to_llvm_ir",
+    srcs = [
+        "compile_module_to_llvm_ir.cc",
+    ],
+    hdrs = [
+        "compile_module_to_llvm_ir.h",
+    ],
+    deps = [
+        ":executable_proto_cc",
+        ":gpu_constants",
+        ":gpu_device_info",
+        ":gpu_executable",
+        ":gpu_float_support",
+        ":gpu_hlo_schedule",
+        ":ir_emitter",
+        ":metrics",
+        ":runtime_intrinsics",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/mlir/backends/gpu/transforms:passes",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_gpu_passes",
+        "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_rematerialization",
+        "//tensorflow/compiler/xla/service:optimization_barrier_expander",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
+        "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = [
         "gpu_compiler.cc",
@@ -1888,6 +1953,7 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
+        ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
         ":dot_dimension_sorter",
         ":executable_proto_cc",
@@ -1900,6 +1966,7 @@ cc_library(
         ":gpu_conv_rewriter",
         ":gpu_device_info",
         ":gpu_executable",
+        ":gpu_float_support",
         ":gpu_hlo_cost_analysis",
         ":gpu_hlo_schedule",
         ":gpu_layout_assignment",

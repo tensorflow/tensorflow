@@ -792,6 +792,7 @@ xla_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/gpu:compile_module_to_llvm_ir",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
