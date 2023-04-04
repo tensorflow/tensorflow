@@ -82,7 +82,7 @@ struct SnapshotWriterParams {
 
  private:
   static constexpr int64_t kDefaultMaxChunkSizeBytes =
-      10 * (size_t{1} << 30);  // 10GB
+      2 * (size_t{1} << 30);  // 2GB
 };
 
 // Responsible for writing one snapshot stream, which is organized as following:
