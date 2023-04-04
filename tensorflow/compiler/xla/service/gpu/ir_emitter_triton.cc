@@ -68,7 +68,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/path.h"
-#include "triton/Conversion/TritonGPUToLLVM/ArithToIndexPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -213,6 +212,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   // Based on optimize_ttgir() in
   // @triton//:python/triton/compiler.py
   pm.addPass(mlir::createTritonGPUCoalescePass());
+  pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
@@ -221,16 +221,12 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUDecomposeConversionsPass());
-  if (cc.major == se::CudaComputeCapability::VOLTA) {
-    pm.addPass(mlir::createTritonGPUUpdateMmaForVoltaPass());
-  }
   pm.addPass(mlir::createTritonGPUReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addPass(mt::createTritonConvertArithToIndexPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   pm.addPass(mlir::createArithToLLVMConversionPass());
@@ -605,8 +601,7 @@ std::optional<LaunchDimensions> MatMul(
       zeros_like_lhs = CreateConst(b, lhs_ty, 0, shape_m_k);
       zeros_like_rhs = CreateConst(b, rhs_ty, 0, shape_k_n);
       auto elements_in_tile =
-          b.create<ma::SubIOp>(CreateConst(b, i32_ty, k),
-                               b.create<ma::IndexCastOp>(b.getI32Type(), ki));
+          b.create<ma::SubIOp>(CreateConst(b, i32_ty, k), ki);
       lhs_mask = build_bcast(
           b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
                                b.create<mt::ExpandDimsOp>(range_k, 0),
@@ -650,9 +645,11 @@ std::optional<LaunchDimensions> MatMul(
   };
   Value acc_final =
       b.create<mlir::scf::ForOp>(
-           /*lowerBound=*/b.create<ma::ConstantIndexOp>(0),
-           /*upperBound=*/b.create<ma::ConstantIndexOp>(k),
-           /*step=*/b.create<ma::ConstantIndexOp>(block_k * config.split_k()),
+           /*lowerBound=*/b.create<ma::ConstantIntOp>(0, /*width=*/32),
+           /*upperBound=*/b.create<ma::ConstantIntOp>(k, /*width=*/32),
+           /*step=*/
+           b.create<ma::ConstantIntOp>(block_k * config.split_k(),
+                                       /*width=*/32),
            /*iterArgs=*/
            mlir::ValueRange{lhs_ptrs_base, rhs_ptrs_base, acc_init},
            body_builder)
