@@ -191,6 +191,7 @@ cc_library(
             "//tensorflow/core/common_runtime:device_mgr",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:context_distributed_manager",
+            "//tensorflow/core/common_runtime/eager:core_no_xla",
             "//tensorflow/core/common_runtime/eager:eager_operation",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/platform:status",
