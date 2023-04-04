@@ -348,6 +348,19 @@ Status GpuCompiler::OptimizeHloModule(
     layout_insensitive_algsimp_opts.set_enable_conv_operand_swap(false);
   }
 
+  HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
+  // Run some IR cleanup passes before running the SPMD partitioning
+  // passes.
+  pre_spmd_pipeline.AddPass<CallInliner>();
+  pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+  pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+  // The SPMD partitioner would mess up the sort+slice structure, so we need to
+  // rewrite Topk before that happens.
+  pre_spmd_pipeline.AddPass<TopkRewriter>(
+      [](const HloSortInstruction*, int64_t) { return true; });
+
+  TF_RETURN_IF_ERROR(pre_spmd_pipeline.Run(hlo_module).status());
+
   const int64_t num_partitions = hlo_module->config().num_partitions();
   if (num_partitions > 1) {
     if (!hlo_module->config().use_spmd_partitioning()) {
@@ -356,16 +369,6 @@ Status GpuCompiler::OptimizeHloModule(
           num_partitions);
     }
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    // Run some IR cleanup passes before running the SPMD partitioning
-    // passes.
-    spmd_pipeline.AddPass<CallInliner>();
-    spmd_pipeline.AddPass<ZeroSizedHloElimination>();
-    spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-    spmd_pipeline.AddPass<TopkRewriter>(
-        // We're only rewriting TopK to prevent SPMD partitioning from blowing
-        // it up. Always allow it.
-        [](const HloSortInstruction*, int64_t) { return true; });
-
     HloPassPipeline& spmd_simplify =
         spmd_pipeline.AddPass<HloPassFix<HloPassPipeline>>("spmd-simplify");
 
