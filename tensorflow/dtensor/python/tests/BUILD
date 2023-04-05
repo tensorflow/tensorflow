@@ -85,12 +85,10 @@ dtensor_test(
     additional_backends = [
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
+    ],
+    disable = [
         PATHWAYS,
         PATHWAYS_V3_DONUT_BACKEND,
-    ],
-    tags = [
-        "noasan",
-        "nosan",
     ],  # FIXME(b/275600764): Reenable after flakiness is fixed.
     deps = [
         ":test_util",
