@@ -65,7 +65,7 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
   }
 
   // Construct the dump filename.
-  std::string dump_filename = GetDumpFileBasename(name, tag);
+  std::string dump_filename = GetDumpFilename(name, tag);
 
   // Dump module txt to file.
   DumpToFile(dump_filename, "", ".csv", "StackTrace",
@@ -110,7 +110,7 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
                                 const Graph* graph,
                                 const FunctionLibraryDefinition* func_lib_def) {
   // Construct the dump filename.
-  std::string dump_filename = GetDumpFileBasename(name, tag);
+  std::string dump_filename = GetDumpFilename(name, tag);
 
   // Make sure the dump filename is not longer than 255,
   // because Linux won't take filename that long.
@@ -130,35 +130,8 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
   DumpGraphDefToFile(dump_filename, graph_def);
 }
 
-void DebugDataDumper::DumpMLIRModule(const std::string& name,
-                                     const std::string& tag,
-                                     const std::string& module_txt) {
-  // Construct the dump filename.
-  std::string dump_filename = GetDumpFileBasename(name, tag);
-
-  // Make sure the dump filename is not longer than 255,
-  // because Linux won't take filename that long.
-  if (dump_filename.size() > 255) {
-    LOG(WARNING) << "Failed to dump graph " << dump_filename
-                 << ", because the file name is longer than 255";
-    return;
-  }
-
-  // Dump module txt to file.
-  DumpToFile(dump_filename, "", ".mlir", "MLIR",
-             [&module_txt, &dump_filename](WritableFile* file) {
-               auto status = file->Append(module_txt);
-               if (!status.ok()) {
-                 LOG(WARNING) << "error writing to file to " << dump_filename
-                              << ": " << status.error_message();
-                 return status;
-               }
-               return file->Close();
-             });
-}
-
-std::string DebugDataDumper::GetDumpFileBasename(const std::string& name,
-                                                 const std::string& tag) {
+std::string DebugDataDumper::GetDumpFilename(const std::string& name,
+                                             const std::string& tag) {
   return absl::StrFormat("%s.%04d.%s", name, GetNextDumpId(name), tag);
 }
 

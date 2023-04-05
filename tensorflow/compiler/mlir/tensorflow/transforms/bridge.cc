@@ -48,26 +48,26 @@ class DataDumperLoggerConfig : public ::tensorflow::BridgeLoggerConfig {
   void printBeforeIfEnabled(mlir::Pass *pass, mlir::Operation *op,
                             PrintCallbackFn print_callback) {
     std::string pass_name = pass->getName().str();
-    DUMP_MLIR_MODULE(module_name_, "mlir_bridge_before_" + pass_name,
-                     GetPrintText(print_callback), VLOG_IS_ON(2));
+
+    if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name_)) {
+      ::tensorflow::DumpMlirOpToFile(
+          GET_DUMP_FILENAME(module_name_, "mlir_bridge_before_" + pass_name),
+          op, llvm::StringRef());
+    }
   }
 
   void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *op,
                            PrintCallbackFn print_callback) {
     std::string pass_name = pass->getName().str();
-    DUMP_MLIR_MODULE(module_name_, "mlir_bridge_after_" + pass_name,
-                     GetPrintText(print_callback), VLOG_IS_ON(2));
+
+    if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name_)) {
+      ::tensorflow::DumpMlirOpToFile(
+          GET_DUMP_FILENAME(module_name_, "mlir_bridge_after_" + pass_name), op,
+          llvm::StringRef());
+    }
   }
 
  private:
-  std::string GetPrintText(
-      BridgeLoggerConfig::PrintCallbackFn print_callback) const {
-    std::string txt;
-    llvm::raw_string_ostream os(txt);
-    print_callback(os);
-    return os.str();
-  }
-
   // The name of the module. This is used to in the MLIR dump file name.
   const std::string module_name_;
 };
@@ -128,9 +128,11 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
-  DUMP_MLIR_MODULE(module_name, "tf_xla_bridge_before",
-                   GetMLIRModuleText(module, &bridge),
-                   enable_logging || VLOG_IS_ON(1));
+  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name)) {
+    ::tensorflow::DumpMlirOpToFile(
+        GET_DUMP_FILENAME(module_name, "tf_xla_bridge_before"), module,
+        llvm::StringRef(), &bridge);
+  }
 
   if (enable_logging || VLOG_IS_ON(2) || SHOULD_DUMP(module_name)) {
     EnableDetailedLogging(&bridge, module_name);
@@ -139,9 +141,11 @@ tensorflow::Status RunTFXLABridge(
   LogicalResult result = bridge.run(module);
   (void)result;
 
-  DUMP_MLIR_MODULE(module_name, "tf_xla_bridge_after",
-                   GetMLIRModuleText(module, &bridge),
-                   enable_logging || VLOG_IS_ON(1));
+  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name)) {
+    ::tensorflow::DumpMlirOpToFile(
+        GET_DUMP_FILENAME(module_name, "tf_xla_bridge_after"), module,
+        llvm::StringRef(), &bridge);
+  }
 
   return diag_handler.ConsumeStatus();
 }
