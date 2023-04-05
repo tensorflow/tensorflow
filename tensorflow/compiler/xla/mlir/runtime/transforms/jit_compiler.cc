@@ -25,9 +25,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/PassTimingInfo.h"
 #include "llvm/Pass.h"
+#include "llvm/Passes/OptimizationLevel.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -37,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
-#include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
 namespace xla {
 namespace runtime {
@@ -179,7 +186,7 @@ absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
   SymbolTable sym_table(*module_);
 
   // Add `rt.export` operations for all explicitly exported functions.
-  for (auto& indexed : llvm::enumerate(exported)) {
+  for (const auto& indexed : llvm::enumerate(exported)) {
     if (auto func = sym_table.lookup<FunctionOpInterface>(indexed.value())) {
       OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
       continue;
@@ -239,6 +246,29 @@ JitCompiler::Instantiate(JitCompiler::Options opts, ModuleOp mlir_module,
   return {std::move(compiler)};
 }
 
+static std::function<llvm::Error(llvm::Module*)>
+MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
+  return [targetMachine](llvm::Module* m) -> llvm::Error {
+    llvm::LoopAnalysisManager lam;
+    llvm::FunctionAnalysisManager fam;
+    llvm::CGSCCAnalysisManager cgam;
+    llvm::ModuleAnalysisManager mam;
+
+    llvm::PassBuilder pb(targetMachine);
+
+    pb.registerModuleAnalyses(mam);
+    pb.registerCGSCCAnalyses(cgam);
+    pb.registerFunctionAnalyses(fam);
+    pb.registerLoopAnalyses(lam);
+    pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+    llvm::ModulePassManager mpm;
+    mpm.addPass(pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2));
+    mpm.run(*m, mam);
+    return llvm::Error::success();
+  };
+}
+
 /*static*/ absl::StatusOr<Executable> JitCompiler::Compile(
     std::unique_ptr<JitCompiler> compiler, std::string_view memory_region_name,
     std::optional<size_t> specialization) {
@@ -255,7 +285,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts, ModuleOp mlir_module,
   std::vector<Executable::Function> functions;
   std::vector<std::string_view> exported;  // names of exported functions
 
-  for (auto& indexed : llvm::enumerate(compiler->exported())) {
+  for (const auto& indexed : llvm::enumerate(compiler->exported())) {
     auto func = indexed.value();
     std::string_view name = exported.emplace_back(func.getName());
 
@@ -329,7 +359,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts, ModuleOp mlir_module,
   ExecutionEngine::JitOptions engine_options;
   engine_options.opt_level = compiler->options().jit_code_opt_level;
   engine_options.target_machine = target_machine->get();
-  engine_options.make_optimizing_transformer = makeOptimizingTransformer;
+  engine_options.make_optimizing_transformer = MakeOptimizingTransformerForJit;
   engine_options.section_memory_mapper = memory_mapper.get();
   engine_options.symbols_binding = std::move(symbols);
 

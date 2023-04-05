@@ -26,7 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
@@ -339,7 +339,7 @@ class OperationDefinedAtTraceTest(test.TestCase):
   def testAssert(self):
     @def_function.function
     def func():
-      control_flow_ops.Assert(False, [False])
+      control_flow_assert.Assert(False, [False])
       return
 
     with self.assertRaisesRegex(

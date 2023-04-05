@@ -751,7 +751,8 @@ class Context:
                                      cluster_register_timeout_in_ms=0,
                                      heartbeat_timeout_in_ms=0,
                                      shutdown_barrier_timeout_in_ms=0,
-                                     coordinated_jobs=None):
+                                     coordinated_jobs=None,
+                                     allow_new_incarnation_to_reconnect=False):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
@@ -764,6 +765,8 @@ class Context:
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
     config.shutdown_barrier_timeout_in_ms = shutdown_barrier_timeout_in_ms
+    config.allow_new_incarnation_to_reconnect = (
+        allow_new_incarnation_to_reconnect)
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
         config.coordinated_job_list.extend(coordinated_jobs)
@@ -780,10 +783,13 @@ class Context:
     ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
-  def get_config_key_value(self, key):
+  # If `timeout_in_ms=0`, this will block until the key-value is set or the
+  # worker shuts down.
+  def get_config_key_value(self, key, timeout_in_ms=0):
     ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key, buffer_)
+      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key,
+                                       timeout_in_ms, buffer_)
       value = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
     return value
 
@@ -1311,17 +1317,31 @@ class Context:
     self.ensure_initialized()
     return self._num_gpus
 
-  def add_function(self, fn):
-    """Add a function definition to the context.
+  def add_c_function(self, c_func):
+    """Add a C API TF_Function to the context.
 
     Once added, the function (identified by its name) can be executed like any
     other operation.
 
     Args:
-      fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
+      c_func: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
     self.ensure_initialized()
-    pywrap_tfe.TFE_ContextAddFunction(self._handle, fn)
+    pywrap_tfe.TFE_ContextAddFunction(self._handle, c_func)
+
+  def get_c_function(self, name):
+    """Get a C API TF_Function from the context.
+
+    Args:
+      name: Name of the function to get.
+
+    Returns:
+      A ScopedTFFunction wrapping the C API TF_Function.
+    """
+    self.ensure_initialized()
+    return c_api_util.ScopedTFFunction(
+        pywrap_tfe.TFE_ContextGetFunction(self._handle, name), name
+    )
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -2729,9 +2749,14 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(tf_function):
-  """Add a TF_Function to the context."""
-  context().add_function(tf_function)
+def add_c_function(c_func):
+  """Add a C API TF_Function to the context."""
+  context().add_c_function(c_func)
+
+
+def get_c_function(name):
+  """Get a C API TF_Function from the context."""
+  return context().get_c_function(name)
 
 
 def remove_function(name):

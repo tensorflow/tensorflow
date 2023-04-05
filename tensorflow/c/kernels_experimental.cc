@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -67,12 +68,17 @@ tensorflow::Status EnsureSparseVariableAccess(
     TF_OpKernelContext* ctx, bool variantType,
     void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
                      TF_Tensor* dest),
-    tensorflow::Var* var) {
+    tensorflow::Var* var, bool lock_held = false) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
     return ::tensorflow::OkStatus();
   }
-  mutex_lock ml(*var->mu());
+
+  std::optional<mutex_lock> ml;
+  if (!lock_held) {
+    ml.emplace(*var->mu());
+  }
+
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
   // also happen if there are no concurrent reads of the variable and
   // copy-on-read mode is false.
@@ -145,20 +151,14 @@ tensorflow::Status PrepareToUpdateVariable(
   return ::tensorflow::OkStatus();
 }
 
-tensorflow::mutex* GetTrainingVariableMutex(
-    TF_OpKernelContext* ctx, int32_t input, bool sparse,
-    void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
-                     TF_Tensor* dest),
-    tensorflow::Var** maybe_resource) {
+tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
+                                            int32_t input,
+                                            tensorflow::Var** maybe_resource) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   *maybe_resource = nullptr;
   if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
     if (LookupResource(cc_ctx, HandleFromInput(cc_ctx, input), maybe_resource)
             .ok()) {
-      if (sparse) {
-        TF_CHECK_OK(
-            EnsureSparseVariableAccess(ctx, false, copyFunc, *maybe_resource));
-      }
       return (*maybe_resource)->mu();
     } else {
       cc_ctx->CtxFailureWithWarning(
@@ -310,8 +310,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
   std::vector<int32_t> acquire_order;
   for (auto input : input_ids) {
     tensorflow::Var* var;
-    tensorflow::mutex* mutex =
-        GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
+    tensorflow::mutex* mutex = GetTrainingVariableMutex(ctx, input, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
     if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
@@ -327,11 +326,8 @@ void TF_MaybeLockVariableInputMutexesInOrder(
       absl::make_unique<std::vector<tensorflow::tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
-  for (auto input : acquire_order) {
-    tensorflow::Var* var;
-    tensorflow::mutex* mu =
-        GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
-    tensorflow::core::ScopedUnref scoped_unref(var);
+  for (auto acquire : acquire_order) {
+    tensorflow::mutex* mu = mutexes[acquire];
     if (mu != nullptr) {
       if (do_lock) {
         locks->emplace_back(*mu);
@@ -340,8 +336,21 @@ void TF_MaybeLockVariableInputMutexesInOrder(
       }
     }
   }
-  *lockHolder = new TF_VariableInputLockHolder(
-      std::move(vars), std::move(locks), std::move(shared_locks));
+  *lockHolder = new TF_VariableInputLockHolder(vars, std::move(locks),
+                                               std::move(shared_locks));
+  if (sparse) {
+    // Enable sparse variables' access.
+    // NOTE: This can not be done before the variable input locks are held,
+    // because a race condition can happen between this and another thread that
+    // turns off some variable's `copy_on_read_mode` after this thread enables
+    // sparse access; when a later function sees `copy_on_read_mode` is off, it
+    // will try to lock the variable again for updating `copy_on_read_mode` and
+    // cause the deadlock, since the variable mutex is non-re-entrant.
+    for (auto* var : vars) {
+      TF_CHECK_OK(EnsureSparseVariableAccess(
+          ctx, /*variantType=*/false, copyFunc, var, /*lock_held=*/true));
+    }
+  }
   TF_SetStatus(status, TF_OK, "");
 }
 

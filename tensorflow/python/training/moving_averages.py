@@ -23,6 +23,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
@@ -550,7 +551,9 @@ class ExponentialMovingAverage:
         with ops.init_scope():
           if isinstance(var, variables.Variable):
             with ops.device(var.device):
-              initialized_value = var.initialized_value()
+              initialized_value = control_flow_ops.cond(
+                  variable_v1.is_variable_initialized(var), var.read_value,
+                  lambda: var.initial_value)  # pylint: disable=cell-var-from-loop
             avg = slot_creator.create_slot(
                 var,
                 initialized_value,

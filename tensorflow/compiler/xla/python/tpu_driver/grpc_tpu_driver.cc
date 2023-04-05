@@ -480,7 +480,7 @@ GrpcTpuStream::~GrpcTpuStream() {
     for (const auto& e : events_) {
       if (!e.second.done) {
         LOG(ERROR) << "Resetting: " << e.first;
-        UpdateEventStatus(e.first, xla::Status(tsl::error::Code::ABORTED,
+        UpdateEventStatus(e.first, xla::Status(absl::StatusCode::kAborted,
                                                "Driver was closed."));
       }
     }
@@ -689,7 +689,7 @@ void GrpcTpuStream::StreamReaderFn() {
           UpdateEventStatus(
               event_id,
               Status(
-                  tsl::error::Code::DATA_LOSS,
+                  absl::StatusCode::kDataLoss,
                   absl::StrCat("Expected ", it->second.num_bytes, " received ",
                                entry.transfer_from().data().size())));
           continue;
@@ -710,7 +710,7 @@ void GrpcTpuStream::StreamReaderFn() {
       if (entry.status().code() != tsl::error::Code::OK) {
         UpdateEventStatus(
             event_id,
-            Status(static_cast<tsl::error::Code>(entry.status().code()),
+            Status(static_cast<absl::StatusCode>(entry.status().code()),
                    entry.status().message()));
       } else {
         UpdateEventStatus(event_id, OkStatus());
@@ -1028,7 +1028,7 @@ Status GrpcTpuDriver::Reset() {
     LOG(ERROR) << "Failed to reset the gRPC driver: " << status.error_code()
                << ": " << status.error_message() << ": "
                << status.error_details();
-    return xla::Status(tsl::error::Code(status.error_code()),
+    return xla::Status(absl::StatusCode(status.error_code()),
                        absl::StrCat("Failed to reset TPU driver. Error was: ",
                                     status.error_message(),
                                     ". Details: ", status.error_details()));
@@ -1048,7 +1048,7 @@ Status GrpcTpuDriver::Close() {
   CloseResponse resp;
   ::grpc::Status status = stub->Close(&ctx, req, &resp);
   if (!status.ok()) {
-    return xla::Status(tsl::error::Code(status.error_code()),
+    return xla::Status(absl::StatusCode(status.error_code()),
                        absl::StrCat("Failed to close TPU driver. Error was: ",
                                     status.error_message(),
                                     ". Details: ", status.error_details()));
@@ -1075,7 +1075,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> CreateGrpcTpuDriver(
                << ": " << status.error_message() << ": "
                << status.error_details();
     return xla::Status(
-        tsl::error::Code(status.error_code()),
+        absl::StatusCode(status.error_code()),
         absl::StrCat(
             "Failed to connect to remote server at address: ", config.worker(),
             ". Error from gRPC: ", status.error_message(),

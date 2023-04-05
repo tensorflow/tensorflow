@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
 #include <memory>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -233,9 +235,13 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
   // If we are able to construct a `MatrixLayout` then the dot can support
   // this layout.
   return MatrixLayout::For(shape, dot_dims.lhs_batch_dimensions().size(),
-                           dot_dims.lhs_contracting_dimensions().size(),
+                           dot->operand(0)->shape().rank() -
+                               dot_dims.lhs_contracting_dimensions().size() -
+                               dot_dims.lhs_batch_dimensions().size(),
                            dot_dims.rhs_batch_dimensions().size(),
-                           dot_dims.rhs_contracting_dimensions().size())
+                           dot->operand(1)->shape().rank() -
+                               dot_dims.rhs_contracting_dimensions().size() -
+                               dot_dims.rhs_batch_dimensions().size())
       .ok();
 }
 
@@ -415,9 +421,17 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
   if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
     return SetOperandLayout(shape, instruction, operand);
 
-  // Otherwise, fallback to forcing a (batch, rows, cols) layout.
+  // Otherwise, fallback to forcing the same layout as chosen by dot
+  // normalization, i.e. (batch, rows, cols) layout for the second operand and
+  // (batch, cols, rows) layout for the first operand.
+  if (operand == 1) {
+    return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
+                                         row_dims, col_dims);
+  }
+  // To get (batch, cols, rows) layout, simply swap 'row_dims' with 'col_dims'
+  // when calling SetOperandBatchRowsColsLayout.
   return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
-                                       row_dims, col_dims);
+                                       col_dims, row_dims);
 }
 
 Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(

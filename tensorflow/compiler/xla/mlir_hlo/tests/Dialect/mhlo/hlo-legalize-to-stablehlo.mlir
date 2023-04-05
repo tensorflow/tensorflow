@@ -315,7 +315,7 @@ func.func @attr_transpose_adjoint(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16x
 func.func @attr_type_extensions_bounds(
     %arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>)
     -> tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>> {
-  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>) -> ()
+  // CHECK: "func.return"(%arg0) : (tensor<?x?xf32, #stablehlo.bounds<16, ?>>) -> ()
   func.return %arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>
 }
 // CHECK-LABEL: "attr_type_extensions_bounds"
@@ -1506,6 +1506,17 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 // CHECK-LABEL: "op_subtract"
+
+func.func @op_tan(%arg0: tensor<f32>) -> tensor<f32> {
+  //               CHECK: "stablehlo.custom_call"(%arg0) {
+  //          CHECK-SAME:    call_target_name = "mhlo.tan"
+  // CHECK-SAME{LITERAL}:    mhlo.attributes = {}
+  // CHECK-SAME{LITERAL}:    mhlo.version = 1 : i64
+  //          CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-LABEL: "op_tan"
 
 func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.tanh"(%arg0) : (tensor<f32>) -> tensor<f32>

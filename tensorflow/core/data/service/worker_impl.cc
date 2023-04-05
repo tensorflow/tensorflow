@@ -64,6 +64,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/status_to_from_proto.h"
+#include "tensorflow/tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -192,13 +194,20 @@ Status DataServiceWorkerImpl::Start(
 
 void DataServiceWorkerImpl::Stop() {
   absl::flat_hash_map<int64_t, std::shared_ptr<Task>> tasks;
+  absl::flat_hash_map<SnapshotTask, std::unique_ptr<SnapshotStreamWriter>,
+                      absl::Hash<SnapshotTask>>
+      snapshot_writers;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
     tasks.swap(tasks_);
+    snapshot_writers.swap(snapshot_writers_);
   }
   for (const auto& [task_id, task] : tasks) {
     StopTask(*task);
+  }
+  for (const auto& [unused, snapshot_writer] : snapshot_writers) {
+    snapshot_writer->Cancel();
   }
   // At this point there are no outstanding requests in this RPC handler.
   // However, requests successfully returned from this RPC handler may still be
@@ -571,6 +580,7 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
 
 std::vector<SnapshotTaskProgress>
 DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
+  mutex_lock l(mu_);
   std::vector<SnapshotTaskProgress> snapshot_task_progress;
   for (const auto& [snapshot_task, stream_writer] : snapshot_writers_) {
     SnapshotTaskProgress progress;
@@ -581,8 +591,7 @@ DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
     if (completed.ok()) {
       progress.set_completed(*completed);
     } else {
-      progress.set_error_code(completed.status().code());
-      progress.set_error_message(completed.status().error_message());
+      *progress.mutable_status() = tsl::StatusToProto(completed.status());
     }
     snapshot_task_progress.push_back(std::move(progress));
   }
@@ -622,15 +631,19 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
   }
 }
 
+// TODO(yangchen): Figure out why `mutex_lock`s here are needed for sanitizers.
 Status DataServiceWorkerImpl::UpdateSnapshotWriters(
-    const WorkerHeartbeatResponse& response) {
+    const WorkerHeartbeatResponse& response) TF_LOCKS_EXCLUDED(mu_) {
   absl::flat_hash_set<SnapshotTask> assigned_snapshot_task_keys;
   for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {
     SnapshotTask snapshot_task_key{snapshot_task.base_path(),
                                    snapshot_task.stream_index()};
     assigned_snapshot_task_keys.insert(snapshot_task_key);
-    if (snapshot_writers_.contains(snapshot_task_key)) {
-      continue;
+    {
+      mutex_lock l(mu_);
+      if (snapshot_writers_.contains(snapshot_task_key)) {
+        continue;
+      }
     }
 
     DatasetDef dataset_def;
@@ -639,6 +652,7 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
         &dataset_def));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,
                         MakeSnapshotTaskIterator(snapshot_task, dataset_def));
+    mutex_lock l(mu_);
     snapshot_writers_.emplace(
         snapshot_task_key,
         std::make_unique<SnapshotStreamWriter>(
@@ -649,6 +663,7 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
   }
 
   // Cancel writers for snapshots that are no longer assigned by the dispatcher.
+  mutex_lock l(mu_);
   for (auto it = snapshot_writers_.begin(); it != snapshot_writers_.end();) {
     if (!assigned_snapshot_task_keys.contains(it->first)) {
       it->second->Cancel();

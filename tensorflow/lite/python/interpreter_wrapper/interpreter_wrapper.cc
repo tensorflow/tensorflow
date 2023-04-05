@@ -22,6 +22,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
@@ -208,8 +209,7 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   std::unique_ptr<tflite::MutableOpResolver> resolver;
   switch (op_resolver_id) {
     case kBuiltinOpResolver:
-      resolver = std::make_unique<
-          tflite::ops::builtin::BuiltinOpResolverWithXNNPACK>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
       break;
     case kBuiltinRefOpResolver:
       resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
@@ -256,7 +256,7 @@ InterpreterWrapper::InterpreterWrapper(
       resolver_(std::move(resolver)),
       interpreter_(std::move(interpreter)) {}
 
-InterpreterWrapper::~InterpreterWrapper() {}
+InterpreterWrapper::~InterpreterWrapper() = default;
 
 // LINT.IfChange
 static constexpr int kUndeterminedSubgraphIndex = -1;

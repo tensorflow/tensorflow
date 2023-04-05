@@ -146,7 +146,7 @@ TEST_F(CpuNoAliasTest, Concat) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool filecheck_match,
-      RunFileCheck(llvm_ir::DumpModuleToString(ir_module), filecheck_pattern));
+      RunFileCheck(llvm_ir::DumpToString(&ir_module), filecheck_pattern));
   EXPECT_TRUE(filecheck_match);
 }
 

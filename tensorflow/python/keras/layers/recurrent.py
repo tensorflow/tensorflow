@@ -38,7 +38,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -859,10 +859,10 @@ class RNN(Layer):
         non_zero_count = math_ops.add_n([math_ops.count_nonzero_v2(s)
                                          for s in nest.flatten(self.states)])
         # Set strict = True to keep the original structure of the state.
-        initial_state = control_flow_ops.cond(non_zero_count > 0,
-                                              true_fn=lambda: self.states,
-                                              false_fn=lambda: initial_state,
-                                              strict=True)
+        initial_state = cond.cond(non_zero_count > 0,
+                                  true_fn=lambda: self.states,
+                                  false_fn=lambda: initial_state,
+                                  strict=True)
       else:
         initial_state = self.states
     elif initial_state is None:

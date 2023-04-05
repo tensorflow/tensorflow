@@ -22,8 +22,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_COMPOSEEXTRACTINSERTSLICEPASS
@@ -36,7 +35,6 @@ struct ComposeExtractInsertSlicePass
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
     tensor::populateMergeConsecutiveInsertExtractSlicePatterns(patterns);
-
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
@@ -51,5 +49,4 @@ createComposeExtractInsertSlicePass() {
   return std::make_unique<ComposeExtractInsertSlicePass>();
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st

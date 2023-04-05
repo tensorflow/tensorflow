@@ -210,7 +210,7 @@ class EMBenchmarkHelper {
                                    {tensor_size}, AllocationAttributes()));
     }
     gpu_outputs_.clear();
-    while (gpu_outputs_.size() < 1) {
+    while (gpu_outputs_.empty()) {
       gpu_outputs_.push_back(Tensor(gpu_helper_->gpu_allocator(), DT_FLOAT,
                                     {tensor_size}, AllocationAttributes()));
     }
@@ -225,7 +225,7 @@ class EMBenchmarkHelper {
       }
     }
     host_outputs_.clear();
-    while (host_outputs_.size() < 1) {
+    while (host_outputs_.empty()) {
       host_outputs_.push_back(Tensor(gpu_helper_->host_allocator(), DT_FLOAT,
                                      {tensor_size}, AllocationAttributes()));
       for (int i = 0; i < tensor_size; ++i) {

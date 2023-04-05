@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 
 #include <cstddef>
+#include <cstdlib>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
@@ -41,6 +42,10 @@ TEST(TfLiteDelegateLoaderUtilsTest, Simple) {
   EXPECT_STREQ(stable_delegate_handle->delegate_version,
                tflite::example::kSampleStableDelegateVersion);
   EXPECT_NE(stable_delegate_handle->delegate_plugin, nullptr);
+  EXPECT_STREQ(
+      getenv(tflite::delegates::utils::kTfLiteLibraryPathEnvironmentVariable),
+      "tensorflow/lite/delegates/utils/experimental/"
+      "sample_stable_delegate");
 
   // Builds TFLiteSettings flatbuffer and passes into delegate plugin create
   // method.

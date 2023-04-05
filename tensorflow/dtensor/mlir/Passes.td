@@ -390,6 +390,37 @@ def DTensorSetHloShardingPass : Pass<"dtensor-set-hlo-sharding", "mlir::ModuleOp
   ];
 }
 
+def DTensorLayoutToXlaShardingOpPass : Pass<"dtensor-layout-to-xla-sharding-op", "mlir::func::FuncOp"> {
+  let summary = "Replace `tf.DTensorLayout` op with `tf.XlaSharding` op.";
+
+  let description = [{
+    Provides sharding guide to XLA based on DTensor layout propagation result.
+
+    tf2xla bridge will further lower `tf.XlaSharding` to `hlo.custom_call`.
+
+    For example:
+
+    ```
+      %1 = tf.DTensorLayout(%0)
+    ```
+
+    will be converted to
+    ```
+      %1 = tf.XlaSharding(%0)
+    ```
+
+    When the DTensorLayout's operand is produced by a constant, the
+    DTensorLayout will be removed and no XlaSharding is inserted. This is
+    because tf2xla requires some op operands to be constant. Inserting
+    XlaSharding will break them.
+
+    A side note: "mhlo.sharding" attributes on ops except FuncOp won't be used
+    by XLA.
+  }];
+
+  let constructor = "CreateDTensorLayoutToXlaShardingOpPass()";
+}
+
 def DTensorReplaceAuxiliaryDTensorLayoutOpPass
     : Pass<"dtensor-replace-auxiliary-layout-op", "mlir::ModuleOp"> {
   let summary = "Replace auxiliary `tf.DTensorLayout` op with `tf.Identity`.";

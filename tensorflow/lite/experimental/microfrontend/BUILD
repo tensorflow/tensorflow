@@ -119,7 +119,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

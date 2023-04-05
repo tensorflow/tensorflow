@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
-#include "absl/types/optional.h"
-#include "absl/types/variant.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -54,8 +54,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_targets.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -448,8 +448,9 @@ void CreateConvertMlirToXlaHloPipeline(
         mlir::mhlo::CreateVerifyTFXLALegalizationPass(legalize_chlo));
   }
 
-  if (CanInlineFunctionsPostLegalization(device_type))
+  if (CanInlineFunctionsPostLegalization(device_type)) {
     pm.addPass(mlir::createInlinerPass());
+  }
 
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.

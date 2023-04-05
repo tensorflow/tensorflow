@@ -40,6 +40,7 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
           uint8);
 #endif
+REGISTER(BinaryOp, GPU, "Equal", functor::equal_to, bfloat16);
 REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     ApproximateEqualOp<GPUDevice, float>);

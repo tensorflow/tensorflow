@@ -14,28 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 // This file implements logic for lowering MHLO dialect to SCF dialect.
+#include <memory>
+#include <optional>
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -77,7 +72,53 @@ Value extractTensorValue(OpBuilder& b, Value tensor) {
   return b.create<tensor::ExtractOp>(loc, tensor, ValueRange());
 }
 
-// Create a memref descriptor given a pointer and memref type information.
+struct ScfForBounds {
+  Value lb;
+  Value ub;
+  Value step;
+  unsigned indexArgIndex;
+};
+
+std::optional<ScfForBounds> extractForBounds(mhlo::WhileOp op) {
+  auto& cond = op.getCond().front();
+  auto& body = op.getBody().front();
+  if (cond.getOperations().size() != 2) return std::nullopt;
+
+  auto matchBbArg = [](Value v, Block& block) -> std::optional<unsigned> {
+    if (!v.isa<BlockArgument>() || v.getParentBlock() != &block)
+      return std::nullopt;
+    return v.cast<BlockArgument>().getArgNumber();
+  };
+
+  auto compare = llvm::dyn_cast<mhlo::CompareOp>(cond.front());
+  // If the rhs of the comapare is defined outside the block, it's a constant
+  // within the loop.
+  if (!compare ||
+      compare.getComparisonDirection() != mhlo::ComparisonDirection::LT ||
+      compare.getRhs().getParentBlock() == &cond ||
+      !getElementTypeOrSelf(compare.getLhs().getType()).isIntOrIndex()) {
+    return std::nullopt;
+  }
+
+  auto iterArg = matchBbArg(compare.getLhs(), cond);
+  if (!iterArg) return std::nullopt;
+
+  auto add = llvm::dyn_cast_or_null<mhlo::AddOp>(
+      body.getTerminator()->getOperand(*iterArg).getDefiningOp());
+  if (!add || matchBbArg(add.getLhs(), body) != iterArg ||
+      add.getRhs().getParentBlock() == &body) {
+    return std::nullopt;
+  }
+
+  ScfForBounds bounds;
+  bounds.ub = compare.getRhs();
+  bounds.step = add.getRhs();
+  bounds.lb = op->getOperand(*iterArg);
+  bounds.indexArgIndex = *iterArg;
+  return bounds;
+}
+
+// Rewrites `mhlo.while` to `scf.while` or `scf.for`.
 struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
   using OpConversionPattern<WhileOp>::OpConversionPattern;
 
@@ -85,6 +126,29 @@ struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
       mhlo::WhileOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
+
+    if (auto bounds = extractForBounds(op)) {
+      auto newForOp = rewriter.create<scf::ForOp>(
+          loc, extractTensorValue(rewriter, bounds->lb),
+          extractTensorValue(rewriter, bounds->ub),
+          extractTensorValue(rewriter, bounds->step), adaptor.getOperands());
+
+      rewriter.setInsertionPointToEnd(newForOp.getBody());
+      // Inline while body, and only replace the mhlo.return with an scf.yield.
+      inlineMhloRegionIntoSCFRegion(rewriter, op.getBody(),
+                                    newForOp.getRegion());
+      auto indexArg = newForOp.getRegion().insertArgument(
+          unsigned{0}, newForOp.getLowerBound().getType(), loc);
+      auto oldIndexArg =
+          newForOp.getRegion().getArgument(1 + bounds->indexArgIndex);
+      rewriter.setInsertionPointToStart(&newForOp.getRegion().front());
+      auto indexArgTensor = rewriter.create<tensor::FromElementsOp>(
+          loc, oldIndexArg.getType(), indexArg);
+      oldIndexArg.replaceAllUsesWith(indexArgTensor);
+
+      rewriter.replaceOp(op, newForOp.getResults());
+      return success();
+    }
 
     auto newWhileOp = rewriter.create<scf::WhileOp>(loc, op.getResultTypes(),
                                                     adaptor.getOperands());
@@ -109,7 +173,7 @@ struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
   }
 };
 
-// Create a memref descriptor given a pointer and memref type information.
+// Rewrites `mhlo.if` to `scf.if`.
 struct IfOpPattern : public OpConversionPattern<mhlo::IfOp> {
   using OpConversionPattern<IfOp>::OpConversionPattern;
 
@@ -129,7 +193,7 @@ struct IfOpPattern : public OpConversionPattern<mhlo::IfOp> {
   }
 };
 
-// Create a memref descriptor given a pointer and memref type information.
+// Rewrites `mhlo.case` to a nested `scf.if`.
 struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
   using OpConversionPattern<CaseOp>::OpConversionPattern;
 
@@ -179,8 +243,8 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
       auto results = block.getTerminator()->getOperands();
       // Remove the mhlo.return terminator, then inline the block.
       rewriter.eraseOp(block.getTerminator());
-      rewriter.mergeBlockBefore(/*source=*/&block, /*dest=*/op.getOperation(),
-                                /*argValues=*/{});
+      rewriter.inlineBlockBefore(/*source=*/&block, /*dest=*/op.getOperation(),
+                                 /*argValues=*/{});
       rewriter.replaceOp(op, results);
       return success();
     }

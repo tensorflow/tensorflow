@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -33,18 +35,28 @@ createSplitAllocTensorsPass();
 // canonicalization.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> createDeallocatePass();
 
+// Pass to annotate buffer arguments with aliasing information.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createXlaBufferArgRewritePass();
+
 // Pass to reuse buffers (hoisting, double buffering, dealloc/alloc
 // coalescing).
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createBufferReusePass();
 
+// Lowers retain to SCF.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createDeallocationToScfPass();
+
 // Convert `deallocation` ops to LLVM.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createConvertDeallocationOpsToLLVM();
 
-// Lowers retain to SCF.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createDeallocationToScfPass();
+createDeallocationSimplificationPass();
+
+void populateDeallocationToLLVMConversionPatterns(LLVMTypeConverter& converter,
+                                                  RewritePatternSet& patterns);
 
 #define GEN_PASS_REGISTRATION
 #include "deallocation/transforms/passes.h.inc"

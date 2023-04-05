@@ -791,7 +791,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id);
+          *r = worker_env_.rendezvous_mgr->Find(step_id).release();
           return OkStatus();
         }});
   }

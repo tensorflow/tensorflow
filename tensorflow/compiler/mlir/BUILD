@@ -60,11 +60,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tosa:tf_passes",
         "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tosa:tfl_passes",
-        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
@@ -249,6 +249,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -501,7 +501,7 @@ class CollectiveReplicaLauncher(object):
   ) -> indexed_slices.IndexedSlices:
     """All-reduce an IndexedSlices.
 
-    This method must be called inside a tf.function.
+    This method can be called outside  tf.function.
 
     Args:
       input_slices: an IndexedSlices.
@@ -510,13 +510,7 @@ class CollectiveReplicaLauncher(object):
 
     Returns:
       The reduced IndexedSlices.
-
-    Raises:
-      RuntimeError: if called in eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
@@ -564,7 +558,7 @@ class CollectiveReplicaLauncher(object):
                                                   all_lengths[i]])
         return array_ops.concat(split_tensors, 0)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),
               math_ops.reduce_min(all_lengths)),

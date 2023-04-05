@@ -161,7 +161,9 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);

@@ -38,7 +38,6 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -95,7 +94,6 @@ limitations under the License.
 using llvm::dyn_cast;
 using llvm::formatv;
 using llvm::isa;
-using llvm::Optional;
 using llvm::StringRef;
 using llvm::Twine;
 using mlir::Dialect;
@@ -126,7 +124,6 @@ using VectorBufferOffset = flatbuffers::Offset<flatbuffers::Vector<T>>;
 
 using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 
-namespace error = tensorflow::error;
 namespace tfl = mlir::TFL;
 
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
@@ -144,7 +141,7 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_UINT8;
   }
   if (!is_signed) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "'isSigned' can only be set for 8-bits integer type");
   }
 
@@ -166,14 +163,14 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     if (ftype.isF64()) {
       return tflite::TensorType_COMPLEX128;
     }
-    return Status(error::INVALID_ARGUMENT, "Unsupported type");
+    return Status(absl::StatusCode::kInvalidArgument, "Unsupported type");
   } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
     switch (itype.getWidth()) {
       case 1:
         return tflite::TensorType_BOOL;
       case 4:
         if (itype.isUnsigned()) {
-          return Status(error::INVALID_ARGUMENT,
+          return Status(absl::StatusCode::kInvalidArgument,
                         "Unsupported 4bit unsigned int type");
         } else {
           return tflite::TensorType_INT4;
@@ -209,7 +206,7 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   }
   // TFLite export fills FLOAT32 for unknown data types. Returning an error
   // for now for safety and this could be revisited when required.
-  return Status(error::INVALID_ARGUMENT, "Unsupported type");
+  return Status(absl::StatusCode::kInvalidArgument, "Unsupported type");
 }
 
 static bool IsConst(Operation* op) {
@@ -579,7 +576,7 @@ class Translator {
       const std::vector<int32_t>& results);
 
   // Build while operator where cond & body are regions.
-  Optional<BufferOffset<tflite::Operator>> BuildWhileOperator(
+  std::optional<BufferOffset<tflite::Operator>> BuildWhileOperator(
       mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
@@ -614,7 +611,7 @@ class Translator {
 
   // Builds operator for the given operation with specified operand and result
   // tensor indices. Emits an error and returns std::nullopt on failure.
-  llvm::Optional<BufferOffset<tflite::Operator>> BuildOperator(
+  std::optional<BufferOffset<tflite::Operator>> BuildOperator(
       Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results,
       const std::vector<int32_t>& intermediates);
@@ -1064,7 +1061,7 @@ BufferOffset<tflite::Operator> Translator::BuildCallOnceOperator(
                                 builtin_options);
 }
 
-llvm::Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
     mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
@@ -1243,7 +1240,7 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
   return it.first->second;
 }
 
-llvm::Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
     const std::vector<int32_t>& intermediates) {
@@ -1555,7 +1552,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   }
 
   bool failed_once = false;
-  for (auto& item : llvm::enumerate(bb)) {
+  for (const auto& item : llvm::enumerate(bb)) {
     Operation& inst = item.value();
     const int operation_index = item.index();
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;

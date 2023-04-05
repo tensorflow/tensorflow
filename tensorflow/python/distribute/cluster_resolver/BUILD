@@ -25,7 +25,6 @@ py_library(
         ":slurm_cluster_resolver_py",
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
-        "//tensorflow/python:util",
     ],  # placeholder for google-internal dependencies,,
 )
 
@@ -35,6 +34,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -45,6 +45,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -55,6 +56,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -65,6 +67,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -72,7 +75,10 @@ py_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py"],
+    deps = [
+        "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
+        "//tensorflow/python/util:tf_export",
+    ],
 )
 
 py_library(
@@ -82,6 +88,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -92,6 +99,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

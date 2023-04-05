@@ -23,6 +23,7 @@ import weakref
 
 from absl import logging
 
+from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.sharded_variable import ShardedVariable
 from tensorflow.python.eager import context
@@ -34,7 +35,6 @@ from tensorflow.python.ops.resource_variable_ops import UninitializedVariable
 from tensorflow.python.ops.variables import Variable
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.tpu.tpu_embedding_v2 import TPUEmbedding
-from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.util import object_identity
 
 # Captures the timestamp of the first Checkpoint instantiation or end of a write
@@ -208,10 +208,9 @@ class AsyncCheckpointHelper:
 
     # Copy for the slot variables.
     for current_trackable in self._original_nodes:
-      if (isinstance(current_trackable, optimizer_v1.Optimizer)
           # Note: dir() is used rather than hasattr() here to avoid triggering
           # custom __getattr__ code, see b/152031870 for context.
-          or "get_slot_names" in dir(current_trackable)):
+      if "get_slot_names" in dir(current_trackable):
         slot_names = current_trackable.get_slot_names()
         for slot_name in slot_names:
           for original_variable in self._original_nodes:
@@ -249,7 +248,7 @@ class AsyncCheckpointHelper:
     3). Trigger the async save thread to check and fail the while-predicate.
     4). Join the async save thread. (The thread may finish before joining.)
     """
-    if self._writer_sem.acquire(timeout=3600):  # Step-1.
+    if self._writer_sem.acquire(timeout=300):  # Step-1.
       self._async_save_thread_shutdown = True  # Step-2.
       self._reader_sem.release()  # Step-3.
       logging.info("Joining the async save thread.")
@@ -276,14 +275,15 @@ class AsyncCheckpointHelper:
         # placement, while the main thread's default placement would be the
         # master worker's CPU:0.
         with ops.device(self._default_device):
-          if self._use_checkpoint_save:
-            self._checkpoint.save(self._save_file_prefix,
-                                  self._checkpoint_options)
-          else:
-            self._checkpoint._write(  # pylint: disable=protected-access
-                self._save_file_prefix,
-                options=self._checkpoint_options,
-                write_done_callback=self._async_write_done_callback)
+          with checkpoint_context.async_metrics_context():
+            if self._use_checkpoint_save:
+              self._checkpoint.save(self._save_file_prefix,
+                                    self._checkpoint_options)
+            else:
+              self._checkpoint._write(  # pylint: disable=protected-access
+                  self._save_file_prefix,
+                  options=self._checkpoint_options,
+                  write_done_callback=self._async_write_done_callback)
         # Allow the next checkpoint event to overwrite the cpu-copied variables.
         self._writer_sem.release()
 

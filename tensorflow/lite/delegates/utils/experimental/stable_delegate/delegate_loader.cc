@@ -15,7 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 
 #include <dlfcn.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include <cerrno>
 #include <string>
 
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
@@ -24,6 +27,27 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace utils {
+namespace {
+void setLibraryPathEnvironmentVariable(const std::string& delegate_path) {
+  std::string directory_path = "";
+  // Finds the last '/' character in the file path.
+  size_t last_slash_index = delegate_path.rfind('/');
+  // If there is no '/' character, then the file path is a relative path and
+  // the directory path is empty.
+  if (last_slash_index != std::string::npos) {
+    // Extracts the directory path from the file path.
+    directory_path = delegate_path.substr(0, last_slash_index);
+  }
+  if (setenv(kTfLiteLibraryPathEnvironmentVariable, directory_path.c_str(),
+             /* overwrite= */ 1) != 0) {
+    // Delegate loading can continue as the environment variable is optional for
+    // the stable delegate shared library to use.
+    TFLITE_LOG(WARN) << "Error setting environment variable "
+                     << kTfLiteLibraryPathEnvironmentVariable
+                     << " with error: " << strerror(errno);
+  }
+}
+}  // namespace
 
 using ::tflite::acceleration::AndroidInfo;
 using ::tflite::acceleration::RequestAndroidInfo;
@@ -58,9 +82,12 @@ void* LoadSymbolFromSharedLibrary(const std::string& delegate_path,
     TFLITE_LOG(INFO) << "Android SDK level is " << sdk_version
                      << ", using dlopen with RTLD_NODELETE.";
   }
-  // On the one hand, the handld would not be closed in production. The resource
-  // will be release when the process is killed. On the other hand, it may cause
-  // issue for leak detection in testing.
+  // Exports the path of the folder containing the stable delegate shared
+  // library to the TFLITE_STABLE_DELEGATE_LIBRARY_PATH environment variable.
+  setLibraryPathEnvironmentVariable(delegate_path);
+  // On the one hand, the handle would not be closed in production. The resource
+  // will be released when the process is killed. On the other hand, it may
+  // cause issues for leak detection in testing.
   // TODO(b/268483011): Better support for cleanup the shared library handle.
   delegate_lib_handle = dlopen(delegate_path.c_str(), dlopen_flags);
   if (!delegate_lib_handle) {

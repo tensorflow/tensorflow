@@ -188,6 +188,7 @@ struct TpuSharedBuffer final {
 
   ~TpuSharedBuffer() {
     std::vector<tpu_driver::Event*> events;
+    events.reserve(wait_for_use.size());
     for (const auto& e : wait_for_use) {
       events.push_back(e.get());
     }

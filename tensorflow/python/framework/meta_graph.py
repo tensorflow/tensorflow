@@ -18,6 +18,7 @@ import copy
 from packaging import version as packaging_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
+import sys
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf import text_format
@@ -29,6 +30,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
@@ -636,6 +638,8 @@ def read_meta_graph_file(filename):
     file_content = f.read()
   try:
     meta_graph_def.ParseFromString(file_content)
+    if sys.byteorder == "big":
+      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
     return meta_graph_def
   except Exception:  # pylint: disable=broad-except
     pass
@@ -643,6 +647,8 @@ def read_meta_graph_file(filename):
   # Next try to read it as a text file.
   try:
     text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
+    if sys.byteorder == "big":
+      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
   except text_format.ParseError as e:
     raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 

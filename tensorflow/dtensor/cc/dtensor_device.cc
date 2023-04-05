@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_op_attrs_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -87,26 +89,45 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/util/env_var.h"
 
+using tensorflow::EagerExecutor;
+
 namespace tensorflow {
 namespace dtensor {
 
 class DTensorDevice {
  public:
-  static StatusOr<DTensorDevice*> Create(absl::string_view name) {
+  static StatusOr<DTensorDevice*> Create(absl::string_view name, bool is_async,
+                                         int in_flight_nodes_limit) {
     std::string use_parallel_executor;
     TF_RETURN_IF_ERROR(tsl::ReadStringFromEnvVar(
         "DTENSOR_USE_PARALLEL_EXECUTOR", "", &use_parallel_executor));
-    if (use_parallel_executor.empty()) {
-      return new DTensorDevice(name, nullptr);
-    } else {
-      TF_ASSIGN_OR_RETURN(auto parallel_executor,
-                          CreateDefaultParallelExecutor());
-      return new DTensorDevice(name, std::move(parallel_executor));
+    std::unique_ptr<ParallelExecutor> parallel_executor;
+    if (!use_parallel_executor.empty()) {
+      TF_ASSIGN_OR_RETURN(parallel_executor, CreateDefaultParallelExecutor());
     }
+    auto eager_executor = std::make_unique<EagerExecutor>(
+        is_async, /*enable_streaming_enqueue=*/true, in_flight_nodes_limit);
+    return new DTensorDevice(name, std::move(parallel_executor),
+                             std::move(eager_executor), is_async,
+                             in_flight_nodes_limit);
   }
 
-  void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
-               bool is_host_mesh) {
+  bool use_parallel_executor() const { return parallel_executor_ != nullptr; }
+
+  void AddMesh(Mesh mesh_config, bool is_host_mesh) {
+    std::vector<std::string> underlying_devices;
+    underlying_devices.insert(underlying_devices.end(),
+                              mesh_config.local_devices().begin(),
+                              mesh_config.local_devices().end());
+
+    // DTensor uses multi-client setup which doesn't use remote eager, so we can
+    // enable eager async execution in ParallelDevice.
+    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
+        new tensorflow::parallel_device::ParallelDevice(
+            underlying_devices, is_async_, in_flight_nodes_limit_));
+
+    auto mesh = std::make_unique<MeshWithParallelDevice>(std::move(mesh_config),
+                                                         std::move(parallel));
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
       const std::string new_tpu_host_mesh = mesh->mesh_config().ToString();
@@ -123,7 +144,7 @@ class DTensorDevice {
              .second)
       return;
     if (!default_mesh_) {
-      global_default_mesh_ = mesh_to_device_map_.begin()->second.get();
+      global_default_mesh_ = mesh_to_device_map_.begin()->first;
       default_mesh_ = global_default_mesh_;
     }
   }
@@ -140,13 +161,8 @@ class DTensorDevice {
 
   void SetDefaultLayout(Layout layout) { default_layout_.emplace(layout); }
   void ClearDefaultLayout() { default_layout_.reset(); }
-  void SetDefaultMesh(Mesh mesh) {
-    default_mesh_ = mesh_to_device_map_.at(mesh).get();
-  }
+  void SetDefaultMesh(Mesh mesh) { default_mesh_ = mesh; }
   void ClearDefaultMesh() { default_mesh_ = global_default_mesh_; }
-  void SetSameShapePolicy(bool enabled) {
-    same_shape_policy_enabled_ = enabled;
-  }
 
   Status SetTPUCoreIDs(const std::string& mesh_name,
                        const std::vector<int>& tpu_core_ids) {
@@ -241,6 +257,13 @@ class DTensorDevice {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> first_bad_status(
         nullptr, TF_DeleteStatus);
 
+    Set_TF_Status_from_Status(status,
+                              eager_executor_->WaitForAllPendingNodes());
+
+    if (TF_GetCode(status) != TF_OK) {
+      first_bad_status.reset(status);
+    }
+
     for (const auto& pair : mesh_to_device_map_) {
       std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> async_wait_status(
           TF_NewStatus(), TF_DeleteStatus);
@@ -281,6 +304,9 @@ class DTensorDevice {
                                         TFE_TensorHandle* input,
                                         TF_Status* status);
 
+  TFE_TensorHandle* ToTensorHandle(TFE_Context* context,
+                                   TensorWithLayout* input, TF_Status* status);
+
   // Return the layout for the input tensor.
   std::string FetchLayout(TFE_Context* context, TFE_TensorHandle* input,
                           TF_Status* status);
@@ -299,35 +325,30 @@ class DTensorDevice {
   bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                        TF_Status* status);
 
-  std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
+  std::unordered_map<std::string, int> GetFunctionCacheStats(
       TFE_Context* context, TF_Status* status) const;
 
   void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,
                                  const std::vector<std::string>& string_layouts,
                                  TF_Status* status);
 
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+  Disassemble(TFE_Context* context, TensorWithLayout* t, TF_Status* status);
+
  private:
   DTensorDevice(absl::string_view name,
-                std::unique_ptr<ParallelExecutor> parallel_executor)
+                std::unique_ptr<ParallelExecutor> parallel_executor,
+                std::unique_ptr<EagerExecutor> eager_executor, bool is_async,
+                int in_flight_nodes_limit)
       : name_(name),
-        same_shape_policy_enabled_(false),
+        is_async_(is_async),
+        in_flight_nodes_limit_(in_flight_nodes_limit),
+        module_manager_(
+            new ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>()),
+        function_manager_(new ExecutableManager<ExecutionFunctions>()),
         cancellation_manager_(std::make_unique<CancellationManager>()),
-        parallel_executor_(std::move(parallel_executor)) {}
-
-  // If the `operation_name` of an op indicates a custom DTensor op then
-  // separately handle those custom ops instead of running default DTensor graph
-  // compilation.
-  void MaybeHandleDTensorCustomOps(
-      const char* operation_name, const int num_inputs,
-      const TFE_OpAttrs* attributes, TFE_Context* context,
-      TFE_TensorHandle** inputs, int* num_outputs, TFE_TensorHandle** outputs,
-      bool* is_custom_dtensor_op, TF_Status* status);
-
-  // Update output layouts for eager ops based on same shape policy.
-  Status UpdateOutputLayoutsWithSameShapePolicy(
-      const std::vector<PartialTensorShape>& global_output_shapes,
-      const absl::flat_hash_set<Mesh>& input_meshes, absl::string_view op_name,
-      tensorflow::Graph* graph, std::vector<const Layout*>* output_layouts);
+        parallel_executor_(std::move(parallel_executor)),
+        eager_executor_(std::move(eager_executor)) {}
 
   // Stores states of a DTensorOperation that will be used for lowering,
   // including different representations (e.g. MLIR Module) of the
@@ -388,6 +409,13 @@ class DTensorDevice {
                                const TFE_OpAttrs* attributes, int* num_outputs,
                                TFE_TensorHandle** outputs, TF_Status* status);
 
+  // Executes a single device Operation, on a single device.
+  void ExecuteSingleDeviceOperation(
+      TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
+      const DTensorOperation& doperation, const std::string& device_name,
+      const TFE_OpAttrs* attributes, int* num_outputs,
+      TFE_TensorHandle** outputs, TF_Status* status);
+
   // Wraps a TensorWithLayout into a TFE_TensorHandle.
   TFE_TensorHandle* MakeLayoutTensorHandle(TFE_Context* context,
                                            std::unique_ptr<TensorWithLayout> t,
@@ -397,7 +425,7 @@ class DTensorDevice {
 
   // Choose a mesh to broadcast a non-dtensor to a dtensor based on the
   // operation, other input meshes, default mesh, and dtypes.
-  const MeshWithParallelDevice* ChooseBroadcastingMesh(
+  std::optional<Mesh> ChooseBroadcastingMesh(
       const absl::flat_hash_set<Mesh>& input_meshes,
       const std::vector<TF_DataType>& dtypes);
 
@@ -406,13 +434,21 @@ class DTensorDevice {
 
   // Broadcasts `tensor` to `mesh` using replicated sharding. Returns `nullptr`
   // if it fails.
-  // TODO(b/256016071): Unify this and the one in `TensorWithLayoutTf`.
-  std::unique_ptr<TensorWithLayout> Broadcast(TFE_TensorHandle* input,
+  std::unique_ptr<TensorWithLayout> Broadcast(TFE_Context* context,
+                                              TFE_TensorHandle* input,
                                               const Mesh& mesh,
                                               TF_Status* status);
 
   // The name of the device (the custom device)
   std::string name_;
+
+  // True if the nested eager executors shall run with EagerAsync mode.
+  bool is_async_;
+
+  // If nonzero, limit the number of in-flight EagerAsync nodes in nested
+  // Eager executors.
+  int in_flight_nodes_limit_;
+
   // Mesh configs with matching parallel devices.
   //
   // For now we just consider the first entry added to dtensor_device as the
@@ -422,16 +458,12 @@ class DTensorDevice {
   // TODO(hthu): Consider whether we want to preserve the default_mesh semantic.
   // Current default mesh consistent to default_layout_. If default_layout_ is
   // not set, it equals to global_default_mesh_.
-  const MeshWithParallelDevice* default_mesh_ = nullptr;
+  std::optional<Mesh> default_mesh_;
   // The default mesh of a DTensorDevice, which cannot be modified once being
   // set.
-  const MeshWithParallelDevice* global_default_mesh_ = nullptr;
+  std::optional<Mesh> global_default_mesh_;
   // If the user has specified a default output layout.
   std::optional<Layout> default_layout_;
-
-  // Determines whether tensors with a shape previously associated with only one
-  // layout use that layout if nothing else can be inferred.
-  bool same_shape_policy_enabled_;
 
   DTensorMlirPassRunner pass_runner_;
 
@@ -443,13 +475,16 @@ class DTensorDevice {
   };
   absl::flat_hash_map<int64_t, CachedLayout> shape_layout_cache_;
 
-  ExecutableManager<ExecutionFunctions> function_manager_;
-  ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>> module_manager_;
-
-  // Records the function compilation cache hits and misses.
-  std::unordered_map<std::string, int> function_compilation_hits_and_misses_;
-  // Records the Module lowering cache hits and misses.
-  std::unordered_map<std::string, int> module_lowering_hits_and_misses_;
+  // DTensor op execution is divided into two general stages:
+  // Stage 1: DTensor function is converted to MLIR module. And the
+  // module_manager_ is used in this stage to cache the module. The cache key
+  // generated in this stage will be reused in the next stage.
+  core::RefCountPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
+      module_manager_;
+  // Stage 2: MLIR module is processed. On TensorFlow runtime execution the
+  // module is lowered to ExecutionFunctions for execution. function_manager_
+  // caches the ExecutionFunctions.
+  core::RefCountPtr<ExecutableManager<ExecutionFunctions>> function_manager_;
 
   // Coordinates cancelling ops across meshes on error. Must outlive any queued
   // async op launches, so we only reset it after seeing a failure status.
@@ -461,8 +496,13 @@ class DTensorDevice {
   // the step id, which is used for rendezvous creation.
   absl::flat_hash_map<uint64, uint64> func_mesh_fingerprint_to_step_counter_;
 
-  // Dispatchs post-SPMD functions.
+  // Dispatchs functions for Pathways.
   std::unique_ptr<ParallelExecutor> parallel_executor_;
+
+  // Dispatchs functions for TensorFlow.
+  std::unique_ptr<EagerExecutor> eager_executor_;
+
+  mutable mutex mu_;  // Mutex for dtensor_device->execute
 };
 
 int64_t FingerprintShape(const absl::Span<const int64_t> shape) {
@@ -553,7 +593,7 @@ TF_Buffer* TensorWithLayoutSummarize(void* data, TF_Status* status) {
   return TF_NewBufferFromString(summary.data(), summary.size());
 }
 
-const MeshWithParallelDevice* DTensorDevice::ChooseBroadcastingMesh(
+std::optional<Mesh> DTensorDevice::ChooseBroadcastingMesh(
     const absl::flat_hash_set<Mesh>& input_meshes,
     const std::vector<TF_DataType>& dtypes) {
   bool has_string_dtype = std::find(dtypes.begin(), dtypes.end(),
@@ -565,18 +605,16 @@ const MeshWithParallelDevice* DTensorDevice::ChooseBroadcastingMesh(
     // mesh if it exists.
     for (const Mesh& mesh : input_meshes) {
       if (mesh.is_cpu_mesh()) {
-        return mesh_to_device_map_[mesh].get();
+        return mesh;
       }
     }
   }
 
   // If a unique mesh is identified across all inputs, we use that mesh as the
   // mesh to broadcast to. Otherwise we fallback to default mesh.
-  const MeshWithParallelDevice* broadcast_mesh =
-      input_meshes.size() == 1
-          ? mesh_to_device_map_[*input_meshes.begin()].get()
-          : default_mesh_;
-  return broadcast_mesh;
+  if (input_meshes.size() == 1) return *input_meshes.begin();
+
+  return default_mesh_;
 }
 
 TFE_TensorHandle* DTensorDevice::MakeLayoutTensorHandle(
@@ -611,12 +649,12 @@ bool DTensorDevice::is_remote_mesh(const Mesh& mesh) const {
   // An empty mesh might be assigned to VarHandleOp during DTensor MLIR lowering
   // pass. Decide whether the empty mesh is remote based on the current default
   // mesh.
-  return mesh.is_remote() ||
-         (mesh.IsEmpty() && default_mesh_->mesh_config().is_remote());
+  return mesh.is_remote() || (mesh.IsEmpty() && default_mesh_->is_remote());
 }
 
 std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
-    TFE_TensorHandle* input, const Mesh& mesh, TF_Status* status) {
+    TFE_Context* context, TFE_TensorHandle* input, const Mesh& mesh,
+    TF_Status* status) {
   const char* input_device = TFE_TensorHandleDeviceName(input, status);
   if (TF_GetCode(status) != TF_OK) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -629,10 +667,28 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
     return nullptr;
   }
 
+  if (!parallel_executor_) {
+    if (mesh.IsSingleDevice()) {
+      StatusOr<Layout> single_device_layout =
+          Layout::GetSingleDeviceLayout(mesh);
+      if (!single_device_layout.ok()) {
+        Set_TF_Status_from_Status(status, single_device_layout.status());
+        return nullptr;
+      }
+      TensorHandlePtr single_tensor(
+          TFE_TensorHandleCopySharingTensor(input, status));
+      if (TF_GetCode(status) != TF_OK) {
+        return nullptr;
+      }
+      return TensorWithLayoutTf::Wrap(std::move(single_tensor),
+                                      *single_device_layout, status);
+    }
+    return TensorWithLayoutTf::Broadcast(context, input,
+                                         *mesh_to_device_map_[mesh], status);
+  }
+
   TF_Tensor* tf_tensor = TFE_TensorHandleResolve(input, status);
   if (TF_GetCode(status) != TF_OK) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Failed to resolve the input to tensor.");
     return nullptr;
   }
   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> resolved_tensor(
@@ -645,11 +701,14 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
                  tf_tensor_to_tensor_status.ToString().c_str());
     return nullptr;
   }
-  if (!parallel_executor_) {
-    TF_SetStatus(status, TF_INTERNAL, "Parallel executor is null.");
+  const Layout layout = Layout::ReplicatedOnMesh(mesh, tensor.dims());
+  std::optional<NodeDef> const_value =
+      ExtractSmallTensorValue(context, input, layout, status);
+  if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
-  auto tensor_with_layout_pw = parallel_executor_->Broadcast(tensor, mesh);
+  auto tensor_with_layout_pw =
+      parallel_executor_->Broadcast(tensor, mesh, const_value);
   if (!tensor_with_layout_pw.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
                  tensor_with_layout_pw.status().ToString().c_str());
@@ -695,7 +754,7 @@ StatusOr<Layout> FetchLayoutFromAttributes(const TFE_OpAttrs* attributes,
 
   // This would probably be slow at the moment without caching.
   // We should consider making this faster in the future.
-  return Layout::FromString(string(layout_str));
+  return Layout::FromString(layout_str);
 }
 
 std::string DTensorDevice::FetchLayout(TFE_Context* context,
@@ -745,12 +804,19 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
                  "DTensorUnpack is not supported on a remote mesh.");
     return outputs;
   }
-  const int output_size = t->num_tensors();
-  outputs.resize(output_size);
 
-  for (int output_index = 0; output_index < output_size; ++output_index) {
-    outputs[output_index] =
-        TFE_TensorHandleCopySharingTensor(t->get_tensor(output_index), status);
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+      tensor_with_layouts = Disassemble(context, t, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return outputs;
+  }
+  outputs.reserve(tensor_with_layouts.size());
+  for (auto& tensor_with_layout : tensor_with_layouts) {
+    // TODO(b/256016071): Eventually we may still support producing single
+    // device tensors with layouts instead of eager tensors, either in this API
+    // or in a new API.
+    outputs.push_back(
+        ToTensorHandle(context, tensor_with_layout.get(), status));
     if (TF_GetCode(status) != TF_OK) {
       return outputs;
     }
@@ -758,37 +824,43 @@ std::vector<TFE_TensorHandle*> DTensorDevice::Unpack(TFE_Context* context,
   return outputs;
 }
 
-void DTensorDevice::MaybeHandleDTensorCustomOps(
-    const char* operation_name, const int num_inputs,
-    const TFE_OpAttrs* attributes, TFE_Context* context,
-    TFE_TensorHandle** inputs, int* num_outputs, TFE_TensorHandle** outputs,
-    bool* is_custom_dtensor_op, TF_Status* status) {
-  *is_custom_dtensor_op = true;
-  if (operation_name == std::string("_EagerConst")) {
-    // Op-by-op const has no obvious layout. DTensor skips an SPMD expansion and
-    // instead relies on copy-on when the value is used later.
-    std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
-        TFE_NewOp(context, operation_name, status), TFE_DeleteOp);
-    if (TF_GetCode(status) != TF_OK) return;
-    for (int input_index = 0; input_index < num_inputs; ++input_index) {
-      TFE_OpAddInput(op.get(), inputs[input_index], status);
-      if (TF_GetCode(status) != TF_OK) return;
+TFE_TensorHandle* DTensorDevice::ToTensorHandle(TFE_Context* context,
+                                                TensorWithLayout* input,
+                                                TF_Status* status) {
+  TFE_TensorHandle* tensor_handle = nullptr;
+  if (parallel_executor_) {
+    StatusOr<Tensor> tensor = parallel_executor_->ToHostBuffer(input).Await();
+    if (!tensor.ok()) {
+      TF_SetStatus(status, TF_INTERNAL, tensor.status().ToString().c_str());
+      return tensor_handle;
     }
-    TFE_OpAddAttrs(op.get(), attributes);
-    TFE_Execute(op.get(), outputs, num_outputs, status);
-    return;
+    Status tf_tensor_from_tensor_status;
+    TF_Tensor* tf_tensor =
+        TF_TensorFromTensor(*tensor, &tf_tensor_from_tensor_status);
+    if (!tf_tensor_from_tensor_status.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   tf_tensor_from_tensor_status.ToString().c_str());
+      return tensor_handle;
+    }
+    tensor_handle = TFE_NewTensorHandleFromTensor(context, tf_tensor, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return tensor_handle;
+    }
+  } else {
+    tensor_handle = TFE_TensorHandleCopySharingTensor(
+        llvm::cast<TensorWithLayoutTf>(input)->single_tensor(), status);
   }
-
-  *is_custom_dtensor_op = false;
+  return tensor_handle;
 }
+
 
 namespace {
 
 // Verifies that all components have the same dtype and shape.
 // The component shape will be set upon success.
-void VerifyPackTensorShapeAndDtype(
-    std::vector<parallel_device::TensorHandlePtr>& components,
-    std::vector<int64_t>* component_shape, TF_Status* status) {
+void VerifyPackTensorShapeAndDtype(std::vector<TensorHandlePtr>& components,
+                                   std::vector<int64_t>* component_shape,
+                                   TF_Status* status) {
   TF_DataType dtype = TFE_TensorHandleDataType(components[0].get());
   auto size = TFE_TensorHandleNumDims(components[0].get(), status);
   if (TF_GetCode(status) != TF_OK) return;
@@ -897,7 +969,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    std::vector<parallel_device::TensorHandlePtr> components;
+    std::vector<TensorHandlePtr> components;
     components.reserve(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       TFE_TensorHandle* input = inputs[i];
@@ -1038,13 +1110,13 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
     auto local_devices = target_parallel_device->mesh_config().local_devices();
 
-    std::vector<parallel_device::TensorHandlePtr> indices_components;
-    std::vector<parallel_device::TensorHandlePtr> values_components;
-    std::vector<parallel_device::TensorHandlePtr> dense_shapes_components;
+    std::vector<TensorHandlePtr> indices_components;
+    std::vector<TensorHandlePtr> values_components;
+    std::vector<TensorHandlePtr> dense_shapes_components;
 
     // Just a nice trick to make code cleaner to pack each of indices, values,
     // shapes.
-    std::vector<std::vector<parallel_device::TensorHandlePtr>*> components{
+    std::vector<std::vector<TensorHandlePtr>*> components{
         &indices_components, &values_components, &dense_shapes_components};
     std::vector<TFE_TensorHandle**> input_vectors{indices, values, shapes};
     for (int component_index = 0; component_index < 3; ++component_index) {
@@ -1115,92 +1187,24 @@ bool DTensorDevice::IsSparseDTensor(TFE_Context* context,
   return t->tensor_type() == TensorType::kSparse;
 }
 
-Status DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
-    const std::vector<PartialTensorShape>& global_output_shapes,
-    const absl::flat_hash_set<Mesh>& input_meshes, absl::string_view op_name,
-    tensorflow::Graph* graph, std::vector<const Layout*>* output_layouts) {
-  if (!same_shape_policy_enabled_) return OkStatus();
-  // Simply do not hint if inputs span across multiple meshes.
-  if (input_meshes.size() > 1) return OkStatus();
+std::unordered_map<std::string, int> DTensorDevice::GetFunctionCacheStats(
+    TFE_Context* context, TF_Status* status) const {
+  const auto stats = function_manager_->GetStats();
 
-  for (Node* node : graph->op_nodes()) {
-    if (!node->IsRetval()) {
-      continue;
-    }
-    int output_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &output_index));
-    if (output_layouts->at(output_index)) {
-      continue;
-    }
-
-    const auto& global_output_shape = global_output_shapes.at(output_index);
-    const Layout* layout = nullptr;
-    // TODO(b/180022708): This is useful information, we should be
-    // able to hint to layout propagation without making it a hard
-    // requirement
-    //
-    // Special cases at the moment:
-    // - Relayout needs an exemption.
-    // - VarHandleOp does not need hint. VarHandleOp has scalar shape so layout
-    //   is trivial. On the other hande, downstream system "thinks' Variable has
-    //   shape same as the pointing value. So, providing a layout based on
-    //   VarHandleOp (scalar) might confuse the downstream system.
-    // - CopyToMesh has a user-supplied layout that is propagated downstream.
-    if (op_name != std::string("Relayout") &&
-        op_name != std::string("VarHandleOp") &&
-        op_name != std::string("CopyToMesh")) {
-      // TODO(b/162009702): Support matching between partially-known shapes.
-      if (global_output_shape.IsFullyDefined()) {
-        gtl::InlinedVector<int64, 4> shape_vector(
-            global_output_shape.dim_sizes());
-        auto layout_iterator =
-            shape_layout_cache_.find(FingerprintShape(shape_vector));
-        if (layout_iterator != shape_layout_cache_.end() &&
-            layout_iterator->second.is_unique) {
-          // We have a cached layout for this shape. Send it to MLIR.
-          layout = &layout_iterator->second.layout;
-          VLOG(3) << op_name << ": found a cached layout for shape "
-                  << global_output_shape.DebugString() << ": \""
-                  << layout->ToString() << "\"";
-          if (input_meshes.empty() &&
-              layout->mesh() != default_mesh_->mesh_config()) {
-            VLOG(3) << "But we can't infer a input mesh and cached layout: "
-                    << "mesh \"" << (layout->mesh().ToString()) << " "
-                    << "is different than the default mesh : \""
-                    << default_mesh_->mesh_config().ToString() << "\"\n"
-                    << "Not applying the cached layout.";
-          } else if (!input_meshes.empty() &&
-                     layout->mesh() != *input_meshes.begin()) {
-            VLOG(3)
-                << "But the layout mesh is different than the executing mesh: "
-                << "\"" << (*input_meshes.begin()).ToString() << "\"\n"
-                << "Not applying the cached layout.";
-          } else {
-            (*output_layouts)[output_index] = layout;
-            node->AddAttr(kDefaultLayoutAttr, layout->ToString());
-          }
-        } else if (layout_iterator == shape_layout_cache_.end()) {
-          VLOG(3) << op_name << ": no cached layout found for shape "
-                  << global_output_shape.DebugString();
-        } else {
-          VLOG(3) << op_name << ": found multiple layouts for shape "
-                  << global_output_shape.DebugString();
-        }
-      } else {
-        VLOG(3) << op_name
-                << ": not applying same-shape-same-layout due to "
-                   "not-fully-known shape "
-                << global_output_shape.DebugString();
-      }
-    }
+  const auto eager_stats = tensorflow::unwrap(context)->GetCacheStats();
+  std::unordered_map<std::string, int> result{
+      {"hit", stats.hits},
+      {"miss", stats.misses},
+      {"size", stats.size},
+      {"device_cache.size", eager_stats.device_cache_size},
+      {"kernel_cache.size", eager_stats.kernel_cache_size},
+      {"local_rendezvous_cache.active.size",
+       eager_stats.local_rendezvous_cache_active_size},
+  };
+  for (const auto& iter : eager_stats.func_kernel_cache_entries) {
+    result[absl::StrCat("kernel_cache.", iter.first, ".size")] = iter.second;
   }
-  return OkStatus();
-}
-
-std::unordered_map<std::string, int>
-DTensorDevice::GetFunctionCacheHitAndMissCount(TFE_Context* context,
-                                               TF_Status* status) const {
-  return function_compilation_hits_and_misses_;
+  return result;
 }
 
 void DTensorDevice::SetIteratorElementLayouts(
@@ -1227,6 +1231,73 @@ void DTensorDevice::SetIteratorElementLayouts(
                    return Layout::FromString(layout_str).value();
                  });
   RETURN_C_STATUS_IF_NOT_OK(t->UpdateElementLayouts(layouts), status);
+}
+
+std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+DTensorDevice::Disassemble(TFE_Context* context, TensorWithLayout* t,
+                           TF_Status* status) {
+  if (parallel_executor_) {
+    StatusOr<
+        std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>>
+        tensor_with_layouts = parallel_executor_->Disassemble(t);
+    if (!tensor_with_layouts.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   absl::StrCat("Failed in Disassemble of parallel executor ",
+                                tensor_with_layouts.status().ToString())
+                       .c_str());
+      return {};
+    }
+    return *std::move(tensor_with_layouts);
+  }
+  std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
+      tensor_with_layouts;
+  const MeshWithParallelDevice* mesh_with_parallel_device =
+      mesh_to_device_map_[t->mesh()].get();
+  if (mesh_with_parallel_device == nullptr) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("Mesh in Unpack: ", t->mesh().ToString(),
+                              "is not registered with DTensor")
+                     .c_str());
+    return tensor_with_layouts;
+  }
+  const int output_size = t->num_tensors();
+  const parallel_device::ParallelDevice& parallel_device =
+      mesh_with_parallel_device->parallel_device();
+  const int num_underlying_devices = parallel_device.num_underlying_devices();
+  if (output_size != num_underlying_devices &&
+      output_size != kSparseTensorNum * num_underlying_devices) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 absl::StrCat("The output size is ", output_size,
+                              " but the number of underlying devices is ",
+                              num_underlying_devices)
+                     .c_str());
+    return tensor_with_layouts;
+  }
+
+  tensor_with_layouts.reserve(output_size);
+  for (int output_index = 0; output_index < output_size; ++output_index) {
+    const std::string& underlying_device =
+        parallel_device
+            .underlying_devices()[output_index % num_underlying_devices];
+
+    StatusOr<Mesh> single_device_mesh =
+        Mesh::GetSingleDeviceMesh(underlying_device);
+    if (!single_device_mesh.ok()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   absl::StrCat("Failed to create single device mesh ",
+                                single_device_mesh.status().ToString())
+                       .c_str());
+      return tensor_with_layouts;
+    }
+
+    std::unique_ptr<TensorWithLayout> tensor_with_layout = Broadcast(
+        context, t->get_tensor(output_index), *single_device_mesh, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return tensor_with_layouts;
+    }
+    tensor_with_layouts.push_back(std::move(tensor_with_layout));
+  }
+  return tensor_with_layouts;
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -1295,7 +1366,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     // nodes. This should just be increasing from 0 to n where n
     // is the total number of arguments. Note that this definition to
     // the `index` attribute is different from the definition we set in
-    // PrepareGraphForMLIR.
+    // PrepareGraphForMlir.
     // This attribute is needed for each arg node when converting a Graph to
     // a FunctionDef.
     if (n->IsArg()) {
@@ -1323,6 +1394,7 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
 // Adds processed graph to run for each mesh computation in
 // `execution_functions` to function definition library.
 Status AddExecutionFunctionDefsToFunctionDefLibrary(
+    const std::string doperation_name, const StackTracesMap& stack_traces,
     const absl::flat_hash_set<Node*>& control_ret_nodes, TFE_Context* context,
     const Graph& graph, ExecutionFunctions* execution_functions) {
   // Note: We use node name instead of node pointer for comparison because
@@ -1349,7 +1421,9 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
 
     static std::atomic<int64_t> unique_function_number(0);
     function.translated_function_name =
-        absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
+        absl::StrCat(doperation_name, "_", func.name(), "_",
+                     unique_function_number.fetch_add(1));
+    function.function_name = func.name();
     auto control_ret_node_names =
         [&control_ret_names, &selected_call_node_name](
             const Node* node) -> std::optional<std::string> {
@@ -1372,7 +1446,9 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     }
 
     AddDTensorFunctionAttr(to_run);
-    TF_RETURN_IF_ERROR(tensorflow::unwrap(context)->AddFunctionDef(to_run));
+    TF_RETURN_IF_ERROR(
+        tensorflow::unwrap(context)->AddFunctionDefWithStackTraces(
+            to_run, stack_traces));
   }
 
   return OkStatus();
@@ -1391,39 +1467,26 @@ DTensorDevice::DTensorOperationToModule(
   result.graph = std::make_unique<tensorflow::Graph>(flib_def);
 
   const FunctionDef* function_def = doperation.function_def;
-  if (!function_def) {
-    // Output layouts of an eager op (e.g. fill) must be inferred before cache
-    // key computation, since they might depend on the current DTensorDevice
-    // state.
-    TF_RETURN_IF_ERROR(PrepareGraphForMlir(
-        function_manager_, inputs, doperation, *flib_def, eager_attributes,
-        default_layout_, result.graph.get(), &result.global_output_shapes,
-        &result.output_layouts));
+  // Output layouts must be inferred before cache
+  // key computation, since they might depend on the current DTensorDevice
+  // state.
+  TF_RETURN_IF_ERROR(InferOutputLayouts(doperation, eager_attributes,
+                                        default_layout_, result.graph.get(),
+                                        &result.output_layouts));
 
-    // Finds all meshes the inputs are lied on.
-    absl::flat_hash_set<Mesh> input_meshes;
-    for (const TensorWithLayout* tensor : inputs) {
-      if (!tensor->layout().mesh().IsEmpty()) {
-        input_meshes.insert(tensor->layout().mesh());
-      }
-    }
-    // Currently we only provide layout hints for op-by-op, since
-    // they interact badly with layout propagation.
-    TF_RETURN_IF_ERROR(UpdateOutputLayoutsWithSameShapePolicy(
-        result.global_output_shapes, input_meshes, doperation.name,
-        result.graph.get(), &result.output_layouts));
-  }
-
-  auto [cache_key, cached_mlir_module] = module_manager_.GetCachedExecutable(
-      doperation, eager_attributes, inputs, result.output_layouts);
+  TF_ASSIGN_OR_RETURN(
+      auto cached_key_and_module,
+      module_manager_->GetCachedExecutable(doperation, eager_attributes, inputs,
+                                           result.output_layouts));
+  auto [cache_key, cached_mlir_module] = cached_key_and_module;
   result.doperation_cache_key = cache_key;
 
   if (cached_mlir_module != nullptr) {
-    module_lowering_hits_and_misses_["hit"]++;
+    VLOG(2) << "DTensor cache key lookup found for " << doperation.name
+            << ". DTensor is (re-)using its SPMD transformation.";
     result.module = **cached_mlir_module;
     return result;
   } else if (function_def) {
-    module_lowering_hits_and_misses_["miss"]++;
     LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
               << ". DTensor is (re-)computing its SPMD transformation.";
   }
@@ -1433,28 +1496,39 @@ DTensorDevice::DTensorOperationToModule(
   DeviceSet device_set;
   for (const auto device : result.tf_devices) device_set.AddDevice(device);
 
-  if (function_def) {
-    // Output layouts of a function are inferred by MLIR lowering. They are
-    // not necessary for cache key computation, so run PrepareGraphForMlir after
-    // cache key computation to reduce the overheads of running the same
-    // function multiple times.
-    TF_RETURN_IF_ERROR(PrepareGraphForMlir(
-        function_manager_, inputs, doperation, *flib_def, eager_attributes,
-        default_layout_, result.graph.get(), &result.global_output_shapes,
-        &result.output_layouts));
-  }
+  // Output layouts of a function are inferred by MLIR lowering. They are
+  // not necessary for cache key computation, so run PrepareGraphForMlir after
+  // cache key computation to reduce the overheads of running the same
+  // function multiple times.
+  TF_RETURN_IF_ERROR(PrepareGraphForMlir(
+      *module_manager_, inputs, doperation, *flib_def, eager_attributes,
+      result.output_layouts, result.graph.get(), &result.global_output_shapes));
 
   VLOG(4) << tensorflow::DumpGraphToFile("after_prepare_for_mlir",
                                          *result.graph, flib_def);
 
   // Converts Graph to MLIR Module.
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
-                      pass_runner_.ImportGraphToMlir(
-                          device_set, doperation.is_func(), *flib_def,
-                          *result.graph, result.doperation_cache_key));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
+      pass_runner_.ImportGraphToMlir(
+          device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
+          *result.graph, result.doperation_cache_key));
 
-  cached_mlir_module =
-      module_manager_.AddCachedExecutable(cache_key, mlir_module_ref.release());
+  tsl::core::WeakPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
+      manager{module_manager_.get()};
+
+  cached_mlir_module = module_manager_->AddCachedExecutable(
+      cache_key, mlir_module_ref.release());
+
+  tensorflow::unwrap(context)
+      ->AddRemoveFunctionNotifier(doperation.name,
+                                  [manager, key = cache_key]() {
+                                    // Removes from the cache.
+                                    auto manager_ref = manager.GetNewRef();
+                                    if (!manager_ref) return;
+                                    manager_ref->Remove(key);
+                                  })
+      .IgnoreError();
   result.module = **cached_mlir_module;
   return result;
 }
@@ -1471,17 +1545,20 @@ void DTensorDevice::ModuleToExecutionFunctions(
       tensorflow::unwrap(context)->FuncLibDef();
   const FunctionDef* function_def = doperation.function_def;
 
-  const ExecutionFunctions* cached_function =
-      function_manager_.GetCachedExecutableSimple(
-          lowering_context.doperation_cache_key);
+  const ExecutionFunctions* cached_function;
+
+  cached_function = function_manager_->GetCachedExecutableSimple(
+      lowering_context.doperation_cache_key);
   if (cached_function != nullptr) {
     *execution_functions = cached_function;
-    function_compilation_hits_and_misses_["hit"]++;
+    VLOG(2) << "DTensor cache key lookup found for " << doperation.name
+            << ". DTensor is (re-)using its ExecutionFunctions.";
     return;
-  } else if (function_def) {
-    function_compilation_hits_and_misses_["miss"]++;
-    LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
-              << ". DTensor is (re-)computing its ExecutionFunctions.";
+  } else {
+    if (doperation.is_func()) {
+      LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
+                << ". DTensor is (re-)computing its ExecutionFunctions.";
+    }
   }
 
   // Transforms ModuleOp and extracts ExecutionFunctions from lowered ModuleOp.
@@ -1515,11 +1592,10 @@ void DTensorDevice::ModuleToExecutionFunctions(
   // After MLIR transformations, exactly one StatefulPartitionedCall op is
   // returned for mesh cluster in computation. Identity all functions to execute
   // for each mesh and relevant input and output information.
-  ASSIGN_OR_RETURN_C_STATUS(
-      ExecutionFunctions functions,
-      IdentifyAllFunctionsToExecute(*lowering_context.graph,
-                                    lowering_context.global_output_shapes),
-      status);
+  ASSIGN_OR_RETURN_C_STATUS(ExecutionFunctions functions,
+                            IdentifyAllFunctionsToExecute(
+                                *graph, lowering_context.global_output_shapes),
+                            status);
 
   // In order to ensure that all resource assign operations as well as side
   // effecting ops are executed, we add identity ops before function outputs
@@ -1527,13 +1603,13 @@ void DTensorDevice::ModuleToExecutionFunctions(
   RETURN_C_STATUS_IF_NOT_OK(MaybeInsertIdentityNodes(function_def, graph),
                             status);
 
-  VLOG(4) << tensorflow::DumpGraphToFile("after_post_processing_graph",
-                                         *lowering_context.graph, flib_def);
+  VLOG(4) << tensorflow::DumpGraphToFile("after_post_processing_graph", *graph,
+                                         flib_def);
 
-  RETURN_C_STATUS_IF_NOT_OK(
-      AddExecutionFunctionDefsToFunctionDefLibrary(
-          control_ret_nodes, context, *lowering_context.graph, &functions),
-      status);
+  RETURN_C_STATUS_IF_NOT_OK(AddExecutionFunctionDefsToFunctionDefLibrary(
+                                doperation.name, doperation.stack_traces,
+                                control_ret_nodes, context, *graph, &functions),
+                            status);
   functions.num_device_ids = 1;
   if (function_def) {
     for (TranslatedFunction& function : functions.function_list) {
@@ -1543,8 +1619,55 @@ void DTensorDevice::ModuleToExecutionFunctions(
     }
   }
 
-  *execution_functions = function_manager_.AddCachedExecutable(
+  tsl::core::WeakPtr<ExecutableManager<ExecutionFunctions>> manager{
+      function_manager_.get()};
+  std::vector<std::string> translated_names;
+  translated_names.reserve(functions.function_list.size());
+  for (TranslatedFunction& function : functions.function_list) {
+    translated_names.push_back(function.translated_function_name);
+  }
+  std::vector<std::string> func_names;
+  for (auto function : lowering_context.module->getOps<mlir::func::FuncOp>()) {
+    func_names.push_back(function.getName().str());
+  }
+  /*
+  std::vector<std::string> names;
+  names.reserve(functions.function_list.size());
+  for (TranslatedFunction& function : functions.function_list) {
+    names.push_back(function.function_name);
+  } */
+
+  *execution_functions = function_manager_->AddCachedExecutable(
       lowering_context.doperation_cache_key, std::move(functions));
+
+  tensorflow::unwrap(context)
+      ->AddRemoveFunctionNotifier(
+          doperation.name,
+          [context, manager, key = lowering_context.doperation_cache_key,
+           func_names, translated_names]() {
+            // Removes the cache.
+            auto manager_ref = manager.GetNewRef();
+            if (manager_ref) {
+              manager_ref->Remove(key);
+            }
+
+            // Do no purge under TFRT, TFRT refers to these defs even after
+            // the top level function is removed from Python.
+            if (tensorflow::unwrap(context)->UsesTFRT()) return;
+
+            // Translated functions are added to the eager context.
+            for (const auto& name : translated_names) {
+              tensorflow::unwrap(context)->RemoveFunction(name).IgnoreError();
+            }
+            // Untranslated functions are only added to the
+            // FunctionLibraryDefinition.
+            FunctionLibraryDefinition* flib_def =
+                tensorflow::unwrap(context)->FuncLibDef();
+            for (const auto& name : func_names) {
+              flib_def->RemoveFunction(name).IgnoreError();
+            }
+          })
+      .IgnoreError();
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(
@@ -1588,13 +1711,13 @@ void DTensorDevice::ParallelExecuteRegularOperation(
     mlir::ModuleOp mlir_module, const DTensorOperation& doperation,
     const TFE_OpAttrs* attributes, int* num_outputs, TFE_TensorHandle** outputs,
     TF_Status* status) {
-  auto future_result =
-      parallel_executor_->Execute(context, inputs, mlir_module,
-                                  /*entry_function_name=*/"main", attributes);
-  auto result_with_status = future_result.Await();
+  ASSIGN_OR_RETURN_C_STATUS(
+      ParallelExecutor::ExecutionResult execution_result,
+      parallel_executor_->Execute(context, inputs, mlir_module, attributes),
+      status);
+  RETURN_C_STATUS_IF_NOT_OK(execution_result.status.Await(), status);
 
-  std::vector<TensorWithLayout*> typed_outputs;
-  ASSIGN_OR_RETURN_C_STATUS(typed_outputs, result_with_status, status);
+  std::vector<TensorWithLayout*> typed_outputs = execution_result.outputs;
   // assign outputs and take outputs' ownership
   *num_outputs = typed_outputs.size();
   for (int i = 0; i < *num_outputs; ++i) {
@@ -1603,10 +1726,50 @@ void DTensorDevice::ParallelExecuteRegularOperation(
   }
 }
 
+void DTensorDevice::ExecuteSingleDeviceOperation(
+    TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
+    const DTensorOperation& doperation, const std::string& device_name,
+    const TFE_OpAttrs* attributes, int* num_outputs, TFE_TensorHandle** outputs,
+    TF_Status* status) {
+  std::unique_ptr<tensorflow::EagerOperation> new_op(
+      reinterpret_cast<EagerOperation*>(
+          tensorflow::unwrap(context)->CreateOperation()));
+
+  // TODO(b/274647196): don't forget setting step id when this is moved after
+  // rewrite.
+  Set_TF_Status_from_Status(
+      status, new_op->Reset(doperation.name,
+                            /*device_name=*/device_name.c_str(),
+                            /*remote=*/false, eager_executor_.get()));
+  if (TF_GetCode(status) != TF_OK) return;
+  new_op->AddAttrs(tensorflow::unwrap(attributes));
+  for (int input_index = 0; input_index < inputs.size(); ++input_index) {
+    Set_TF_Status_from_Status(
+        status, new_op->AddInput(tensorflow::unwrap(inputs[input_index])));
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  new_op->SetCancellationManager(cancellation_manager_.get());
+
+  absl::FixedArray<tensorflow::AbstractTensorHandle*> output_raw_handles(
+      *num_outputs);
+
+  // This line executes the Op.
+  Set_TF_Status_from_Status(
+      status, new_op->Execute(absl::MakeSpan(output_raw_handles), num_outputs));
+
+  if (TF_GetCode(status) != TF_OK) return;
+  for (int output_index = 0; output_index < *num_outputs; ++output_index) {
+    outputs[output_index] =
+        tensorflow::wrap(reinterpret_cast<ImmediateExecutionTensorHandle*>(
+            output_raw_handles[output_index]));
+  }
+}
+
 void DTensorDevice::ExecuteRegularOperation(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
     int* num_outputs, TFE_TensorHandle** outputs, TF_Status* status) {
+  mutex_lock lock(mu_);
   ASSIGN_OR_RETURN_C_STATUS(auto eager_attributes, FetchAttributes(attributes),
                             status);
 
@@ -1681,8 +1844,9 @@ void DTensorDevice::ExecuteRegularOperation(
     }
     const Mesh& mesh = *maybe_converted_mesh;
     const MeshWithParallelDevice* parallel_device_mesh =
-        mesh_to_device_map_.contains(mesh) ? mesh_to_device_map_[mesh].get()
-                                           : default_mesh_;
+        mesh_to_device_map_.contains(mesh)
+            ? mesh_to_device_map_[mesh].get()
+            : mesh_to_device_map_[*default_mesh_].get();
     if (parallel_device_mesh == nullptr) {
       RETURN_STATUS(status, TF_INTERNAL,
                     "required mesh is not registered with DTensor device");
@@ -1698,7 +1862,7 @@ void DTensorDevice::ExecuteRegularOperation(
       epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
       excluded_fn_names.insert(function.translated_function_name);
     }
-    if (absl::StartsWith(function.translated_function_name, kLoadEmbeddingFn)) {
+    if (absl::StartsWith(function.function_name, kLoadEmbeddingFn)) {
       if (load_embedding_ptr != nullptr) {
         RETURN_STATUS(status, TF_INTERNAL,
                       "There are more than one function defined on EPU mesh.");
@@ -1945,14 +2109,11 @@ void DTensorDevice::ExecuteRegularOperation(
       RETURN_STATUS(status, TF_INTERNAL,
                     "Expected one output from VarHandleOp");
     }
-    NameAttrList name_and_attrs;
-    ASSIGN_OR_RETURN_C_STATUS(name_and_attrs, FetchAttributes(attributes),
-                              status);
 
     RETURN_C_STATUS_IF_NOT_OK(
         llvm::cast<ResourceHandleWithLayout>(typed_outputs[0].get())
-            ->UpdateShapeAndDType(name_and_attrs.attr().at("shape").shape(),
-                                  name_and_attrs.attr().at("dtype").type()),
+            ->UpdateShapeAndDType(eager_attributes.attr().at("shape").shape(),
+                                  eager_attributes.attr().at("dtype").type()),
         status);
   }
 
@@ -1972,8 +2133,8 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   const TFE_OpAttrs* attributes = TFE_OpGetAttrs(original_op);
   int num_inputs = TFE_OpGetFlatInputCount(original_op, status);
   if (TF_GetCode(status) != TF_OK) return;
-  std::vector<TFE_TensorHandle*> inputs_vector;
-  inputs_vector.reserve(num_inputs);
+  std::vector<TFE_TensorHandle*> inputs;
+  inputs.reserve(num_inputs);
 
   std::vector<TF_DataType> dtypes;
   dtypes.reserve(num_inputs);
@@ -1982,27 +2143,33 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     TFE_TensorHandle* input =
         TFE_OpGetFlatInput(original_op, input_index, status);
     if (TF_GetCode(status) != TF_OK) return;
-    inputs_vector.push_back(input);
+    inputs.push_back(input);
     dtypes.push_back(TFE_TensorHandleDataType(input));
   }
-  TFE_TensorHandle** inputs = inputs_vector.data();
-
-  DTensorOperation dtensor_operation{};
-  dtensor_operation.name = operation_name;
-  {
-    dtensor_operation.function_def =
-        tensorflow::unwrap(context)->FindFunctionDef(operation_name);
+  if (!default_mesh_) {
+    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                  "No default mesh has been registered to DTensor. Use "
+                  "dtensor.default_mesh to "
+                  "explicit specify a mesh.");
   }
+  FunctionLibraryDefinition* flib_def =
+      tensorflow::unwrap(context)->FuncLibDef();
 
-  // First handle DTensor-specific virtual operations.
-  bool is_op_handled = false;
-  MaybeHandleDTensorCustomOps(operation_name, num_inputs, attributes, context,
-                              inputs, num_outputs, outputs, &is_op_handled,
-                              status);
-  if (is_op_handled) return;
+  StackTracesMap stack_traces;
+  const StackTracesMap* op_stack_traces =
+      flib_def->GetStackTraces(operation_name);
+  if (op_stack_traces != nullptr) {
+    stack_traces = *op_stack_traces;
+  }
+  DTensorOperation dtensor_operation{
+      /*name*/ operation_name,
+      /*function_def*/
+      tensorflow::unwrap(context)->FindFunctionDef(operation_name),
+      /*default_mesh*/ *default_mesh_,
+      /*stack_traces*/
+      stack_traces,
+  };
 
-  // This isn't a special op, so we'll defer to TFE_Execute to actually execute
-  // it, but we'll also run DTensor MLIR passes and propagate the layout.
   std::vector<TensorWithLayout*> typed_inputs;
   std::vector<std::unique_ptr<TensorWithLayout>> inputs_with_no_layout;
 
@@ -2010,7 +2177,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   // DTensor device. If we can identify a single mesh, the same mesh is used as
   // the mesh to broadcast non-dtensor inputs.
   absl::flat_hash_set<Mesh> input_meshes;
-  std::vector<int> not_on_device_input_indices;
+  std::vector<int> single_device_input_indices;
 
   typed_inputs.resize(num_inputs);
   for (int j = 0; j < num_inputs; ++j) {
@@ -2018,7 +2185,8 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     const char* input_device = TFE_TensorHandleDeviceName(input, status);
     if (TF_GetCode(status) != TF_OK) return;
     if (name_ != input_device) {
-      not_on_device_input_indices.push_back(j);
+      single_device_input_indices.push_back(j);
+      typed_inputs[j] = nullptr;
       continue;
     }
     // Handle input which is on DTensor device already.
@@ -2030,31 +2198,71 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     if (!t->layout().mesh().IsEmpty()) {
       input_meshes.insert(t->layout().mesh());
     }
+    typed_inputs[j] = t;
+  }
+
+  const std::optional<Mesh> mesh = ChooseBroadcastingMesh(input_meshes, dtypes);
+
+  // Short circuit to run fully single device ops with the nested Eager
+  // Executor.
+  // FIXME(b/274647196): After ::Wrap() lands, cast the inputs to SingleDevice
+  // TensorWithLayout, and move the dispatch to behind DTensor rewrites.
+  if (mesh.has_value() && mesh->IsSingleDevice()) {
+    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation,
+                                 std::string{mesh->single_device()}, attributes,
+                                 num_outputs, outputs, status);
+    return;
+  }
+
+  // Op-by-op const has no obvious layout. DTensor skips SPMD expansion and runs
+  // them on TensorFlow's default placement logic,
+  // Relying on copy-on-use when the value is used later.
+
+  if (operation_name == std::string("_EagerConst")) {
+    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation, "",
+                                 attributes, num_outputs, outputs, status);
+    return;
+  }
+
+  // This isn't a special op, we'll also run DTensor MLIR passes and propagate
+  // the layout, before deferring to TFE_Execute to deal with the processed
+  // graph.
+
+  if (!mesh.has_value()) {
+    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                  "No mesh has been registered to DTensor. Use copy_to_mesh to "
+                  "explicit specify a mesh instead.");
+  }
+
+  // Materialize and record small constant tensor value, such that they can be
+  // folded if desirable.
+  for (int j = 0; j < num_inputs; ++j) {
+    TFE_TensorHandle* input = inputs[j];
+    TensorWithLayout* t = typed_inputs[j];
+    // FIXME(b/274647196): Use Single device layout.
+    if (t == nullptr) continue;
+
     // Remote mesh inputs are not able to be read and evaluated.
-    if (!is_remote_mesh(t->layout().mesh()) &&
-        t->const_value_node() != nullptr &&
+    if (is_remote_mesh(t->layout().mesh())) continue;
+
+    if (t->const_value_node() != nullptr &&
         !t->const_value_node()->const_value().has_value()) {
-      std::optional<NodeDef> const_value =
-          ExtractSmallTensorValue(context, input, t->layout(), status);
+      std::optional<NodeDef> const_value = std::nullopt;
+      {
+        mutex_lock lock(mu_);
+        const_value =
+            ExtractSmallTensorValue(context, input, t->layout(), status);
+      }
       if (TF_GetCode(status) != TF_OK) return;
       if (const_value.has_value()) {
         t->const_value_node()->set_const_value(const_value.value());
       }
     }
-    typed_inputs[j] = t;
   }
 
-  const MeshWithParallelDevice* broadcast_mesh =
-      ChooseBroadcastingMesh(input_meshes, dtypes);
-
-  if (!broadcast_mesh) {
-    RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                  "No mesh has been registered to DTensor. Use copy_to_mesh to "
-                  "explicit specify a mesh instead.");
-  }
-  const Mesh& mesh = broadcast_mesh->mesh_config();
-  for (int not_on_device_input_index : not_on_device_input_indices) {
-    TFE_TensorHandle* input = inputs[not_on_device_input_index];
+  // Convert single device Tensor inputs to TensorWithLayout.
+  for (int single_device_input_index : single_device_input_indices) {
+    TFE_TensorHandle* input = inputs[single_device_input_index];
     // DTensor creation should be explicit, with some exceptions for usability
     // (scalars/shapes/slice specs/etc.) Here we do some trivial validation to
     // enforce this rule.
@@ -2067,7 +2275,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
                                   (dtype == TF_INT32 || dtype == TF_INT64);
     // Only allow large constant autobroadcast for CopyToMesh and Relayout ops.
     if ((operation_name != std::string("CopyToMesh") &&
-         operation_name != std::string("Relayout")) &&
+         operation_name != std::string("CopyToMeshGrad") &&
+         operation_name != std::string("Relayout") &&
+         operation_name != std::string("RelayoutGrad")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       std::vector<int64_t> tensor_shape(TensorShapeAsVector(input, status));
       if (TF_GetCode(status) != TF_OK) return;
@@ -2075,7 +2285,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
           status, TF_UNIMPLEMENTED,
           absl::StrCat(
               "The op/function ", operation_name,
-              " got a regular tensor for input ", not_on_device_input_index,
+              " got a regular tensor for input ", single_device_input_index,
               " (shape ", ShapeToDebugString(tensor_shape),
               ") but was expecting a DTensor. Currently only scalars and "
               "small integer/string tensors are auto-broadcast to "
@@ -2089,26 +2299,13 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     // vector, whereas the input `TFE_TensorHandle`s maintain ownership for
     // inputs that already had layouts (and therefor had TensorWithLayout
     // objects).
-    std::unique_ptr<TensorWithLayout> wrapper;
-    if (parallel_executor_) {
-      std::unique_ptr<TensorWithLayout> tensor_with_layout =
-          Broadcast(input, mesh, status);
-      if (TF_GetCode(status) != TF_OK) {
-        return;
-      }
-      wrapper = std::move(tensor_with_layout);
-    } else {
-      wrapper = TensorWithLayoutTf::Broadcast(context, input, *broadcast_mesh,
-                                              name_, status);
+    std::unique_ptr<TensorWithLayout> tensor_with_layout =
+        Broadcast(context, input, *mesh, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return;
     }
-    if (TF_GetCode(status) != TF_OK) return;
-    if (!ShouldFoldInputArgument(dtensor_operation.name,
-                                 /*input_index=*/not_on_device_input_index) &&
-        wrapper->const_value_node() != nullptr) {
-      wrapper->const_value_node()->reset_const_value();
-    }
-    typed_inputs[not_on_device_input_index] = wrapper.get();
-    inputs_with_no_layout.emplace_back(wrapper.release());
+    typed_inputs[single_device_input_index] = tensor_with_layout.get();
+    inputs_with_no_layout.emplace_back(tensor_with_layout.release());
   }
 
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
@@ -2139,11 +2336,19 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
                                         TFE_TensorHandle* tensor,
                                         const char* target_device_name,
                                         TF_Status* status, void* device_info) {
+  if (!absl::StrContains(std::string(target_device_name), "CPU")) {
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        "Trying to copy a tensor to a non-CPU device is not supported.");
+    return nullptr;
+  }
   TensorWithLayout* typed_input = reinterpret_cast<TensorWithLayout*>(
       TFE_TensorHandleDevicePointer(tensor, status));
-  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
+  if (!tensorflow::dtensor::Layout(typed_input->layout()).IsSingleDevice() &&
+      !tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 absl::StrCat("Trying to copy a non-replicated DTensor is not "
+                 absl::StrCat("Trying to copy a non-single-device and "
+                              "non-replicated DTensor is not "
                               "supported. Input tensor is: ",
                               typed_input->DebugString())
                      .c_str());
@@ -2163,10 +2368,20 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   // requires blocking waiting for other devices to flush their execution
   // queues.
   // Note that we also only need to sync the threads on the parallel_device()
-  // directly, or a context level sync might cause unintentional deadlocks when
-  // grabbing locks on other threads.
+  // directly, or a context level sync might cause unintentional deadlocks
+  // when grabbing locks on other threads.
   dev->AsyncWait(context, status);
-  if (TF_GetCode(status) != TF_OK) return nullptr;
+  if (TF_GetCode(status) != TF_OK) {
+    return nullptr;
+  }
+  if (dev->use_parallel_executor()) {
+    TFE_TensorHandle* handle =
+        dev->ToTensorHandle(context, typed_input, status);
+    if (TF_GetCode(status) != TF_OK) {
+      return nullptr;
+    }
+    return handle;
+  }
   return TFE_TensorHandleCopySharingTensor(typed_input->get_tensor(0), status);
 }
 
@@ -2183,8 +2398,6 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
   // to a CPU mesh. If any other dtensor inputs are on a TPU mesh,
   // then the mesh that is broadcasted will be the TPU mesh.
   int num_inputs = TFE_OpGetFlatInputCount(op, s);
-  std::vector<TFE_TensorHandle*> inputs_vector;
-  inputs_vector.reserve(num_inputs);
 
   absl::flat_hash_set<Mesh> input_meshes;
 
@@ -2221,7 +2434,7 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
   if (has_non_dtensor_resource && broadcast_mesh &&
       !broadcast_mesh->is_cpu_mesh()) {
     LOG(WARNING)
-        << "DTensor Function has been pinned back to a physical device because"
+        << "DTensor Function has been pinned back to a physical device because "
         << "a regular TF Variable is an input along with dtensor inputs and "
         << "was unable to be upcasted to a DVariable. This "
         << "may be unintended and signify an error in the way the user is "
@@ -2234,14 +2447,18 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
 
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info,
+                           bool is_async, int in_flight_nodes_limit,
                            TF_Status* status) {
   DTensorDevice* dtensor_device = nullptr;
   if (status) {
-    ASSIGN_OR_RETURN_C_STATUS(dtensor_device,
-                              DTensorDevice::Create(device_name), status);
+    ASSIGN_OR_RETURN_C_STATUS(
+        dtensor_device,
+        DTensorDevice::Create(device_name, is_async, in_flight_nodes_limit),
+        status);
   } else {
     // TODO(b/268241383): Remove this branch.
-    auto device_status = DTensorDevice::Create(device_name);
+    auto device_status =
+        DTensorDevice::Create(device_name, is_async, in_flight_nodes_limit);
     TF_CHECK_OK(device_status.status());
     dtensor_device = device_status.value();
   }
@@ -2255,8 +2472,7 @@ void AllocateDTensorDevice(absl::string_view device_name,
 }
 
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
-             TF_Status* status) {
+             bool is_host_mesh, TF_Status* status) {
   auto mesh_config_or_status = Mesh::FromString(serialized_mesh);
   if (!mesh_config_or_status.ok()) {
     TF_SetStatus(status, TF_INTERNAL,
@@ -2266,20 +2482,9 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
     return;
   }
   auto mesh_config = mesh_config_or_status.value();
-  std::vector<std::string> underlying_devices;
-  underlying_devices.insert(underlying_devices.end(),
-                            mesh_config.local_devices().begin(),
-                            mesh_config.local_devices().end());
-  // DTensor uses multi-client setup which doesn't use remote eager, so we can
-  // enable eager async execution in ParallelDevice.
-  std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-      new tensorflow::parallel_device::ParallelDevice(
-          underlying_devices, is_async, in_flight_nodes_limit));
 
-  auto mesh = std::make_unique<MeshWithParallelDevice>(std::move(mesh_config),
-                                                       std::move(parallel));
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->AddMesh(std::move(mesh), is_host_mesh);
+  device->AddMesh(std::move(mesh_config), is_host_mesh);
 }
 
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
@@ -2310,11 +2515,6 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
 void ExperimentalClearDefaultMesh(void* device_info, TF_Status* status) {
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->ClearDefaultMesh();
-}
-
-void SetSameShapePolicy(void* device_info, bool enabled) {
-  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetSameShapePolicy(enabled);
 }
 
 void SetTPUCoreIDs(const std::string& mesh_name,
@@ -2389,10 +2589,11 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
   return device->IsSparseDTensor(context, input, status);
 }
 
-std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
-    TFE_Context* context, void* device_info, TF_Status* status) {
+std::unordered_map<std::string, int> GetFunctionCacheStats(TFE_Context* context,
+                                                           void* device_info,
+                                                           TF_Status* status) {
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  return device->GetFunctionCacheHitAndMissCount(context, status);
+  return device->GetFunctionCacheStats(context, status);
 }
 
 void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,

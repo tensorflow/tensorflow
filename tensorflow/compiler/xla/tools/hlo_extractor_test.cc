@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {

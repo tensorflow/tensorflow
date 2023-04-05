@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -47,22 +48,23 @@ class GatherOpModel : public SingleOpModel {
                  CreateGatherOptions(builder_, axis, batch_dims).Union());
     BuildInterpreter({GetShape(input_), GetShape(positions_)});
     if (!constant_tensor) {
-      SetInput(input_, input_data);
-      SetInput(positions_, positions_data);
+      SetInput(input_, input_data, std::is_same<std::string, InputType>());
+      SetPositions(positions_data);
     }
   }
 
   template <typename T>
-  void SetInput(int input, const std::vector<T> data) {
+  void SetInput(int input, const std::vector<T> data, std::false_type) {
     PopulateTensor<T>(input, data);
   }
 
-  template <>
-  void SetInput(int input, const std::vector<std::string> data) {
+  // Overload for string inputs.
+  template <typename T>
+  void SetInput(int input, const std::vector<T> data, std::true_type) {
     PopulateStringTensor(input_, data);
   }
 
-  void SetPositions(std::initializer_list<PositionsType> data) {
+  void SetPositions(const std::vector<PositionsType>& data) {
     PopulateTensor<PositionsType>(positions_, data);
   }
 
@@ -70,8 +72,8 @@ class GatherOpModel : public SingleOpModel {
     return ExtractVector<InputType>(output_);
   }
 
-  std::vector<string> GetStringOutput() {
-    return ExtractVector<string>(output_);
+  std::vector<std::string> GetStringOutput() {
+    return ExtractVector<std::string>(output_);
   }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 

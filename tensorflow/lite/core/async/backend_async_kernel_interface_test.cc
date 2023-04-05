@@ -16,9 +16,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/async/async_kernel_internal.h"
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/async/testing/mock_async_kernel.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/async/testing/mock_async_kernel.h"
 
 using ::testing::_;
 
@@ -40,8 +42,8 @@ TEST(BackendAsyncKernelInterfaceTest, BasicTest) {
 
   auto* tflite_kernel = kernel.kernel();
 
-  tflite_kernel->register_buffer(tflite_kernel, nullptr, 0, nullptr, nullptr,
-                                 0);
+  tflite_kernel->register_buffer(tflite_kernel, nullptr, kTfLiteIoTypeInput,
+                                 nullptr, nullptr, 0);
   tflite_kernel->register_buffer_slice(tflite_kernel, nullptr, 0, nullptr, 0);
   tflite_kernel->unregister_buffer(tflite_kernel, nullptr, 0);
   tflite_kernel->reconcile_restrictions(tflite_kernel, nullptr, nullptr, 0,

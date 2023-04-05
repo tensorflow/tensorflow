@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 
+#include <functional>
+
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -22,6 +24,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfd {
+
+std::function<void(std::function<void()>)>* GetDefaultRunner() {
+  static auto* const default_runner =
+      new std::function<void(std::function<void()>)>(
+          [](const std::function<void()>& f) { f(); });
+  return default_runner;
+}
 
 void SetUpParams(const tfrt_stub::OpKernelRunner& runner,
                  const KernelFallbackCompatRequestState& fallback_request_state,

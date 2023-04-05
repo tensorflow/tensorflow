@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_context.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -41,6 +43,15 @@ class NextPluggableDevice : public LocalDevice {
 
     // The number of the device.
     int device_ordinal = -1;
+
+    // A vector of ShapeDeterminationFn (i.e., a bundle of LayoutSelectionFn,
+    // ShapeRepresentationFn). Each bundle describes how the on-host shapes of
+    // a) argument and return value, for entry computations b) variables, for
+    // all computations, should be represented in XLA. Parameters/return values
+    // will be shaped according to the function pair, and reshaped back to/from
+    // their declared shapes for computations. Must be non-empty.
+    std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
+        shape_determination_fns;
   };
 
   NextPluggableDevice(const SessionOptions& session_options,

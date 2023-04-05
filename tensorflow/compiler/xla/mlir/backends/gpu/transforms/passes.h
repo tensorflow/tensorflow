@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -39,7 +40,7 @@ struct GpuPipelineOpts {
   // Enable experimental pass that outlines parts of the XLA computation into
   // CUDA Graphs, which allows us to amortize the cost of launching multiple
   // device kernels.
-  bool enable_cuda_graphs = false;
+  int32_t cuda_graph_level = 0;
 };
 
 // Populate passes that lower MLIR modules from a combination of LMHLO and
@@ -96,6 +97,9 @@ createAddHloTraceAnnotationsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createOutlineCudaGraphsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createOutlineCudaGraphsPass(int32_t cuda_graph_level);
 
 //===-----------------------------------------------------------------------===/
 

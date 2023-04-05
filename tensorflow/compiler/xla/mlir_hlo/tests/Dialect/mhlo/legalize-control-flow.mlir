@@ -244,3 +244,28 @@ func.func @case0_nested(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4x
   // CHECK: return %[[VAL_2]] : tensor<4xf32>
   func.return %1 : tensor<4xf32>
 }
+
+func.func @while_is_for(%lb: tensor<i32>, %ub: tensor<i32>, %step: tensor<i32>,
+                        %foo: tensor<4xf32>) -> tensor<4xf32> {
+  %0:2 = mhlo.while(%i = %lb, %arg0 = %foo) : tensor<i32>, tensor<4xf32> cond {
+    %1 = mhlo.compare LT, %i, %ub : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    mhlo.return %1 : tensor<i1>
+  } do {
+    %1 = mhlo.add %i, %step : tensor<i32>
+    mhlo.return %1, %arg0 : tensor<i32>, tensor<4xf32>
+  }
+  func.return %0#1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @while_is_for
+// CHECK-SAME: %[[LB:.*]]: tensor<i32>, %[[UB:.*]]: tensor<i32>, %[[STEP:.*]]: tensor<i32>
+// CHECK-SAME: %[[FOO:.*]]: tensor<4xf32>
+// CHECK-DAG:  %[[LB_EXT:.*]] = tensor.extract %[[LB]]
+// CHECK-DAG:  %[[UB_EXT:.*]] = tensor.extract %[[UB]]
+// CHECK-DAG:  %[[STEP_EXT:.*]] = tensor.extract %[[STEP]]
+// CHECK-NEXT: %[[RET:.*]]:2 = scf.for %[[I:.*]] = %[[LB_EXT]] to %[[UB_EXT]] step %[[STEP_EXT]]
+// CHECK-SAME: iter_args(%[[I2:.*]] = %[[LB]], %[[ARG0:.*]] = %[[FOO]])
+// CHECK-NEXT: %[[TENSOR_I:.*]] = tensor.from_elements %[[I]]
+// CHECK-NEXT: %[[NEXT_I2:.*]] = mhlo.add %[[TENSOR_I]], %[[STEP]]
+// CHECK-NEXT: scf.yield %[[NEXT_I2]], %[[ARG0]]
+// CHECK:      return %[[RET]]#1

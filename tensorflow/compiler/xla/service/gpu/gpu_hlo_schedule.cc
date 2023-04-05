@@ -15,20 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
-#include <cstddef>
 #include <deque>
-#include <iostream>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"

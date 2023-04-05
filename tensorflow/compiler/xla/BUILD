@@ -209,6 +209,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "types_test",
+    size = "small",
+    srcs = ["types_test.cc"],
+    visibility = [":friends"],
+    deps = [
+        ":test",
+        ":types",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "service_interface",
     srcs = [],
@@ -233,6 +246,7 @@ cc_library(
         ":types",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:stacktrace",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -570,6 +584,7 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -593,6 +608,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",

@@ -29,6 +29,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:smart_cond",

@@ -21,9 +21,10 @@ import gzip
 import inspect
 import logging
 import os
-from typing import List, Sequence, Tuple, Union
+from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
+import ml_dtypes
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -43,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 130
+_version = 145
 
 # Version number for MLIR:Python components.
-mlir_api_version = 43
+mlir_api_version = 47
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -54,6 +55,8 @@ xla_platform_names = {
 }
 
 logger = logging.getLogger(__name__)
+
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
 def make_interpreter_client():
@@ -97,15 +100,27 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
       allowed_devices=allowed_devices)
 
 
-def make_tfrt_tpu_c_api_client():
-  return _xla.get_c_api_client('tpu')
+def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+  if options is None:
+    options = {}
+  return _xla.get_c_api_client('tpu', options)
+
+
+DeviceTopology = _xla.DeviceTopology
+
+
+def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+  return _xla.get_default_c_api_topology('tpu')
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   _xla.load_pjrt_plugin(plugin_name, library_path)
 
 
-def make_c_api_client(plugin_name: str):
+def make_c_api_client(
+    plugin_name: str,
+    options: Optional[_NameValueMapping] = None,
+):
   """Creates a PJRT C API client for a PJRT plugin.
 
   It is required that load_pjrt_plugin_dynamically is called once with the same
@@ -113,11 +128,14 @@ def make_c_api_client(plugin_name: str):
 
   Args:
      plugin_name: the name of the PJRT plugin.
+     options: extra platform-specific options.
 
   Returns:
      A PJRT C API client for plugin_name.
   """
-  return _xla.get_c_api_client(plugin_name)
+  if options is None:
+    options = {}
+  return _xla.get_c_api_client(plugin_name, options)
 
 
 def _use_pjrt_c_api() -> bool:
@@ -184,9 +202,9 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
-bfloat16 = _xla.bfloat16_dtype()
-float8_e4m3fn = _xla.float8_e4m3fn_dtype()
-float8_e5m2 = _xla.float8_e5m2_dtype()
+bfloat16 = ml_dtypes.bfloat16
+float8_e4m3fn = ml_dtypes.float8_e4m3fn
+float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -443,9 +461,7 @@ XlaComputation = _xla.XlaComputation
 XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
-Buffer = _xla.Buffer
 ArrayImpl = _xla.ArrayImpl
-DeviceArrayBase = _xla.DeviceArrayBase
 LoadedExecutable = _xla.LoadedExecutable
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
@@ -457,7 +473,28 @@ PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 
 
-def register_custom_call_target(name, fn, platform='cpu'):
+def LoadedExecutable_execute(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments)
+  return [x[0] for x in results.disassemble_into_single_device_arrays()]
+
+
+def LoadedExecutable_execute_with_token(self, arguments, device=None):
+  del device
+  results = self.execute_sharded(arguments, with_tokens=True)
+  return (
+      [x[0] for x in results.disassemble_into_single_device_arrays()],
+      results.consume_token().get_token(0),
+  )
+
+
+LoadedExecutable.execute = LoadedExecutable_execute
+LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
+
+
+def register_custom_call_target(
+    name: str, fn: Any, platform: str = 'cpu'
+) -> None:
   """Registers a custom call target.
 
   Args:
@@ -734,3 +771,6 @@ XlaRuntimeError = _xla.XlaRuntimeError
 atexit.register(_xla.collect_garbage)
 
 weakref_lru_cache = _xla.weakref_lru_cache
+array_result_handler = _xla.array_result_handler
+copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
+batched_device_put = _xla.batched_device_put

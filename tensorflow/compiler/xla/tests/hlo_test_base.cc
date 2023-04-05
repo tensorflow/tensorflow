@@ -547,10 +547,11 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                   .shape()
             : params_1[i]->shape();
 
-    if (!ShapeUtil::Equal(param_shape_0, param_shape_1)) {
+    if (!Shape::Equal().IgnoreTilesInLayout()(param_shape_0, param_shape_1)) {
       return ::testing::AssertionFailure()
              << "Error : mismatching parameter shapes: "
-             << param_shape_0.ToString() << " Vs. " << param_shape_1.ToString();
+             << param_shape_0.ToString(true) << " Vs. "
+             << param_shape_1.ToString(true);
     }
   }
 

@@ -33,14 +33,17 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
@@ -61,7 +64,7 @@ class LoadTest(test.TestCase):
           shape=None, dtype=dtypes.float32, name="start"
       )
       if use_resource:
-        distractor = variables.RefVariable(-1.0, name="distractor")
+        distractor = ref_variable.RefVariable(-1.0, name="distractor")
         v = resource_variable_ops.ResourceVariable(3.0, name="v")
       else:
         # "distractor" gets saved in the checkpoint and so used in the restore
@@ -69,9 +72,9 @@ class LoadTest(test.TestCase):
         # node naming: it needs to be consistent (and ideally always the same as
         # the node in the original GraphDef) for the resource manager to find
         # the right variable.
-        distractor = variables.RefVariable(-1.0, name="distractor")
-        v = variables.RefVariable(3.0, name="v")
-      local_variable = variables.VariableV1(
+        distractor = ref_variable.RefVariable(-1.0, name="distractor")
+        v = ref_variable.RefVariable(3.0, name="v")
+      local_variable = variable_v1.VariableV1(
           1.0,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           trainable=False,
@@ -321,7 +324,7 @@ class LoadTest(test.TestCase):
       branch_selector = array_ops.placeholder(
           name="branch_selector", shape=[], dtype=dtypes.bool
       )
-      output = control_flow_ops.cond(
+      output = cond.cond(
           branch_selector,
           lambda: array_ops.ones([]),
           lambda: array_ops.zeros([]),
@@ -349,10 +352,11 @@ class LoadTest(test.TestCase):
       loop_iterations = array_ops.placeholder(
           name="loop_iterations", shape=[], dtype=dtypes.int32
       )
-      _, output = control_flow_ops.while_loop(
+      _, output = while_loop.while_loop(
           lambda index, accum: index <= loop_iterations,
           lambda index, accum: (index + 1, accum + index),
-          [constant_op.constant(0), constant_op.constant(0)],
+          [constant_op.constant(0),
+           constant_op.constant(0)],
       )
       with session_lib.Session() as session:
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
@@ -376,20 +380,22 @@ class LoadTest(test.TestCase):
     with export_graph.as_default():
 
       def _inner_while(loop_iterations):
-        _, output = control_flow_ops.while_loop(
+        _, output = while_loop.while_loop(
             lambda index, accum: index <= loop_iterations,
             lambda index, accum: (index + 1, accum + index),
-            [constant_op.constant(0), constant_op.constant(0)],
+            [constant_op.constant(0),
+             constant_op.constant(0)],
         )
         return output
 
       loop_iterations = array_ops.placeholder(
           name="loop_iterations", shape=[], dtype=dtypes.int32
       )
-      _, output = control_flow_ops.while_loop(
+      _, output = while_loop.while_loop(
           lambda index, accum: index <= loop_iterations,
           lambda index, accum: (index + 1, accum + _inner_while(index)),
-          [constant_op.constant(0), constant_op.constant(0)],
+          [constant_op.constant(0),
+           constant_op.constant(0)],
       )
       with session_lib.Session() as session:
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))

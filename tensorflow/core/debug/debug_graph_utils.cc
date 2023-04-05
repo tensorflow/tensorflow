@@ -86,7 +86,7 @@ Status DebugNodeInserter::InsertNodes(
                                   watch.debug_urls().begin(),
                                   watch.debug_urls().end());
       } else {
-        return Status(error::FAILED_PRECONDITION,
+        return Status(absl::StatusCode::kFailedPrecondition,
                       strings::StrCat(
                           "output_slot is expected to be -1 for wildcard ",
                           "node name (\"*\"), but got ", watch.output_slot()));
@@ -95,7 +95,7 @@ Status DebugNodeInserter::InsertNodes(
     } else {
       if (watch.output_slot() < 0) {
         return Status(
-            error::FAILED_PRECONDITION,
+            absl::StatusCode::kFailedPrecondition,
             strings::StrCat("A negative output_slot in DebugTensorWatch is ",
                             "valid only for the wildcard node name (\"*\"), ",
                             "but got node name ", watch.node_name()));
@@ -186,7 +186,7 @@ Status DebugNodeInserter::InsertNodes(
                          debug_ops, debug_urls, &copy_node);
       if (!copy_s.ok()) {
         return Status(
-            error::FAILED_PRECONDITION,
+            absl::StatusCode::kFailedPrecondition,
             strings::StrCat("Failed to create Copy/CopyHost node for tensor ",
                             tensor_name, ", due to: ", copy_s.error_message()));
       }
@@ -213,7 +213,7 @@ Status DebugNodeInserter::InsertNodes(
                       << "debug op name = " << debug_op_name;
           } else {
             return Status(
-                error::FAILED_PRECONDITION,
+                absl::StatusCode::kFailedPrecondition,
                 strings::StrCat("Failed to create debug node ", debug_op_name,
                                 " for tensor ", tensor_name,
                                 ", due to: ", debug_s.error_message()));
@@ -336,7 +336,7 @@ Status DebugNodeInserter::CreateCopyNode(
 
   if (!builder.Finalize(&node_def).ok()) {
     return Status(
-        error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         strings::StrCat("Failed to create node definition ", "for copy op ",
                         copy_node_name, " on watched tensor ", tensor_name));
   }
@@ -344,12 +344,12 @@ Status DebugNodeInserter::CreateCopyNode(
 
   if (!s.ok()) {
     return Status(
-        error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         strings::StrCat("Failed to find kernel definition ", "for copy op ",
                         copy_node_name, " on watched tensor ", tensor_name));
   }
   if (!NodeBuilder(builder).Finalize(graph, copy_node).ok()) {
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   strings::StrCat("Failed to create copy node ", copy_node_name,
                                   " on watched tensor ", tensor_name));
   }

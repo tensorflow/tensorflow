@@ -35,6 +35,10 @@ namespace shim {
 namespace op_wrapper {
 namespace {
 
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_TRUE(x.ok());
+#endif
+
 // Tests the created type of the variant is correct.
 class VariantOpTest : public ::testing::Test {
  public:

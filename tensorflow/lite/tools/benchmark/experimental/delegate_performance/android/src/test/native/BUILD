@@ -26,8 +26,8 @@ cc_test(
     srcs = ["latency_benchmark_test.cc"],
     data = [
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate",
-        "//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite",
         "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_sample_stable_delegate_settings.json",
+        "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
     ],
     deps = [
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",

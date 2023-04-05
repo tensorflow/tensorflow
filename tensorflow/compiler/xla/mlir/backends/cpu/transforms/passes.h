@@ -48,7 +48,7 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createRemoveCopiesToOutParamsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createSparseCustomCallToPackUnpackOpPass();
+createSparseCustomCallRewritingPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createRewriteReallocToAllocPass();

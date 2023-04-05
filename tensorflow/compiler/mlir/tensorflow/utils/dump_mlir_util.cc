@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/lib/io/buffered_file.h"
 
 using llvm::raw_ostream;
 
@@ -147,7 +148,7 @@ Status CreateFileForDumping(llvm::StringRef name,
     dir = GetDumpDirFromEnvVar();
 
   if (dir.empty()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
@@ -163,7 +164,7 @@ Status CreateFileForDumping(llvm::StringRef name,
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create '" << dir
                  << "' directory for dumping: " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
   *filepath = io::JoinPath(dir, MakeUniqueFilename(std::string(name)));
 
@@ -172,8 +173,9 @@ Status CreateFileForDumping(llvm::StringRef name,
   status = env->NewWritableFile(*filepath, &file);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create file '" << filepath << "': " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
+  file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
   *os = std::make_unique<WritableFileRawStream>(std::move(file));
   return Status();
 }
@@ -301,6 +303,8 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     // Try to open the file and generate a raw_ostream.
     std::unique_ptr<WritableFile> file;
     Status status = tensorflow::Env::Default()->NewWritableFile(path, &file);
+    file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
+
     if (!status.ok()) {
       error = absl::StrCat("Failed to create file '", path,
                            "': ", status.error_message());
@@ -314,7 +318,11 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path) {
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (!mlir::succeeded(mlir::applyPassManagerCLOptions(pm))) {
+    LOG(ERROR) << "cannot apply MLIR pass manager CL options";
+    return;
+  }
   SetCrashReproducer(pm, dir_path);
 }
 

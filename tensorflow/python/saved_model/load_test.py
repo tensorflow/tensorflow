@@ -55,7 +55,6 @@ from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -63,6 +62,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
@@ -959,7 +959,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       s_0 = constant_op.constant([0.0, 0.0])
       cond = lambda i, _: i < array_ops.shape(x)[1]
       body = lambda i, s: (i + 1, s + weight * x[:, i])
-      i_end, s_end = control_flow_ops.while_loop(cond, body, (i_0, s_0))
+      i_end, s_end = while_loop.while_loop(cond, body, (i_0, s_0))
       del i_end
       return s_end
 
@@ -2591,6 +2591,56 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         input_signature=[
             tensor_spec.TensorSpec([], dtypes.float32),
             tensor_spec.TensorSpec([], dtypes.int32),
+        ]
+    )
+    def predict(params, state):
+      return f(params, state)
+
+    params = variables.Variable(1.0)
+    # None grads only appear when state is an int.
+    state = constant_op.constant(3, dtype=dtypes.int32)
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = predict(params, state)
+      expected_grads = tape.gradient(y, params)
+
+    root = autotrackable.AutoTrackable()
+    root.fn = predict
+    loaded = cycle(
+        root,
+        cycles,
+        save_option=save_options.SaveOptions(
+            experimental_custom_gradients=True
+        ),
+        use_cpp_bindings=use_cpp_bindings,
+    )
+
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = loaded.fn(params, state)
+      grads = tape.gradient(y, params)
+
+    self.assertAllClose(grads, expected_grads)
+
+  def test_custom_gradients_with_none_grad_and_partial_shape(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    # https://github.com/google/jax/issues/7123
+
+    @custom_gradient.custom_gradient
+    def f(params, state):
+      def grad_fn(*args):
+        return args
+
+      return (params, state), grad_fn
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
         ]
     )
     def predict(params, state):

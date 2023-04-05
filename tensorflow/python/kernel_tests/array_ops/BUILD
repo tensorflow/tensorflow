@@ -14,7 +14,6 @@ cuda_py_test(
     srcs = ["array_ops_test.py"],
     shard_count = 10,
     tags = [
-        "noasan",  # times out
         "optonly",  # times out
     ],
     deps = [
@@ -25,11 +24,13 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:test_ops",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -111,6 +112,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:gradient_checker_v2",
         "//third_party/py/numpy",
     ],
 )
@@ -127,6 +129,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -272,6 +275,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -283,14 +287,16 @@ cuda_py_test(
     srcs = ["gather_op_test.py"],
     shard_count = 3,
     deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:tensor_spec",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -385,10 +391,6 @@ cuda_py_test(
     name = "large_concat_op_test",
     size = "medium",
     srcs = ["large_concat_op_test.py"],
-    tags = [
-        "nomsan",
-        "notsan",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -454,6 +456,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//third_party/py/numpy",
     ],
 )
@@ -466,6 +469,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//third_party/py/numpy",
     ],
 )
@@ -479,6 +483,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradient_checker_v2",
         "//third_party/py/numpy",
     ],
 )
@@ -508,16 +513,17 @@ cuda_py_test(
     size = "medium",
     srcs = ["scatter_nd_ops_test.py"],
     shard_count = 2,
-    tags = ["noasan"],  # http://b/32635055
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -532,6 +538,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -599,6 +606,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
     ],
@@ -628,6 +636,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -662,6 +671,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//third_party/py/numpy",
     ],

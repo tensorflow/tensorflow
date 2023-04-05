@@ -9,7 +9,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/xla/backends/profiler:__pkg__",
         "//tensorflow/core/profiler:internal",
-        "//third_party/car/onboard/gpu:__subpackages__",
     ],
     deps = [
         ":host_tracer_impl",

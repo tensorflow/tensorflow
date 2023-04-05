@@ -84,7 +84,7 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 2.0',
+    'flatbuffers >= 23.1.21',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
@@ -156,6 +156,10 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
+      # Install the TensorFlow package built by Apple if the user is running
+      # macOS on an Apple Silicon machine.
+      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 DOCLINES = __doc__.split('\n')

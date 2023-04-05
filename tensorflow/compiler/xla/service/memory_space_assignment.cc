@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+
 namespace xla {
 
 namespace memory_space_assignment {
@@ -276,6 +279,86 @@ std::string UsesToString(const std::vector<HloUse>& uses) {
   return absl::StrJoin(uses_str, ",");
 }
 
+StatusOr<xla::HloLiveRange::LogicalTime> GetScheduleTimeFromInstructionName(
+    absl::string_view name,
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) {
+  for (auto schedule_entry : schedule) {
+    if (schedule_entry.first->name() == name) {
+      return schedule_entry.second;
+    }
+  }
+  return NotFound("Reference instruction %s was not found in the schedule.",
+                  name);
+}
+
+StatusOr<bool> GetFilterResult(
+    const std::pair<FilterUpdatePreferredPrefetch::FilterType, std::string>&
+        filter,
+    int64_t operand_size, const HloUse& hlo_use) {
+  switch (filter.first) {
+    case FilterUpdatePreferredPrefetch::FilterType::OP_SIZE_GTE:
+      return FilterUpdatePreferredPrefetch::IsOpSizeGte(operand_size,
+                                                        filter.second);
+    case FilterUpdatePreferredPrefetch::FilterType::OP_SIZE_LTE:
+      return FilterUpdatePreferredPrefetch::IsOpSizeLte(operand_size,
+                                                        filter.second);
+    case FilterUpdatePreferredPrefetch::FilterType::INSTRUCTION_NAME_EXACT:
+      return FilterUpdatePreferredPrefetch::IsInstructionNameExact(
+          hlo_use.instruction->name(), filter.second);
+    case FilterUpdatePreferredPrefetch::FilterType::OP_NUMBER_EXACT:
+      return FilterUpdatePreferredPrefetch::IsOpNumberExact(
+          hlo_use.operand_number, filter.second);
+    case FilterUpdatePreferredPrefetch::FilterType::OP_INDEX_EXACT:
+      return FilterUpdatePreferredPrefetch::IsOpIndexExact(
+          hlo_use.operand_index, filter.second);
+    default:
+      return InvalidArgument("Unknown filter type.");
+  }
+}
+
+StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
+    const std::vector<FilterUpdatePreferredPrefetch>&
+        filter_update_preferred_prefetches,
+    int64_t operand_size, const HloUse& hlo_use,
+    const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
+        instruction_schedule,
+    int64_t earliest_prefetch_time, int64_t latest_prefetch_time) {
+  for (const auto& filter_update_preferred_prefetch :
+       filter_update_preferred_prefetches) {
+    bool match = true;
+    for (const auto& filter : filter_update_preferred_prefetch.filter_list_) {
+      TF_ASSIGN_OR_RETURN(auto filter_result,
+                          GetFilterResult(filter, operand_size, hlo_use));
+      match &= filter_result;
+    }
+    if (match) {
+      LOG(INFO) << "Config " << filter_update_preferred_prefetch.ToString()
+                << " match for instruction " << hlo_use.instruction->name()
+                << " operand number " << hlo_use.operand_number
+                << " operand index " << hlo_use.operand_index.ToString()
+                << " size " << operand_size << " live range ("
+                << earliest_prefetch_time << ", " << latest_prefetch_time
+                << ")";
+      switch (filter_update_preferred_prefetch.override_type_) {
+        case FilterUpdatePreferredPrefetch::OverrideType::PREFETCH_EAGERNESS:
+          return filter_update_preferred_prefetch.GetPrefetchByEagerness(
+              earliest_prefetch_time, latest_prefetch_time);
+        case FilterUpdatePreferredPrefetch::OverrideType::PUT_AFTER_INSTRUCTION:
+          return filter_update_preferred_prefetch
+              .GetPrefetchTimeAfterInstruction(instruction_schedule);
+        case FilterUpdatePreferredPrefetch::OverrideType::
+            PUT_BEFORE_INSTRUCTION:
+          return filter_update_preferred_prefetch
+              .GetPrefetchTimeBeforeInstruction(instruction_schedule);
+        default:
+          return InvalidArgument("Unknown override type.");
+      }
+    }
+  }
+  return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
+}
+
 }  // namespace
 
 /*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
@@ -331,6 +414,13 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
     MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
+  if (cache) {
+    auto it =
+        cache->memory_boundedness.find(interval.buffer->defining_position());
+    if (it != cache->memory_boundedness.end()) {
+      return it->second;
+    }
+  }
   float alternate_mem_benefit =
       GetAlternateMemoryBenefit(interval.buffer->defining_position(), cache);
 
@@ -362,7 +452,12 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
   // Penalize larger buffers by dividing the benefit by the square root of the
   // size. Empirically, we observed this resulted in better performance compared
   // to dividing by the size.
-  return alternate_mem_benefit / std::sqrt(interval.size);
+  float memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
+  if (cache) {
+    cache->memory_boundedness[interval.buffer->defining_position()] =
+        memory_boundedness;
+  }
+  return memory_boundedness;
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
@@ -984,6 +1079,185 @@ CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
     const {
   return cost_analysis_.GetMemoryBoundedness(interval);
+}
+
+/*static*/ StatusOr<std::vector<FilterUpdatePreferredPrefetch>>
+FilterUpdatePreferredPrefetch::ParseFilterUpdatePreferredPrefetches(
+    std::string config) {
+  if (config.empty()) {
+    return std::vector<FilterUpdatePreferredPrefetch>();
+  }
+  std::vector<FilterUpdatePreferredPrefetch> filter_update_prefetches;
+  std::vector<std::string> filter_update_configs = absl::StrSplit(config, ';');
+  for (const auto& config : filter_update_configs) {
+    TF_ASSIGN_OR_RETURN(auto filter_update_prefetch,
+                        ParseFilterUpdatePreferredPrefetch(config));
+    filter_update_prefetches.push_back(filter_update_prefetch);
+  }
+  return filter_update_prefetches;
+}
+
+/*static*/ StatusOr<bool> FilterUpdatePreferredPrefetch::IsOpSizeGte(
+    int64_t operand_size, std::string config) {
+  int64_t config_value;
+  if (!absl::SimpleAtoi(config, &config_value)) {
+    return InvalidArgument("Expected integer, got %s for operand size filter",
+                           config);
+  }
+  return operand_size >= config_value;
+}
+
+/*static*/ StatusOr<bool> FilterUpdatePreferredPrefetch::IsOpSizeLte(
+    int64_t operand_size, std::string config) {
+  int64_t config_value;
+  if (!absl::SimpleAtoi(config, &config_value)) {
+    return InvalidArgument("Expected integer, got %s for operand size filter",
+                           config);
+  }
+  return operand_size <= config_value;
+}
+
+/*static*/ StatusOr<bool> FilterUpdatePreferredPrefetch::IsInstructionNameExact(
+    const absl::string_view instruction_name, std::string config) {
+  return instruction_name == config;
+}
+
+/*static*/ StatusOr<bool> FilterUpdatePreferredPrefetch::IsOpNumberExact(
+    int64_t operand_number, std::string config) {
+  int64_t config_value;
+  if (!absl::SimpleAtoi(config, &config_value)) {
+    return InvalidArgument("Expected integer, got %s for operand number filter",
+                           config);
+  }
+  return operand_number == config_value;
+}
+
+/*static*/ StatusOr<bool> FilterUpdatePreferredPrefetch::IsOpIndexExact(
+    const ShapeIndex& operand_index, std::string config) {
+  TF_ASSIGN_OR_RETURN(auto config_value, ParseOperandIndex(config));
+  return operand_index == config_value;
+}
+
+StatusOr<std::optional<int64_t>>
+FilterUpdatePreferredPrefetch::GetPrefetchByEagerness(
+    int64_t earliest_prefetch_time, int64_t latest_prefetch_time) const {
+  if (earliest_prefetch_time > latest_prefetch_time) {
+    return static_cast<std::optional<int64_t>>(std::nullopt);
+  }
+  float override_value;
+  if (!absl::SimpleAtof(override_value_, &override_value)) {
+    return InvalidArgument("Expected float, got %s for prefetch eagerness",
+                           override_value_);
+  }
+  return static_cast<std::optional<int64_t>>(
+      earliest_prefetch_time * override_value +
+      latest_prefetch_time * (1.0 - override_value));
+}
+
+StatusOr<std::optional<int64_t>>
+FilterUpdatePreferredPrefetch::GetPrefetchTimeAfterInstruction(
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) const {
+  TF_ASSIGN_OR_RETURN(auto reference_instruction_time,
+                      GetScheduleTimeFromInstructionName(schedule));
+  return static_cast<std::optional<int64_t>>(reference_instruction_time);
+}
+
+StatusOr<std::optional<int64_t>>
+FilterUpdatePreferredPrefetch::GetPrefetchTimeBeforeInstruction(
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) const {
+  TF_ASSIGN_OR_RETURN(auto reference_instruction_time,
+                      GetScheduleTimeFromInstructionName(schedule));
+  return static_cast<std::optional<int64_t>>(reference_instruction_time - 1);
+}
+
+StatusOr<xla::HloLiveRange::LogicalTime>
+FilterUpdatePreferredPrefetch::GetScheduleTimeFromInstructionName(
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) const {
+  for (auto schedule_entry : schedule) {
+    if (schedule_entry.first->name() == override_value_) {
+      return schedule_entry.second;
+    }
+  }
+  return NotFound("Reference instruction %s was not found in the schedule.",
+                  override_value_);
+}
+
+/*static*/ StatusOr<FilterUpdatePreferredPrefetch::FilterType>
+FilterUpdatePreferredPrefetch::ParseFilterType(std::string config) {
+  if (config == "op_size_lte") {
+    return FilterType::OP_SIZE_LTE;
+  }
+  if (config == "op_size_gte") {
+    return FilterType::OP_SIZE_GTE;
+  }
+  if (config == "instruction_name_exact") {
+    return FilterType::INSTRUCTION_NAME_EXACT;
+  }
+  if (config == "op_number_exact") {
+    return FilterType::OP_NUMBER_EXACT;
+  }
+  if (config == "op_index_exact") {
+    return FilterType::OP_INDEX_EXACT;
+  }
+  return InvalidArgument("Failed to parse filter type %s", config);
+}
+
+/*static*/ StatusOr<FilterUpdatePreferredPrefetch::OverrideType>
+FilterUpdatePreferredPrefetch::ParseOverrideType(std::string config) {
+  if (config == "prefetch_eagerness") {
+    return OverrideType::PREFETCH_EAGERNESS;
+  }
+  if (config == "put_after_instruction") {
+    return OverrideType::PUT_AFTER_INSTRUCTION;
+  }
+  if (config == "put_before_instruction") {
+    return OverrideType::PUT_BEFORE_INSTRUCTION;
+  }
+  return InvalidArgument("Failed to parse override type %s", config);
+}
+
+/*static*/ StatusOr<ShapeIndex>
+FilterUpdatePreferredPrefetch::ParseOperandIndex(std::string config) {
+  ShapeIndex operand_index{};
+  if (config.empty()) {
+    return operand_index;
+  }
+  for (const absl::string_view& index_string : absl::StrSplit(config, '#')) {
+    int64_t index;
+    if (!absl::SimpleAtoi(index_string, &index)) {
+      return InvalidArgument("Failed to parse operand_index %s", config);
+    }
+    operand_index.push_back(index);
+  }
+  return operand_index;
+}
+
+/*static*/ StatusOr<FilterUpdatePreferredPrefetch>
+FilterUpdatePreferredPrefetch::ParseFilterUpdatePreferredPrefetch(
+    std::string config) {
+  std::vector<std::string> filter_update_config = absl::StrSplit(config, ':');
+  if (filter_update_config.size() < 4 || filter_update_config.size() % 2 != 0) {
+    return InvalidArgument(
+        "Failed to parse filter update config %s, incorrect number of "
+        "arguments",
+        config);
+  }
+  FilterUpdatePreferredPrefetch result;
+  result.config_string_ = config;
+  for (int i = 0; i < filter_update_config.size() - 2; i += 2) {
+    TF_ASSIGN_OR_RETURN(auto filter_type,
+                        ParseFilterType(filter_update_config[i]));
+    result.filter_list_.push_back(
+        std::make_pair(filter_type, filter_update_config[i + 1]));
+  }
+  TF_ASSIGN_OR_RETURN(
+      result.override_type_,
+      ParseOverrideType(filter_update_config[filter_update_config.size() - 2]));
+  result.override_value_ = filter_update_config.back();
+  return result;
 }
 
 bool MemorySpaceAssignment::Allocation::operator==(
@@ -1819,7 +2093,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           // We require while body ROOTs to be the last in the schedule.
           CHECK_EQ(instruction_schedule.at(while_body->root_instruction()) + 1,
                    instruction_schedule.at(hlo_use.instruction))
-              << "While body ROOTs need to be the last in the schedule!  "
+              << "While body ROOTs need to be the last in the schedule! "
                  "Please run RootInstructionSinker.";
           // Replace the use time with the parameter time so that we can decide
           // on alternate memory allocations within the while loop body when we
@@ -1899,6 +2173,33 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           }
         }
         AllocationRequest request;
+
+        int64_t live_range_start_time =
+            (earliest_prefetch_time.has_value()
+                 ? earliest_prefetch_time.value()
+                 : std::min(definition_time, use_time));
+        auto overridden_preferred_prefetch_time =
+            GetOverriddenPreferredPrefetchTime(
+                options_.filter_update_preferred_prefetches,
+                allocation_value.size(), hlo_use, instruction_schedule,
+                live_range_start_time, latest_prefetch_time);
+        TF_CHECK_OK(overridden_preferred_prefetch_time.status());
+        if (overridden_preferred_prefetch_time.value().has_value()) {
+          LOG(INFO) << "Overriding preferred prefetch for "
+                    << hlo_use.instruction->name() << " operand number "
+                    << hlo_use.operand_number << " operand index "
+                    << hlo_use.operand_index.ToString() << " size "
+                    << allocation_value.size() << " live range ("
+                    << live_range_start_time << ", " << latest_prefetch_time
+                    << ") from "
+                    << (preferred_prefetch_time.has_value()
+                            ? preferred_prefetch_time.value()
+                            : -1)
+                    << " to "
+                    << overridden_preferred_prefetch_time.value().value();
+          preferred_prefetch_time = overridden_preferred_prefetch_time.value();
+        }
+
         // Rarely, (e.g., when conditional true and false parameters are the
         // same), definition time can be the time of the conditional and use
         // time is the parameter use, which is less.
@@ -4586,9 +4887,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     HeapSimulatorTrace::Event* heap_trace_event = heap_trace->add_events();
     heap_trace_event->set_kind(kind);
     heap_trace_event->set_buffer_id(buffer_id);
-    heap_trace_event->set_instruction_name(value->instruction()->name());
-    heap_trace_event->set_computation_name(
-        value->instruction()->parent()->name());
+    *heap_trace_event->mutable_instruction_name() =
+        std::string(value->instruction()->name());
+    *heap_trace_event->mutable_computation_name() =
+        std::string(value->instruction()->parent()->name());
 
     if (prev_time != time) {
       VLOG(2) << "Memory usage: " << std::max(memory_usage, prev_memory_usage)

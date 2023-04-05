@@ -593,6 +593,42 @@ TEST(XplaneutilsTest, TestIsXSpaceGrouped) {
   EXPECT_TRUE(IsXSpaceGrouped(space));
 }
 
+TEST(XplaneutilsTest, TestIsHostPlane) {
+  XSpace xspace;
+  auto xplane_host_thread = FindOrAddMutablePlaneWithName(&xspace, "/host:CPU");
+  auto xplane_host_cpu = FindOrAddMutablePlaneWithName(&xspace, "Host CPUs");
+  auto xplane_tfstreamz =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:tfstreamz");
+  auto xplane_metadata =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:metadata");
+  auto xplane_syscalls = FindOrAddMutablePlaneWithName(&xspace, "Syscalls");
+  auto xplane_python_tracer =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:python-tracer");
+  auto xplane_custom_prefix =
+      FindOrAddMutablePlaneWithName(&xspace, "/device:CUSTOM:123");
+  auto xplane_legacy_custom =
+      FindOrAddMutablePlaneWithName(&xspace, "/custom:456");
+  auto xplane_cupti = FindOrAddMutablePlaneWithName(&xspace, "/host:CUPTI");
+  EXPECT_TRUE(IsHostPlane(*xplane_host_thread));
+  EXPECT_TRUE(IsHostPlane(*xplane_host_cpu));
+  EXPECT_TRUE(IsHostPlane(*xplane_tfstreamz));
+  EXPECT_TRUE(IsHostPlane(*xplane_metadata));
+  EXPECT_TRUE(IsHostPlane(*xplane_syscalls));
+  EXPECT_TRUE(IsHostPlane(*xplane_python_tracer));
+  EXPECT_TRUE(IsHostPlane(*xplane_custom_prefix));
+  EXPECT_TRUE(IsHostPlane(*xplane_legacy_custom));
+  EXPECT_TRUE(IsHostPlane(*xplane_cupti));
+}
+
+TEST(XplaneutilsTest, TestIsDevicePlane) {
+  XSpace xspace;
+  auto xplane_host_thread = FindOrAddMutablePlaneWithName(&xspace, "/host:CPU");
+  auto xplane_device_thread =
+      FindOrAddMutablePlaneWithName(&xspace, "/device:TPU");
+  EXPECT_FALSE(IsDevicePlane(*xplane_host_thread));
+  EXPECT_TRUE(IsDevicePlane(*xplane_device_thread));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

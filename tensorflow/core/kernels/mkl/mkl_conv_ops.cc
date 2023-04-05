@@ -2087,7 +2087,7 @@ class MklQuantizedConvOp
                                                         output_tensor);
       const Tensor& summand = context->input(this->get_input_add_idx());
       if (summand.dtype() != DT_FLOAT)
-        TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
+        TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
                            "Current fusion requires summand to be float"));
       // We need to compute scale for the summand
       const float min_input =

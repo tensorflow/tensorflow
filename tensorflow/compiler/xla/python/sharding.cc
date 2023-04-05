@@ -24,6 +24,35 @@ namespace jax {
 
 namespace py = pybind11;
 
+int Sharding::SafeNumDevices(pybind11::handle sharding) {
+  // Pure python shardings are not initialized, so we should not
+  // even be casting if they are not initialized.
+  bool is_safe_to_cast = [&]() {
+    if (!xla::is_pybind_reinterpret_cast_ok<jax::Sharding>(sharding)) {
+      return false;
+    }
+    auto* instance =
+        reinterpret_cast<pybind11::detail::instance*>(sharding.ptr());
+    for (auto vh : pybind11::detail::values_and_holders(instance)) {
+      if (!vh.holder_constructed()) {
+        return false;
+      }
+    }
+
+    return true;
+  }();
+
+  if (is_safe_to_cast) {
+    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
+    if (cpp_sharding->num_devices_.has_value()) {
+      return (*cpp_sharding->num_devices_);
+    }
+  }
+
+  pybind11::set device_set = sharding.attr("device_set");
+  return device_set.size();
+}
+
 size_t ShardingHash(const pybind11::object& sharding) {
   auto type = sharding.get_type();
 
