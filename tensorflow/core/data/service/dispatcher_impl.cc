@@ -1194,12 +1194,8 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
         LOG(WARNING) << "Error garbage collecting old iterations: " << s;
       }
     }
-    {
-      for (const auto& [ignore, snapshot_manager] : snapshots_) {
-        snapshot_manager->UpdateStreams();
-      }
-    }
-    DetectMissingWorkers();
+    // TODO(b/250921378): Once leases are supported, periodically handle failed
+    // or missing workers by calling MaintainSnapshotWorkers().
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
   }
@@ -1222,6 +1218,14 @@ Status DataServiceDispatcherImpl::ReleaseMissingClients()
     }
   }
   return OkStatus();
+}
+
+void DataServiceDispatcherImpl::MaintainSnapshotWorkers()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  for (const auto& [ignore, snapshot_manager] : snapshots_) {
+    snapshot_manager->UpdateStreams();
+  }
+  DetectMissingWorkers();
 }
 
 void DataServiceDispatcherImpl::DetectMissingWorkers()

@@ -210,6 +210,10 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testOrphanGetsReassigned(self):
+    self.skipTest(
+        "TODO(b/250921378): Support worker re-assignment when leases "
+        "are implemented."
+    )
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=10000)
     assignments = get_stream_assignments(cluster, n)
