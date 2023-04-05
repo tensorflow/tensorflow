@@ -846,6 +846,7 @@ cc_library(
         "convolution_thunk.cc",
         "copy_thunk.cc",
         "for_thunk.cc",
+        "fused_mha_thunk.cc",
         "gpu_executable.cc",
         "infeed_thunk.cc",
         "kernel_thunk.cc",
@@ -854,7 +855,6 @@ cc_library(
         "replica_id_thunk.cc",
         "sequential_thunk.cc",
         "while_thunk.cc",
-        "fused_mha_thunk.cc",
     ],
     hdrs = [
         "conditional_thunk.h",
@@ -862,6 +862,7 @@ cc_library(
         "copy_thunk.h",
         "custom_call_thunk.h",
         "for_thunk.h",
+        "fused_mha_thunk.h",
         "gemm_thunk.h",
         "gpu_executable.h",
         "infeed_thunk.h",
@@ -871,7 +872,6 @@ cc_library(
         "replica_id_thunk.h",
         "sequential_thunk.h",
         "while_thunk.h",
-        "fused_mha_thunk.h",
     ],
     deps = [
         ":backend_configs_cc",
@@ -2948,10 +2948,11 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
-        ":matmul_utils",
         ":ir_emission_utils",
+        ":matmul_utils",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -2960,7 +2961,6 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/compiler/xla:permutation_util",
     ],
 )
 
