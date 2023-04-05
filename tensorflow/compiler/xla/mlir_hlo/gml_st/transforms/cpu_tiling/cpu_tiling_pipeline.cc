@@ -67,6 +67,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
     pm.addPass(createCSEPass());
   }
 
+  pm.addNestedPass<FuncOp>(createRewriteDotAsReducePass());
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
   pm.addNestedPass<FuncOp>(createTransformBatchMatmulForCpuPass());

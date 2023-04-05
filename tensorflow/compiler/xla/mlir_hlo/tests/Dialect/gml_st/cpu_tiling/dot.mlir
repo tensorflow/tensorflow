@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
 // RUN:   --gml-st-cpu-tiling-pipeline="matmul-tile-sizes=4,5,6 \
-// RUN:                                 vectorization-size-threshold=1" | \
+// RUN:                                 vectorization-size-threshold=1" |\
 // RUN: FileCheck %s
 
 func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
@@ -70,6 +70,28 @@ func.func @dot(%lhs: tensor<19xf32>, %rhs: tensor<19xf32>,
 // CHECK-NEXT:      scf.yield %{{.*}} : vector<f32>
 // CHECK:         arith.mulf
 // CHECK:         arith.addf
+
+// -----
+
+func.func @large_dot(%lhs: tensor<128xf32>, %rhs: tensor<128xf32>,
+                     %output: tensor<f32>) -> tensor<f32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %fill = linalg.fill ins(%cst : f32)
+                      outs(%output : tensor<f32>) -> tensor<f32>
+  %dot = linalg.dot ins(%lhs, %rhs : tensor<128xf32>, tensor<128xf32>)
+                    outs(%fill : tensor<f32>) -> tensor<f32>
+  return %dot : tensor<f32>
+}
+// CHECK-LABEL: @large_dot
+
+// CHECK: scf.for
+// CHECK:   arith.mulf {{.*}} : vector<32xf32>
+// CHECK:   vector.multi_reduction <add>
+// CHECK:     : vector<4x8xf32> to vector<8xf32>
+// CHECK:   scf.yield %{{.*}} : vector<8xf32>
+// CHECK: vector.multi_reduction <add>
+// CHECK:   : vector<8xf32> to f32
+
 
 // -----
 

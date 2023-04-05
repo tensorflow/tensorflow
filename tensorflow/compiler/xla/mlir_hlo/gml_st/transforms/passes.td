@@ -146,6 +146,17 @@ def TransformConvForCpuPass :
   let constructor = "createTransformConvForCpuPass()";
 }
 
+def RewriteDotAsReducePass
+    : Pass<"gml-st-rewrite-dot-as-reduce", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite linalg.dot as linalg.reduce(linalg.map).";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::linalg::LinalgDialect",
+    "::mlir::tensor::TensorDialect"
+  ];
+  let constructor = "createRewriteDotAsReducePass()";
+}
+
 def TransformBatchMatmulForCpuPass :
     Pass<"xla-cpu-transform-batch-matmul", "mlir::func::FuncOp"> {
   let summary = "Transform batch_matmul ops for running on CPU";

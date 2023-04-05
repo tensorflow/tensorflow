@@ -71,6 +71,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
     bool enableAVX2 = true);
 
+/// Pass to rewrite linalg.dot as linalg.reduce(linalg.map).
+std::unique_ptr<Pass> createRewriteDotAsReducePass();
+
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
 
