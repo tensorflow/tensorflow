@@ -20,6 +20,7 @@ import math
 import os.path
 import random
 import re
+import shutil # SPRD-to copy custom training data
 import sys
 import tarfile
 
@@ -48,6 +49,9 @@ UNKNOWN_WORD_LABEL = '_unknown_'
 UNKNOWN_WORD_INDEX = 1
 BACKGROUND_NOISE_DIR_NAME = '_background_noise_'
 RANDOM_SEED = 59185
+
+# SPRD Changes
+CUSTOM_DATA_DIR="/root/custom_data/"
 
 
 def prepare_words_list(wanted_words):
@@ -238,6 +242,8 @@ class AudioProcessor(object):
           'Successfully downloaded {0} ({1} bytes)'.format(
               filename, statinfo.st_size))
       tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+      # SPRD Changes - Copy all custom training data to data directory
+      shutil.copytree(CUSTOM_DATA_DIR, dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,
