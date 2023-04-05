@@ -5,6 +5,7 @@ tensorflow/api_template_v1.__init__:.py
 tensorflow/compat_template.__init__:.py
 tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
+tensorflow/compiler/mlir/quantization/stablehlo/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/glob_lit_test.bzl:
