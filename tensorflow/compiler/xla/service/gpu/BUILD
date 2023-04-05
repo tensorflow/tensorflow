@@ -2,7 +2,6 @@
 #   GPU-specific components in XLA service implementation.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -615,7 +614,6 @@ tsl_gpu_library(
         ":nccl_utils",
         ":thunk",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -625,11 +623,8 @@ tsl_gpu_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
@@ -643,17 +638,7 @@ tsl_gpu_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
-    ] + if_nccl([":all_reduce_kernel"]),
-)
-
-cuda_library(
-    name = "all_reduce_kernel",
-    srcs = if_cuda_is_configured(["all_reduce_kernel.cu.cc"]),
-    hdrs = if_cuda_is_configured(["all_reduce_kernel.h"]),
-    compatible_with = [],
-    tags = ["manual"],  # only builds if_nccl.
-    deps = if_cuda_is_configured(["@local_config_nccl//:nccl"]),
-    alwayslink = 1,
+    ],
 )
 
 # Empty library to implement nested dependency conditions.

@@ -492,8 +492,6 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  bool xla_gpu_allow_all_reduce_kernel = 193;
-
   // Next id: 204
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
@@ -505,7 +503,8 @@ message DebugOptions {
   // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
   // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
   // xla_gpu_enable_cuda_graphs
-  reserved 5, 117, 133, 139, 176, 178, 180;
+  // xla_gpu_allow_all_reduce_kernel
+  reserved 5, 117, 133, 139, 176, 178, 180, 193;
 }
 
 message ShardableValueUpdatePairProto {
