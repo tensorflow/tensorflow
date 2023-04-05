@@ -337,6 +337,54 @@ func.func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>
   func.return %1 : tensor<10000000xf32>
 }
 
+// Check XlaSpmdFullToShardShape's conversion from split sharding to manual
+// sharding.
+// The split sharding is:
+//   type: OTHER
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\02\01\22\02\00\01"
+// The manual sharding is:
+//   type: MANUAL
+// Serialized string:
+//   "\08\04"
+
+// CHECK-LABEL: @xla_spmd_full_to_shard_shape
+func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi64>) {
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  // CHECK: return %[[MANUAL]]
+  %0 = "tf.XlaSpmdFullToShardShape"(%arg0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
+}
+
+// Check XlaSpmdShardToFullShape's conversion from manual sharding to split
+// sharding.
+// The manual sharding is:
+//   type: MANUAL
+// Serialized string:
+//   "\08\04"
+// The split sharding is:
+//   type: OTHER
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\02\01\22\02\00\01"
+
+// CHECK-LABEL: @xla_spmd_shard_to_full_shape
+func.func @xla_spmd_shard_to_full_shape(%arg0: tensor<1x2xi64>) -> (tensor<2x2xi64>) {
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %[[FULL]]
+  %0 = "tf.XlaSpmdShardToFullShape"(%arg0) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  func.return %0 : tensor<2x2xi64>
+}
+
 // CHECK-LABEL: @xla_svd
 func.func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>) {
   // CHECK-NOT: XlaSvd

@@ -47,7 +47,7 @@ namespace xla {
 // method or constructed using MakeXlaOp method in this builder.
 //
 // TODO(hinsu): Support more ops and utility functions to set special attributes
-// like OpMetadata and Sharding.
+// like OpMetadata.
 class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the
