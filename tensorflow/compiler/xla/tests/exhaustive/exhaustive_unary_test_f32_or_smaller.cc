@@ -516,11 +516,12 @@ UNARY_TEST_BF16(Tan, {
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, {
   Run(
-      Erf, std::erf, +[](NativeT) {
+      Erf, std::erf, +[](NativeT x) {
         NativeT tol =
             std::max(std::numeric_limits<NativeT>::epsilon(),
-                     NativeT(5 * std::numeric_limits<float>::epsilon()));
-        return ErrorSpec(tol, tol);
+                     NativeT(4 * std::numeric_limits<float>::epsilon()));
+        NativeT abs_tol = std::min(tol, NativeT(1 - std::abs(std::erf(x))));
+        return ErrorSpec(abs_tol, tol);
       });
 })
 
