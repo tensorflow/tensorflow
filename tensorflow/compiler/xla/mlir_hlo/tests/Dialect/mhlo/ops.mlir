@@ -1811,18 +1811,10 @@ func.func @outfeed(%arg0: tensor<3x3x3xi32>, %arg1: !mhlo.token) -> !mhlo.token 
 
 // -----
 
-// CHECK-LABEL: func @real_fp_input
-func.func @real_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.real"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
-func.func @real_int_input(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<*xi32>'}}
-  %0 = "mhlo.real"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
+func.func @real_c2(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16> {
+  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x3xf16>'}}
+  %0 = "mhlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16>
+  func.return %0 : tensor<2x3xf16>
 }
 
 // -----
@@ -1835,18 +1827,10 @@ func.func @real_complex_input(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32
 
 // -----
 
-func.func @real_mismatch_return_shape(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x10xf32> {
-  // expected-error@+1 {{all non-scalar operands/results must have the same shape and base type}}
-  %0 = "mhlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x10xf32>
-  func.return %0 : tensor<2x10xf32>
-}
-
-// -----
-
-func.func @real_mismatch_return_element_type(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16> {
-  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x3xf16>'}}
-  %0 = "mhlo.real"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf16>
-  func.return %0 : tensor<2x3xf16>
+// CHECK-LABEL: func @real_unranked
+func.func @real_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.real"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
