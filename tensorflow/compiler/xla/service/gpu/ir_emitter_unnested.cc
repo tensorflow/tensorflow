@@ -1811,21 +1811,22 @@ Status IrEmitterUnnested::EmitTritonFusion(
       ir_emitter_context_->name_uniquer()->GetUniqueName(
           llvm_ir::SanitizeFunctionName(
               absl::StrCat(suggested_kernel_name, "_impl")));
-  const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
-      impl_fn_name, hlo_computation,
-      ir_emitter_context_->cuda_compute_capability(),
-      ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
-  TF_RET_CHECK(launch_dimensions.has_value());
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      TritonWrapper(impl_fn_name, hlo_computation,
+                    ir_emitter_context_->cuda_compute_capability(),
+                    ir_emitter_context_->gpu_device_info(), config, module_,
+                    &MatMul));
   llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
   TF_RET_CHECK(impl_fn);
 
   auto [kernel, ir_arrays] = BuildKernelPrototype(
-      suggested_kernel_name, kernel_arguments, launch_dimensions.value());
+      suggested_kernel_name, kernel_arguments, launch_dimensions);
 
   TF_ASSIGN_OR_RETURN(
       KernelThunk * thunk,
       BuildKernelThunkImpl(kernel->getName().str(), kernel_arguments,
-                           GetThunkInfo(fusion_op), launch_dimensions.value()));
+                           GetThunkInfo(fusion_op), launch_dimensions));
   kernel_reuse_cache_[fingerprint] = thunk;
 
   std::vector<llvm::Value*> args;

@@ -380,6 +380,7 @@ cc_library(
         ":launch_dimensions",
         ":matmul_utils",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -414,7 +415,7 @@ cc_library(
 
 xla_test(
     name = "ir_emitter_triton_test",
-    srcs = ["ir_emitter_triton_test.cc"],
+    srcs = if_cuda_is_configured(["ir_emitter_triton_test.cc"]),
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
@@ -423,6 +424,7 @@ xla_test(
     ],
     tags = ["nomac"],
     deps = [
+        ":gpu_device_info",
         ":ir_emitter_triton",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -431,8 +433,12 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
