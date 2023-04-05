@@ -37,9 +37,8 @@ from tensorflow.python.platform import test
 # TODO(mpcallanan): Restructure this and snapshot_ft_test.py to share more.
 
 
-class DistributedSaveTest(
-    data_service_test_base.TestBase, parameterized.TestCase
-):
+class DistributedSaveTestBase:
+  """Base class for setting up snapshot directories."""
 
   def setUp(self):
     super().setUp()
@@ -54,6 +53,13 @@ class DistributedSaveTest(
       shutil.rmtree(self._test_dir)
     except FileNotFoundError:
       pass
+
+
+class DistributedSaveTest(
+    DistributedSaveTestBase,
+    data_service_test_base.TestBase,
+    parameterized.TestCase,
+):
 
   # TODO(mpcallanan): Add test for multiple workers.
 
@@ -193,24 +199,11 @@ class DistributedSaveTest(
 
 
 class LoadCheckpointTest(
+    DistributedSaveTestBase,
     data_service_test_base.TestBase,
-    parameterized.TestCase,
     checkpoint_test_base.CheckpointTestBase,
+    parameterized.TestCase,
 ):
-
-  def setUp(self):
-    super().setUp()
-    self._test_dir = os.path.join(
-        tempfile.mkdtemp(dir=self.get_temp_dir()),
-        "distributed_save_test",
-    )
-
-  def tearDown(self):
-    super().tearDown()
-    try:
-      shutil.rmtree(self._test_dir)
-    except FileNotFoundError:
-      pass
 
   @combinations.generate(
       combinations.times(
