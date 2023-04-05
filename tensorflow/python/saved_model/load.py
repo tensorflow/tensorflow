@@ -168,6 +168,12 @@ class Loader(object):
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
+    # Metagraph has a mapping from FunctionDef name to aliases
+    self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
+    # Create a mapping from alias to Function, which can be used with
+    # SaveOptions
+    self.function_aliases = {}
+
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
     # Stores user-defined node_filters argument.
@@ -681,6 +687,18 @@ class Loader(object):
         proto, self._concrete_functions)
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
+
+    if self._save_options.experimental_load_function_aliases:
+      for name in proto.concrete_functions:
+        if name in self._concrete_function_aliases:
+          alias = self._concrete_function_aliases[name]
+          self.function_aliases[alias] = fn
+          # We only need to save the mapping from alias to a tf.Function
+          # once even though it can appear multiple times in
+          # self._concrete_function_aliases due to one-to-many mapping from
+          # tf.Function to concrete functions.
+          break
+
     return fn, setattr
 
   def _recreate_bare_concrete_function(self, proto, dependencies):
@@ -1004,6 +1022,15 @@ def load_partial(export_dir, filters, tags=None, options=None):
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
   metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+
+  if options.experimental_load_function_aliases:
+    if hasattr(root, "function_aliases"):
+      raise ValueError(
+          "Could not load with experimental_load_function_aliases option"
+          " because the top-level object already has an attributed with name"
+          " 'function_aliases'"
+      )
+    root.function_aliases = loader.function_aliases
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

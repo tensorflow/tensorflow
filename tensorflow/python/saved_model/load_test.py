@@ -3054,6 +3054,55 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy(),
     )
 
+  def test_function_aliases(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertEqual(loaded.function_aliases["my_func"](1.0).numpy(), 2.0)
+
+  def test_function_aliases_name_collision(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.function_aliases = variables.Variable(1.0)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    with self.assertRaisesRegex(
+        ValueError, "Could not load with experimental_load_function_aliases"
+    ):
+      test_load(
+          save_dir,
+          use_cpp_bindings=use_cpp_bindings,
+          options=load_options.LoadOptions(
+              experimental_load_function_aliases=True
+          ),
+      )
+
 
 # TODO(b/264882754) Support Cpp bindings DeferredInitModuleVariablesTest
 class DeferredInitModuleVariablesTest(test.TestCase, parameterized.TestCase):
