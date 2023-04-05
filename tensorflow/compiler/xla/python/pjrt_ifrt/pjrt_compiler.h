@@ -31,25 +31,13 @@ namespace ifrt {
 
 class PjRtClient;
 
-class XlaCompatibleCompiler
-    : public llvm::RTTIExtends<XlaCompatibleCompiler, Compiler> {
- public:
-  virtual StatusOr<std::unique_ptr<LoadedExecutable>> CompileXla(
-      const XlaComputation& computation, CompileOptions options) = 0;
-
-  static char ID;  // NOLINT
-};
-
-class PjRtCompiler final
-    : public llvm::RTTIExtends<PjRtCompiler, XlaCompatibleCompiler> {
+class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
  public:
   explicit PjRtCompiler(PjRtClient* client) : client_(client) {}
   ~PjRtCompiler() override = default;
 
   StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
-  StatusOr<std::unique_ptr<LoadedExecutable>> CompileXla(
-      const XlaComputation& computation, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized, CompileOptions options) override;

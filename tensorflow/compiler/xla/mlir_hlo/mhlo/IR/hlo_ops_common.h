@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H
-#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H
+#ifndef MLIR_HLO_MHLO_IR_HLO_OPS_COMMON_H
+#define MLIR_HLO_MHLO_IR_HLO_OPS_COMMON_H
 
 // This file defines functionality shared between chlo/mhlo/lhlo dialects.
 
 #include <algorithm>
+#include <optional>
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
@@ -38,11 +39,11 @@ LogicalResult verifyReduceScatter(Operation* op, TypeRange operandTypes,
 
 // Custom formatting for convolution window attributes.
 void printWindowAttributes(OpAsmPrinter& p, Operation* op,
-                           llvm::Optional<DenseIntElementsAttr> windowStrides,
-                           llvm::Optional<DenseIntElementsAttr> padding,
-                           llvm::Optional<DenseIntElementsAttr> lhsDilation,
-                           llvm::Optional<DenseIntElementsAttr> rhsDilation,
-                           llvm::Optional<DenseElementsAttr> windowReversal);
+                           std::optional<DenseIntElementsAttr> windowStrides,
+                           std::optional<DenseIntElementsAttr> padding,
+                           std::optional<DenseIntElementsAttr> lhsDilation,
+                           std::optional<DenseIntElementsAttr> rhsDilation,
+                           std::optional<DenseElementsAttr> windowReversal);
 
 ParseResult parseWindowAttributes(OpAsmParser& parser,
                                   DenseIntElementsAttr& windowStrides,
@@ -54,4 +55,4 @@ ParseResult parseWindowAttributes(OpAsmParser& parser,
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H
+#endif  // MLIR_HLO_MHLO_IR_HLO_OPS_COMMON_H

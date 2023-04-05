@@ -16,20 +16,21 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "./passes.h"
 #include "mhlo/IR/hlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "transforms/passes.h"
 
 #define GEN_PASS_DEF_TOSALEGALIZEMHLOPASS
-#include "transforms/passes.h.inc"
+#include "passes.h.inc"
 
 #define PASS_NAME "tosa-legalize-mhlo"
 #define DEBUG_TYPE PASS_NAME
 
-#include "transforms/legalize_mhlo/legalize_mhlo.pdll.h.inc"
+#include "legalize_mhlo/legalize_mhlo.pdll.h.inc"
 
 namespace mlir {
 namespace tosa {
@@ -157,13 +158,13 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
         RankedTensorType::get(lhsReshape, lhsType.getElementType());
     auto lhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
         op->getLoc(), lhsReshapeType, op.getLhs(),
-        rewriter.getI64ArrayAttr(lhsReshape));
+        rewriter.getDenseI64ArrayAttr(lhsReshape));
 
     auto rhsReshapeType =
         RankedTensorType::get(rhsReshape, rhsType.getElementType());
     auto rhsReshapeOp = rewriter.create<tosa::ReshapeOp>(
         op->getLoc(), rhsReshapeType, op.getRhs(),
-        rewriter.getI64ArrayAttr(rhsReshape));
+        rewriter.getDenseI64ArrayAttr(rhsReshape));
 
     auto matMulType =
         RankedTensorType::get(matMulShape, lhsType.getElementType());
@@ -172,7 +173,7 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
 
     // Reshape the matmul result back to the original result shape.
     rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
-        op, resultType, matMulOp, rewriter.getI64ArrayAttr(resultShape));
+        op, resultType, matMulOp, rewriter.getDenseI64ArrayAttr(resultShape));
     return success();
   }
 };
@@ -230,7 +231,7 @@ struct ConvertMhloIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
     // Tile the const array to the result shape of the iota op.
     rewriter.replaceOpWithNewOp<tosa::TileOp>(
-        op, resultType, constOp, rewriter.getI64ArrayAttr(tileMultiples));
+        op, resultType, constOp, rewriter.getDenseI64ArrayAttr(tileMultiples));
     return success();
   }
 };
@@ -293,7 +294,7 @@ struct ConvertMhloGatherOp : public OpRewritePattern<mhlo::GatherOp> {
 
     auto startIndexMap = op.getDimensionNumbers().getStartIndexMap();
     for (const auto& startIndex : llvm::enumerate(startIndexMap)) {
-      if (startIndex.value() != startIndex.index()) {
+      if (startIndex.value() != static_cast<int64_t>(startIndex.index())) {
         return rewriter.notifyMatchFailure(op,
                                            "start_index_map must be in order");
       }
@@ -360,7 +361,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
 
     rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
         op, op.getResultTypes().front(), reduceOpResult,
-        rewriter.getI64ArrayAttr(outputShape));
+        rewriter.getDenseI64ArrayAttr(outputShape));
 
     return success();
   }
@@ -411,8 +412,8 @@ struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
 
     rewriter.replaceOpWithNewOp<tosa::SliceOp>(
         op, op.getResult().getType(), op.getOperand(),
-        rewriter.getI64ArrayAttr(startIndicesI64),
-        rewriter.getI64ArrayAttr(size));
+        rewriter.getDenseI64ArrayAttr(startIndicesI64),
+        rewriter.getDenseI64ArrayAttr(size));
     return success();
   }
 };

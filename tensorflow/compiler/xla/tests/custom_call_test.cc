@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -167,6 +168,12 @@ XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
 }
 
 XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
+  if (IsMlirLoweringEnabled()) {
+    // The MLIR pipeline does /not/ transpose the output here, and there's no
+    // obvious reason why it should.
+    GTEST_SKIP() << "Appears to test an XLA current implementation detail";
+  }
+
   auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
@@ -264,7 +271,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
@@ -288,7 +295,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
@@ -311,11 +318,15 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
 }
 
 XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Invalid values unsupported by MLIR";
+  }
+
   const char* const kModuleStr = R"(
     HloModule m
     ENTRY test {
@@ -330,7 +341,7 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Fail with raw backend config str: foo"));
 }
@@ -360,7 +371,7 @@ struct TestFfiModule : ffi::StatelessModule {
                         {{"ffi.add_const", FFI_AddConst}}) {}
 
   XLA_FFI_DEFINE_FUNCTION(FFI_AddConst, AddConst,
-                          ffi::Ffi::Bind("ffi.add_const")
+                          ffi::Ffi::Binding()
                               .Arg<ffi::StridedBufferArg>()
                               .Arg<ffi::StridedBufferArg>()
                               .Attr<float>("cst"));

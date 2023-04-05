@@ -18,8 +18,10 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,9 +31,11 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
 
@@ -64,7 +68,7 @@ TfLiteQuantization GetQuantizationFromLegacy(
   TfLiteQuantization quantization;
   quantization.type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(1);
   affine_quantization->zero_point = TfLiteIntArrayCreate(1);
   affine_quantization->scale->data[0] = legacy_quantization.scale;
@@ -390,7 +394,11 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str()) ||
+        subgraph->IsDelegationSkippable()) {
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Skipping calling ModifyGraphWithDelegate on Subgraph %i: %s",
+                 subgraph->GetSubgraphIndex(), subgraph->GetName().c_str());
       continue;
     }
     status = subgraph->ModifyGraphWithDelegate(delegate);
@@ -432,6 +440,18 @@ TfLiteStatus Interpreter::SetMetadata(
                         ? nullptr
                         : &model_control_dependencies_[subgraph_index]));
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::SetTelemetrySettings(
+    std::unique_ptr<TfLiteTelemetryInterpreterSettings> settings) {
+  telemetry_data_ = std::move(settings);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::ReportTelemetrySettings(const char* setting_name) {
+  telemetry::TelemetryReportSettings(context_, setting_name,
+                                     telemetry_data_.get());
   return kTfLiteOk;
 }
 
@@ -492,5 +512,14 @@ TfLiteStatus Interpreter::EnableCancellation() {
 }
 
 TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
+
+void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
+  SetSubgraphProfiler();
+}
 
 }  // namespace tflite

@@ -60,6 +60,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kSign:
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary
       case HloOpcode::kAdd:
@@ -70,7 +71,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
         opcodes_.insert("cwise");
         break;
       default:
-        opcodes_.insert(HloOpcodeString(instr->opcode()));
+        opcodes_.insert(std::string(HloOpcodeString(instr->opcode())));
     }
     return OkStatus();
   }

@@ -542,7 +542,27 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   xla::XlaOp all_bfloats_bf16 = ConstantR1<bfloat16>(&builder, all_bfloats);
   xla::XlaOp all_bfloats_f32 = ConvertElementType(all_bfloats_bf16, F32);
   BitcastConvertType(all_bfloats_f32, U32);
-  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
+  for (int i = 0; i < expected.size(); ++i) {
+    const auto result = results.Get<uint32_t>({i});
+    const auto correct = expected[i];
+    if (all_bfloats[i] != 0.0f &&
+        all_bfloats[i] < std::numeric_limits<float>::min()) {
+      // Subnormals may not be preserved, zero will do.
+      const float same_signed_zero =
+          Eigen::numext::signbit(all_bfloats[i]) ? -0.0f : 0.0f;
+      if (result != correct) {
+        EXPECT_EQ(result, absl::bit_cast<uint32_t>(same_signed_zero));
+      }
+    } else if (Eigen::numext::isnan(all_bfloats[i])) {
+      // NaNs may not be preserved, any NaN will do.
+      ASSERT_TRUE(std::isnan(absl::bit_cast<float>(correct)));
+      EXPECT_TRUE(std::isnan(absl::bit_cast<float>(result)));
+    } else {
+      EXPECT_EQ(result, correct);
+    }
+  }
 }
 
 XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
@@ -578,11 +598,16 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
     inputs.push_back(Eigen::half{test_case.input});
     expected_roundtrip.push_back(Eigen::half{test_case.expected_roundtrip});
   }
-
   auto f8 =
       ConvertElementType(ConstantR1<Eigen::half>(&builder, inputs), F8E5M2);
   ConvertElementType(f8, F16);
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
   ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {
@@ -615,26 +640,30 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
     float input;
     float expected_roundtrip;
   } test_cases[] = {
-    // clang-format off
+      // clang-format off
       {0.0, 0.0},
       {1.0, 1.0},
       {-1.0, -1.0},
       {inf, nan},
-    // clang-format on
-    {0x1.1p0, 0x1p0},    // Round-to-even down
-    {0x1.3p0, 0x1.4p0},  // Round-to-even up
-    {0x1.Cp8, 0x1.Cp8},  // Max value
-    {0x1.Dp8, 0x1.Cp8},  // Largest number that doesn't overflow
-    {0x1.D04p8, nan},    // Smallest number that overflows
-    {0x1p9, nan},        // Overflow
-    {0x1p-6, 0x1p-6},    // Smallest normal
-                         // Denormals are only not truncated on the interpreter.
-  // TODO(b/259609697): Do not truncate denormals on any platform
-#if XLA_TEST_BACKEND_INTERPRETER
-    {0x1.Cp-7, 0x1.Cp-7},  // Denormal isn't truncated
-#else
-    {0x1.Cp-7, 0},  // Denormal truncation
-#endif
+      // clang-format on
+      {0x1.1p0, 0x1p0},    // Round-to-even down
+      {0x1.3p0, 0x1.4p0},  // Round-to-even up
+      {0x1.Cp8, 0x1.Cp8},  // Max value
+      {0x1.Dp8, 0x1.Cp8},  // Largest number that doesn't overflow
+      {0x1.D04p8, nan},    // Smallest number that overflows
+      {0x1p9, nan},        // Overflow
+      {0x1p-6, 0x1p-6},    // Smallest F8 normal
+      {0x1.Ep-7, 0x1p-6},  // Smallest number rounding up to normal
+
+      // Denormal tests
+      {0x1.0p-8, 0x1.0p-8},    // Denormal without rounding
+      {0x1.4p-8, 0x1.0p-8},    // Round-to-even down
+      {0x1.Cp-8, 0x1.0p-7},    // Round-to-even up
+      {0x1.5p-7, 0x1.4p-7},    // Round-to-nearest down
+      {0x1.3p-7, 0x1.4p-7},    // Round-to-nearest up
+      {0x1p-10, 0},            // Largest number that underflows
+      {0x1.004p-10, 0x1p-9},   // Smallest number that doesn't underflow
+      {0x1.DFCp-7, 0x1.Cp-7},  // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -647,7 +676,13 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
   auto f8 =
       ConvertElementType(ConstantR1<Eigen::half>(&builder, inputs), F8E4M3FN);
   ConvertElementType(f8, F16);
+  const bool saved =
+      execution_options_.debug_options().xla_allow_excess_precision();
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      false);
   ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
+      saved);
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
@@ -663,16 +698,57 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
   xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
   xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
   ConvertElementType(all_f8_as_f16, F8E4M3FN);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
 
-#if !XLA_TEST_BACKEND_INTERPRETER
-  for (int i = 0; i < 0x8; i++) {
-    // Currently denormal FP8 values are truncated on non-interpreter backends
-    all_f8[i] = tsl::float8_e4m3fn{0.};
-    all_f8[i + 0x80] = tsl::float8_e4m3fn{-0.};
+XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive2) {
+  // Convert from FP32 to FP8.
+  XlaBuilder builder(TestName());
+
+  std::vector<float> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(static_cast<float>(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i))));
   }
-#endif
 
-  ComputeAndCompareR1<tsl::float8_e4m3fn>(&builder, all_f8, {});
+  xla::XlaOp all_f8_as_f32 = ConstantR1<float>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f32, F8E4M3FN);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive3) {
+  // Convert from FP8 to FP32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3fn> all_f8;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i)));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+  ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e5m2ToPred) {
+  XlaBuilder builder(TestName());
+  using F8 = tsl::float8_e5m2;
+  auto a = ConstantR1<F8>(&builder, {F8{0.0}, F8{0.25}, F8{2.0}});
+  ConvertElementType(a, PRED);
+
+  std::array<bool, 3> expected = {false, true, true};
+  ComputeAndCompareR1<bool>(&builder, expected, {});
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3fnToPred) {
+  XlaBuilder builder(TestName());
+  using F8 = tsl::float8_e4m3fn;
+  auto a = ConstantR1<F8>(&builder, {F8{0.0}, F8{0.25}, F8{2.0}});
+  ConvertElementType(a, PRED);
+
+  std::array<bool, 3> expected = {false, true, true};
+  ComputeAndCompareR1<bool>(&builder, expected, {});
 }
 
 }  // namespace

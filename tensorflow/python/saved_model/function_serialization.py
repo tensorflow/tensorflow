@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tools for serializing `Function`s."""
 
+from tensorflow.core.function.capture import capture_container
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -23,10 +24,14 @@ from tensorflow.python.util import nest
 
 def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
-  if function_spec.is_method and not function_spec.fullargspec.args:
-    raise NotImplementedError(
-        "Cannot serialize a method function without a named "
-        "'self' argument.")
+  if (
+      function_spec.fullargspec.args
+      and function_spec.fullargspec.args[0] == "self"
+  ):
+    raise TypeError(
+        "Can not serialize tf.function with unbound 'self' parameter."
+    )
+
   proto = saved_object_graph_pb2.FunctionSpec()
 
   # Intentionally skip encoding annotations of a function because function
@@ -38,7 +43,7 @@ def _serialize_function_spec(function_spec):
       nested_structure_coder.encode_structure(
           function_spec.fullargspec._replace(annotations={})))
 
-  proto.is_method = function_spec.is_method
+  proto.is_method = False
   proto.input_signature.CopyFrom(
       nested_structure_coder.encode_structure(function_spec.input_signature))
 
@@ -122,7 +127,7 @@ def wrap_cached_variables(concrete_function):
   """
   outer_graph = func_graph_module.FuncGraph(
       "{}_no_cache".format(concrete_function.graph.name))
-  captures = concrete_function.graph._captures  # pylint: disable=protected-access
+  captures = concrete_function.graph._function_captures._by_val  # pylint: disable=protected-access
   mapped_captures = None
   remapped_captures = {}
 
@@ -136,7 +141,10 @@ def wrap_cached_variables(concrete_function):
       cached_variable = cached_variable()
       new_cached_value = cached_variable.read_value()
       remapped_captures[id(capture)] = captures[id(capture)]
-      captures[id(capture)] = (new_cached_value, placeholder)
+      captures[id(capture)] = capture_container.CaptureContainer(
+          new_cached_value,
+          placeholder,
+          id(capture))
       mapped_captures = True
 
   if not mapped_captures:

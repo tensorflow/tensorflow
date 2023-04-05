@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -80,19 +81,35 @@ struct TFQuantizationBase
   // range quantization.
   static bool AllowDynamicRangeQuantizedOperand(
       Operation* quantized_op, const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    const bool is_gather = function_name.contains("gather");
+    return quantization_trait != kFullQuantization || is_gather;
   }
 
   // All the quantized ops are supported if the quantization method is dynamic
   // range quantization.
   static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
                                                const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    bool is_gather = false;
+    if (function_name.contains("gather")) is_gather = true;
+    return quantization_trait != kFullQuantization ||
+           (quantization_trait == kFullQuantization && is_gather);
   }
 
-  // All the quantized ops are supported if the quantization method is weight
-  // only quantization.
-  static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
+  // If weight_only_quantization is true, the legacy weight-only quantization is
+  // applied. The legacy weight-only graph has dequantization logic at the
+  // front.
+  static bool IsWeightOnlyOp(Operation* quantized_op,
+                             absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {
     return weight_only_quantization;
@@ -275,7 +292,7 @@ class QuantizeSameScaleOpsPattern
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           indexed_regions.value().cloneInto(
               &quantized_op->getRegion(indexed_regions.index()), mapping);
         }
@@ -482,6 +499,10 @@ class QuantizePass
     return "Apply quantization on models in TensorFlow dialect";
   }
 
+  // Determine if the unused Q-DQ pairs need to be removed. For weight-only
+  // quantizable ops, Q-DQ ops need to be preserved.
+  bool shouldKeepUnusedQdqPattern();
+
   void runOnOperation() override;
 
  private:
@@ -500,6 +521,12 @@ class QuantizePass
           clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
                      "Uses TF Uniform Quantized ops"))};
 };
+
+bool QuantizePass::shouldKeepUnusedQdqPattern() {
+  return target_opset_ == OpSet::XLA &&
+         (quant_specs_.weight_only_quantization ||
+          quant_specs_.weight_quantization);
+}
 
 void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
@@ -521,13 +548,16 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitWarning("Failed to converge pattern at QuantizePass.");
+  }
 
-  // Weight-only quantization requires q-dq patterns.
-  if (!quant_specs_.weight_only_quantization) {
+  if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+      signalPassFailure();
+    }
   }
 }
 }  // namespace

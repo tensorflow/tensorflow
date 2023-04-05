@@ -32,18 +32,19 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/tsl/platform/str_util.h"
 
 namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::GetInitializerFunction;
+using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
@@ -119,13 +120,31 @@ void AddSymbolToInitializersAttr(SessionInitializerOp session_init_op,
       ArrayAttr::get(session_init_op.getContext(), initializers_attrs));
 }
 
-// Create the initializer function right after the session_initializer op.
+// Returns the session_initializer op in the module if exists. Otherwise,
+// creates a new session_initializer op and returns it.
+SessionInitializerOp GetOrCreateSessionInitializerOp(ModuleOp module_op) {
+  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
+
+  // Create one if it doesn't exist.
+  if (!session_init_op) {
+    OpBuilder builder(&module_op.getBodyRegion());
+
+    session_init_op = builder.create<SessionInitializerOp>(
+        module_op.getLoc(), /*initializers=*/builder.getArrayAttr({}));
+  }
+
+  return session_init_op;
+}
+
+// Create the initializer function right after the SessionInitializer op.
 // Returns the newly created initializer function. The initializer function's
 // initializer_type is set to "restore_op" since it essentially serves as a
 // variable restoration function.
-func::FuncOp CreateInitializerFunc(SymbolTable& symbol_table,
-                                   SessionInitializerOp session_init_op) {
-  OpBuilder builder{session_init_op.getContext()};
+func::FuncOp CreateInitializerFunc(ModuleOp module_op) {
+  SessionInitializerOp session_init_op =
+      GetOrCreateSessionInitializerOp(module_op);
+
+  OpBuilder builder(module_op.getContext());
   builder.setInsertionPointAfter(session_init_op);
 
   const Location loc = builder.getUnknownLoc();
@@ -146,6 +165,7 @@ func::FuncOp CreateInitializerFunc(SymbolTable& symbol_table,
   builder.setInsertionPointToStart(&init_func.front());
   builder.create<func::ReturnOp>(loc, /*operands=*/ValueRange{});
 
+  SymbolTable symbol_table(module_op);
   symbol_table.insert(init_func);
 
   AddSymbolToInitializersAttr(
@@ -163,42 +183,19 @@ bool IsInitializerType(func::FuncOp init_func_op, StringRef initializer_type) {
 }
 
 // Returns the initializer function whose tf_saved_model.initializer_type
-// matches `initializer_type`. Creates and returns a new initializer function
-// iff such FuncOp is not found. The newly created initializer function's symbol
-// will be added to the symbol table and session_initializer op's "intializer"
-// attribute.
-func::FuncOp GetOrCreateSessionInitializerFunc(
-    SymbolTable& symbol_table, SessionInitializerOp session_init_op,
-    StringRef initializer_type) {
-  for (const auto init_sym :
-       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
-    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
-    if (!init_func_op) continue;
-
-    if (IsInitializerType(init_func_op, kTfSavedModelInitializerRestoreType)) {
-      return init_func_op;
-    }
+// is "restore_op". Creates and returns a new initializer function iff such
+// `FuncOp` is not found. The newly created initializer function's
+// initializer_type is "restore_op" and its symbol will be added to the symbol
+// table and session_initializer op's "intializer" attribute.
+func::FuncOp GetOrCreateInitializerFunc(ModuleOp module_op) {
+  if (auto init_func_op = GetInitializerFunction(
+          module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
+      init_func_op) {
+    return init_func_op;
+  } else {
+    // Create a new initializer function if the init function is not found.
+    return CreateInitializerFunc(module_op);
   }
-
-  // Create a new initializer function if the init function is not found.
-  return CreateInitializerFunc(symbol_table, session_init_op);
-}
-
-// Returns the session_initializer op in the module if exists. Otherwise,
-// creates a new session_initializer op and returns it.
-SessionInitializerOp GetOrCreateSessionInitializerOp(ModuleOp module_op) {
-  SessionInitializerOp session_init_op =
-      tf_saved_model::GetSessionInitializerOp(module_op);
-
-  // Create one if it doesn't exist.
-  if (!session_init_op) {
-    OpBuilder builder{&module_op.getBodyRegion()};
-
-    session_init_op = builder.create<SessionInitializerOp>(
-        module_op.getLoc(), /*initializers=*/builder.getArrayAttr({}));
-  }
-
-  return session_init_op;
 }
 
 // Retrieve the ConstOp's name from its loc. Returns "const" if a name cannot be
@@ -206,7 +203,10 @@ SessionInitializerOp GetOrCreateSessionInitializerOp(ModuleOp module_op) {
 std::string GetConstOpName(TF::ConstOp const_op) {
   if (const std::string name = GetNameFromLoc(const_op.getLoc());
       !name.empty()) {
-    return name;
+    // Replace any occurrences of ";" to "_". ";" is an illegal character to be
+    // used as a `shared_name`.
+    return tsl::str_util::StringReplace(name, /*oldsub=*/";", /*newsub=*/"_",
+                                        /*replace_all=*/true);
   }
 
   return std::string(kDefaultConstName);
@@ -238,6 +238,9 @@ llvm::MapVector<TF::ConstOp, std::string> ReplaceConstOpUsesWithVariableReads(
     llvm::ArrayRef<TF::ConstOp> target_const_ops) {
   llvm::MapVector<TF::ConstOp, std::string> const_op_name_map{};
 
+  // Keeps track of the number of occurrences of each synthesized name. The
+  // `shared_name` of the newly created `VarHandleOp` will be generated by
+  // suffixing the `"_{count}"` to the name.
   absl::flat_hash_map<std::string, int> name_counts{};
   for (auto const_op : target_const_ops) {
     OpBuilder builder{const_op};
@@ -314,12 +317,7 @@ void UnfreezeConstantsPass::runOnOperation() {
     return;
   }
 
-  SessionInitializerOp session_init_op =
-      GetOrCreateSessionInitializerOp(module_op);
-
-  SymbolTable symbol_table{module_op};
-  func::FuncOp session_init_func = GetOrCreateSessionInitializerFunc(
-      symbol_table, session_init_op, kTfSavedModelInitializerRestoreType);
+  func::FuncOp session_init_func = GetOrCreateInitializerFunc(module_op);
 
   // Replace each usage of ConstOp to a VarHandleOp -> ReadVariableOp pattern.
   llvm::MapVector<TF::ConstOp, std::string> const_op_name_map =

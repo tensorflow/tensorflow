@@ -24,7 +24,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
@@ -99,10 +98,11 @@ class ValidatorRunnerImplTest : public ::testing::Test {
 
   ValidatorRunnerImpl CreateValidator() {
     return ValidatorRunnerImpl(
-        options_.model_path, options_.storage_path,
+        CreateModelLoaderPath(options_), options_.storage_path,
         options_.data_directory_path, options_.per_test_timeout_ms,
         std::move(custom_validation_embedder_), options_.error_reporter,
-        options_.nnapi_sl, options_.validation_entrypoint_name,
+        options_.nnapi_sl, options_.gpu_plugin_handle,
+        options_.validation_entrypoint_name,
         options_.benchmark_result_evaluator);
   }
 
@@ -142,9 +142,8 @@ TEST_F(ValidatorRunnerImplTest,
                            CreateNNAPISettings(tflite_settings[0])));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -162,6 +161,54 @@ TEST_F(ValidatorRunnerImplTest,
                 testing::Pointee(testing::SizeIs(0)));
   }
   EXPECT_TRUE(WasNnApiSlInvoked());
+}
+
+TEST_F(ValidatorRunnerImplTest,
+       GetSuccessfulResultsSucceedWithBufferModelAndCustomValidation) {
+  // Setup.
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  options_.model_buffer = g_tflite_acceleration_embedded_mobilenet_model;
+  options_.model_size = g_tflite_acceleration_embedded_mobilenet_model_len;
+  options_.model_path.clear();
+  int batch_size = 3;
+  custom_validation_embedder_ = std::make_unique<CustomValidationEmbedder>(
+      batch_size, std::vector<std::vector<uint8_t>>{
+                      std::vector<uint8_t>(batch_size * 224 * 224 * 3, 1)});
+  AlwaysTrueEvaluator evaluator;
+  options_.benchmark_result_evaluator = &evaluator;
+  ValidatorRunnerImpl validator = CreateValidator();
+  ASSERT_EQ(validator.Init(), kMinibenchmarkSuccess);
+
+  std::vector<flatbuffers::FlatBufferBuilder> tflite_settings(1);
+  tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
+
+  // Run.
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
+
+  // Validate.
+  FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
+                                            options_.error_reporter);
+  while (validator.GetNumCompletedResults() < 1) {
+    usleep(absl::ToInt64Microseconds(kWaitBetweenRefresh));
+  }
+  std::vector<FlatBufferBuilder> results = validator.GetCompletedResults();
+  ASSERT_THAT(results, testing::Not(testing::IsEmpty()));
+  for (auto& result : results) {
+    const BenchmarkEvent* event =
+        GetRoot<BenchmarkEvent>(result.GetBufferPointer());
+    ASSERT_THAT(event, testing::Property(&BenchmarkEvent::event_type,
+                                         testing::Eq(BenchmarkEventType_END)));
+    EXPECT_TRUE(event->result()->ok());
+    EXPECT_THAT(event->result()->actual_output(),
+                testing::Pointee(testing::SizeIs(1)));
+    EXPECT_THAT(event->result()->actual_output()->Get(0)->value(),
+                testing::Pointee(testing::SizeIs(batch_size * 1001)));
+  }
 }
 
 TEST_F(ValidatorRunnerImplTest,
@@ -185,9 +232,8 @@ TEST_F(ValidatorRunnerImplTest,
   tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -229,9 +275,8 @@ TEST_F(ValidatorRunnerImplTest,
   tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)));
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,

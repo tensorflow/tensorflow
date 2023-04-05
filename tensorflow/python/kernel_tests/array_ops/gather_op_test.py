@@ -31,12 +31,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 _TEST_TYPES = (dtypes.int64, dtypes.bfloat16, dtypes.float32, dtypes.complex64,
                dtypes.complex128)
+_INDEX_TYPES = (dtypes.int16, dtypes.int32, dtypes.int64)
 
 # TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
 
@@ -63,50 +65,54 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       data = np.array([0, 1, 2, 3, 7, 5])
       for dtype in _TEST_TYPES:
-        for indices in 4, [1, 2, 2, 4, 5]:
-          with self.subTest(dtype=dtype, indices=indices):
-            params_np = self._buildParams(data, dtype)
-            params = constant_op.constant(params_np)
-            indices_tf = constant_op.constant(indices)
-            gather_t = array_ops.gather(params, indices_tf)
-            gather_val = self.evaluate(gather_t)
-            np_val = params_np[indices]
-            self.assertAllEqual(np_val, gather_val)
-            self.assertEqual(np_val.shape, gather_t.get_shape())
+        for itype in _INDEX_TYPES:
+          for indices in 4, [1, 2, 2, 4, 5]:
+            with self.subTest(dtype=dtype, itype=itype, indices=indices):
+              params_np = self._buildParams(data, dtype)
+              params = constant_op.constant(params_np)
+              indices_tf = constant_op.constant(indices, dtype=itype)
+              gather_t = array_ops.gather(params, indices_tf)
+              gather_val = self.evaluate(gather_t)
+              np_val = params_np[indices]
+              self.assertAllEqual(np_val, gather_val)
+              self.assertEqual(np_val.shape, gather_t.get_shape())
 
   def testScalar2D(self):
     with self.session():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8],
                        [9, 10, 11], [12, 13, 14]])
       for dtype in _TEST_TYPES:
-        for axis in range(data.ndim):
-          with self.subTest(dtype=dtype, axis=axis):
-            params_np = self._buildParams(data, dtype)
-            params = constant_op.constant(params_np)
-            indices = constant_op.constant(2)
-            gather_t = array_ops.gather(params, indices, axis=axis)
-            gather_val = self.evaluate(gather_t)
-            self.assertAllEqual(np.take(params_np, 2, axis=axis), gather_val)
-            expected_shape = data.shape[:axis] + data.shape[axis + 1:]
-            self.assertEqual(expected_shape, gather_t.get_shape())
+        for itype in _INDEX_TYPES:
+          for axis in range(data.ndim):
+            with self.subTest(dtype=dtype, itype=itype, axis=axis):
+              params_np = self._buildParams(data, dtype)
+              params = constant_op.constant(params_np)
+              indices = constant_op.constant(2, dtype=itype)
+              gather_t = array_ops.gather(params, indices, axis=axis)
+              gather_val = self.evaluate(gather_t)
+              self.assertAllEqual(np.take(params_np, 2, axis=axis), gather_val)
+              expected_shape = data.shape[:axis] + data.shape[axis + 1 :]
+              self.assertEqual(expected_shape, gather_t.get_shape())
 
   def testSimpleTwoD32(self):
     with self.session():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8],
                        [9, 10, 11], [12, 13, 14]])
       for dtype in _TEST_TYPES:
-        for axis in range(data.ndim):
-          with self.subTest(dtype=dtype, axis=axis):
-            params_np = self._buildParams(data, dtype)
-            params = constant_op.constant(params_np)
-            # The indices must be in bounds for any axis.
-            indices = constant_op.constant([0, 1, 0, 2])
-            gather_t = array_ops.gather(params, indices, axis=axis)
-            gather_val = self.evaluate(gather_t)
-            self.assertAllEqual(np.take(params_np, [0, 1, 0, 2], axis=axis),
-                                gather_val)
-            expected_shape = data.shape[:axis] + (4,) + data.shape[axis + 1:]
-            self.assertEqual(expected_shape, gather_t.get_shape())
+        for itype in _INDEX_TYPES:
+          for axis in range(data.ndim):
+            with self.subTest(dtype=dtype, itype=itype, axis=axis):
+              params_np = self._buildParams(data, dtype)
+              params = constant_op.constant(params_np)
+              # The indices must be in bounds for any axis.
+              indices = constant_op.constant([0, 1, 0, 2], dtype=itype)
+              gather_t = array_ops.gather(params, indices, axis=axis)
+              gather_val = self.evaluate(gather_t)
+              self.assertAllEqual(
+                  np.take(params_np, [0, 1, 0, 2], axis=axis), gather_val
+              )
+              expected_shape = data.shape[:axis] + (4,) + data.shape[axis + 1 :]
+              self.assertEqual(expected_shape, gather_t.get_shape())
 
   def testHigherRank(self):
     with ops.Graph().as_default():
@@ -121,7 +127,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
                 indices_shape=indices_shape,
                 dtype=dtype,
                 axis=axis,
-                indices=indices):
+                indices=indices,
+            ):
               tf_params = constant_op.constant(params)
               tf_indices = constant_op.constant(indices)
               # Check that both positive and negative indices for axis work.
@@ -129,51 +136,65 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               tf_negative_axis = constant_op.constant(-len(shape) + axis)
               gather = array_ops.gather(tf_params, tf_indices, axis=tf_axis)
               gather_negative_axis = array_ops.gather(
-                  tf_params, tf_indices, axis=tf_negative_axis)
+                  tf_params, tf_indices, axis=tf_negative_axis
+              )
               gather_value, gather_negative_axis_value = self.evaluate(
-                  [gather, gather_negative_axis])
+                  [gather, gather_negative_axis]
+              )
               gather_np = np.take(params, indices, axis)
               self.assertAllEqual(gather_np, gather_value)
               self.assertAllEqual(gather_np, gather_negative_axis_value)
-              expected_shape = (params.shape[:axis] + indices.shape +
-                                params.shape[axis + 1:])
+              expected_shape = (
+                  params.shape[:axis] + indices.shape + params.shape[axis + 1 :]
+              )
               self.assertEqual(expected_shape, gather.shape)
               self.assertEqual(expected_shape, gather_negative_axis.shape)
 
               # Test gradients
               gather_grad = np.random.randn(
-                  *gather.get_shape().as_list()).astype(dtype.as_numpy_dtype)
+                  *gather.get_shape().as_list()
+              ).astype(dtype.as_numpy_dtype)
               if dtype.is_complex:
                 gather_grad -= 1j * gather_grad
               params_grad, indices_grad, axis_grad = gradients_impl.gradients(
-                  gather, [tf_params, tf_indices, tf_axis], gather_grad)
+                  gather, [tf_params, tf_indices, tf_axis], gather_grad
+              )
               self.assertIsNone(indices_grad)
               self.assertIsNone(axis_grad)
               if dtype.is_integer:
                 self.assertIsNone(params_grad)
                 continue
-              # For axis 0, we are able to create an efficient IndexedSlices for
-              # the gradient.
+              # For axis 0, we are able to create an efficient IndexedSlices
+              # for the gradient.
               if axis == 0:
                 self.assertEqual(
-                    type(params_grad), indexed_slices.IndexedSlices)
+                    type(params_grad), indexed_slices.IndexedSlices
+                )
                 params_grad = ops.convert_to_tensor(params_grad)
               correct_params_grad = np.zeros(shape).astype(dtype.as_numpy_dtype)
               outer_dims = axis
               inner_dims = len(shape) - axis - 1
               gather_grad = gather_grad.reshape(
-                  shape[:axis] + (indices.size,) + shape[axis + 1:])
+                  shape[:axis] + (indices.size,) + shape[axis + 1 :]
+              )
               for source_index, dest_index in enumerate(indices.flat):
-                dest_slice = ((slice(None),) * outer_dims + (dest_index,) +
-                              (slice(None),) * inner_dims)
-                source_slice = ((slice(None),) * outer_dims + (source_index,) +
-                                (slice(None),) * inner_dims)
+                dest_slice = (
+                    (slice(None),) * outer_dims
+                    + (dest_index,)
+                    + (slice(None),) * inner_dims
+                )
+                source_slice = (
+                    (slice(None),) * outer_dims
+                    + (source_index,)
+                    + (slice(None),) * inner_dims
+                )
                 correct_params_grad[dest_slice] += gather_grad[source_slice]
-              self.assertAllClose(
+              self.assertAllCloseAccordingToType(
                   correct_params_grad,
                   self.evaluate(params_grad),
                   atol=2e-6,
-                  rtol=2e-6)
+                  rtol=2e-6,
+              )
 
   def testHigherRankGradientTape(self):
     # We check that scalar and empty indices shapes work as well
@@ -187,7 +208,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               indices_shape=indices_shape,
               dtype=dtype,
               axis=axis,
-              indices=indices):
+              indices=indices,
+          ):
             with backprop.GradientTape() as tape:
               tf_params = constant_op.constant(params)
               tf_indices = constant_op.constant(indices)
@@ -199,24 +221,29 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               tf_negative_axis = constant_op.constant(-len(shape) + axis)
               gather = array_ops.gather(tf_params, tf_indices, axis=tf_axis)
               gather_negative_axis = array_ops.gather(
-                  tf_params, tf_indices, axis=tf_negative_axis)
+                  tf_params, tf_indices, axis=tf_negative_axis
+              )
               gather_value, gather_negative_axis_value = self.evaluate(
-                  [gather, gather_negative_axis])
+                  [gather, gather_negative_axis]
+              )
               gather_np = np.take(params, indices, axis)
               self.assertAllEqual(gather_np, gather_value)
               self.assertAllEqual(gather_np, gather_negative_axis_value)
               expected_shape = (
-                  params.shape[:axis] + indices.shape + params.shape[axis + 1:])
+                  params.shape[:axis] + indices.shape + params.shape[axis + 1 :]
+              )
               self.assertEqual(expected_shape, gather.shape)
               self.assertEqual(expected_shape, gather_negative_axis.shape)
 
               # Test gradients
               gather_grad = np.random.randn(
-                  *gather.get_shape().as_list()).astype(dtype.as_numpy_dtype)
+                  *gather.get_shape().as_list()
+              ).astype(dtype.as_numpy_dtype)
               if dtype.is_complex:
                 gather_grad -= 1j * gather_grad
             params_grad, indices_grad, axis_grad = tape.gradient(
-                gather, [tf_params, tf_indices, tf_axis], gather_grad)
+                gather, [tf_params, tf_indices, tf_axis], gather_grad
+            )
             self.assertIsNone(indices_grad)
             self.assertIsNone(axis_grad)
             if dtype.is_integer:
@@ -230,19 +257,21 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             correct_params_grad = np.zeros(shape).astype(dtype.as_numpy_dtype)
             outer_dims = axis
             inner_dims = len(shape) - axis - 1
-            gather_grad = gather_grad.reshape(shape[:axis] + (indices.size,) +
-                                              shape[axis + 1:])
+            gather_grad = gather_grad.reshape(
+                shape[:axis] + (indices.size,) + shape[axis + 1 :]
+            )
             for source_index, dest_index in enumerate(indices.flat):
               dest_slice = ((slice(None),) * outer_dims + (dest_index,) +
                             (slice(None),) * inner_dims)
               source_slice = ((slice(None),) * outer_dims + (source_index,) +
                               (slice(None),) * inner_dims)
               correct_params_grad[dest_slice] += gather_grad[source_slice]
-            self.assertAllClose(
+            self.assertAllCloseAccordingToType(
                 correct_params_grad,
                 self.evaluate(params_grad),
                 atol=2e-6,
-                rtol=2e-6)
+                rtol=2e-6,
+            )
 
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])
@@ -353,11 +382,11 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
   def testEmptySlices(self):
     for dtype in _TEST_TYPES:
-      for itype in np.int32, np.int64:
+      for itype in _INDEX_TYPES:
         # Leading axis gather.
         with self.subTest(dtype=dtype, itype=itype):
           params = np.zeros((7, 0, 0), dtype=dtype.as_numpy_dtype)
-          indices = np.array([3, 4], dtype=itype)
+          indices = np.array([3, 4], dtype=itype.as_numpy_dtype)
           gather = array_ops.gather(params, indices, axis=0)
           self.assertAllEqual(gather, np.zeros((2, 0, 0)))
 
@@ -652,7 +681,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherRefVariable(self):
     with self.cached_session():
-      v = variables.RefVariable(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      v = ref_variable.RefVariable(
+          constant_op.constant([[1, 2], [3, 4], [5, 6]]))
       self.evaluate(variables.global_variables_initializer())
       gather = array_ops.gather(v, [0, 2])
       if not context.executing_eagerly():  # .op doesn't make sense in Eager

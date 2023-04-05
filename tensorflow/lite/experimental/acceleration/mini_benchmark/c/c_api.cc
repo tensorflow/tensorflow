@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
@@ -146,6 +147,10 @@ void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
   if (error_reporter) {
     options.error_reporter = error_reporter;
   }
+  if (settings.gpu_plugin_handle) {
+    options.gpu_plugin_handle =
+        (const TfLiteDelegatePlugin*)settings.gpu_plugin_handle;
+  }
 
   tflite::acceleration::BlockingValidatorRunner runner(options);
   result.init_status = runner.Init();
@@ -220,6 +225,11 @@ void TfLiteMiniBenchmarkSettingsSetErrorReporter(
                                va_list args)) {
   settings->error_reporter_user_data = error_reporter_user_data;
   settings->error_reporter_func = error_reporter_func;
+}
+
+void TfLiteMiniBenchmarkSettingsSetGpuPluginHandle(
+    TfLiteMiniBenchmarkSettings* settings, void* gpu_plugin_handle) {
+  settings->gpu_plugin_handle = gpu_plugin_handle;
 }
 
 void TfLiteMiniBenchmarkSettingsFree(TfLiteMiniBenchmarkSettings* settings) {

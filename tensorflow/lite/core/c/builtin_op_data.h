@@ -291,6 +291,9 @@ typedef struct {
 
   // Parameter for unidirectional sequence RNN version 3.
   bool asymmetric_quantize_inputs;
+
+  // Parameter for unidirectional sequence RNN version 4.
+  bool diagonal_recurrent_tensors;
 } TfLiteUnidirectionalSequenceLSTMParams;
 
 typedef struct {

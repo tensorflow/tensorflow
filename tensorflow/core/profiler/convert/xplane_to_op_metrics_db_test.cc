@@ -213,7 +213,6 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
   XSpace xspace;
   XPlane* xplane = GetOrCreateTpuXPlane(&xspace, /*device_ordinal=*/0, "TPU V4",
                                         /*peak_tera_flops_per_second=*/0,
-                                        /*peak_bw_gigabytes_per_second=*/0,
                                         /*peak_hbm_bw_gigabytes_per_second=*/0);
   XPlaneBuilder device_plane(xplane);
   device_plane.AddStatValue(

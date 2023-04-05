@@ -42,7 +42,7 @@ tensorflow::Status RunTransformOnGraph(
                       ImportGraphAndFunctionsToMlir(&context, debug_info,
                                                     *graph, graph->flib_def()));
 
-  PassManager pm(&context, mlir::PassManager::Nesting::Explicit);
+  PassManager pm((*module)->getName(), mlir::PassManager::Nesting::Explicit);
   // Construct passes.
   for (auto& pass : passes) pm.addPass(pass());
   mlir::StatusScopedDiagnosticHandler error_handler(&context);

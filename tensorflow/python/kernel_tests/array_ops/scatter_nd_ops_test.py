@@ -32,6 +32,7 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -147,7 +148,7 @@ class StatefulScatterNdTest(test.TestCase):
         new = ref.copy()
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
-        ref_var = variables.VariableV1(ref)
+        ref_var = variable_v1.VariableV1(ref)
         self.evaluate(ref_var.initializer)
         self.evaluate(tf_scatter(ref_var, indices, updates))
 
@@ -285,7 +286,7 @@ class StatefulScatterNdTest(test.TestCase):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with test_util.device(use_gpu=False):
-        ref = variables.VariableV1(params)
+        ref = variable_v1.VariableV1(params)
         self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.

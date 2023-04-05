@@ -20,7 +20,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "//tensorflow/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
 )
@@ -278,10 +278,11 @@ def tsl_copts(
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
+    # TODO(zacmustin): Update OSS to use TSL's MKL.
     return select({
         # copybara:uncomment_begin
-        # "//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        # "//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # "//tensorflow/tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        # "//tensorflow/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
         "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
         "@org_tensorflow//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
@@ -735,3 +736,8 @@ def tsl_pybind_extension_opensource(
 
 # Export open source version of pybind_extension under base name as well.
 tsl_pybind_extension = tsl_pybind_extension_opensource
+
+# Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
+# public, but monorepos can have more precise constraints.
+def set_external_visibility(monorepo_paths):
+    return if_oss(["//visibility:public"], monorepo_paths)

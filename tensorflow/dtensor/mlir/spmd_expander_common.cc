@@ -33,8 +33,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -344,6 +346,7 @@ llvm::SmallVector<mlir::OpOperand*, 4> TraceUseToNextTFOp(
     llvm::SmallVector<mlir::Value, 4>* skipped_values) {
   mlir::Operation* owner = operand->getOwner();
   llvm::SmallVector<mlir::Value, 4> values;
+  llvm::SmallVector<mlir::Value, 4> unused_values;
   if (mlir::isa<mlir::TF::PartitionedCallOp>(owner) ||
       mlir::isa<mlir::TF::StatefulPartitionedCallOp>(owner)) {
     mlir::func::FuncOp func;
@@ -356,46 +359,69 @@ llvm::SmallVector<mlir::OpOperand*, 4> TraceUseToNextTFOp(
     auto device_return = mlir::cast<mlir::tf_device::ReturnOp>(owner);
     auto enclosing_cluster =
         device_return->getParentOfType<mlir::tf_device::ClusterOp>();
-    values.emplace_back(
-        enclosing_cluster.getResult(operand->getOperandNumber()));
+    auto value = enclosing_cluster.getResult(operand->getOperandNumber());
+    values.emplace_back(value);
   } else if (mlir::isa<mlir::func::ReturnOp>(owner)) {
     auto func = mlir::cast<mlir::func::ReturnOp>(owner)
                     ->getParentOfType<mlir::func::FuncOp>();
-    // The one function we don't have a caller for is the main function.
-    // In this case return the empty list as there are no consumers.
-    auto caller = func_to_caller.find(func.getName());
-    if (caller != func_to_caller.end())
-      values.emplace_back(
-          caller->second->getOpResult(operand->getOperandNumber()));
+    if (func) {
+      // The one function we don't have a caller for is the main function.
+      // In this case return the empty list as there are no consumers.
+      auto caller = func_to_caller.find(func.getName());
+      if (caller != func_to_caller.end()) {
+        auto value = caller->second->getOpResult(operand->getOperandNumber());
+        values.emplace_back(value);
+      }
+    } else {
+      LOG(WARNING) << "func is null. "
+                   << "owner is " << owner;
+    }
   } else if (auto yield = mlir::dyn_cast<mlir::TF::YieldOp>(owner)) {
-    if (auto if_op = owner->getParentOfType<mlir::TF::IfRegionOp>()) {
-      values.emplace_back(if_op.getResult(operand->getOperandNumber()));
-    } else if (auto while_op =
-                   owner->getParentOfType<mlir::TF::WhileRegionOp>()) {
-      if (while_op && !while_op.getCond().isAncestor(yield->getParentRegion()))
-        values.emplace_back(while_op.getResult(operand->getOperandNumber()));
+    auto op = owner->getParentOp();
+    while (op != nullptr) {
+      if (mlir::isa<mlir::TF::IfRegionOp>(op)) {
+        break;
+      }
+      if (mlir::isa<mlir::TF::WhileRegionOp>(op)) {
+        break;
+      }
+      op = op->getParentOp();
+    }
+    if (auto if_op = mlir::dyn_cast<mlir::TF::IfRegionOp>(op)) {
+      auto value = if_op.getResult(operand->getOperandNumber());
+      values.emplace_back(value);
+    } else if (auto while_op = mlir::dyn_cast<mlir::TF::WhileRegionOp>(op)) {
+      if (while_op &&
+          !while_op.getCond().isAncestor(yield->getParentRegion())) {
+        auto value = while_op.getResult(operand->getOperandNumber());
+        values.emplace_back(value);
+      }
     } else {
       LOG(WARNING)
           << "Found terminator op for unsupported controlflow operations.";
     }
   } else if (mlir::isa<mlir::TF::DTensorLayout>(owner)) {
     auto dtensor_layout = mlir::cast<mlir::TF::DTensorLayout>(owner);
-    values.emplace_back(dtensor_layout.getOutput());
+    auto value = dtensor_layout.getOutput();
+    values.emplace_back(value);
   } else if (auto while_op = mlir::dyn_cast<mlir::TF::WhileRegionOp>(owner)) {
     // Handle loop variant inputs of while op.
     mlir::Region& cond = while_op.getCond();
     mlir::Region& body = while_op.getBody();
     const int operand_index = operand->getOperandNumber();
-    values.emplace_back(cond.front().getArgument(operand_index));
-    values.emplace_back(body.front().getArgument(operand_index));
+    auto value1 = cond.front().getArgument(operand_index);
+    values.emplace_back(value1);
+    auto value2 = body.front().getArgument(operand_index);
+    values.emplace_back(value2);
   } else {
     return {operand};
   }
   llvm::SmallVector<mlir::OpOperand*, 4> ret;
   for (mlir::Value value : values) {
     if (skipped_values != nullptr) skipped_values->emplace_back(value);
+    if (value.use_empty()) continue;
     for (mlir::OpOperand& use : value.getUses()) {
-      // TODO(bfontain): Remove recursion here.
+      //  TODO(bfontain): Remove recursion here.
       const auto& traced_operands =
           TraceUseToNextTFOp(&use, func_to_caller, skipped_values);
       ret.append(traced_operands.begin(), traced_operands.end());
@@ -543,6 +569,17 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
 
   mod_op->setAttr(kMeshCoordinatesAttr, builder.getStringAttr(serialized_mesh));
   return mod_op.getZ();
+}
+
+StatusOr<Mesh> GetMeshOnParentCluster(mlir::Operation* op) {
+  mlir::tf_device::ClusterOp cluster =
+      op->getParentOfType<mlir::tf_device::ClusterOp>();
+
+  auto mesh_attr = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
+  if (mesh_attr) {
+    return Mesh::FromString(mesh_attr.getValue().str());
+  }
+  return errors::InvalidArgument("missing mesh attribute on cluster.");
 }
 
 mlir::LogicalResult ValidateMetadataAttributes(mlir::Operation* op) {

@@ -527,7 +527,7 @@ class RunManyGraphs {
     Call* call = get(index);
     call->done = true;
     auto resp = call->resp.get();
-    if (resp->status_code() != error::Code::OK) {
+    if (resp->status_code() != absl::StatusCode::kOk) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
       Status resp_status = call->resp->status();

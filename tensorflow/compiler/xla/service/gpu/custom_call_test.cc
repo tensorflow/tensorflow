@@ -324,7 +324,7 @@ TEST_F(CustomCallTest, WithStatusFailed) {
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
   auto status = Execute(&b, {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed"));
 }
 
@@ -383,7 +383,7 @@ TEST_F(CustomCallTest, ExportedAlwaysFail) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = Execute(&b, {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   VLOG(0) << status.error_message();
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
 }
@@ -417,12 +417,11 @@ struct TestFfiModule : ffi::StatelessModule {
             {{"ffi.always_fail", FFI_AlwaysFail}, {"ffi.memcpy", FFI_Memcpy}}) {
   }
 
-  XLA_FFI_DEFINE_FUNCTION(
-      FFI_AlwaysFail, AlwaysFail,
-      ffi::Ffi::Bind("ffi.always_fail").Arg<ffi::StridedBufferArg>());
+  XLA_FFI_DEFINE_FUNCTION(FFI_AlwaysFail, AlwaysFail,
+                          ffi::Ffi::Binding().Arg<ffi::StridedBufferArg>());
 
   XLA_FFI_DEFINE_FUNCTION(FFI_Memcpy, Memcpy,
-                          ffi::Ffi::Bind("ffi.memcpy")
+                          ffi::Ffi::Binding()
                               .Stream<se::gpu::GpuStreamHandle>()
                               .Arg<ffi::StridedBufferArg>()
                               .Arg<ffi::StridedBufferArg>());
@@ -466,7 +465,7 @@ TEST_F(CustomCallTest, ExportedFfiAlwaysFail) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   auto status = Execute(&b, {}).status();
-  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   VLOG(0) << status.error_message();
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
 }

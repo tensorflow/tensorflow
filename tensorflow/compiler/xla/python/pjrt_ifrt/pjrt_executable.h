@@ -39,6 +39,8 @@ class PjRtCompatibleExecutable
   // APIs that allow direct access to `xla::PjRtExecutable` for PjRt-only
   // operations.
   virtual xla::PjRtExecutable* pjrt_executable() = 0;
+
+  static char ID;  // NOLINT
 };
 
 // PjRt-compatible `LoadedExecutable` interface.
@@ -51,6 +53,8 @@ class PjRtCompatibleLoadedExecutable
   virtual xla::PjRtLoadedExecutable* pjrt_loaded_executable() = 0;
   virtual std::shared_ptr<xla::PjRtLoadedExecutable>
   shared_ptr_pjrt_loaded_executable() = 0;
+
+  static char ID;  // NOLINT
 };
 
 // `Executable` implementation that wraps a `xla::PjRtExecutable`.

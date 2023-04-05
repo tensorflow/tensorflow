@@ -1,8 +1,8 @@
 path: "tensorflow.metrics.BinaryIoU"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.BinaryIoU\'>"
-  is_instance: "<class \'keras.metrics.metrics.IoU\'>"
-  is_instance: "<class \'keras.metrics.metrics._IoUBase\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics.BinaryIoU\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics.IoU\'>"
+  is_instance: "<class \'keras.metrics.iou_metrics._IoUBase\'>"
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -227,6 +227,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "merge_state"
     argspec: "args=[\'self\', \'metrics\'], varargs=None, keywords=None, defaults=None"
   }
@@ -241,6 +245,10 @@ tf_class {
   member_method {
     name: "result"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"

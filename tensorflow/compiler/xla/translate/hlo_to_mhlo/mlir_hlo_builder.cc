@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
@@ -90,17 +91,9 @@ void AddFrontendAttributesToOperation(
 }
 
 static std::string GetMlirOpName(HloOpcode opcode) {
-  std::string op_name = HloOpcodeString(opcode);
+  std::string op_name(HloOpcodeString(opcode));
   absl::c_replace(op_name, '-', '_');
   return mlir::mhlo::MhloDialect::getDialectNamespace().str() + "." + op_name;
-}
-
-static std::string ToString(mlir::Type ty) {
-  std::string str;
-  llvm::raw_string_ostream sstream(str);
-  ty.print(sstream);
-  sstream.flush();
-  return str;
 }
 
 // Returns 1D 64-bit dense elements attribute with the given values.
@@ -109,7 +102,7 @@ static mlir::DenseIntElementsAttr GetI64ElementsAttr(
   auto ty = mlir::RankedTensorType::get({static_cast<int64_t>(values.size())},
                                         builder->getIntegerType(64));
   return mlir::DenseIntElementsAttr::get(
-      ty, llvm::makeArrayRef(values.data(), values.size()));
+      ty, llvm::ArrayRef(values.data(), values.size()));
 }
 
 static mlir::DenseIntElementsAttr ConvertPadding(
@@ -132,7 +125,7 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
   mlir::Type ty = val.getType();
   auto shape = std::make_unique<Shape>(TypeToShape(ty));
   if (shape->element_type() == PrimitiveType::PRIMITIVE_TYPE_INVALID) {
-    return InvalidArgument("unsupported type: %s", ToString(ty).c_str());
+    return InvalidArgument("unsupported type: %s", llvm_ir::DumpToString(ty));
   }
 
   int64_t handle = reinterpret_cast<int64_t>(val.getAsOpaquePointer());
@@ -218,8 +211,6 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   TF_RET_CHECK(output_operand_aliasing.empty())
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
-  TF_RET_CHECK(literal == nullptr)
-      << "MLIR CustomCallOp does not support literal yet";
   TF_RET_CHECK(!window.has_value())
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
   TF_RET_CHECK(!dnums.has_value())
@@ -261,6 +252,12 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       "has_side_effect", builder_.getBoolAttr(has_side_effect)));
   attributes.push_back(
       builder_.getNamedAttr("backend_config", builder_.getStringAttr(opaque)));
+
+  if (literal) {
+    TF_ASSIGN_OR_RETURN(auto literal_attr,
+                        CreateDenseElementsAttrFromLiteral(*literal, builder_));
+    attributes.push_back(builder_.getNamedAttr("mhlo.literal", literal_attr));
+  }
 
   if (computation && !computation->IsNull()) {
     // Create new function(s) to represent the called computations. As a result,
@@ -635,7 +632,7 @@ XlaOp MlirHloBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 StatusOr<XlaOp> MlirHloBuilder::AddOpWithShape(
     HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands) {
   return CreateOp(GetMlirOpName(opcode), shape,
-                  llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()));
+                  llvm::ArrayRef<XlaOp>(operands.data(), operands.size()));
 }
 
 XlaOp MlirHloBuilder::CreateToken() {

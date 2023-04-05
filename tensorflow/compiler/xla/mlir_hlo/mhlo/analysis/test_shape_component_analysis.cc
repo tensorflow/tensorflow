@@ -21,7 +21,7 @@ limitations under the License.
 namespace mlir {
 
 #define GEN_PASS_DEF_TESTSHAPECOMPONENTANALYSIS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 

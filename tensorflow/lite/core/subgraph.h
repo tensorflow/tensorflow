@@ -51,6 +51,15 @@ namespace internal {
 class CommonOpaqueConversionUtil;  // Class for friend declarations.
 }
 
+namespace async {
+class AsyncSubgraph;  // Class for friend declarations.
+}
+
+namespace impl {
+class Interpreter;         // Class for friend declarations.
+class InterpreterBuilder;  // Class for friend declarations.
+}  // namespace impl
+
 namespace delegates {
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
@@ -61,7 +70,7 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
 #ifndef DOXYGEN_SKIP
-  friend class Interpreter;
+  friend class ::tflite::impl::Interpreter;
   friend class SignatureRunner;
   friend class SingleOpModel;
   friend class internal::CommonOpaqueConversionUtil;
@@ -343,6 +352,12 @@ class Subgraph {
   static constexpr int kInvalidSubgraphIndex = -1;
   int GetSubgraphIndex() const { return subgraph_index_; }
 
+  // Returns true if this subgraph is the primary subgraph.
+  // Returns false otherwise, including the cases when GetSubgraphIndex()
+  // returns kInvalidSubgraphIndex.
+  // WARNING: This is an experimental API and subject to change.
+  bool IsPrimarySubgraph() const { return GetSubgraphIndex() == 0; }
+
   // True if all tensors in the graph has static size after calling
   // `AllocateTensors` function.
   // Before `AllocateTensors` is called, this will always return true;
@@ -445,9 +460,39 @@ class Subgraph {
     return (options_ && options_->GetDisableDelegateClustering());
   }
 
+  // Retrieves the corresponding TfLiteContext of a subgraph given a subgraph
+  // index. If an invalid subgraph index is given, then returns nullptr.
+  TfLiteContext* GetSubgraphContext(int subgraph_index);
+
+  // Marks the subgraph with the given index as "delegation-skippable". Returns
+  // kTfLiteOk if the given subgraph index is valid and is successfully marked
+  // as delegation-skippable.
+  // If a subgraph is delegation-skippable, then the subgraph will be handled by
+  // a TfLiteDelegate (and that the delegate is supposed to be already aware of
+  // this state), and therefore, TfLiteInterpreter can skip invoking
+  // `ModifyGraphWithDelegate` on this subgraph.
+  // NOTE: This function is expected to be called only when the subgraph will be
+  // skipped by the interpreter (e.g. the subgraph is part of the list of callee
+  // subgraphs of the same control flow node, and all of those callees are
+  // supported by the same delegate at once).
+  TfLiteStatus MarkSubgraphAsDelegationSkippable(int subgraph_index);
+
+  // Returns whether this subgraph is delegation-skippable.
+  // See the documentation on the private is_delegation_skippable_ field for
+  // more details.
+  bool IsDelegationSkippable() const { return is_delegation_skippable_; }
+
+  // Marks this subgraph as delegation-skippable.
+  // See the documentation on the private is_delegation_skippable_ field for
+  // more details.
+  // NOTE: This function is expected to be called only when this subgraph will
+  // be skipped by the interpreter.
+  void MarkAsDelegationSkippable() { is_delegation_skippable_ = true; }
+
  private:
 #ifndef DOXYGEN_SKIP
-  friend class InterpreterBuilder;
+  friend class tflite::impl::InterpreterBuilder;
+  friend class tflite::async::AsyncSubgraph;
   friend class TestDelegate;
 #endif  // DOXYGEN_SKIP
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
@@ -484,6 +529,12 @@ class Subgraph {
       if (!profiler_) return;
       profiler_->AddEvent(tag, event_type, elapsed_time, event_metadata1,
                           subgraph_index_);
+    }
+
+    void AddEventWithData(const char* tag, EventType event_type,
+                          const void* data) override {
+      if (!profiler_) return;
+      profiler_->AddEventWithData(tag, event_type, data);
     }
 
    private:
@@ -560,6 +611,15 @@ class Subgraph {
                                              const int* output_indices,
                                              int num_outputs);
 
+  // Invoke the subgraph (run the whole graph in dependency order).
+  // Does not report invoke status through profiler.
+  TfLiteStatus InvokeImpl();
+
+  // Allow a delegate to look at the graph and modify the graph to handle
+  // parts of the graph themselves. After this is called, the graph may
+  // contain new nodes that replace 1 more nodes.
+  // Does not report invoke status through profiler.
+  TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
 
   // Request an tensor be resized implementation. If the given tensor is of
   // type kTfLiteDynamic it will also be allocated new memory.
@@ -966,6 +1026,13 @@ class Subgraph {
   // interpreter. The owning interpreter will keep this consistent with
   // metadata_ by appropriately parametrized SetMetadata method calls.
   const ControlEdges* control_edges_ = nullptr;
+
+  // Whether this subgraph is "delegation skippable". If a subgraph is
+  // delegation-skippable, then the subgraph will be handled by a TfLiteDelegate
+  // (and that the delegate is supposed to be already aware of this state), and
+  // therefore, TfLiteInterpreter can skip invoking `ModifyGraphWithDelegate` on
+  // this subgraph.
+  bool is_delegation_skippable_ = false;
 };
 
 }  // namespace tflite

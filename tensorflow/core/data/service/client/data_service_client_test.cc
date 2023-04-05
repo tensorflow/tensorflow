@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/client/common.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"

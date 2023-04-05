@@ -26,7 +26,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 

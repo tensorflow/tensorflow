@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 
+#include <string>
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
@@ -23,9 +26,13 @@ ValidatorRunnerOptions CreateValidatorRunnerOptionsFrom(
     const MinibenchmarkSettings& minibenchmark_settings) {
   ValidatorRunnerOptions options;
   if (minibenchmark_settings.model_file()) {
-    if (minibenchmark_settings.model_file()->fd() <= 0) {
+    if (minibenchmark_settings.model_file()->filename()) {
       options.model_path =
           minibenchmark_settings.model_file()->filename()->str();
+    } else if (minibenchmark_settings.model_file()->buffer_handle() > 0) {
+      options.model_buffer = reinterpret_cast<const uint8_t*>(
+          minibenchmark_settings.model_file()->buffer_handle());
+      options.model_size = minibenchmark_settings.model_file()->length();
     } else {
       options.model_fd = minibenchmark_settings.model_file()->fd();
       options.model_offset = minibenchmark_settings.model_file()->offset();
@@ -43,6 +50,21 @@ ValidatorRunnerOptions CreateValidatorRunnerOptionsFrom(
         minibenchmark_settings.validation_settings()->per_test_timeout_ms();
   }
   return options;
+}
+
+std::string CreateModelLoaderPath(const ValidatorRunnerOptions& options) {
+  std::string model_path;
+  if (!options.model_path.empty()) {
+    model_path = options.model_path;
+  } else if (options.model_fd >= 0) {
+    model_path = absl::StrCat("fd:", options.model_fd, ":",
+                              options.model_offset, ":", options.model_size);
+  } else if (options.model_buffer) {
+    model_path =
+        absl::StrCat("buffer:", reinterpret_cast<int64_t>(options.model_buffer),
+                     ":", options.model_size);
+  }
+  return model_path;
 }
 
 }  // namespace acceleration

@@ -1,5 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,7 +32,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_module_importer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
@@ -65,6 +66,13 @@ cc_library(
     alwayslink = 1,
 )
 
+build_test(
+    name = "xla-translate-opt_build_test",
+    targets = [
+        ":xla-translate-opt",
+    ],
+)
+
 xla_cc_binary(
     name = "xla-translate-opt",
     testonly = True,
@@ -81,6 +89,13 @@ xla_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@stablehlo//:register",
+    ],
+)
+
+build_test(
+    name = "xla-translate-gpu-opt_build_test",
+    targets = [
+        ":xla-translate-gpu-opt",
     ],
 )
 
@@ -101,5 +116,5 @@ xla_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@stablehlo//:register",
-    ],
+    ] + if_cuda(["//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin"]),
 )

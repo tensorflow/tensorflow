@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_INCLUDE_MHLO_TOSA_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_INCLUDE_MHLO_TOSA_TRANSFORMS_PASSES_H_
+#ifndef MLIR_HLO_TOSA_TRANSFORMS_PASSES_H
+#define MLIR_HLO_TOSA_TRANSFORMS_PASSES_H
 
 #include <memory>
 
@@ -29,9 +29,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createPrepareMhloPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_TOSALEGALIZEMHLOPASS
-#include "transforms/passes.h.inc"
+#include "passes.h.inc"
 
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_INCLUDE_MHLO_TOSA_TRANSFORMS_PASSES_H_
+#endif  // MLIR_HLO_TOSA_TRANSFORMS_PASSES_H

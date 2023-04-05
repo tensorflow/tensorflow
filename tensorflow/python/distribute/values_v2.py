@@ -22,6 +22,7 @@ from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -263,4 +264,5 @@ def _tensor_conversion(var, dtype=None, name=None, as_ref=False):
       var.read_value(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-ops.register_tensor_conversion_function(DistributedVariable, _tensor_conversion)
+tensor_conversion_registry.register_tensor_conversion_function(
+    DistributedVariable, _tensor_conversion)

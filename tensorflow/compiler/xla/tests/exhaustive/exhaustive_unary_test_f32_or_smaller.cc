@@ -495,18 +495,36 @@ UNARY_TEST_F32(Tan, {
 })
 
 UNARY_TEST_F16(Tan, {
-  Run(Tan, std::tan);
+  Run(
+      Tan, std::tan, +[](NativeT) {
+        // This error spec corresponds to a maximum relative error of 2 ULP.
+        return ErrorSpec(0, 2 * std::numeric_limits<Eigen::half>::epsilon());
+      });
 })
 
 UNARY_TEST_BF16(Tan, {
-  Run(Tan, std::tan);
+  Run(
+      Tan, std::tan, +[](NativeT) {
+        // This error spec corresponds to a maximum relative error of 1 ULP.
+        return ErrorSpec(0, std::numeric_limits<Eigen::bfloat16>::epsilon());
+      });
 })
 
 // TODO(jlebar): Enable these.
 // UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan) { Run(Atan, std::atan); }
 // UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan2) { Run(Atan2, std::atan2); }
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, {
+  Run(
+      Erf, std::erf, +[](NativeT x) {
+        NativeT tol =
+            std::max(std::numeric_limits<NativeT>::epsilon(),
+                     NativeT(4 * std::numeric_limits<float>::epsilon()));
+        NativeT abs_tol = std::min(tol, NativeT(1 - std::abs(std::erf(x))));
+        return ErrorSpec(abs_tol, tol);
+      });
+})
+
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, { Run(Erfc, std::erfc); })
 
 UNARY_TEST_F32(ErfInv, { Run(ErfInv, HostErfInv); })

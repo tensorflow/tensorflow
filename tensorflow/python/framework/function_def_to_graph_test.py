@@ -122,6 +122,25 @@ class FunctionDefToGraphTest(test.TestCase):
     self.assertSequenceEqual(fg.inputs[0].shape.as_list(), [None, 2, 2])
     self.assertSequenceEqual(fg.inputs[1].shape.as_list(), [])
 
+  def testIncludeLibraryFunctions(self):
+    @def_function.function
+    def g(x):
+      return x + 1
+
+    @def_function.function
+    def f(x):
+      return g(x)
+
+    cfg = g.get_concrete_function(1.0)
+    cfg.add_to_graph()
+    gname = cfg.function_def.signature.name
+    function_def = f.get_concrete_function(1.0).function_def
+    func_graph = function_def_to_graph.function_def_to_graph(
+        function_def, include_library_functions=True)
+    graph_def = func_graph.as_graph_def()
+    self.assertLen(graph_def.library.function, 1)
+    self.assertEqual(graph_def.library.function[0].signature.name, gname)
+
 
 class FunctionDefToGraphDefTest(test.TestCase):
 

@@ -35,7 +35,6 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation as _error_interpolation
-from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 
@@ -264,7 +263,7 @@ def _convert_op_hints_if_present(sess, graph_def, output_tensors,
   if is_frozen_graph(sess):
     raise ValueError("Try to convert op hints, needs unfrozen graph.")
   output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
-  graph_def = tf_graph_util.convert_variables_to_constants(
+  graph_def = _convert_to_constants.convert_variables_to_constants(
       sess, graph_def, output_arrays + hinted_outputs_nodes)
   graph_def = convert_op_hints_to_stubs(graph_def=graph_def)
   return graph_def
@@ -304,8 +303,9 @@ def freeze_graph(sess, input_tensors, output_tensors):
 
   if not is_frozen_graph(sess):
     output_node_names = [tensor.name.split(":")[0] for tensor in output_tensors]
-    return tf_graph_util.convert_variables_to_constants(sess, graph_def,
-                                                        output_node_names)
+    return _convert_to_constants.convert_variables_to_constants(
+        sess, graph_def, output_node_names
+    )
   else:
     return sess.graph_def
 
@@ -351,7 +351,7 @@ def build_debug_info_func(original_graph):
           useful_ops.append((func, original_graph.get_operation_by_name(name)))
         else:
           sub_func = original_graph._get_function(func)  # pylint: disable=protected-access
-          if isinstance(sub_func, function._EagerDefinedFunction):  # pylint: disable=protected-access
+          if isinstance(sub_func, function.AtomicFunction):  # pylint: disable=protected-access
             useful_ops.append(
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:

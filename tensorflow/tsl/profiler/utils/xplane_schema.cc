@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
@@ -31,6 +32,8 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+// Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
+const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
 const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
@@ -42,6 +45,8 @@ const absl::string_view kRoctracerApiPlaneName = "/host:ROCTRACER";
 const absl::string_view kMetadataPlaneName = "/host:metadata";
 const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
 const absl::string_view kPythonTracerPlaneName = "/host:python-tracer";
+const absl::string_view kHostCpusPlaneName = "Host CPUs";
+const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
@@ -265,8 +270,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
       {"peak_teraflops_per_second", kDevCapPeakTeraflopsPerSecond},
-      {"peak_bw_gigabytes_per_second", kDevCapPeakBwGigabytesPerSecond},
       {"peak_hbm_bw_gigabytes_per_second", kDevCapPeakHbmBwGigabytesPerSecond},
+      {"peak_sram_rd_bw_gigabytes_per_second",
+       kDevCapPeakSramRdBwGigabytesPerSecond},
+      {"peak_sram_wr_bw_gigabytes_per_second",
+       kDevCapPeakSramWrBwGigabytesPerSecond},
       {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
@@ -287,6 +295,11 @@ const StatTypeMap& GetStatTypeMap() {
       {"hlo_category", kHloCategory},
       {"tf_op_name", kTfOpName},
       {"dma_stall_duration_ps", kDmaStallDurationPs},
+      {"key", kKey},
+      {"payload_size_bytes", kPayloadSizeBytes},
+      {"duration_us", kDuration},
+      {"buffer_size", kBufferSize},
+      {"transfers", kTransfers},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -382,6 +395,14 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     default:
       return false;
   }
+}
+
+bool IsTensorCorePlaneName(absl::string_view plane_name) {
+  DCHECK(absl::StartsWith(plane_name, kTpuPlanePrefix) ||
+         absl::StartsWith(plane_name, kTpuNonCorePlaneNamePrefix))
+      << "unexpected plane name:" << plane_name;
+  return absl::StartsWith(plane_name, kTpuPlanePrefix) &&
+         RE2::FullMatch(plane_name, {kTpuPlaneRegex});
 }
 
 /*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);

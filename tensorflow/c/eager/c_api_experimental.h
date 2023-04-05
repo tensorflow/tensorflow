@@ -294,10 +294,6 @@ TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
 
-// Sets whether to use TFRT distributed runtime
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrtDistributedRuntime(
-    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime);
-
 // Returns the context_id from the EagerContext which is used by the
 // EagerService to maintain consistency between client and worker. The
 // context_id is initialized with a dummy value and is later set when the worker
@@ -616,6 +612,12 @@ TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
 
+// Extracts a TF_Function from the context.
+// Must call TF_DeleteFunction on the returned value.
+TF_CAPI_EXPORT extern TF_Function* TFE_ContextGetFunction(TFE_Context* ctx,
+                                                          const char* name,
+                                                          TF_Status* status);
+
 // Allocate and return a new Tensor on the host.
 //
 // The caller must set the Tensor values by writing them to the pointer returned
@@ -709,8 +711,11 @@ TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
 // Get configuration key and value using coordination service.
 // The config key must be set before getting its value. Getting value of
 // non-existing config keys will result in errors.
+// If `timeout_in_ms=0`, this call will block until the key-value is set or the
+// worker shuts down.
 TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
                                                  const char* key,
+                                                 int64_t timeout_in_ms,
                                                  TF_Buffer* value_buf,
                                                  TF_Status* status);
 

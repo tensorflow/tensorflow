@@ -57,6 +57,8 @@ StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
 
 }  // namespace
 
+char PjRtCompatibleExecutable::ID = 0;
+char PjRtCompatibleLoadedExecutable::ID = 0;
 char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
@@ -142,7 +144,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
       build_options.use_spmd_partitioning() &&
       build_options.num_partitions() > 1 &&
       (build_options.use_auto_spmd_partitioning() ||
-       build_options.allow_spmd_sharding_propagation_to_output());
+       build_options.any_allow_spmd_sharding_propagation_to_output());
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
       client->pjrt_client()->Compile(module, std::move(options)));
@@ -211,7 +213,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
       build_options.use_spmd_partitioning() &&
       build_options.num_partitions() > 1 &&
       (build_options.use_auto_spmd_partitioning() ||
-       build_options.allow_spmd_sharding_propagation_to_output());
+       build_options.any_allow_spmd_sharding_propagation_to_output());
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
       client->pjrt_client()->Compile(computation, std::move(options)));
@@ -486,7 +488,7 @@ StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
 
 StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {
   DCHECK(this);
-  return client_->pjrt_client()->SerializeExecutable(*pjrt_loaded_executable_);
+  return pjrt_loaded_executable_->SerializeExecutable();
 }
 
 Future<Status> PjRtLoadedExecutable::Delete() {

@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -98,55 +99,61 @@ const int64_t EagerContext::kGlobalRendezvousId = -1;
 
 // Find the rendezvous instance corresponding to the step id, or create a
 // new instance if not existing.
-IntraProcessRendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
-    int64_t step_id, DeviceMgr* device_mgr) {
+tsl::core::RefCountPtr<IntraProcessRendezvous>
+EagerContext::LocalRendezvousCache::FindOrCreate(int64_t step_id,
+                                                 DeviceMgr* device_mgr) {
   mutex_lock l(table_lock_);
+  tsl::core::RefCountPtr<IntraProcessRendezvous> rendz = nullptr;
   auto iter = table_.find(step_id);
-  if (iter == table_.end()) {
-    iter =
-        table_.insert({step_id, new IntraProcessRendezvous(device_mgr)}).first;
-    // Global rendezvous: ref-count should be 1 upon creation.
-    if (step_id == EagerContext::kGlobalRendezvousId) {
-      return iter->second;
+  if (iter != table_.end()) {
+    rendz = iter->second.GetNewRef();
+    VLOG(5) << "step_id:" << step_id << " "
+            << "WeakPtr returned:" << rendz.get();
+    if (!rendz) {
+      table_.erase(iter);
     }
   }
-  iter->second->Ref();
-  return iter->second;
+  if (!rendz) {  // Deleted or not found
+    rendz.reset(new IntraProcessRendezvous(device_mgr));
+    VLOG(5) << "step_id:" << step_id << " "
+            << "Rendezvous not found, inserting a new one." << rendz.get();
+    // TODO(b/274793840): The WeakPtr still leaks, albeit slower than
+    // leaking entire Rendezvous objects.
+    table_.insert(
+        {step_id, tsl::core::WeakPtr<IntraProcessRendezvous>{rendz.get()}});
+  }
+  return rendz;
 }
 
-IntraProcessRendezvous* EagerContext::LocalRendezvousTable::Find(
-    int64_t step_id) {
+tsl::core::RefCountPtr<IntraProcessRendezvous>
+EagerContext::LocalRendezvousCache::Find(int64_t step_id) {
   mutex_lock l(table_lock_);
   auto iter = table_.find(step_id);
   if (iter == table_.end()) return nullptr;
-  iter->second->Ref();
-  return iter->second;
+  return iter->second.GetNewRef();
 }
 
-void EagerContext::LocalRendezvousTable::Remove(int64_t step_id) {
+std::vector<int64_t> EagerContext::LocalRendezvousCache::GetActiveStepIds() {
+  mutex_lock l(table_lock_);
+  std::vector<int64_t> list;
+  list.reserve(table_.size());
+  for (const auto& iter : table_) {
+    if (iter.second.GetNewRef()) {
+      list.push_back(iter.first);
+    }
+  }
+  return list;
+}
+
+void EagerContext::LocalRendezvousCache::Remove(int64_t step_id) {
   mutex_lock l(table_lock_);
   auto iter = table_.find(step_id);
   if (iter != table_.end()) {
-    if (step_id != EagerContext::kGlobalRendezvousId) {
-      iter->second->Unref();
-    }
     table_.erase(iter);
   }
 }
 
-void EagerContext::LocalRendezvousTable::CleanUpAll() {
-  mutex_lock l(table_lock_);
-  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
-    // Unref all redezvous instance, except for global rendezvous,
-    // which is cleaned up elsewhere when necessary.
-    if (iter->first == -1) {
-      continue;
-    }
-    iter->second->Unref();
-  }
-}
-
-EagerContext::LocalRendezvousTable::~LocalRendezvousTable() { CleanUpAll(); }
+EagerContext::LocalRendezvousCache::~LocalRendezvousCache() = default;
 
 EagerContext::EagerContext(
     const SessionOptions& opts,
@@ -204,10 +211,10 @@ EagerContext::EagerContext(
         MaybeCreateNcclCommunicator(opts.config)));
   }
 
-  // Initialization of local_rendezvous_table_ needs to happen before the
+  // Initialization of local_rendezvous_cache_ needs to happen before the
   // initialization of global_rendezvous_for_functions_ because the latter
   // depends on the former.
-  local_rendezvous_table_ = std::make_unique<LocalRendezvousTable>();
+  local_rendezvous_cache_ = std::make_unique<LocalRendezvousCache>();
   ResetGlobalRendezvousForFunction();
 }
 
@@ -273,10 +280,13 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr) {
   Rendezvous::Factory rendezvous_factory = CreateRendezvousFactory();
+  const tensorflow::SessionMetadata* session_metadata = nullptr;
+  if (opts_.config.experimental().has_session_metadata()) {
+    session_metadata = &opts_.config.experimental().session_metadata();
+  }
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-      thread_pool, cluster_flr,
-      /*session_metadata=*/nullptr, std::move(rendezvous_factory),
+      thread_pool, cluster_flr, session_metadata, std::move(rendezvous_factory),
       StatsPublisherInterface::GetStatsPublisherFactory()));
 }
 
@@ -685,7 +695,7 @@ EagerContext::~EagerContext() {
   // Currently there are 3 cases in which a rendezvous instances is created:
   // (1). Created through a rendezvous_creator passed to EagerContext.
   // (2). Created through rendezvous_mgr.
-  // (3). Created within EagerContext using LocalRendezvousTable.
+  // (3). Created within EagerContext using LocalRendezvousCache.
   //
   // Currently case-(3) is taken care of automatically when an EagerContext
   // instance is deleted. The following code takes care of case-(2). Case-(1)
@@ -716,6 +726,11 @@ Status EagerContext::FindFunctionOpData(
 
 const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
+}
+
+core::RefCountPtr<FunctionRecord> EagerContext::FindRecord(
+    const string& name) const {
+  return func_lib_def_.FindRecord(name);
 }
 
 std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
@@ -886,6 +901,42 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return OkStatus();
 }
 
+Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
+  // Only client context can remove function on remote worker context.
+  if (!remote_device_manager_.Owned()) {
+    return OkStatus();
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  auto request = std::make_shared<eager::EnqueueRequest>();
+  request->set_context_id(GetContextId());
+
+  eager::RemoveFunctionOp* remove_function =
+      request->add_queue()->mutable_remove_function();
+  *remove_function->mutable_function_name() = function_name;
+
+  auto remote_contexts = GetRemoteContexts();
+  for (const auto& target : remote_contexts) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
+
+    auto response = std::make_shared<eager::EnqueueResponse>();
+    eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
+        /*call_opts=*/nullptr, request.get(), response.get(),
+        [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to remove function remotely due to "
+                       << status.error_message()
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
+          }
+        });
+  }
+#endif  // !IS_MOBILE_PLATFORM
+  return OkStatus();
+}
+
 Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
@@ -946,6 +997,12 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
                                     const bool add_to_local_only,
                                     const StackTracesMap& stack_traces) {
+  auto fdefs_to_add = small_constants_optimizer::FoldInputTensors(fdef);
+  for (const auto& fdef_to_add : fdefs_to_add) {
+    TF_RETURN_IF_ERROR(
+        AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
+  }
+
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -996,25 +1053,78 @@ std::vector<string> EagerContext::ListFunctionNames() {
   return func_lib_def_.ListFunctionNames();
 }
 
+Status EagerContext::AddRemoveFunctionNotifier(const string& func,
+                                               std::function<void()> notifier) {
+  mutex_lock l(remove_function_notifiers_mu_);
+  auto iter = remove_function_notifiers_.find(func);
+  if (iter != remove_function_notifiers_.end()) {
+    iter->second.push_back(notifier);
+  } else {
+    std::vector<std::function<void()>> notifiers = {notifier};
+    remove_function_notifiers_.insert({func, notifiers});
+  }
+  return OkStatus();
+}
+
+tensorflow::ImmediateExecutionContext::CacheStats
+EagerContext::GetCacheStats() {
+  CacheStats stats;
+  {
+    mutex_lock l(cache_mu_);
+    stats.kernel_cache_size = kernel_cache_.size();
+    for (const auto& iter : registered_functions_) {
+      stats.func_kernel_cache_entries[iter.first] =
+          iter.second->cached_kernel_keys->size();
+    }
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    stats.device_cache_size = device_cache_.size();
+  }
+  {
+    stats.local_rendezvous_cache_active_size =
+        local_rendezvous_cache_->GetActiveStepIds().size();
+  }
+  return stats;
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
-  mutex_lock l(cache_mu_);
-  auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
-  if (registered_function == nullptr) {
-    return errors::InvalidArgument("Tried to remove non-existent function '",
-                                   func, "'.");
-  }
-  bool is_last_ref = registered_function->RefCountIsOne();
-  if (is_last_ref) {
-    for (auto& key : *registered_function->cached_kernel_keys) {
-      kernel_cache_.erase(key);
+  std::vector<std::function<void()>> notifiers;
+  bool is_last_ref = false;
+  {
+    mutex_lock l(cache_mu_);
+    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+    if (registered_function == nullptr) {
+      return errors::InvalidArgument("Tried to remove non-existent function '",
+                                     func, "'.");
     }
-    registered_functions_.erase(func);
+    is_last_ref = registered_function->RefCountIsOne();
+    if (is_last_ref) {
+      for (auto& key : *registered_function->cached_kernel_keys) {
+        kernel_cache_.erase(key);
+      }
+      registered_functions_.erase(func);
+    }
+    registered_function->Unref();
+    if (is_last_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+
+      mutex_lock l(remove_function_notifiers_mu_);
+      auto iter = remove_function_notifiers_.find(func);
+      if (iter != remove_function_notifiers_.end()) {
+        notifiers = std::move(iter->second);
+      }
+      remove_function_notifiers_.erase(func);
+    }
   }
-  registered_function->Unref();
+  // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
+  // will cause error.
   if (is_last_ref) {
-    // TODO(fishx): Remove remote function as well.
-    return func_lib_def_.RemoveFunction(func);
+    for (const auto& notifier : notifiers) {
+      notifier();
+    }
+    return MaybeRemoveFunctionRemotely(func);
   }
   return OkStatus();
 }
@@ -1100,9 +1210,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
+
   // The kernel name can be either a primitive op or a function.
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
+    VLOG(5) << "Cached key size of kernel " << kernel->name()
+            << " is: " << registered_function->cached_kernel_keys->size();
   }
 }
 
@@ -1235,7 +1348,7 @@ void EagerContext::ClearResourceContainer(const string& name) {
 Status EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
   mutex_lock l(global_rendezvous_mu_);
   IntraProcessRendezvous* rendezvous =
-      local_rendezvous_table_->Find(kGlobalRendezvousId);
+      local_rendezvous_cache_->Find(kGlobalRendezvousId).release();
   if (rendezvous == nullptr) return OkStatus();
   Status s = rendezvous->GetLocalRendezvousStatus();
   rendezvous->Unref();
@@ -1246,7 +1359,7 @@ void EagerContext::UpdateGlobalRendezvousDeviceManager(
     tensorflow::DeviceMgr* device_mgr) {
   mutex_lock l(global_rendezvous_mu_);
   IntraProcessRendezvous* rendezvous =
-      local_rendezvous_table_->Find(kGlobalRendezvousId);
+      local_rendezvous_cache_->Find(kGlobalRendezvousId).release();
   if (rendezvous == nullptr) return;
   rendezvous->UpdateDeviceManager(device_mgr);
   rendezvous->Unref();

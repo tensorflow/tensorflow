@@ -22,8 +22,8 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
@@ -420,7 +420,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
 }
 
 // Sanity check for the state-ful NNAPI delegate using TfLiteBufferHandle.
-TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
+TEST(NNAPIDelegate, DISABLED_StatefulDelegateWithBufferHandles) {
   // Skip the test if Android specific functions could not be found.
   if (!NnApiImplementation()->ASharedMemory_create ||
       !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
@@ -5653,7 +5653,7 @@ TEST(NNAPIDelegate, CustomFloorVendorExtension) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.0, 1.0, 2.0}));
 }
 
-TEST(NNAPIDelegate, CustomFloorVendorExtensionDynamic) {
+TEST(NNAPIDelegate, DISABLED_CustomFloorVendorExtensionDynamic) {
   // Models with dynamic dimensions and vendor plugin is not supported before
   // NNAPI 1.2 (API level 29).
   if (NnApiImplementation()->android_sdk_version <

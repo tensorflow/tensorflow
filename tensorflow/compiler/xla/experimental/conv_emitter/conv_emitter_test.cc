@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
@@ -33,6 +32,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -63,18 +63,14 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   mlir_module->push_back(function);
   (void)mlir_module->verifyInvariants();
 
-  std::string mlir_text;
-  {
-    llvm::raw_string_ostream strstream(mlir_text);
-    function.print(strstream);
-  }
+  std::string mlir_text = llvm_ir::DumpToString(function);
   VLOG(1) << mlir_text;
 
   {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
     pm.addPass(mlir::createConvertSCFToCFPass());
-    pm.addPass(mlir::createMemRefToLLVMConversionPass());
+    pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }

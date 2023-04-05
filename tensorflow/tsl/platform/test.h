@@ -73,6 +73,10 @@ std::string TensorFlowSrcRoot();
 // dependencies.
 std::string XlaSrcRoot();
 
+// Returns the path to TSL in the directory containing data
+// dependencies.
+std::string TslSrcRoot();
+
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.
 int RandomSeed();
@@ -80,6 +84,13 @@ int RandomSeed();
 // Returns an unused port number, for use in multi-process testing.
 // NOTE: This function is not thread-safe.
 int PickUnusedPortOrDie();
+
+// Constant which is false internally and true in open source.
+#ifdef PLATFORM_GOOGLE
+inline constexpr bool kIsOpenSource = false;
+#else
+inline constexpr bool kIsOpenSource = true;
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace testing
 }  // namespace tsl

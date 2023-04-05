@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <stdexcept>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
@@ -37,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -177,9 +180,9 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   // Create a global for the module blob.
   SmallString<128> name_buffer(kernel_module.getName());
   name_buffer.append("_blob");
-  Value module_blob =
-      LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
-                               binary_attr.getValue(), LLVM::Linkage::Internal);
+  Value module_blob = LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
+                                               binary_attr.getValue(),
+                                               LLVM::Linkage::Internal, false);
 
   // Make sure the trailing zero is included in the constant.
   auto kernel_name = launch_op.getKernelName().getValue();
@@ -191,9 +194,9 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   auto kernel_name_global_name =
       (kernel_module.getName() + "_" + kernel_name + "_kernel_name")
           .toStringRef(kernel_name_global_name_buffer);
-  auto kernel_name_global =
-      LLVM::createGlobalString(loc, rewriter, kernel_name_global_name,
-                               kernel_name_buffer, LLVM::Linkage::Internal);
+  auto kernel_name_global = LLVM::createGlobalString(
+      loc, rewriter, kernel_name_global_name, kernel_name_buffer,
+      LLVM::Linkage::Internal, false);
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
@@ -257,7 +260,10 @@ class TFKernelToLLVMPass
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    LLVMTypeConverter type_converter(ctx);
+    // TODO(b/267828330): Migrate to opaque pointers.
+    LowerToLLVMOptions options(&getContext());
+    options.useOpaquePointers = false;
+    LLVMTypeConverter type_converter(ctx, options);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
@@ -270,13 +276,13 @@ class TFKernelToLLVMPass
     arith::populateArithExpandOpsPatterns(patterns);
     memref::populateExpandOpsPatterns(patterns);
     arith::populateArithToLLVMConversionPatterns(type_converter, patterns);
-    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
+    populateFinalizeMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateFuncToLLVMConversionPatterns(type_converter, patterns);
     cf::populateControlFlowToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     populateVectorToLLVMConversionPatterns(type_converter, patterns);
-    populateMathToLibmConversionPatterns(patterns, 0);
+    populateMathToLibmConversionPatterns(patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.add<ConvertLaunchFuncOpToTfRuntimeCallPattern>(type_converter,

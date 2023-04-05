@@ -8,12 +8,14 @@ TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"
 TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"
 GPU_2DEVS_BACKEND = "2gpus"
 PATHWAYS = "pw"
+PATHWAYS_V3_DONUT_BACKEND = "pw_v3_2x2"
 # LINT.ThenChange(
 #     python/tests/test_backend_name.py:backend_name,
 #     python/tests/test_backend_name.oss.py:backend_name
 # )
 
 # FIXME(feyu): Gradually increase the coverage of OSS tests.
+# LINT.IfChange
 def _get_configurations(
         disable,
         enable,
@@ -26,11 +28,43 @@ def _get_configurations(
     disabled_tags = ["manual", "disabled"]
     disabled_tfrt_configs = [d + "_tfrt" for d in disable_tfrt]
     disabled_backends = [backend for backend in disable if backend not in enable]
+
+    backend_variant_deps = {
+        "gpu": [],
+        "tpu": [
+        ],
+        TPU_V3_DONUT_BACKEND: [
+        ],
+        TPU_V4_DONUT_BACKEND: [
+        ],
+        PATHWAYS: [
+        ],
+        PATHWAYS_V3_DONUT_BACKEND: [
+        ],
+    }
     configurations = [
         dict(suffix = "cpu", backend = "cpu", tags = [], flags = [], env = {}, deps = []),
+        dict(
+            suffix = "gpu",
+            backend = "gpu",
+            tags = ["requires-gpu", "gpu"],
+            flags = [],
+            env = {},
+            deps = [],
+        ),
     ]
-
-    backend_variant_deps = {}
+    if GPU_2DEVS_BACKEND in additional_backends:
+        configurations = configurations + [
+            dict(
+                suffix = GPU_2DEVS_BACKEND,
+                backend = GPU_2DEVS_BACKEND,
+                tags = ["requires-gpu:2", "gpu"],
+                flags = [],
+                env = {
+                },
+                deps = [],
+            ),
+        ]
 
     # Post processing configurations.
     for config in configurations:
@@ -47,6 +81,8 @@ def _get_configurations(
         )
         config["shard_count"] = shard_count.get(config["backend"], None) if shard_count else None
     return configurations
+
+# LINT.ThenChange(build_defs.bzl)
 
 def dtensor_test(
         name,

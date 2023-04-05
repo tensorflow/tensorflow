@@ -8,7 +8,7 @@ can be integrated with performance monitoring tools.
 
 ```
 bazel run -c opt --cpu=haswell \
-  :cwise_op_tanh_benchmark -- --benchmarks="f32/10k"
+  :cwise_op_tanh_benchmark -- --benchmark_filter="f32/10k"
 ```
 
 ## Using perf and pprof with these benchmarks
@@ -17,7 +17,7 @@ bazel run -c opt --cpu=haswell \
 ```
 perf record -k 1 -o /tmp/perf.data --        \
   bazel run -c opt --cpu=haswell -copt=-gmlt \
-  :cwise_op_tanh_benchmark -- --benchmarks="f32/10k"
+  :cwise_op_tanh_benchmark -- --benchmark_filter="f32/10k"
 ```
 
 2. Inject data from the JIT compiled functions
@@ -45,7 +45,7 @@ pprof -flame -nodecount=10000 /tmp/perf.data.jit
 
 ```
 benchy                                                                        \
-  --reference=${reference} --cpu=haswell --runs=20 --benchmarks=all           \
+  --reference=${reference} --cpu=haswell --runs=20 --benchmark_filter=all     \
   --perflab --borg_constraints="platform_family_genus_cpu=indus-skylake-2000" \
   third_party/tensorflow/compiler/mlir/tfrt/benchmarks:cwise_op_tanh_benchmark
 ```

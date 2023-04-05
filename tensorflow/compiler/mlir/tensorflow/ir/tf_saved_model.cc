@@ -63,10 +63,13 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
 
 LogicalResult GlobalTensorOp::verify() {
   GlobalTensorOp global_tensor = *this;
-  if (failed(VerifyTensorTypesCompatible(global_tensor.getType(),
-                                         global_tensor.getValue().getType()))) {
-    return global_tensor.emitError() << "'type' and 'value' attributes should "
-                                        "have compatible tensor types";
+  if (global_tensor.getValue()) {
+    if (failed(VerifyTensorTypesCompatible(
+            global_tensor.getType(), global_tensor.getValue()->getType()))) {
+      return global_tensor.emitError()
+             << "'type' and 'value' attributes should "
+                "have compatible tensor types";
+    }
   }
   if (!global_tensor.getIsMutable()) {
     if (!global_tensor.getType().cast<TensorType>().hasStaticShape()) {
@@ -591,6 +594,39 @@ SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
   }
 
   return results;
+}
+
+SmallVector<func::FuncOp, 2> GetInitializerFunctions(ModuleOp module_op) {
+  SessionInitializerOp session_initializer_op =
+      GetSessionInitializerOp(module_op);
+  if (!session_initializer_op) return {};
+
+  SymbolTable symbol_table(module_op);
+
+  SmallVector<func::FuncOp, 2> init_func_ops;
+  for (auto init_func_sym : session_initializer_op.getInitializers()
+                                .getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_func_sym);
+    // `init_func_op` is guaranteed to be not null in a valid module.
+    init_func_ops.push_back(init_func_op);
+  }
+
+  return init_func_ops;
+}
+
+func::FuncOp GetInitializerFunction(ModuleOp module_op,
+                                    const StringRef initializer_type) {
+  SmallVector<func::FuncOp, 2> init_func_ops =
+      GetInitializerFunctions(module_op);
+
+  auto init_func_itr = absl::c_find_if(
+      init_func_ops, [initializer_type](const func::FuncOp init_func_op) {
+        const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+            kTfSavedModelInitializerTypeAttr);
+        return init_type_attr && init_type_attr == initializer_type;
+      });
+
+  return init_func_itr == init_func_ops.end() ? nullptr : *init_func_itr;
 }
 
 }  // namespace tf_saved_model

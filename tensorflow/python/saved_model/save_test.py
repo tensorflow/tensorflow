@@ -41,7 +41,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -107,7 +107,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     def case_fn(x):
       branch_index = constant_op.constant(1)
       branches = [lambda: x, lambda: x + 1]
-      case_out = control_flow_ops.switch_case(branch_index, branches)
+      case_out = control_flow_switch_case.switch_case(branch_index, branches)
       return case_out
 
     root.f = def_function.function(
@@ -928,9 +928,11 @@ class SavingOptionsTest(test.TestCase):
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    options = save_options.SaveOptions(function_aliases={
-        "my_func": root.f,
-    })
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": root.f,
+        }
+    )
     save.save(root, save_dir, root.f, options=options)
     function_cache = root.f._variable_creation_fn._list_all_concrete_functions()
     function_aliases = loader_impl.parse_saved_model(
@@ -938,6 +940,39 @@ class SavingOptionsTest(test.TestCase):
     self.assertLen(function_cache, 1)
     self.assertEqual(function_cache[0].name.decode("utf-8"),
                      list(function_aliases.keys())[0])
+
+  def test_concrete_function_aliases(self):
+    root = autotrackable.AutoTrackable()
+    f = def_function.function(
+        lambda x: 2.0 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    ).get_concrete_function()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    save.save(root, save_dir, f, options=options)
+    function_aliases = loader_impl.parse_saved_model(
+        save_dir).meta_graphs[0].meta_info_def.function_aliases
+    self.assertEqual(f.name.decode("utf-8"),
+                     list(function_aliases.keys())[0])
+
+  def test_function_aliases_incorrect_type(self):
+    root = autotrackable.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    f = lambda x: 2.0 * x
+    root.f = def_function.function(
+        f, input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    with self.assertRaisesRegex(TypeError, "Unsupported type"):
+      save.save(root, save_dir, root.f, options=options)
 
   def test_accepts_io_device(self):
     options = save_options.SaveOptions()

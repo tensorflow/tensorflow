@@ -28,22 +28,22 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, ReLUNoClipNoAlpha) {
   auto status = ReLUNoClipNoAlphaTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ReLUClip) {
   auto status = ReLUClipTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ReLUAlpha) {
   auto status = ReLUAlphaTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ReLUAlphaClip) {
   auto status = ReLUAlphaClipTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

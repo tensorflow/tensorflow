@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace mlir {
@@ -91,21 +91,22 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
-// Adds the list of ops that are supported through dynamic padder using op by op
-// fallback to the TF2XLA bridge.
-// TODO(b/168036682): Remove this once ops are supported using dynamic padder
-// on MLIR bridge.
+// Adds the list of ops that are only supported in the old bridge.
+// TODO(b/168036682): Remove bounded dynamism ops now that MLIR bridge supports
+// bounded dynamism.
 // TODO(b/257574556): Remove the need for this manual list by making use of old
 // bridge phase 2 op list.
-void AddSupportedOpsUsingDynamicPadder(
-    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
+void AddOldBridgeOnlyOps(MLIRContext* context,
+                         llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
       OperationName(TF::DynamicPartitionOp::getOperationName(), context),
+      OperationName(TF::OutfeedEnqueueOp::getOperationName(), context),
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
-      OperationName(TF::XlaSetBoundOp::getOperationName(), context),
       OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
                     context),
+      OperationName(TF::XlaSpmdFullToShardShapeOp::getOperationName(), context),
+      OperationName(TF::XlaSpmdShardToFullShapeOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -419,7 +420,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
-  AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
+  AddOldBridgeOnlyOps(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 

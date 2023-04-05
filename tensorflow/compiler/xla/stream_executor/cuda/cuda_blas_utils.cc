@@ -31,10 +31,10 @@ const char* ToString(cublasStatus_t status) {
 #endif  // CUDA_VERSION >= 11050
 }
 
-port::Status ToStatus(cublasStatus_t status, const char* prefix) {
+tsl::Status ToStatus(cublasStatus_t status, const char* prefix) {
   if (status != CUBLAS_STATUS_SUCCESS) {
-    return port::Status(port::error::INTERNAL,
-                        absl::StrCat(prefix, ": ", ToString(status)));
+    return tsl::Status(absl::StatusCode::kInternal,
+                       absl::StrCat(prefix, ": ", ToString(status)));
   }
   return tsl::OkStatus();
 }

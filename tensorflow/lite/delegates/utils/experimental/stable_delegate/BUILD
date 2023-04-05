@@ -22,6 +22,10 @@ cc_library_with_tflite(
     name = "delegate_loader",
     srcs = ["delegate_loader.cc"],
     hdrs = ["delegate_loader.h"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
     tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
     deps = [
@@ -31,8 +35,9 @@ cc_library_with_tflite(
 )
 
 cc_library_with_tflite(
-    name = "stable_delegate_inferface",
+    name = "stable_delegate_interface",
     hdrs = ["stable_delegate_interface.h"],
+    generate_opaque_delegate_target = True,
     tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
 )
@@ -56,7 +61,7 @@ tflite_cc_shared_object(
     per_os_targets = True,
     visibility = ["//visibility:public"],
     deps = [
-        ":stable_delegate_inferface",
+        ":stable_delegate_interface",
         ":version_script.lds",
         "//tensorflow/lite/core/shims:c_api",
         "//tensorflow/lite/core/shims:xnnpack_plugin",

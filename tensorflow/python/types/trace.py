@@ -26,9 +26,12 @@ traced (a process known as retracing).
 """
 
 import abc
-from typing import Optional, Sequence, Any
+from typing import Any, List, Optional, Sequence
+
 from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
+
+from tensorflow.python.types import core
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -158,7 +161,7 @@ class TraceType(metaclass=abc.ABCMeta):
     """
 
   @abc.abstractmethod
-  def placeholder_value(self, placeholder_context=None) -> Any:
+  def placeholder_value(self, placeholder_context) -> Any:
     """Creates a placeholder for tracing.
 
     tf.funcion traces with the placeholder value rather than the actual value.
@@ -174,7 +177,7 @@ class TraceType(metaclass=abc.ABCMeta):
 
     ```python
     class FruitTraceType:
-      def placeholder_value(self, placeholder_context=None):
+      def placeholder_value(self, placeholder_context):
         return Fruit()
     ```
     instructs tf.function to trace with the `Fruit()` objects
@@ -195,6 +198,40 @@ class TraceType(metaclass=abc.ABCMeta):
     ```
     """
 
+  @doc_controls.do_not_doc_inheritable
+  def _to_tensors(self, value) -> List[core.Tensor]:
+    """Breaks down a value of this type into Tensors.
+
+    Args:
+      value: An input value belonging to this TraceType
+
+    Returns:
+      List of Tensors.
+    """
+    del value
+    return []
+
+  @doc_controls.do_not_doc_inheritable
+  def _cast(self, value, casting_context) -> Any:  # pylint:disable=unused-argument
+    """Cast value to this type.
+
+    Args:
+      value: An input value belonging to this TraceType.
+      casting_context: A context reserved for future usage such as to determine
+        casting rules.
+
+    Returns:
+      The value casted to this TraceType.
+
+    Raises:
+      AssertionError: When _cast is not overloaded in subclass,
+        the value is returned directly, and it should be the same to
+        self.placeholder_value().
+    """
+    assert value == self.placeholder_value(
+        PlaceholderContext()), f"Can not cast {value!r} to type {self!r}"
+    return value
+
   @abc.abstractmethod
   def __hash__(self) -> int:
     pass
@@ -214,12 +251,14 @@ class TracingContext(metaclass=abc.ABCMeta):
   __tf_tracing_type__ calls while constructing the TraceType for a particular
   set of objects.
   """
-  pass
 
 
-class PlaceholderContext(metaclass=abc.ABCMeta):
+class PlaceholderContext():
   """Contains context information for generating placeholders within a scope."""
-  pass
+
+
+class CastContext():
+  """Contains context info and rules for casting values to a TypeSpec."""
 
 
 @runtime_checkable

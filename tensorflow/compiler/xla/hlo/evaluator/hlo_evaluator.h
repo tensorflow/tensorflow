@@ -252,6 +252,22 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status EvaluateParameterFromCallerArgument(HloInstruction* parameter,
                                              const ShapeIndex& shape_index);
 
+  // Helper method to extract a list of int64_t from evaluated instruction for
+  // start_indices for DynamicSlice and DynamicUpdateSlice.
+  std::vector<int64_t> GetS64Indices(
+      absl::Span<HloInstruction* const> start_indices);
+
+  // Creates a vector of multipliers which can be used to create a linear index
+  // into shape.
+  //
+  // Given the multidimensional index {i1, ..., iN} and
+  // M = MakeDimMultipliers(shape), the corresponding linear index LI is simply
+  //
+  //   LI = i1 * M[1] + i2 * M[2] + ... + iN * M[N].
+  //
+  // This lets you calculate LI given the multidimensional indices in any order.
+  static DimensionVector MakeDimMultipliers(const Shape& shape);
+
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
@@ -277,6 +293,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // HandleIsFinite where boolean is always returned.
   //
   Status HandleBitcast(HloInstruction* bitcast) override;
+
+  Status HandleBitcastConvert(HloInstruction* convert) override;
 
   Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
 
@@ -322,7 +340,13 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleConditional(HloInstruction* conditional) override;
 
+  Status HandleConvert(HloInstruction* convert) override;
+
   Status HandleCall(HloInstruction* call) override;
+
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+
+  Status HandleDynamicUpdateSlice(HloInstruction* dus) override;
 
   Status HandleFusion(HloInstruction* fusion) override;
 
@@ -336,7 +360,15 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
+  Status HandleReverse(HloInstruction* reverse) override;
+
+  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
+
+  Status HandleSlice(HloInstruction* slice) override;
+
   Status HandleSort(HloInstruction* sort) override;
+
+  Status HandleStochasticConvert(HloInstruction* stochastic_convert) override;
 
   Status HandleReal(HloInstruction* real) override;
 
@@ -347,6 +379,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleReduce(HloInstruction* reduce) override;
 
   Status HandleReduceWindow(HloInstruction* hlo) override;
+
+  Status HandleMap(HloInstruction* map) override;
 
   Status HandleCustomCall(HloInstruction* custom_call) override;
 
@@ -447,7 +481,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       HloInstruction* instruction,
       const std::function<ReturnT(NativeT)>& unary_op,
       const Literal& operand_literal) {
-    const auto shape = instruction->shape();
+    const Shape& shape = instruction->shape();
     const auto* operand = instruction->operand(0);
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 

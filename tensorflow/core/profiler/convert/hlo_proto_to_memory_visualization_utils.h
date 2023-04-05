@@ -36,8 +36,7 @@ constexpr int kSmallBufferSize = 16 * 1024;
 // By default the memory color is 0, which is HBM.
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const xla::HloProto& hlo_proto,
-    int64_t small_buffer_size = kSmallBufferSize,
-    int64_t heap_simulator_trace_id = -1, int64_t memory_color = 0);
+    int64_t small_buffer_size = kSmallBufferSize, int64_t memory_color = 0);
 
 }  // namespace profiler
 }  // namespace tensorflow

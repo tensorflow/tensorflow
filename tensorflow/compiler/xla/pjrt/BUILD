@@ -135,6 +135,33 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_api_test",
+    srcs = ["pjrt_api_test.cc"],
+    deps = [
+        ":pjrt_api",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "pjrt_client",
     srcs = ["pjrt_client.cc"],
     hdrs = ["pjrt_client.h"],
@@ -151,6 +178,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/base",
@@ -312,7 +340,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:env",
@@ -460,6 +487,7 @@ cc_library(
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/runtime:cpu_event",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -497,12 +525,14 @@ cc_library(
         ":utils",
         ":worker_thread",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/runtime:cpu_event",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla/service:dump",
@@ -534,9 +564,13 @@ xla_cc_test(
     srcs = ["tfrt_cpu_pjrt_client_test.cc"],
     deps = [
         ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -613,7 +647,9 @@ cc_library(
     srcs = ["pjrt_c_api_client.cc"],
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
+        ":pjrt_api",
         ":pjrt_client",
+        ":pjrt_compiler",
         ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:shape_util",
@@ -622,14 +658,40 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
-        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:BytecodeWriter",
+    ],
+)
+
+cc_library(
+    name = "tf_pjrt_client",
+    srcs = ["tf_pjrt_client.cc"],
+    hdrs = ["tf_pjrt_client.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_future",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "tf_pjrt_client_test",
+    srcs = ["tf_pjrt_client_test.cc"],
+    deps = [
+        ":tf_pjrt_client",
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -663,3 +725,12 @@ tf_proto_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "compile_options_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":compile_options_proto"],
+# )
+# copybara:uncomment_end

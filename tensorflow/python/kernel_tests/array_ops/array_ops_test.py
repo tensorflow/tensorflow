@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for array_ops."""
 import re
+import sys
 import time
 import unittest
 
@@ -36,6 +37,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import init_ops
@@ -46,6 +48,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import test as test_lib
@@ -685,6 +688,9 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/265082239)
+      self.skipTest("Not working in Python 3.11")
     with context.eager_mode():
       v = variables.Variable([1., 2.])
       v[0]  # pylint: disable=pointless-statement
@@ -1236,6 +1242,7 @@ class StridedSliceAssignChecker(object):
     if self.tensor_type.is_complex:
       value -= 1j * value
 
+    config.set_soft_device_placement(True)
     with test_util.device(use_gpu=True):
       if self._use_resource:
         var = resource_variable_ops.ResourceVariable(self.x)
@@ -1329,7 +1336,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
     too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
-    v = variables.VariableV1(init_val)
+    v = variable_v1.VariableV1(init_val)
     with self.assertRaises((ValueError, TypeError)):
       self.evaluate(v[:].assign(too_small_val))
     with self.assertRaises((ValueError, TypeError)):
@@ -1564,7 +1571,7 @@ class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
   def testConcatSlice(self):
     r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
     r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
-    c = array_ops.stack([r1, r2])
+    c = array_ops_stack.stack([r1, r2])
     s = array_ops.strided_slice(c, [1], [2])
     self.evaluate(test_ops.resource_create_op(s))
     with self.assertRaises(errors.AlreadyExistsError):
@@ -1579,7 +1586,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
 
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
-        self.assertTrue(device in y.device.lower())
+        self.assertIn(device, y.device.lower())
 
       with test_util.force_gpu():
         a = constant_op.constant([[2], [3]], dtype=dtypes.float32)
@@ -2172,6 +2179,16 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
       return array_ops.searchsorted(x, y)
 
     _ = g.get_concrete_function()
+
+  def testInvalidValuesLowerBound(self):
+    arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)
+    arg_0 = array_ops.identity(arg_0_tensor)
+    arg_1_tensor = random_ops.random_uniform([3], dtype=dtypes.float32)
+    arg_1 = array_ops.identity(arg_1_tensor)
+    arg_2 = dtypes.int32
+    arg_3 = False
+    with self.assertRaises(Exception):
+      gen_array_ops.lower_bound(arg_0, arg_1, arg_2, arg_3,)
 
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):

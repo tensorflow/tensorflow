@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
 
-
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -155,7 +154,6 @@ class ScatterUpdateOp : public OpKernel {
   }
 };
 
-
 #define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op) \
   REGISTER_KERNEL_BUILDER(Name(name)                                   \
                               .Device(DEVICE_##dev)                    \
@@ -205,9 +203,6 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_CPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ARITHMETIC_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_MINMAX_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_UPDATE_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

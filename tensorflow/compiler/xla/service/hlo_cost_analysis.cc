@@ -138,7 +138,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
       opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
       opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
-      opcode == HloOpcode::kAtan2) {
+      opcode == HloOpcode::kAtan2 || opcode == HloOpcode::kTan) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -780,6 +780,19 @@ int64_t HloCostAnalysis::GetConvolutionFlops(const HloInstruction* convolution,
     // Loop over each point in the kernel.
     for (int64_t kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
          ++kernel_idx) {
+      // Skip loop for trivial stride() and base_dilation()
+      if (window_dim.stride() == 1 && window_dim.base_dilation() == 1) {
+        const int64_t undilated_index_base =
+            window_dim.padding_low() -
+            kernel_idx * window_dim.window_dilation();
+        valid_position_count += std::max<int64_t>(
+            std::min<int64_t>(
+                input_limits[spatial_dimension] + undilated_index_base,
+                output_limits[spatial_dimension]) -
+                std::max<int64_t>(undilated_index_base, 0l),
+            0l);
+        continue;
+      }
       // Loop over each point in the output.
       for (int64_t output_idx = 0;
            output_idx < output_limits[spatial_dimension]; ++output_idx) {
@@ -1345,9 +1358,9 @@ StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
   auto visitor = CreateNestedCostAnalysis();
   visitor->ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
-  hlo_properties_.insert(
-      std::make_move_iterator(visitor->hlo_properties_.begin()),
-      std::make_move_iterator(visitor->hlo_properties_.end()));
+  for (auto& entry : visitor->hlo_properties_) {
+    hlo_properties_[entry.first] = std::move(entry.second);
+  }
   return visitor->properties();
 }
 

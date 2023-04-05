@@ -24,9 +24,10 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//tensorflow/compiler/mlir/tfrt/...",
+        "//tensorflow/compiler/mlir/...",
         "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
     ],
 )
@@ -65,6 +66,7 @@ cc_library(
     hdrs = ["op_kernel_runner.h"],
     features = tf_features_nolayering_check_if_ios(),
     visibility = [
+        ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
         # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",

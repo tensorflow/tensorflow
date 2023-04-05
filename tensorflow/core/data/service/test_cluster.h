@@ -63,9 +63,13 @@ class TestCluster {
   // the cluster. Initialize should be called only once.
   Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker();
+  Status AddWorker(std::optional<int> port = std::nullopt);
   // Returns the number of workers in this cluster.
   size_t NumWorkers() const { return workers_.size(); }
+  // Returns the port number of a worker.
+  int WorkerBoundPort(size_t worker_index) const {
+    return workers_[worker_index]->BoundPort();
+  }
   // Returns the number of active iterations.
   StatusOr<size_t> NumActiveIterations() const {
     return dispatcher_->NumActiveIterations();

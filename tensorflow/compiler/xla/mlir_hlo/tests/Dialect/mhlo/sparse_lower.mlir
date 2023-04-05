@@ -173,29 +173,6 @@ func.func @sparse_int_abs(%arg0: tensor<100xi64, #SV>) -> tensor<100xi64> {
   func.return %0 : tensor<100xi64>
 }
 
-// CHECK-LABEL: func @sparse_convert_complex(
-// CHECK-SAME:    %[[A:.*]]: tensor<16xcomplex<f64>, #{{.*}}>) -> tensor<16xcomplex<f32>, #{{.*}}> {
-// CHECK:         %[[T:.*]] = linalg.generic {{{.*}}} ins(%[[A]] : tensor<16xcomplex<f64>, #{{.*}}>) outs(%{{.*}} : tensor<16xcomplex<f32>, #{{.*}}>)
-// CHECK:           %[[U:.*]] = sparse_tensor.unary %{{.*}} : complex<f64> to complex<f32>
-// CHECK:           present = {
-// CHECK:             complex.re
-// CHECK:             arith.truncf
-// CHECK:             complex.im
-// CHECK:             arith.truncf
-// CHECK:             complex.create
-// CHECK:             sparse_tensor.yield %{{.*}} : complex<f32>
-// CHECK:           }
-// CHECK:           absent = {
-// CHECK:           }
-// CHECK:           linalg.yield %[[U]] : complex<f32>
-// CHECK:         } -> tensor<16xcomplex<f32>, #{{.*}}>
-// CHECK:         return %[[T]] : tensor<16xcomplex<f32>, #{{.*}}>
-// CHECK:       }
-func.func @sparse_convert_complex(%arg0: tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV> {
-  %0 = mhlo.convert %arg0 : (tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV>
-  return %0 : tensor<16xcomplex<f32>, #SV>
-}
-
 // CHECK-LABEL: func @sparse_reduce(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10xi64, #{{.*}}>) -> tensor<i64> {
 // CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10xi64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>)
@@ -248,20 +225,6 @@ func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
   func.return %0 : tensor<200x100xf64, #DCSR>
 }
 
-// CHECK-LABEL: func @sparse_conv_eltwise(
-// CHECK-SAME:    %[[ARG0:.*]]: tensor<2x3xf32, #{{.*}}>) -> tensor<2x3xi32, #{{.*}}> {
-// CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<2x3xi32, #{{.*}}>
-// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<2x3xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) outs(%[[OUT]] : tensor<2x3xi32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>)
-//
-// CHECK:           arith.fptosi
-// CHECK:         }
-// CHECK:         return %[[VAL]] : tensor<2x3xi32, #{{.*}}>
-// CHECK:       }
-func.func @sparse_conv_eltwise(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR> {
-  %0 = mhlo.convert %arg0 : (tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR>
-  return %0 : tensor<2x3xi32, #DCSR>
-}
-
 // CHECK-LABEL: func @sparse_expand(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<100xf64, #{{.*}}>) -> tensor<10x10xf64, #{{.*}}> {
 // CHECK:         %[[OUT:.*]] = tensor.expand_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<100xf64, #{{.*}}> into tensor<10x10xf64, #{{.*}}>
@@ -278,4 +241,25 @@ func.func @sparse_expand(%arg0: tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR>
 func.func @sparse_collapse(%arg0: tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV>
   return %0 : tensor<100xf64, #SV>
+}
+
+// CHECK-LABEL: func @sparse_tensor_dot(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<197x12x64xf32>,
+// CHECK-SAME:    %[[ARG1:.*]]: tensor<12x64x768xf32, #{{.*}}>) -> tensor<197x768xf32, #{{.*}}> {
+// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] :
+// CHECK:           arith.mulf
+// CHECK:           arith.addf
+// CHECK:         }
+// CHECK:         return %[[T0]] : tensor<197x768xf32, #{{.*}}>
+// CHECK:       }
+func.func @sparse_tensor_dot(%arg0: tensor<197x12x64xf32>,
+                             %arg1: tensor<12x64x768xf32, #ST>) -> tensor<197x768xf32, #CSR> {
+   %0 = "mhlo.dot_general"(%arg0, %arg1)
+       {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [1, 2],
+                                          rhs_contracting_dimensions = [0, 1]>,
+        precision_config = [#mhlo<precision DEFAULT>,
+                            #mhlo<precision DEFAULT>]}
+    : (tensor<197x12x64xf32>,
+       tensor<12x64x768xf32, #ST>) -> tensor<197x768xf32, #CSR>
+  return %0 : tensor<197x768xf32, #CSR>
 }

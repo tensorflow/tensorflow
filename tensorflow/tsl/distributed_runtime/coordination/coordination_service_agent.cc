@@ -67,7 +67,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   CoordinationServiceAgentImpl() = default;
   ~CoordinationServiceAgentImpl() override {
     Status s = Shutdown();
-    VLOG(10) << "Coordination agent dtor failed with status: " << s;
+    VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
   Status Initialize(Env* env, const std::string& job_name, int task_id,
                     const CoordinationServiceConfig& configs,
@@ -226,6 +226,7 @@ void CoordinationServiceAgentImpl::StopHeartbeat() {
 }
 
 Status CoordinationServiceAgentImpl::Connect() {
+  VLOG(3) << "Agent has started trying to Connect().";
   {
     mutex_lock l(state_mu_);
     if (state_ != CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
@@ -313,12 +314,14 @@ Status CoordinationServiceAgentImpl::Connect() {
           absl::Notification n;
           // Heartbeat RPC implementation automatically retries to tolerate
           // transient network failures.
+          VLOG(10) << "HeartbeatRequest: " << request.DebugString();
           leader_client_->HeartbeatAsync(&call_opts, &request, &response,
                                          [&](Status s) {
                                            status = s;
                                            n.Notify();
                                          });
           n.WaitForNotification();
+          VLOG(10) << "HeartbeatResponse: " << status;
           {
             mutex_lock l(heartbeat_thread_shutdown_mu_);
             // Ignore heartbeat errors and exit thread if shutting down. For
@@ -369,6 +372,7 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
   });
   n.WaitForNotification();
   if (!status.ok()) {
+    VLOG(3) << "WaitForAllTasksResponse: " << status;
     SetError(status);
     return status;
   }
@@ -428,13 +432,15 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
                                  /*is_reported_error=*/true));
   LOG(INFO) << "Reporting error to coordination service: " << error;
   ReportErrorToServiceRequest request;
-  request.set_error_code(error.code());
+  request.set_error_code(error.raw_code());
   request.set_error_message(error.error_message());
   *request.mutable_error_origin() = task_;
+  VLOG(5) << "ReportErrorToServiceRequest: " << request.DebugString();
   ReportErrorToServiceResponse response;
 
   absl::Notification n;
   leader_client_->ReportErrorToServiceAsync(&request, &response, [&](Status s) {
+    VLOG(5) << "ReportErrorToServiceResponse: " << s;
     if (!s.ok()) {
       LOG(ERROR) << "Encountered another error when reporting error to "
                     "coordination service: "
@@ -515,6 +521,7 @@ Status CoordinationServiceAgentImpl::Reset() {
 
   ResetTaskRequest request;
   *request.mutable_source_task() = task_;
+  VLOG(3) << "ResetTaskRequest: " << request.DebugString();
   ResetTaskResponse response;
 
   Status status;
@@ -524,6 +531,7 @@ Status CoordinationServiceAgentImpl::Reset() {
     n.Notify();
   });
   n.WaitForNotification();
+  VLOG(3) << "ResetTaskResponse: " << status;
   if (!status.ok()) {
     return status;
   }
@@ -560,6 +568,7 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   bool call_completed_before_timeout =
       n->WaitForNotificationWithTimeout(timeout);
   if (!call_completed_before_timeout) {
+    VLOG(3) << "GetKeyValue(" << key << ") timed out after " << timeout;
     return MakeCoordinationError(errors::DeadlineExceeded(absl::Substitute(
         "GetKeyValue() timed out with key: $0 and duration: $1", key,
         absl::FormatDuration(timeout))));
@@ -571,6 +580,7 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
     const std::string& key, StatusOrValueCallback done) {
   auto request = std::make_shared<GetKeyValueRequest>();
   request->set_key(key);
+  VLOG(3) << "GetKeyValueRequest: " << request->DebugString();
   auto response = std::make_shared<GetKeyValueResponse>();
   auto call_opts = std::make_shared<CallOptions>();
 
@@ -593,8 +603,10 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
         // Retrieve server response.
         if (!s.ok()) {
           done(s);
+          VLOG(3) << "GetKeyValueResponse: " << s;
         } else {
           done(response->kv().value());
+          VLOG(3) << "GetKeyValueResponse: " << response->DebugString();
         }
       });
   return call_opts;
@@ -606,17 +618,23 @@ StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
   StatusOr<std::string> result;
   TryGetKeyValueRequest request;
   request.set_key(key);
+  VLOG(3) << "TryGetKeyValueRequest: " << request.DebugString();
   TryGetKeyValueResponse response;
   leader_client_->TryGetKeyValueAsync(&request, &response,
                                       [&](const Status& s) {
                                         if (s.ok()) {
                                           result = response.kv().value();
+                                          VLOG(3) << "TryGetKeyValueResponse: "
+                                                  << result.value();
                                         } else {
                                           result = s;
+                                          VLOG(3) << "TryGetKeyValueResponse: "
+                                                  << s;
                                         }
                                         n.Notify();
                                       });
   n.WaitForNotification();
+
   return result;
 }
 
@@ -638,13 +656,16 @@ void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
     const std::string& key, StatusOrValueDirCallback done) {
   auto request = std::make_shared<GetKeyValueDirRequest>();
   request->set_directory_key(key);
+  VLOG(3) << "GetKeyValueDirRequest: " << request->DebugString();
   auto response = std::make_shared<GetKeyValueDirResponse>();
   leader_client_->GetKeyValueDirAsync(
       request.get(), response.get(),
       [request, response, done = std::move(done)](const Status& s) {
         if (!s.ok()) {
           done(s);
+          VLOG(3) << "GetKeyValueDirResponse: " << s;
         } else {
+          VLOG(3) << "GetKeyValueDirResponse: " << response->DebugString();
           std::vector<KeyValueEntry> kv_in_directory = {
               std::make_move_iterator(response->kv().begin()),
               std::make_move_iterator(response->kv().end())};
@@ -658,6 +679,7 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
   InsertKeyValueRequest request;
   request.mutable_kv()->set_key(key.data(), key.size());
   request.mutable_kv()->set_value(value.data(), value.size());
+  VLOG(3) << "InsertKeyValueRequest: " << request.DebugString();
   InsertKeyValueResponse response;
 
   Status status;
@@ -667,6 +689,7 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
     n.Notify();
   });
   n.WaitForNotification();
+  VLOG(3) << "InsertKeyValueResponse: " << status;
   return status;
 }
 
@@ -674,6 +697,7 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
   DeleteKeyValueRequest request;
   request.set_key(key);
   request.set_is_directory(true);
+  VLOG(3) << "DeleteKeyValueRequest: " << request.DebugString();
   DeleteKeyValueResponse response;
 
   Status status;
@@ -683,6 +707,7 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
     n.Notify();
   });
   n.WaitForNotification();
+  VLOG(3) << "DeleteKeyValueResponse " << status;
   return OkStatus();
 }
 
@@ -760,9 +785,13 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
   request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
   *request->mutable_source_task() = task_;
   *request->mutable_tasks() = {tasks.begin(), tasks.end()};
-  leader_client_->BarrierAsync(request.get(), response.get(),
-                               [request, response, done = std::move(done)](
-                                   const Status& s) { done(s); });
+  VLOG(3) << "WaitAtBarrierRequest: " << request->DebugString();
+  leader_client_->BarrierAsync(
+      request.get(), response.get(),
+      [request, response, done = std::move(done)](const Status& s) {
+        done(s);
+        VLOG(3) << "WaitAtBarrierResponse: " << s;
+      });
 }
 
 Status CoordinationServiceAgentImpl::CancelBarrier(
@@ -789,10 +818,12 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
   auto response = std::make_shared<CancelBarrierResponse>();
   request->set_barrier_id(barrier_id);
   *request->mutable_source_task() = task_;
+  VLOG(3) << "CancelBarrierRequest: " << request->DebugString();
   leader_client_->CancelBarrierAsync(
       request.get(), response.get(),
       [request, response, done = std::move(done)](const Status& s) {
         done(s);
+        VLOG(3) << "CancelBarrierResponse: " << s;
       });
 }
 

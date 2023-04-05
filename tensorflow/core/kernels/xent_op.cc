@@ -143,7 +143,6 @@ TF_CALL_bfloat16(REGISTER_CPU);
                           SoftmaxXentWithLogitsOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

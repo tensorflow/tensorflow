@@ -32,18 +32,20 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   // Lower operations with registered IR emitters to Gpu launches.
   pm.addPass(createConvertLmhloToGpuLaunchPass(thunk_sequence));
 
+  // Clean up IR before converting it to the runtime operations.
+  pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
+
   // Convert global memrefs corresponding to constant arguments.
   pm.addPass(createConvertMemrefGetGlobalToArgPass());
   pm.addPass(createSymbolDCEPass());  // Clean up unused global constants.
 
+  // Outline CUDA-Graph-compatible operations into graph capture functions.
+  pm.addPass(createOutlineCudaGraphsPass(opts.cuda_graph_level));
+
   // Lower all Gpu operations to the XLA Gpu runtime custom calls.
   pm.addPass(createConvertLmhloGpuToGpuRuntimePass());
   pm.addPass(createConvertLmhloToGpuRuntimePass());
-
-  if (opts.enable_cuda_graphs) {
-    pm.addPass(createConvertLaunchFuncToCudaGraphPass());
-  }
-
   pm.addPass(createConvertGpuToGpuRuntimePass());
 
   // Add performance tracing annotations.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -146,14 +147,17 @@ mlir::ArrayAttr ConvertDynamicParameterBindings(
 }
 
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
-    const absl::Span<const std::pair<int64_t, ShapeIndex>> prefetches,
+    const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
     mlir::Builder* builder) {
   llvm::SmallVector<mlir::Attribute, 4> shapes;
-  for (auto [parameter, index] : prefetches) {
+  for (auto [parameter, index, alt_memory_offset] : prefetches) {
     llvm::SmallVector<int64_t, 4> dims;
     for (auto dim : index) dims.push_back(dim);
+    std::optional<int64_t> offset =
+        alt_memory_offset ? std::optional<int64_t>(*alt_memory_offset)
+                          : std::nullopt;
     shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
-        builder->getContext(), parameter, dims));
+        builder->getContext(), parameter, dims, offset));
   }
 
   return mlir::ArrayAttr::get(builder->getContext(), shapes);

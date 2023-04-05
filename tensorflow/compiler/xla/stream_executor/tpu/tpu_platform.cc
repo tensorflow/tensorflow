@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 
+#include <map>
+#include <memory>
+#include <string>
+
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
@@ -28,9 +32,8 @@ namespace tpu {
 const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
-using Status = ::stream_executor::port::Status;
 template <typename T>
-using StatusOr = ::stream_executor::port::StatusOr<T>;
+using StatusOr = ::tsl::StatusOr<T>;
 
 TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
@@ -41,7 +44,7 @@ TpuPlatform* TpuPlatform::GetRegisteredPlatform() {
   return tpu_registered_platform;
 }
 
-Status TpuPlatform::Initialize(
+tsl::Status TpuPlatform::Initialize(
     const std::map<std::string, std::string>& platform_options) {
   StatusHelper status;
 
@@ -160,7 +163,7 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
   event_map_.erase(key);
 }
 
-Status TpuPlatform::TpusPerHost(int* tpus) {
+tsl::Status TpuPlatform::TpusPerHost(int* tpus) {
   TSL_Status* status = TSL_NewStatus();
 
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn ==
@@ -176,7 +179,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
   return ret_status;
 }
 
-Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
+tsl::Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
   TSL_Status* status = TSL_NewStatus();
 
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn ==
@@ -205,7 +208,7 @@ bool RegisterTpuPlatform() {
     tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
         tpu_registered_platform);
-    SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+    TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
   }

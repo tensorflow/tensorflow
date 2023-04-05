@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -54,6 +55,7 @@ constexpr const char kTestdataDir[] =
     "tensorflow/core/data/service/testdata";
 constexpr const char kInterleaveTextlineDatasetFile[] =
     "interleave_textline_dataset.pbtxt";
+constexpr const char kChooseFromDatasetsFile[] = "choose_from_datasets.pbtxt";
 
 NodeDef GetMapNode(absl::string_view name, absl::string_view input_node_name,
                    absl::string_view function_name) {
@@ -178,6 +180,28 @@ DatasetDef InfiniteDataset() {
             {{"T", DT_VARIANT}, {"index", 0}})},
       {});
   return dataset_def;
+}
+
+StatusOr<DatasetDef> ChooseFromDatasets() {
+  DatasetDef dataset;
+  std::string graph_file = io::JoinPath(kTestdataDir, kChooseFromDatasetsFile);
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), graph_file, dataset.mutable_graph()));
+  return dataset;
+}
+
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata() {
+  StructuredValue decoded_spec;
+  TensorShapeProto::Dim* dim =
+      decoded_spec.mutable_tensor_shape_value()->add_dim();
+  dim->set_size(1);
+  dim->set_name(absl::StrCat("dim"));
+
+  experimental::DistributedSnapshotMetadata metadata;
+  metadata.set_element_spec(decoded_spec.SerializeAsString());
+  metadata.set_compression("");
+  return metadata;
 }
 
 StatusOr<DatasetDef> InterleaveTextlineDataset(

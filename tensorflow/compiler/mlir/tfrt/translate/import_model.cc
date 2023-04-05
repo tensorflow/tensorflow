@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -77,7 +75,7 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
 
     // Visit each op in the function and find out referenced functions from the
     // attributes.
-    func_op->walk([&](mlir::SymbolUserOpInterface op) {
+    func_op->walk([&](mlir::Operation* op) {
       for (const mlir::NamedAttribute& attr : op->getAttrs()) {
         if (const auto sym =
                 attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
@@ -125,9 +123,12 @@ Status ConvertFunctionToBef(
   return tensorflow::CompileTFMLIRToBEF(options, module.get(), bef_buffer);
 }
 
-Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
-                          tfrt_stub::FallbackState* fallback_state) {
+Status ConvertTfMlirToRuntimeExecutable(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
+                             const tensorflow::TfrtPipelineOptions& options)>
+        emit_executable,
+    tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
@@ -206,7 +207,11 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
+  pass_options.tpu_allow_unpadded_batch = options.tpu_allow_unpadded_batch;
+  pass_options.sink_in_invariant_ops = options.sink_in_invariant_ops;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
+  pass_options.fuse_get_resource_ops_in_hoisting =
+      options.fuse_get_resource_ops_in_hoisting;
   pass_options.func_use_fallback_tensor = true;
   pass_options.enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
@@ -217,28 +222,43 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.upper_cost_threshold = options.upper_cost_threshold;
   pass_options.merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
-  Status status = tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
-  if (!status.ok()) {
-    return diag_handler.Combine(status);
-  }
 
-  if (mlir::failed(pm.run(module)))
-    return diag_handler.Combine(tensorflow::errors::Internal(
-        "failed to lower TF Dialect to CoreRT dialect."));
+  TF_RETURN_IF_ERROR(
+      tensorflow::CreateTFExecutorToTFPipeline(pm, pass_options));
+
+  auto status = emit_executable(pm, module, pass_options);
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tfrt_dialect", module);
   }
 
-  *bef_buffer =
-      tfrt::ConvertMLIRToBEF(module, /*disable_optional_sections=*/true);
-  if (bef_buffer->empty())
-    return diag_handler.Combine(
-        tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+  return status;
+}
 
-  bef_buffer->shrink_to_fit();
+Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
+                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::FallbackState* fallback_state) {
+  return ConvertTfMlirToRuntimeExecutable(
+      options, module,
+      [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
+                   const tensorflow::TfrtPipelineOptions& options) {
+        mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+        tensorflow::CreateTfToTfrtPipeline(pm, options);
 
-  return OkStatus();
+        if (mlir::failed(pm.run(module)))
+          return diag_handler.Combine(tensorflow::errors::Internal(
+              "failed to lower TF Dialect to CoreRT dialect."));
+
+        *bef_buffer =
+            tfrt::ConvertMLIRToBEF(module, /*disable_optional_sections=*/true);
+        if (bef_buffer->empty())
+          return diag_handler.Combine(
+              tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+
+        bef_buffer->shrink_to_fit();
+        return OkStatus();
+      },
+      fallback_state);
 }
 
 }  // namespace tensorflow

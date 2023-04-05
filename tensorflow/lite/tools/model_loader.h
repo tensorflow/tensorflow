@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 #define TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif  // !_WIN32
 
 #include <cstddef>
 #include <cstdlib>
@@ -24,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 
 namespace tflite {
 namespace tools {
@@ -32,7 +34,7 @@ namespace tools {
 // Class to load the Model.
 class ModelLoader {
  public:
-  virtual ~ModelLoader() {}
+  virtual ~ModelLoader() = default;
 
   // Return whether the model is loaded successfully.
   virtual bool Init();
@@ -65,6 +67,28 @@ class PathModelLoader : public ModelLoader {
 
  private:
   const std::string model_path_;
+};
+
+// Load the Model from buffer. The buffer is owned by the caller.
+class BufferModelLoader : public ModelLoader {
+ public:
+  BufferModelLoader(const char* caller_owned_buffer, size_t model_size)
+      : caller_owned_buffer_(caller_owned_buffer), model_size_(model_size) {}
+
+  // Move only.
+  BufferModelLoader(BufferModelLoader&&) = default;
+  BufferModelLoader& operator=(BufferModelLoader&&) = default;
+
+  ~BufferModelLoader() override = default;
+
+  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+
+ protected:
+  bool InitInternal() override;
+
+ private:
+  const char* caller_owned_buffer_ = nullptr;
+  size_t model_size_ = 0;
 };
 
 #ifndef _WIN32
@@ -138,10 +162,11 @@ class PipeModelLoader : public ModelLoader {
 // write_pipe when write_pipe >= 0, so it should be called at the read thread /
 // process. Returns null if path cannot be parsed.
 // 3) File path: Always return a PathModelLoader.
-// NOTE: This helper function is designed for creating the ModelLoader from
-// command line parameters. Prefer to use the ModelLoader constructors directly
-// when possible.
-std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path);
+// 4) Buffer path: path must be in the format of
+// "buffer:%buffer_handle%:%buffer_size%". This model loader does not own the
+// buffer_handle, and the caller needs to ensure the buffer_handle out-lives the
+// model loader.
+std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(const std::string& path);
 
 }  // namespace tools
 }  // namespace tflite

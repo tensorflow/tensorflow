@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -646,18 +648,19 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
 
-  // TODO(zhifengc): For now, we assume int32 and resources are always on host
-  // memory and other types are always on device memory. We should do type
+  // Originally, int32 and resources were always on host memory and other types
+  // are always on device memory. Now, having TFT_SHAPE_TENSOR full type
+  // information specifies host memory and unspecified or other full type
+  // information specifies device memory. Full type information can be set to
+  // match the orginal behavior, manually for manual placement or by using type
   // inference over function body to derive the correct input/output memory
   // types.
   MemoryTypeVector input_memory_types;
-  for (const auto& t : fbody->arg_types) {
-    input_memory_types.push_back(MTypeFromDType(t));
-  }
+  TF_RETURN_IF_ERROR(full_type::SetMemoryTypeForArgs(
+      fbody->arg_nodes, fbody->arg_types, input_memory_types));
   MemoryTypeVector output_memory_types;
-  for (const auto& t : fbody->ret_types) {
-    output_memory_types.push_back(MTypeFromDType(t));
-  }
+  TF_RETURN_IF_ERROR(full_type::SetMemoryTypeForRets(
+      fbody->ret_nodes, fbody->ret_types, output_memory_types));
 
   // Constructs a CallOp kernel for running the instantiated function.
   auto device_type = DeviceType(device_->attributes().device_type());
@@ -806,6 +809,9 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       return errors::NotFound("Function ", function_name, " is not defined.");
     }
     TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, lib_def, &fbody));
+    Int32FulltypePass int32_fulltype("FunctionLibraryRuntime::Instantiate");
+    TF_RETURN_IF_ERROR(
+        int32_fulltype.ProcessGraph(fbody->graph, /*ints_on_device=*/false));
   }
 
   LocalHandle local_handle;
@@ -1012,6 +1018,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
     Executor::Args* exec_args) {
   // Inherit the step_id from the caller.
   exec_args->step_id = run_opts.step_id;
+  exec_args->function_trace_id = random::New64();
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
@@ -1057,22 +1064,17 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   ExecutorArgsFromOptions(opts, frame, exec_args);
 
   std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
-  args_alloc_attrs.reserve(fbody->arg_types.size());
-  rets_alloc_attrs.reserve(fbody->ret_types.size());
-  // Note: Functions assume that int32's are always on host memory.
-  for (const auto& arg_type : fbody->arg_types) {
-    AllocatorAttributes arg_alloc_attrs;
-    if (MTypeFromDType(arg_type) == HOST_MEMORY) {
-      arg_alloc_attrs.set_on_host(true);
-    }
-    args_alloc_attrs.push_back(arg_alloc_attrs);
+  s = full_type::SetAllocAttrsForArgs(fbody->arg_nodes, fbody->arg_types,
+                                      args_alloc_attrs);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
-  for (const auto& ret_type : fbody->ret_types) {
-    AllocatorAttributes ret_alloc_attrs;
-    if (MTypeFromDType(ret_type) == HOST_MEMORY) {
-      ret_alloc_attrs.set_on_host(true);
-    }
-    rets_alloc_attrs.push_back(ret_alloc_attrs);
+  s = full_type::SetAllocAttrsForRets(fbody->ret_nodes, fbody->ret_types,
+                                      rets_alloc_attrs);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
 
   bool allow_dead_tensors = opts.allow_dead_tensors;
@@ -1177,17 +1179,17 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
-  profiler::TraceMeProducer activity(
-      // To TraceMeConsumers in ExecutorState::Process/Finish.
-      [&opts] {
-        return profiler::TraceMeEncode("FunctionRun",
-                                       {{"id", opts.step_id}, {"_r", 1}});
-      },
-      profiler::ContextType::kTfExecutor, opts.step_id,
-      profiler::TraceMeLevel::kInfo);
-
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
+
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
+      [&run_opts] {
+        return profiler::TraceMeEncode("FunctionRun",
+                                       {{"id", run_opts.step_id}, {"_r", 1}});
+      },
+      profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
+      profiler::TraceMeLevel::kInfo);
 
   bool allow_dead_tensors = run_opts.allow_dead_tensors;
   item->exec->RunAsync(
@@ -1250,17 +1252,17 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   DCHECK(run_opts.runner != nullptr);
 
+  Executor::Args exec_args;
+  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&opts] {
         return profiler::TraceMeEncode("FunctionRun",
                                        {{"id", opts.step_id}, {"_r", 1}});
       },
-      profiler::ContextType::kTfExecutor, opts.step_id,
+      profiler::ContextType::kTfExecutor, *exec_args.function_trace_id,
       profiler::TraceMeLevel::kInfo);
 
-  Executor::Args exec_args;
-  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
   item->exec->RunAsync(exec_args, std::move(done));
 }
 

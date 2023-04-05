@@ -263,28 +263,49 @@ func.func @one_group_multiple_branches() {
 
 // -----
 
+// Tests nested replica and parallel execute groups.
+func.func @nested_replica_and_parallel_execute_groups() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() : () -> ()
+    // CHECK-NEXT: %[[control_2:.*]] = tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {_parallel_execution_ids = "r1:1"} : () -> ()
+    // CHECK-NEXT: %[[control_3:.*]] = tf_executor.island(%[[control_2]]) wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {_parallel_execution_ids = "r1:1,p2:1"} : () -> ()
+    // CHECK-NEXT: %[[control_4:.*]] = tf_executor.island(%[[control_2]]) wraps "tf.D"()
+    tf_executor.island wraps "tf.D"() {_parallel_execution_ids = "r1:1,p2:2"} : () -> ()
+    // CHECK-NEXT: %[[control_5:.*]] = tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {_parallel_execution_ids = "r1:2"} : () -> ()
+    // CHECK-NEXT: %[[control_6:.*]] = tf_executor.island(%[[control_5]]) wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {_parallel_execution_ids = "r1:2,p3:1"} : () -> ()
+    // CHECK-NEXT: %[[control_7:.*]] = tf_executor.island(%[[control_5]]) wraps "tf.D"()
+    tf_executor.island wraps "tf.D"() {_parallel_execution_ids = "r1:2,p3:2"} : () -> ()
+    // CHECK-NEXT: tf_executor.fetch %[[control_3]], %[[control_4]], %[[control_6]], %[[control_7]] : !tf_executor.control, !tf_executor.control, !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
 // Tests mixed and nested groups and branches. In this case, side effect
 // analysis should report following dependencies
 // A -> B -> C -> D -> E -> fetch
 // and we expect following dependency chains after the pass
 // A -> B -> D -> fetch, C -> fetch, E -> fetch.
-// This is an example where the number of control inputs is not minimal, we
-// could remove `%[[control]]` from `tf.D` without changing dependency
-// constraints (A -> B -> D already implies A -> D).
-// See comment for function `UpdateAllControlDependencies`.
 func.func @mixed_groups_and_branches_nested() {
   tf_executor.graph {
     // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
     tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
-    // CHECK: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
+    // CHECK-NEXT: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
     tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:0,r1000:0"} : () -> ()
-    // CHECK: %[[control_3:.*]] =  tf_executor.island wraps "tf.C"()
+    // CHECK-NEXT: %[[control_3:.*]] =  tf_executor.island wraps "tf.C"()
     tf_executor.island wraps "tf.C"() {is_stateless = false, _parallel_execution_ids = "p0:1,r1000:0"} : () -> ()
-    // CHECK: %[[control_4:.*]] =  tf_executor.island(%[[control]], %[[control_2]], %[[control_3]]) wraps "tf.D"()
+    // CHECK-NEXT: %[[control_4:.*]] =  tf_executor.island(%[[control_2]], %[[control_3]]) wraps "tf.D"()
     tf_executor.island wraps "tf.D"() {is_stateless = false, _parallel_execution_ids = "r1000:0"} : () -> ()
-    // CHECK: %[[control_5:.*]] =  tf_executor.island wraps "tf.E"()
+    // CHECK-NEXT: %[[control_5:.*]] =  tf_executor.island wraps "tf.E"()
     tf_executor.island wraps "tf.E"() {is_stateless = false, _parallel_execution_ids = "p0:1,r1000:3000"} : () -> ()
-    // CHECK: tf_executor.fetch %[[control]], %[[control_4]], %[[control_5]] : !tf_executor.control, !tf_executor.control, !tf_executor.control
+    // CHECK-NEXT: tf_executor.fetch %[[control_4]], %[[control_5]] : !tf_executor.control, !tf_executor.control
     tf_executor.fetch
   }
   func.return
@@ -293,16 +314,16 @@ func.func @mixed_groups_and_branches_nested() {
 // -----
 
 // Tests that we create dependencies between ops where one op has a parallel
-// execution ID and the other doesn't.
+// execution ID and the other has not.
 func.func @unspecified_parallel_execution_ids() {
   tf_executor.graph {
     // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
     tf_executor.island wraps "tf.A"() {is_stateless = false} : () -> ()
-    // CHECK: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
+    // CHECK-NEXT: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
     tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
-    // CHECK: %[[control_3:.*]] =  tf_executor.island(%[[control]]) wraps "tf.C"()
+    // CHECK-NEXT: %[[control_3:.*]] =  tf_executor.island(%[[control]]) wraps "tf.C"()
     tf_executor.island wraps "tf.C"() {is_stateless = false, _parallel_execution_ids = "p0:1"} : () -> ()
-    // CHECK: tf_executor.fetch  %[[control]], %[[control_2]], %[[control_3]] : !tf_executor.control, !tf_executor.control, !tf_executor.control
+    // CHECK-NEXT: tf_executor.fetch %[[control_2]], %[[control_3]] : !tf_executor.control, !tf_executor.control
     tf_executor.fetch
   }
   func.return

@@ -38,15 +38,16 @@ config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 xla_root_dir = 'tensorflow/compiler/xla/'
 mlir_tf_tools_dirs = [
-    'mlir_hlo',
-    'mlir_hlo/tosa',
-    'translate',
-    'translate/mhlo_to_lhlo_with_xla',
-    'service/mlir_gpu',
-    'service/gpu/tests',
     'mlir/backends/cpu',
     'mlir/backends/gpu',
     'mlir/runtime',
+    'mlir/tools/mlir_bisect',
+    'mlir_hlo',
+    'mlir_hlo/tosa',
+    'service/gpu/tests',
+    'service/mlir_gpu',
+    'translate',
+    'translate/mhlo_to_lhlo_with_xla',
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ['TEST_WORKSPACE'], xla_root_dir,

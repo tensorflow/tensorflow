@@ -623,7 +623,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloat) {
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::GetTupleElement(
-                             m::CustomCall(kCudnnConvForwardCallTarget), 0)
+                             m::CustomCall({kCudnnConvForwardCallTarget}), 0)
                              .WithShape(F32, {1, 32, 9, 9})));
 }
 
@@ -660,7 +660,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToInt8BiasSideInput) {
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-                     m::CustomCall(kCudnnConvBiasActivationForwardCallTarget,
+                     m::CustomCall({kCudnnConvBiasActivationForwardCallTarget},
                                    m::Parameter(0), m::Parameter(1),
                                    m::Parameter(2), m::Parameter(3)),
                      0)
@@ -702,7 +702,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestReluAfterConvert) {
       GmockMatch(
           m::GetTupleElement(
               m::CustomCall(
-                  &conv, kCudnnConvBiasActivationForwardCallTarget,
+                  &conv, {kCudnnConvBiasActivationForwardCallTarget},
                   m::Parameter(0),  //
                   m::Parameter(1),  //
                   m::Broadcast(
@@ -750,7 +750,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, TestConvInt8ToFloatBiasSideInput) {
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-                     m::CustomCall(kCudnnConvBiasActivationForwardCallTarget,
+                     m::CustomCall({kCudnnConvBiasActivationForwardCallTarget},
                                    m::Parameter(0), m::Parameter(1),
                                    m::Parameter(2), m::Parameter(3)),
                      0)
@@ -800,7 +800,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, Int8SideInputWithScaleAndReshape) {
       GmockMatch(
           m::GetTupleElement(
               m::CustomCall(
-                  &conv, kCudnnConvBiasActivationForwardCallTarget,
+                  &conv, {kCudnnConvBiasActivationForwardCallTarget},
                   m::Parameter(0),  //
                   m::Parameter(1),  //
                   m::Parameter(2),  //
@@ -844,7 +844,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseAlpha) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget),
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget}),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
@@ -882,7 +882,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
@@ -924,7 +924,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
               m::Broadcast(m::ConstantEffectiveScalar(0)),
               m::GetTupleElement(
                   m::CustomCall(
-                      &conv, kCudnnConvBiasActivationForwardCallTarget,
+                      &conv, {kCudnnConvBiasActivationForwardCallTarget},
                       m::Parameter(0), m::Parameter(1), m::Parameter(2)),
                   0)
                   .WithShape(F32, {1, 32, 9, 9})),
@@ -971,7 +971,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F16, {1, 32, 9, 9})));
@@ -1012,7 +1012,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
   const HloInstruction* conv;
   auto gte_pattern =
       m::GetTupleElement(
-          m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+          m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                         m::Parameter(0), m::Parameter(1), m::Parameter(2)),
           0)
           .WithShape(F16, {1, 32, 9, 9});
@@ -1024,9 +1024,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
                         .WithComparisonDirection(ComparisonDirection::kGt),
                     gte_pattern,
                     m::Op()
-                        .WithPredicate([](const HloInstruction* instr) {
-                          return instr->opcode() == HloOpcode::kExpm1;
-                        })
+                        .WithPredicate(HloPredicateIsOp<HloOpcode::kExpm1>)
                         .WithOperand(0, gte_pattern)),
           m::Minimum())));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
@@ -1412,7 +1410,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBias) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall({kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1), m::Parameter(2)),
               0)
               .WithShape(F32, {1, 32, 9, 9})));
@@ -1444,7 +1442,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseSideInput) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1),
                             m::Broadcast(m::ConstantEffectiveScalar(0))
                                 .WithShape(F32, {32}),
@@ -1485,7 +1483,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseScaledSideInput) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1),
                             m::Broadcast(m::ConstantEffectiveScalar(0))
                                 .WithShape(F32, {32}),
@@ -1526,7 +1524,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseBiasAndSideInput) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1), m::Parameter(2),
                             m::Parameter(3)),
               0)
@@ -1562,7 +1560,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, EffectiveScalarBias) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1),
                             m::Broadcast(m::Parameter(2)).WithShape(F32, {32})),
               0)
@@ -1608,7 +1606,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, StrengthReduceF32ToF16) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0), m::Parameter(1), m::Parameter(2),
                             m::Parameter(3)),
               0)
@@ -1653,7 +1651,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BroadcastReshapeTransposeAfterConvert) {
       m->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(
-                         &conv, kCudnnConvBiasActivationForwardCallTarget,
+                         &conv, {kCudnnConvBiasActivationForwardCallTarget},
                          m::Convert(m::Reshape(m::Convert(m::Parameter(0))))
                              .WithElementType(F16),
                          m::Convert(m::Transpose(m::Convert(m::Parameter(1))))
@@ -1707,7 +1705,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, NoStrengthReduceF32ToF16IfBiasIsF32) {
       GmockMatch(
           m::Convert(m::GetTupleElement(
                          m::CustomCall(
-                             &conv, kCudnnConvBiasActivationForwardCallTarget,
+                             &conv, {kCudnnConvBiasActivationForwardCallTarget},
                              m::Convert(m::Parameter(0)).WithElementType(F32),
                              m::Convert(m::Parameter(1)).WithElementType(F32),
                              m::Parameter(2),
@@ -1761,7 +1759,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32Constants) {
       m->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(
-                         &conv, kCudnnConvBiasActivationForwardCallTarget,
+                         &conv, {kCudnnConvBiasActivationForwardCallTarget},
                          m::Parameter(0), m::Constant().WithElementType(F16),
                          m::Parameter(1), m::Constant().WithElementType(F16)),
                      0)
@@ -1816,7 +1814,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, F32ConstantsNotLosslesslyConvertible) {
       GmockMatch(
           m::Convert(m::GetTupleElement(
                          m::CustomCall(
-                             &conv, kCudnnConvBiasActivationForwardCallTarget,
+                             &conv, {kCudnnConvBiasActivationForwardCallTarget},
                              m::Convert(m::Parameter(0)).WithElementType(F32),
                              m::Constant().WithElementType(F32),
                              m::Convert(m::Parameter(1)).WithElementType(F32),
@@ -1871,7 +1869,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseReluBeforeConvert) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0),  //
                             m::Parameter(1),  //
                             m::Broadcast(m::ConstantEffectiveScalar(0))
@@ -1911,7 +1909,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, BiasTypeMatchesConvTypeIfFp) {
       m->entry_computation()->root_instruction(),
       GmockMatch(
           m::GetTupleElement(
-              m::CustomCall(&conv, kCudnnConvBiasActivationForwardCallTarget,
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
                             m::Parameter(0),  //
                             m::Parameter(1),  //
                             m::Convert(m::Parameter(2)).WithShape(F64, {32})),

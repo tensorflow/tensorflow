@@ -1,4 +1,5 @@
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_init_fns.inc"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 
 namespace {
 
@@ -77,6 +78,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateGuaranteedConstFingerprint);
+  TFTPU_SET_FN(ops_api_fn, TpuUtil_GetTopologyPtr);
 
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_Create);
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_Destroy);
@@ -109,6 +111,7 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
                TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
   TFTPU_SET_FN(ops_api_fn,
                TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_DedupDataTupleMaskComputation);
 
   return tsl::OkStatus();
 }

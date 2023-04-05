@@ -142,6 +142,9 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       if (!global_tensor)
         continue;  // happens if the name is e.g. in a VarHandleOp.
 
+      if (!global_tensor.getValue())
+        continue;  // a value wasn't loaded for this tensor.
+
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
       frozen_global_tensors.insert(global_tensor);
 
@@ -161,7 +164,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
-                                                  global_tensor.getValue());
+                                                  *global_tensor.getValue());
       args_to_erase.set(val.getArgNumber());
       for (auto read_op : read_variable_ops_to_erase) {
         read_op.getResult().replaceAllUsesWith(const_op.getResult());

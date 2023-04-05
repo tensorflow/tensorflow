@@ -57,7 +57,7 @@ struct TestModule : public runtime::ffi::StatefulModule<TestModuleState> {
 
   // XLA runtime binding for the C++ function.
   XLA_FFI_DEFINE_FUNCTION(FFI_Impl, Impl,
-                          Ffi::Bind("test.ffi")
+                          Ffi::Binding()
                               .State<TestModuleState>()
                               .Arg<StridedBufferArg>()
                               .Arg<StridedBufferArg>()

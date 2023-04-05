@@ -18,6 +18,7 @@
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops.numpy_ops import np_dtypes
 
 
@@ -42,7 +43,8 @@ def convert_to_tensor(value, dtype=None, dtype_hint=None):
     dtype = dtypes.uint64
   elif dtype is None and dtype_hint is None and isinstance(value, float):
     dtype = np_dtypes.default_float_type()
-  return ops.convert_to_tensor(value, dtype=dtype, dtype_hint=dtype_hint)
+  return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      value, dtype=dtype, dtype_hint=dtype_hint)
 
 
 ndarray = ops.Tensor

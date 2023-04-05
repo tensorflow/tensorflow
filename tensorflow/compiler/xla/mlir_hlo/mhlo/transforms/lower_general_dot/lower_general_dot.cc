@@ -74,7 +74,7 @@ Value transposeReshape(Value arg, Location loc,
 
   auto transposePermutationAttr =
       DenseIntElementsAttr::get(transposePermutationType,
-                                llvm::makeArrayRef(transposePermutation))
+                                llvm::ArrayRef(transposePermutation))
           .cast<DenseIntElementsAttr>();
 
   // Compute the resulting shape.
@@ -88,16 +88,8 @@ Value transposeReshape(Value arg, Location loc,
   bool noReshape = transposedShape.size() == 2 && leftDims.size() == 1 &&
                    rightDims.size() == 1;
 
-  // Construct type. If no reshape is needed, the sparsity, if any, of the input
-  // operand is propagated to the ouput to ensure this information is not lost
-  // in the dot operation.
-  auto enc = sparse_tensor::getSparseTensorEncoding(arg.getType());
-  auto transposeType =
-      (enc && noReshape)
-          ? RankedTensorType::get(transposedShape, elementType, enc)
-          : RankedTensorType::get(transposedShape, elementType);
-
   // Construct transpose. If no reshape is needed, we are done.
+  auto transposeType = RankedTensorType::get(transposedShape, elementType);
   Value transposeResult = rewriter.create<TransposeOp>(
       loc, transposeType, arg, transposePermutationAttr);
   if (noReshape) return transposeResult;
@@ -198,6 +190,12 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       return failure();
     }
 
+    ArrayAttr precisionConfig;
+    auto opPrecisionConfig = op.getPrecisionConfig();
+    if (opPrecisionConfig.has_value()) precisionConfig = *opPrecisionConfig;
+
+    auto resultTy = op.getType().cast<ShapedType>();
+
     auto lhsContractingDims = dotNumbers.getLhsContractingDimensions();
     auto rhsContractingDims = dotNumbers.getRhsContractingDimensions();
 
@@ -208,41 +206,75 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     RankedTensorType rhsTy = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhsTy || !rhsTy) return failure();
 
-    lhs = processDotArg(op.getLhs(), op.getLoc(),
-                        dotNumbers.getLhsContractingDimensions(),
-                        /*outerDimsFirst=*/true, rewriter);
+    // The MHLO dot operator directly supports a vector dot product
+    // (two vectors reduce into a scalar) as well as a matrix vector
+    // product (a matrix and vector reduce into a vector) without any
+    // need for reshaping. We handle those special cases first, before
+    // entering the general logic that reduces into a matrix.
+    if (lhsTy.hasStaticShape() && rhsTy.hasStaticShape() &&
+        lhsContractingDims.size() == 1 && rhsContractingDims.size() == 1) {
+      if (lhsTy.getRank() == 1 && rhsTy.getRank() == 1) {
+        // Vector-vector, reduces into scalar.
+        assert(lhsContractingDims[0] == 0 && rhsContractingDims[0] == 0);
+        ShapedType newTy = RankedTensorType::get({}, resultTy.getElementType());
+        rewriter.replaceOpWithNewOp<DotOp>(op, newTy, lhs, rhs,
+                                           precisionConfig);
+        return success();
+      }
+      if (lhsTy.getRank() == 2 && rhsTy.getRank() == 1 &&
+          lhsContractingDims[0] == 1) {
+        // Matrix-vector, reduces into vector.
+        assert(rhsContractingDims[0] == 0);
+        ShapedType newTy = RankedTensorType::get({lhsTy.getShape()[0]},
+                                                 resultTy.getElementType());
+        rewriter.replaceOpWithNewOp<DotOp>(op, newTy, lhs, rhs,
+                                           precisionConfig);
+        return success();
+      }
+      if (lhsTy.getRank() == 2 && rhsTy.getRank() == 2 &&
+          lhsContractingDims[0] == 1 && rhsContractingDims[0] == 0) {
+        // Matrix-matrix, reduces into matrix. Note that for dense cases, this
+        // rewriting rule simply provides a shortcut for what is to follow
+        // (modulo optimizing the trivial transpose/reshape operations). For
+        // sparse cases, however, this rewriting preserves the output sparsity
+        // that was explicitly given for the general dot operation.
+        Value newDotOp =
+            rewriter.create<DotOp>(loc, resultTy, lhs, rhs, precisionConfig);
+        if (auto enc = sparse_tensor::getSparseTensorEncoding(resultTy)) {
+          newDotOp.setType(RankedTensorType::get(
+              resultTy.getShape(), resultTy.getElementType(), enc));
+        }
+        rewriter.replaceOp(op, newDotOp);
+        return success();
+      }
+    }
 
-    rhs = processDotArg(op.getRhs(), op.getLoc(),
-                        dotNumbers.getRhsContractingDimensions(),
-                        /*outerDimsFirst=*/false, rewriter);
+    // For any sparse situation, don't use any of the following rules, since
+    // transposing and reshaping is not without cost. Instead, rely on the
+    // default linalg lowering that follows later in the pipeline.
+    if (sparse_tensor::hasAnySparseOperandOrResult(op)) return failure();
+
+    // Compute the, possibly, transposed-reshaped operands.
+    lhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        lhs, loc, lhsContractingDims, /*outerDimsFirst=*/true, rewriter));
+    rhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(
+        rhs, loc, rhsContractingDims, /*outerDimsFirst=*/false, rewriter));
 
     // Accept only static shaped types.
     auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();
     auto rhsShapeType = rhs.getType().dyn_cast_or_null<ShapedType>();
     if (!lhsShapeType || !rhsShapeType) return failure();
 
-    ArrayAttr precisionConfig;
-    if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
-
-    ShapedType resultTy = op.getType().cast<ShapedType>();
+    // Generate new dot operator on expanded types.
     ShapedType newTy = RankedTensorType::get(
         {lhsShapeType.getShape()[0], rhsShapeType.getShape()[1]},
         resultTy.getElementType());
     Value newDotOp =
-        rewriter.create<DotOp>(op.getLoc(), newTy, lhs, rhs, precisionConfig);
+        rewriter.create<DotOp>(loc, newTy, lhs, rhs, precisionConfig);
     if (static_cast<int64_t>(lhsContractingDims.size()) ==
             lhsTy.getRank() - 1 &&
         static_cast<int64_t>(rhsContractingDims.size()) ==
             rhsTy.getRank() - 1) {
-      // Retain the sparse encoding if any.
-      // TODO(peiming): A more general problem is how to infer the sparse
-      // encoding for dot operator?
-      auto enc = sparse_tensor::getSparseTensorEncoding(resultTy);
-      if (enc) {
-        // If there is a sparse encoding, it is a ranked tensor.
-        newDotOp.setType(RankedTensorType::get(newTy.getShape(),
-                                               newTy.getElementType(), enc));
-      }
       rewriter.replaceOp(op, newDotOp);
       return success();
     }
@@ -292,9 +324,8 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
         dynDims, rewriter.getI64IntegerAttr(0));
 
     Value result = rewriter.create<DynamicReshapeOp>(
-        op.getLoc(),
-        RankedTensorType::get(staticDims, resultTy.getElementType()), newDotOp,
-        reshapeDimsTensor);
+        loc, RankedTensorType::get(staticDims, resultTy.getElementType()),
+        newDotOp, reshapeDimsTensor);
 
     rewriter.replaceOp(op, result);
     return success();

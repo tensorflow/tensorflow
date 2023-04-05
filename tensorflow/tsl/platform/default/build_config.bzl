@@ -401,6 +401,13 @@ def py_proto_library(
         # is not explicitly listed in py_libs. Instead, host system is assumed to
         # have grpc installed.
 
+    genproto_deps = []
+    for dep in deps:
+        if dep != "@com_google_protobuf//:protobuf_python":
+            genproto_deps.append(dep + "_genproto")
+        else:
+            genproto_deps.append("@com_google_protobuf//:well_known_types_py_pb2_genproto")
+
     proto_gen(
         name = name + "_genproto",
         srcs = srcs,
@@ -411,7 +418,7 @@ def py_proto_library(
         plugin_language = "grpc",
         protoc = protoc,
         visibility = ["//visibility:public"],
-        deps = [s + "_genproto" for s in deps],
+        deps = genproto_deps,
     )
 
     if default_runtime and not default_runtime in py_libs + deps:
@@ -654,6 +661,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:mutex_data.h"),
         clean_dep("//tensorflow/tsl/platform/default:notification.h"),
         clean_dep("//tensorflow/tsl/platform/default:stacktrace.h"),
+        clean_dep("//tensorflow/tsl/platform/default:status.h"),
         clean_dep("//tensorflow/tsl/platform/default:tracing_impl.h"),
         clean_dep("//tensorflow/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
@@ -789,6 +797,7 @@ def tsl_cc_test(
                 # granularly
                 clean_dep("//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl"),
                 clean_dep("//tensorflow/tsl/protobuf:histogram_proto_cc_impl"),
+                clean_dep("//tensorflow/tsl/protobuf:status_proto_cc_impl"),
                 clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
                 clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
             ],

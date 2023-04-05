@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -48,12 +49,7 @@ namespace dtensor {
 namespace {
 
 StatusOr<llvm::SmallVector<int64_t, 4>> GetShape(mlir::Value value) {
-  auto type = value.getType().dyn_cast<mlir::RankedTensorType>();
-  if (!type)
-    return errors::InvalidArgument(
-        "Rank of input values must be statically known.");
-
-  const auto shape = type.getShape();
+  TF_ASSIGN_OR_RETURN(const auto shape, GetShapeOfValue(value));
   return llvm::SmallVector<int64_t, 4>{shape.begin(), shape.end()};
 }
 
@@ -99,17 +95,32 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
     //   and easeier. In future, we might do certain optimization to save FLops.
     //   For example, if all operands are 'x,y' and output is '*,*', relayouting
     //   output could be the choice (saving communications).
-    auto truncated_layout = output_layout->Truncate(rank_offset, /*end=*/true);
+    TF_ASSIGN_OR_RETURN(auto truncated_layout,
+                        output_layout->Truncate(rank_offset, /*end=*/true));
     mlir::Value output;
     TF_ASSIGN_OR_RETURN(const auto& shape, ExtractGlobalInputShape(operand));
     absl::flat_hash_set<int> size_one_dims;
     for (int i = 0; i < shape.size(); ++i)
       if (shape[i] == 1) size_one_dims.emplace(i);
-    truncated_layout = truncated_layout.GetLayoutWithReducedDims(
-        size_one_dims, /*keep_dims=*/true);
+    TF_ASSIGN_OR_RETURN(truncated_layout,
+                        truncated_layout.GetLayoutWithReducedDims(
+                            size_one_dims, /*keep_dims=*/true));
     TF_ASSIGN_OR_RETURN(
         output, EmitRelayout(operand.get(), *operand_layout, truncated_layout));
     operand.set(output);
+  }
+
+  // If result is a resource, the shape of the result should be adjusted to
+  // local value of the resource, based on the layout for output.
+  // This logic is similar to VarHandle op SPMD expansion.
+  //
+  // Resource output is only likely to be for identity op. However, keeping
+  // the checkgeneric here.
+  auto op_result = op->getOpResult(0);
+  if (llvm::isa<mlir::TF::ResourceType>(
+          mlir::getElementTypeOrSelf(op_result))) {
+    TF_RETURN_IF_ERROR(InferSPMDExpandedLocalShapeForResourceOutput(
+        &op_result, output_layout.value(), builder.getContext()));
   }
 
   // For element-wise op SPMD expansion, given that operand layouts are
@@ -154,12 +165,13 @@ ElementwiseSPMDExpander::ComputeLayoutBackward(
     auto operand = operand_and_index.value();
 
     TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        Layout output_layout_truncated,
+        output_layout.Truncate(
+            output_layout.sharding_specs().size() - operand_shape.size(),
+            /*end=*/true));
     auto inferred_operand_layout_strs =
-        output_layout
-            .Truncate(
-                output_layout.sharding_specs().size() - operand_shape.size(),
-                /*end=*/true)
-            .sharding_spec_strs();
+        output_layout_truncated.sharding_spec_strs();
 
     if (inferred_operand_layout_strs.size() != operand_shape.size())
       return errors::FailedPrecondition(

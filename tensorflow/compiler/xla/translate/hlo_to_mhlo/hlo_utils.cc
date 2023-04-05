@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
 #include "tensorflow/tsl/platform/float8.h"
 
@@ -41,7 +42,7 @@ template <typename CppType>
     const ShapedType& type, const LiteralBase& literal) {
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(data_span.data(), data_span.size()));
+      type, llvm::ArrayRef(data_span.data(), data_span.size()));
 }
 
 StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
@@ -251,6 +252,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getF32Type();
     case PrimitiveType::F64:
       return builder.getF64Type();
+    case PrimitiveType::S4:
+      return builder.getIntegerType(4);
     case PrimitiveType::S8:
       return builder.getIntegerType(8);
     case PrimitiveType::S16:
@@ -259,6 +262,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getIntegerType(32);
     case PrimitiveType::S64:
       return builder.getIntegerType(64);
+    case PrimitiveType::U4:
+      return builder.getIntegerType(4, /*isSigned=*/false);
     case PrimitiveType::U8:
       return builder.getIntegerType(8, /*isSigned=*/false);
     case PrimitiveType::U16:
@@ -423,6 +428,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSin;
   } else if (isa<mlir::mhlo::SqrtOp, mlir::lmhlo::SqrtOp>(op)) {
     return xla::HloOpcode::kSqrt;
+  } else if (isa<mlir::mhlo::TanOp, mlir::lmhlo::TanOp>(op)) {
+    return xla::HloOpcode::kTan;
   } else if (isa<mlir::mhlo::TanhOp, mlir::lmhlo::TanhOp>(op)) {
     return xla::HloOpcode::kTanh;
   } else if (isa<mlir::mhlo::ComplexOp, mlir::lmhlo::ComplexOp>(op)) {
@@ -496,12 +503,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
                  op)) {
     return xla::HloOpcode::kBroadcast;
   } else {
-    std::string s;
-    {
-      llvm::raw_string_ostream os(s);
-      op->print(os);
-    }
-    return Unimplemented("Unimplemented MHLO -> HloOpcode: %s", s);
+    return Unimplemented("Unimplemented MHLO -> HloOpcode: %s",
+                         llvm_ir::DumpToString(op));
   }
 }
 

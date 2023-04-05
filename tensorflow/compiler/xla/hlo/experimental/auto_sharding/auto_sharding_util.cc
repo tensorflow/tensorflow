@@ -37,8 +37,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/index_util.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -327,9 +327,9 @@ InstructionDepthMap BuildInstructionDepthMap(
 
 std::string GetBatchDimMapKey(const HloInstruction* ins, int64_t idx) {
   if (idx >= 0) {
-    return ins->name() + "/" + std::to_string(idx);
+    return absl::StrCat(ins->name(), "/", idx);
   }
-  return ins->name();
+  return std::string(ins->name());
 }
 
 void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
@@ -430,6 +430,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:
@@ -688,6 +689,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kSin:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
+      case HloOpcode::kTan:
       case HloOpcode::kTanh:
       // Binary elementwise operations
       case HloOpcode::kAdd:
@@ -1668,13 +1670,13 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
   }
 }
 
-size_t VectorGreaterThanOneElementCount(const std::vector<int64_t>& vector,
+size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
                                         bool omit_last_dim) {
-  return VectorGreaterThanOneElementIndices(vector, omit_last_dim).size();
+  return VectorGreaterThanOneElementIndices(span, omit_last_dim).size();
 }
 
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
-    const std::vector<int64_t>& vector, bool omit_last_dim) {
+    absl::Span<const int64_t> vector, bool omit_last_dim) {
   std::vector<int64_t> result;
   for (size_t i = 0; i < vector.size(); i++) {
     if (i == vector.size() - 1 && omit_last_dim) {
@@ -1802,11 +1804,15 @@ std::optional<HloSharding> AdjustShardingWithPartialMeshShapePerElement(
       }
       // If replicate on other dimensions, remove the
       // replicate_on_last_tile
-      new_tile_assignment_dimensions = sharding.tile_assignment().dimensions();
+      new_tile_assignment_dimensions.assign(
+          sharding.tile_assignment().dimensions().begin(),
+          sharding.tile_assignment().dimensions().end());
       new_tile_assignment_dimensions.erase(
           new_tile_assignment_dimensions.end() - 1);
     } else {
-      new_tile_assignment_dimensions = sharding.tile_assignment().dimensions();
+      new_tile_assignment_dimensions.assign(
+          sharding.tile_assignment().dimensions().begin(),
+          sharding.tile_assignment().dimensions().end());
       absl::flat_hash_set<int64_t> current_shards;
       for (const auto dim : new_tile_assignment_dimensions) {
         if (dim > 1) {

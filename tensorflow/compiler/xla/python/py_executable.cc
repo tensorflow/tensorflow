@@ -19,14 +19,18 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
-#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/future.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -72,6 +76,7 @@ PyLoadedExecutable::PyLoadedExecutable(
     VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
             << ": " << *fingerprint_;
   }
+  options_.use_major_to_minor_data_layout_for_callbacks = true;
 }
 
 PyLoadedExecutable::~PyLoadedExecutable() {
@@ -97,154 +102,43 @@ std::vector<ClientAndPtr<PjRtDevice>> PyLoadedExecutable::AddressableDevices()
   return devices;
 }
 
-StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyLoadedExecutable::ExecuteInternal(
-    absl::Span<PyBuffer::object const> args, PjRtDevice* device,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
-  std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
-  std::unique_ptr<ifrt::Future<Status>> returned_future;
-  {
-    auto options = options_;
-    std::shared_ptr<HostCallbackStates> host_callback_states;
-
-    if (!host_callbacks_.empty()) {
-      auto* host_memory_for_device_manager =
-          client()->pjrt_client()->GetPjRtHostMemoryForDeviceManager();
-      if (host_memory_for_device_manager == nullptr) {
-        return InternalError("Host callback not supported for runtime type: %s",
-                             client()->runtime_type());
-      }
-
-      returned_futures.emplace();
-
-      host_callback_states = std::make_shared<HostCallbackStates>();
-      auto& contexts = host_callback_states->contexts.emplace_back();
-      auto& send_callbacks =
-          host_callback_states->send_callbacks.emplace_back();
-      auto& recv_callbacks =
-          host_callback_states->recv_callbacks.emplace_back();
-
-      for (const py::capsule& host_callback : host_callbacks_) {
-        contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
-            *host_callback.get_pointer<HostCallback>(),
-            host_memory_for_device_manager, send_callbacks, recv_callbacks));
-      }
-      options.send_callbacks = host_callback_states->send_callbacks;
-      options.recv_callbacks = host_callback_states->recv_callbacks;
-    }
-
-    py::gil_scoped_release gil_release;
-    std::vector<tsl::RCReference<ifrt::Array>> arg_arrays(args.size());
-    absl::c_transform(args, arg_arrays.begin(),
-                      [](const PyBuffer::object& buf) {
-                        return tsl::FormRef(buf.buf()->ifrt_array());
-                      });
-
-    if (device) {
-      TF_ASSIGN_OR_RETURN(
-          auto result,
-          ifrt_loaded_executable()->Execute(
-              absl::MakeSpan(arg_arrays), options,
-              /*devices=*/
-              ifrt::DeviceList(ifrt::DeviceList::Devices({device}))));
-      if (returned_futures.has_value()) {
-        returned_futures->push_back(std::move(result.status));
-      }
-      output_arrays = std::move(result.outputs);
-    } else {
-      TF_ASSIGN_OR_RETURN(auto result, ifrt_loaded_executable()->Execute(
-                                           absl::MakeSpan(arg_arrays), options,
-                                           /*devices=*/std::nullopt));
-      if (returned_futures.has_value()) {
-        returned_futures->push_back(std::move(result.status));
-      }
-      output_arrays = std::move(result.outputs);
-    }
-
-    if (!host_callbacks_.empty()) {
-      // For host callbacks to work, `returned_futures` must not be nullopt.
-      returned_futures->at(0).OnReady([host_callback_states](Status) mutable {
-        host_callback_states.reset();
-      });
-    }
-  }
-  auto traceback = Traceback::Get();
-  std::vector<PyBuffer::object> outputs;
-  outputs.reserve(output_arrays.size());
-  for (auto& array : output_arrays) {
-    outputs.push_back(PyBuffer::Make(client_, std::move(array), traceback));
-  }
-
-  if (!returned_futures.has_value()) {
-    return std::pair<std::vector<PyBuffer::object>, PyToken>(
-        std::move(outputs), PyToken::ReadyPyToken());
-  }
-  return std::pair<std::vector<PyBuffer::object>, PyToken>(
-      std::move(outputs), PyToken(std::move(returned_futures->at(0))));
-}
-
-StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>>
-PyLoadedExecutable::ExecuteWithToken(absl::Span<PyBuffer::object const> args,
-                                     PjRtDevice* device) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  returned_futures.emplace();
-  return ExecuteInternal(args, device, returned_futures);
-}
-
-StatusOr<std::vector<PyBuffer::object>> PyLoadedExecutable::Execute(
-    absl::Span<PyBuffer::object const> args, PjRtDevice* device) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  TF_ASSIGN_OR_RETURN(auto outputs_and_token,
-                      ExecuteInternal(args, device, returned_futures));
-  return std::move(outputs_and_token.first);
-}
-
 namespace {
 
-// Traits classes of common methods for std::vector<PyBuffer::object> and
-// PyShardedBuffer.
+// Traits classes of common methods for std::vector<PyArray>.
 template <typename ShardedBufferT>
 struct ShardedBufferAdapter;
 
 template <>
-struct ShardedBufferAdapter<PyShardedBuffer*> {
-  using ResultT = PyShardedBuffer;
-  static int num_devices(const PyShardedBuffer* arg) {
-    DCHECK(arg);
-    return arg->num_devices();
+struct ShardedBufferAdapter<ExecuteShardedArg> {
+  static int num_devices(const ExecuteShardedArg& arg) {
+    if (std::holds_alternative<PyArray>(arg)) {
+      CHECK(std::get<PyArray>(arg).fastpath_enabled());
+      return std::get<PyArray>(arg).num_addressable_shards();
+    } else {
+      return std::get<std::vector<PyArray>>(arg).size();
+    }
   }
   static tsl::RCReference<ifrt::Array> GetIfRtArray(
-      const PyShardedBuffer* arg) {
-    DCHECK(arg);
-    DCHECK(arg->ifrt_array());
-    return tsl::FormRef(arg->ifrt_array());
-  }
-};
+      const ExecuteShardedArg& arg) {
+    if (std::holds_alternative<PyArray>(arg)) {
+      CHECK(std::get<PyArray>(arg).fastpath_enabled());
+      return tsl::FormRef(std::get<PyArray>(arg).ifrt_array());
+    }
+    auto& arg_vector = std::get<std::vector<PyArray>>(arg);
 
-template <>
-struct ShardedBufferAdapter<std::vector<PyBuffer::object>> {
-  using ResultT = std::vector<PyBuffer::object>;
-  static int num_devices(const std::vector<PyBuffer::object>& arg) {
-    return arg.size();
-  }
-  static tsl::RCReference<ifrt::Array> GetIfRtArray(
-      const std::vector<PyBuffer::object>& arg) {
     // TODO(hyeontaek): This on-demand Array creation is not efficient and has
     // insufficient information about the shape (a dummy shape is used). This
     // should be removed if possible and only be used in the context where the
     // shape information is unused.
-    DCHECK(&arg);
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
-    ifrt_arrays.reserve(arg.size());
+    ifrt_arrays.reserve(arg_vector.size());
     ifrt::DeviceList::Devices devices;
-    devices.reserve(arg.size());
-    for (auto& buf : arg) {
-      DCHECK(buf.buf());
-      DCHECK(buf.buf()->ifrt_array());
-      ifrt_arrays.push_back(tsl::FormRef(buf.buf()->ifrt_array()));
-      devices.push_back(buf.buf()->ifrt_array()->sharding().devices().front());
-      // Do not need to collect per-device shapes because the created array is
-      // not supposed to explode.
+    devices.reserve(arg_vector.size());
+    for (auto& arr : arg_vector) {
+      CHECK_EQ(arr.ifrt_array()->sharding().devices().size(), 1)
+          << arr.ifrt_array()->sharding().DebugString();
+      ifrt_arrays.push_back(tsl::FormRef(arr.ifrt_array()));
+      devices.push_back(arr.ifrt_array()->sharding().devices().front());
     }
     CHECK(!ifrt_arrays.empty());
     // Use a dummy shape.
@@ -262,21 +156,7 @@ struct ShardedBufferAdapter<std::vector<PyBuffer::object>> {
 void PopulateExecuteShardedResults(
     const std::shared_ptr<PyClient>& client,
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-    int num_computations,
-    std::vector<PyShardedBuffer>& outputs) {
-  auto traceback = Traceback::Get();
-  int num_output_buffers = ifrt_arrays.size();
-  outputs.reserve(num_output_buffers);
-  for (auto& array : ifrt_arrays) {
-    outputs.emplace_back(client, std::move(array), traceback);
-  }
-}
-
-void PopulateExecuteShardedResults(
-    const std::shared_ptr<PyClient>& client,
-    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-    int num_computations,
-    std::vector<std::vector<PyBuffer::object>>& outputs) {
+    int num_computations, std::vector<std::vector<PyArray>>& outputs) {
   auto traceback = Traceback::Get();
   DCHECK_GT(num_computations, 0);
   int num_output_buffers = ifrt_arrays.size();
@@ -288,17 +168,14 @@ void PopulateExecuteShardedResults(
             ifrt::ArrayCopySemantics::kReuseInput);
     TF_CHECK_OK(exploded_arrays.status());
     for (auto& exploded_array : *exploded_arrays) {
-      outputs[buffer_id].push_back(
-          PyBuffer::Make(client, std::move(exploded_array), traceback));
+      outputs[buffer_id].push_back(PyArray::MakeFromSingleDeviceArray(
+          client, traceback, std::move(exploded_array), false, true));
     }
   }
 }
 
-template <typename ArgT,
-          typename ResultT = typename ShardedBufferAdapter<ArgT>::ResultT,
-          typename ArgAdapter = ShardedBufferAdapter<ArgT>>
-StatusOr<std::pair<std::vector<ResultT>, PyShardedToken>>
-ExecuteShardedOnLocalDevicesInternal(
+template <typename ArgT, typename ArgAdapter = ShardedBufferAdapter<ArgT>>
+StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
     const ExecuteOptions& options, const std::shared_ptr<PyClient>& client,
     ifrt::LoadedExecutable* ifrt_loaded_executable,
     absl::Span<const py::capsule> host_callbacks, absl::Span<const ArgT> args,
@@ -310,14 +187,11 @@ ExecuteShardedOnLocalDevicesInternal(
     auto opts = options;
     std::shared_ptr<HostCallbackStates> host_callback_states;
     if (!host_callbacks.empty()) {
-      auto* host_memory_for_device_manager =
-          client->pjrt_client()->GetPjRtHostMemoryForDeviceManager();
-      if (host_memory_for_device_manager == nullptr) {
+      if (!client->pjrt_client()->SupportsSendRecvCallbacks()) {
         return InternalError("Host callback not supported for runtime type: %s",
                              client->runtime_type());
       }
       returned_futures.emplace();
-
       host_callback_states = std::make_shared<HostCallbackStates>();
 
       for (int i = 0; i < num_computations; ++i) {
@@ -330,7 +204,9 @@ ExecuteShardedOnLocalDevicesInternal(
         for (const py::capsule& host_callback : host_callbacks) {
           contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
               *host_callback.get_pointer<HostCallback>(),
-              host_memory_for_device_manager, send_callbacks, recv_callbacks));
+              /*host_memory_for_device_manager=*/nullptr, send_callbacks,
+              recv_callbacks,
+              /*use_major_to_minor_data_layout_for_callbacks=*/true));
         }
       }
       opts.send_callbacks = host_callback_states->send_callbacks;
@@ -370,66 +246,148 @@ ExecuteShardedOnLocalDevicesInternal(
     }
   }
 
-  std::vector<ResultT> outputs;
-  PopulateExecuteShardedResults(client, std::move(output_arrays),
-                                num_computations, outputs);
-
   // TODO(b/240696624): Although the PjRt interface require `returned_futures`
   // to be resized correctly if it is not nullopt, some implementation does not
   // implement this. So we have to check whether returned_futures is empty.
   // Remove this check once the implementation is fixed.
-  if (!returned_futures.has_value()) {
-    return std::pair<std::vector<ResultT>, PyShardedToken>(std::move(outputs),
-                                                           PyShardedToken());
-  }
+  auto py_sharded_token = returned_futures.has_value()
+                              ? PyShardedToken(std::move(*returned_futures))
+                              : PyShardedToken();
 
-  PyShardedToken py_sharded_token(std::move(*returned_futures));
-  return std::pair<std::vector<ResultT>, PyShardedToken>(
-      std::move(outputs), std::move(py_sharded_token));
+  return PyExecuteResults(client, std::move(output_arrays), num_computations,
+                          std::move(py_sharded_token));
 }
 
 }  // namespace
 
-StatusOr<std::vector<PyShardedBuffer>>
+PyExecuteResults::PyExecuteResults(
+    const std::shared_ptr<PyClient>& client,
+    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
+    int num_computations, PyShardedToken token)
+    : client_(client),
+      ifrt_arrays_(std::move(ifrt_arrays)),
+      num_computations_(num_computations),
+      token_(std::move(token)) {}
+
+void PyExecuteResults::CheckNotDisassembled() const {
+  if (is_exploded_) {
+    throw py::value_error("ExecuteResults already exploded.");
+  }
+}
+
+std::vector<tsl::RCReference<ifrt::Array>> PyExecuteResults::Consume() {
+  CheckNotDisassembled();
+  is_exploded_ = true;
+  return std::move(ifrt_arrays_);
+}
+
+PyShardedToken PyExecuteResults::ConsumeToken() {
+  if (token_consumed_) {
+    throw py::value_error("ExecuteResults token already consumed.");
+  }
+  token_consumed_ = true;
+  return std::move(token_);
+}
+
+std::vector<std::vector<PyArray>>
+PyExecuteResults::DisassembleIntoSingleDeviceArrays() {
+  std::vector<std::vector<PyArray>> outputs;
+  PopulateExecuteShardedResults(client_, Consume(), num_computations_, outputs);
+  return outputs;
+}
+
+std::vector<std::vector<PyArray>>
+PyExecuteResults::DisassemblePrefixIntoSingleDeviceArrays(size_t n) {
+  CheckNotDisassembled();
+  if (n > ifrt_arrays_.size()) {
+    throw py::value_error(
+        absl::StrCat("In DisassemblePrefixIntoSingleDeviceArrays: ", n, " > ",
+                     ifrt_arrays_.size()));
+  }
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
+  ifrt_arrays.reserve(ifrt_arrays_.size() - n);
+  for (size_t i = n; i < ifrt_arrays_.size(); ++i) {
+    ifrt_arrays.push_back(std::move(ifrt_arrays_[i]));
+  }
+  ifrt_arrays_.erase(ifrt_arrays_.begin() + n, ifrt_arrays_.end());
+  std::swap(ifrt_arrays_, ifrt_arrays);
+  std::vector<std::vector<PyArray>> outputs;
+  PopulateExecuteShardedResults(client_, std::move(ifrt_arrays),
+                                num_computations_, outputs);
+  return outputs;
+}
+
+std::vector<py::object> PyExecuteResults::ConsumeWithHandlers(
+    std::vector<std::variant<const PyArrayResultHandler*, py::object>>
+        out_handlers) {
+  std::vector<py::object> outputs;
+  auto ifrt_arrays = Consume();
+  auto traceback = Traceback::Get();
+  DCHECK_GT(num_computations_, 0);
+  int num_output_buffers = ifrt_arrays.size();
+  outputs.reserve(num_output_buffers);
+  if (out_handlers.size() != num_output_buffers) {
+    throw py::value_error(absl::StrCat(
+        "Mismatch between out_handlers and num_results: ", out_handlers.size(),
+        " vs ", num_output_buffers));
+  }
+  for (int buffer_id = 0; buffer_id < num_output_buffers; ++buffer_id) {
+    auto& handler = out_handlers[buffer_id];
+    if (std::holds_alternative<const PyArrayResultHandler*>(handler)) {
+      outputs.push_back(std::get<const PyArrayResultHandler*>(handler)->Call(
+          client_, std::move(ifrt_arrays[buffer_id])));
+    } else {
+      tsl::profiler::TraceMe traceme("ConsumeWithHandlers fallback.");
+      std::vector<PyArray> bufs;
+      bufs.reserve(num_computations_);
+      auto disassembled_arrays =
+          ifrt_arrays[buffer_id]->DisassembleIntoSingleDeviceArrays(
+              ifrt::ArrayCopySemantics::kReuseInput);
+      TF_CHECK_OK(disassembled_arrays.status());
+      for (auto& disassembled_array : *disassembled_arrays) {
+        bufs.push_back(PyArray::MakeFromSingleDeviceArray(
+            client_, traceback, std::move(disassembled_array), false, true));
+      }
+      outputs.push_back(std::get<py::object>(handler)(std::move(bufs)));
+    }
+  }
+  return outputs;
+}
+
+StatusOr<std::vector<std::vector<PyArray>>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevices(
-    absl::Span<PyShardedBuffer* const> args) {
+    absl::Span<const ExecuteShardedArg> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
                       ExecuteShardedOnLocalDevicesInternal(
                           options_, client_, ifrt_loaded_executable_.get(),
                           host_callbacks_, args, returned_futures));
-  return std::move(outputs_and_tokens.first);
+  return outputs_and_tokens.DisassembleIntoSingleDeviceArrays();
 }
 
-StatusOr<std::pair<std::vector<PyShardedBuffer>, PyShardedToken>>
+StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
-    absl::Span<PyShardedBuffer* const> args) {
+    absl::Span<const ExecuteShardedArg> args) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   returned_futures.emplace();
-  return ExecuteShardedOnLocalDevicesInternal(
-      options_, client_, ifrt_loaded_executable_.get(), host_callbacks_, args,
-      returned_futures);
-}
-
-StatusOr<std::vector<std::vector<PyBuffer::object>>>
-PyLoadedExecutable::ExecuteShardedOnLocalDevices(
-    absl::Span<const std::vector<PyBuffer::object>> args) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
                       ExecuteShardedOnLocalDevicesInternal(
                           options_, client_, ifrt_loaded_executable_.get(),
                           host_callbacks_, args, returned_futures));
-  return std::move(outputs_and_tokens.first);
+  return std::make_pair(outputs_and_tokens.DisassembleIntoSingleDeviceArrays(),
+                        outputs_and_tokens.ConsumeToken());
 }
 
-StatusOr<std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
-PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
-    absl::Span<const std::vector<PyBuffer::object>> args) {
+StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
+    std::vector<ExecuteShardedArg> args, bool with_tokens) {
   std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
-  returned_futures.emplace();
+  if (with_tokens) {
+    returned_futures.emplace();
+  }
+  absl::Span<const ExecuteShardedArg> span_args = args;
   return ExecuteShardedOnLocalDevicesInternal(
-      options_, client_, ifrt_loaded_executable_.get(), host_callbacks_, args,
-      returned_futures);
+      options_, client_, ifrt_loaded_executable_.get(), host_callbacks_,
+      span_args, returned_futures);
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>

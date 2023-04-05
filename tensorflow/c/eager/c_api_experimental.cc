@@ -80,7 +80,7 @@ TFE_MonitoringCounter0* TFE_MonitoringNewCounter0(const char* name,
                                                   TF_Status* status,
                                                   const char* description) {
   auto* result = new TFE_MonitoringCounter0({name, description});
-  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->counter->GetStatus());
   if (!result->counter->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -103,7 +103,7 @@ TFE_MonitoringCounter1* TFE_MonitoringNewCounter1(const char* name,
                                                   const char* description,
                                                   const char* label1) {
   auto* result = new TFE_MonitoringCounter1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->counter->GetStatus());
   if (!result->counter->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -128,7 +128,7 @@ TFE_MonitoringCounter2* TFE_MonitoringNewCounter2(const char* name,
                                                   const char* label2) {
   auto* result =
       new TFE_MonitoringCounter2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->counter->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->counter->GetStatus());
   if (!result->counter->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -159,7 +159,7 @@ TFE_MonitoringIntGauge0* TFE_MonitoringNewIntGauge0(const char* name,
                                                     TF_Status* status,
                                                     const char* description) {
   auto* result = new TFE_MonitoringIntGauge0({name, description});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -182,7 +182,7 @@ TFE_MonitoringIntGauge1* TFE_MonitoringNewIntGauge1(const char* name,
                                                     const char* description,
                                                     const char* label1) {
   auto* result = new TFE_MonitoringIntGauge1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -207,7 +207,7 @@ TFE_MonitoringIntGauge2* TFE_MonitoringNewIntGauge2(const char* name,
                                                     const char* label2) {
   auto* result =
       new TFE_MonitoringIntGauge2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -245,7 +245,7 @@ const void TFE_MonitoringStringGaugeCellValue(
 TFE_MonitoringStringGauge0* TFE_MonitoringNewStringGauge0(
     const char* name, TF_Status* status, const char* description) {
   auto* result = new TFE_MonitoringStringGauge0({name, description});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -267,7 +267,7 @@ TFE_MonitoringStringGauge1* TFE_MonitoringNewStringGauge1(
     const char* name, TF_Status* status, const char* description,
     const char* label1) {
   auto* result = new TFE_MonitoringStringGauge1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -290,7 +290,7 @@ TFE_MonitoringStringGauge2* TFE_MonitoringNewStringGauge2(
     const char* label1, const char* label2) {
   auto* result =
       new TFE_MonitoringStringGauge2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -313,7 +313,7 @@ TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
     const char* label1, const char* label2, const char* label3) {
   auto* result = new TFE_MonitoringStringGauge3(
       {name, description, label1, label2, label3});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -338,7 +338,7 @@ TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
     const char* label4) {
   auto* result = new TFE_MonitoringStringGauge4(
       {name, description, label1, label2, label3, label4});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -370,7 +370,7 @@ TFE_MonitoringBoolGauge0* TFE_MonitoringNewBoolGauge0(const char* name,
                                                       TF_Status* status,
                                                       const char* description) {
   auto* result = new TFE_MonitoringBoolGauge0({name, description});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -393,7 +393,7 @@ TFE_MonitoringBoolGauge1* TFE_MonitoringNewBoolGauge1(const char* name,
                                                       const char* description,
                                                       const char* label1) {
   auto* result = new TFE_MonitoringBoolGauge1({name, description, label1});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -418,7 +418,7 @@ TFE_MonitoringBoolGauge2* TFE_MonitoringNewBoolGauge2(const char* name,
                                                       const char* label2) {
   auto* result =
       new TFE_MonitoringBoolGauge2({name, description, label1, label2});
-  Set_TF_Status_from_Status(status, result->gauge->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->gauge->GetStatus());
   if (!result->gauge->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -472,7 +472,7 @@ TFE_MonitoringSampler0* TFE_MonitoringNewSampler0(
     const char* description) {
   auto* result = new TFE_MonitoringSampler0(
       {name, buckets->create_buckets(), description});
-  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->sampler->GetStatus());
   if (!result->sampler->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -495,7 +495,7 @@ TFE_MonitoringSampler1* TFE_MonitoringNewSampler1(
     const char* description, const char* label1) {
   auto* result = new TFE_MonitoringSampler1(
       {name, buckets->create_buckets(), description, label1});
-  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->sampler->GetStatus());
   if (!result->sampler->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -518,7 +518,7 @@ TFE_MonitoringSampler2* TFE_MonitoringNewSampler2(
     const char* description, const char* label1, const char* label2) {
   auto* result = new TFE_MonitoringSampler2(
       {name, buckets->create_buckets(), description, label1, label2});
-  Set_TF_Status_from_Status(status, result->sampler->GetStatus());
+  tsl::Set_TF_Status_from_Status(status, result->sampler->GetStatus());
   if (!result->sampler->GetStatus().ok()) {
     delete result;
     return nullptr;
@@ -538,11 +538,6 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
 
 void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
   options->use_tfrt = use_tfrt;
-}
-
-void TFE_ContextOptionsSetTfrtDistributedRuntime(
-    TFE_ContextOptions* options, bool use_tfrt_distributed_runtime) {
-  options->use_tfrt_distributed_runtime = use_tfrt_distributed_runtime;
 }
 
 TFE_CancellationManager* TFE_NewCancellationManager() {
@@ -799,7 +794,8 @@ void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
 }
 
 void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
-                           TF_Buffer* value_buf, TF_Status* status) {
+                           int64_t timeout_in_ms, TF_Buffer* value_buf,
+                           TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
   tsl::CoordinationServiceAgent* coord_agent =
@@ -809,7 +805,14 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
         "Coordination service is not enabled.");
     return;
   }
-  auto status_or_value = coord_agent->GetKeyValue(key);
+  absl::Duration timeout;
+  if (timeout_in_ms > 0) {
+    timeout = absl::Milliseconds(timeout_in_ms);
+  } else {
+    // Block until the key-value is set or the worker shuts down.
+    timeout = absl::InfiniteDuration();
+  }
+  auto status_or_value = coord_agent->GetKeyValue(key, timeout);
   status->status = status_or_value.status();
   if (!status_or_value.ok()) return;
 
@@ -848,7 +851,7 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
         "Coordination service is not enabled.");
     return;
   }
-  tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+  tensorflow::Status s(static_cast<absl::StatusCode>(error_code),
                        error_message);
   status->status = coord_agent->ReportError(s);
 }

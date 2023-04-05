@@ -1,5 +1,6 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package_group(
     name = "friends",
@@ -7,6 +8,7 @@ package_group(
         # copybara:uncomment_begin(google-only)
         # "//platforms/xla/service/cpu/...",
         # "//learning/brain/experimental/tfrt/autofusion/...",
+        # "//third_party/mlir_edge/tpgen/...",
         # # TODO(ezhulenev): Clean up dependencies that are leforvers from Autofusion project.
         # "@tf_runtime//...",
         # "//third_party/tf_runtime_google/...",
@@ -24,6 +26,13 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+build_test(
+    name = "xla-runtime-opt_build_test",
+    targets = [
+        ":xla-runtime-opt",
+    ],
 )
 
 xla_cc_binary(

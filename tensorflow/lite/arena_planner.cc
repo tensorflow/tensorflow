@@ -41,6 +41,7 @@ bool ShareFirstInputWithFirstOutputForNode(const TfLiteRegistration& node_reg) {
     case kTfLiteBuiltinExpandDims:
     case kTfLiteBuiltinReshape:
     case kTfLiteBuiltinSqueeze:
+    case kTfLiteBuiltinBitcast:
       return true;
     default:
       return false;
@@ -118,7 +119,8 @@ int ArenaPlanner::FindSharedTensor(int tensor_index) {
 void ArenaPlanner::IdentifySharedTensors() {
   actual_tensor_id_.clear();
   TfLiteTensor* tensors = graph_info_->tensors();
-  for (int i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  const int num_execution_nodes = graph_info_->num_execution_nodes();
+  for (int i = 0; i < num_execution_nodes; ++i) {
     const auto& reg = graph_info_->registration(i);
     const auto& tflite_node = graph_info_->node(i);
     if (ShareFirstInputWithFirstOutputForNode(reg)) {
@@ -224,7 +226,8 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   }
 
   // Count references to node input tensors.
-  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  const int num_execution_nodes = graph_info_->num_execution_nodes();
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
@@ -238,7 +241,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   }
 
   // Go through the graph in execution order.
-  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
 
     // First queue output tensors for allocation.
@@ -282,9 +285,9 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   dealloc_node_.resize(num_tensors, kNodeNotAssigned);
   allocs_.resize(num_tensors);
   // Set allocation and deallocation for temporary tensors.
-  for (size_t i = first_node; i <= static_cast<size_t>(last_node) &&
-                              i < graph_info_->num_execution_nodes();
-       ++i) {
+  const int num_execution_nodes = graph_info_->num_execution_nodes();
+  for (size_t i = first_node;
+       i <= static_cast<size_t>(last_node) && i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int j = 0; j < node_temporaries->size; ++j) {

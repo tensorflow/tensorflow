@@ -390,6 +390,12 @@ struct ReversePattern : public OpConversionPattern<mhlo::ReverseOp> {
 
 class LegalizeMHLOToTHLOPass
     : public impl::LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
+ public:
+  explicit LegalizeMHLOToTHLOPass(bool enableExperimentalOps) {
+    enableExperimental = enableExperimentalOps;
+  }
+
+ private:
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
@@ -416,13 +422,16 @@ class LegalizeMHLOToTHLOPass
     // clang-format off
     patterns.insert<
         ConcatenateOpPattern,
-        DynamicBroadcastInDimOpPattern,
         GatherPattern,
         ReversePattern,
         ScatterPattern,
         SortPattern,
         ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
+
+    if (enableExperimental) {
+      patterns.insert<DynamicBroadcastInDimOpPattern>(*typeConverter, ctx);
+    }
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
@@ -433,8 +442,9 @@ class LegalizeMHLOToTHLOPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass() {
-  return std::make_unique<LegalizeMHLOToTHLOPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
+    bool enableExperimentalOps) {
+  return std::make_unique<LegalizeMHLOToTHLOPass>(enableExperimentalOps);
 }
 
 }  // namespace mhlo

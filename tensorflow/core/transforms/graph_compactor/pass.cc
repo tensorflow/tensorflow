@@ -77,9 +77,8 @@ static void EncodeName(unsigned counter, std::string &output) {
   constexpr unsigned valid_trailing_chars = valid_first_chars + 3;
   static_assert(sizeof(valid_chars) == valid_trailing_chars + 1,
                 "alphabet sanity check");
-  EncodeName(counter, output,
-             llvm::makeArrayRef(valid_chars, valid_first_chars),
-             llvm::makeArrayRef(valid_chars, valid_trailing_chars));
+  EncodeName(counter, output, llvm::ArrayRef(valid_chars, valid_first_chars),
+             llvm::ArrayRef(valid_chars, valid_trailing_chars));
 }
 
 namespace {
@@ -241,7 +240,7 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
   // Construct and set the new attributes.
   SmallVector<NamedAttribute> new_attrs;
   new_attrs.reserve(attrs.size());
-  for (auto &it : llvm::enumerate(attrs)) {
+  for (const auto &it : llvm::enumerate(attrs)) {
     if (indices_to_remove.test(it.index())) continue;
     new_attrs.push_back(it.value());
   }

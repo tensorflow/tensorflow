@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -89,6 +95,14 @@ class AlgebraicSimplifierOptions {
 
   bool enable_dot_to_multiply_rewrite() const {
     return enable_dot_to_multiply_rewrite_;
+  }
+
+  // This platform will not run the DotDecomposer to canonicalize dots.
+  void set_supports_non_canonical_dots(bool supports_non_canonical_dots) {
+    supports_non_canonical_dots_ = supports_non_canonical_dots;
+  }
+  bool supports_non_canonical_dots() const {
+    return supports_non_canonical_dots_;
   }
 
   // Enable convolution simplification on platforms where it is profitable.
@@ -172,6 +186,17 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
+  // If true, always simplify reduce(transpose(x)) and reduce(reshape(x)), even
+  // if the transpose/reshape has multiple users.  This can be beneficial
+  // on platforms where the extra transpose/reshape isn't as expensive as
+  // the optimization benefits brought about by simplifying the graph.
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape() const {
+    return unconditionally_simplify_reduce_of_transpose_or_reshape_;
+  }
+  void set_unconditionally_simplify_reduce_of_transpose_or_reshape(bool val) {
+    unconditionally_simplify_reduce_of_transpose_or_reshape_ = val;
+  }
+
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
   // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
@@ -196,6 +221,7 @@ class AlgebraicSimplifierOptions {
   ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
+  bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
@@ -205,6 +231,7 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool enable_sink_broadcast_{true};
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   Metadata metadata_;
@@ -371,6 +398,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
+  // Allow backend targets to determine whether a layout is inefficient.
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
+    return true;
+  }
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.

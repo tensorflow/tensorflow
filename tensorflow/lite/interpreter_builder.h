@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_INTERPRETER_BUILDER_H_
 #define TENSORFLOW_LITE_INTERPRETER_BUILDER_H_
 
-/// For documentation, see
-/// third_party/tensorflow/lite/core/interpreter_builder.h.
-#include "tensorflow/lite/core/interpreter_builder.h"  // IWYU pragma: export
+/// For documentation, see third_party/tensorflow/lite/core/interpreter_builder.h.
+
+#include "tensorflow/lite/core/interpreter_builder.h"
+
+namespace tflite {
+using InterpreterBuilder = ::tflite::impl::InterpreterBuilder;
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_INTERPRETER_BUILDER_H_

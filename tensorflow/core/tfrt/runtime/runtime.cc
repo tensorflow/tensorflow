@@ -20,111 +20,19 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
-#include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 #include "tfrt/cpu/core_runtime/cpu_op_handler.h"  // from @tf_runtime
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
-
-#ifdef GOOGLE_CUDA
-#include "tfrt/gpu/core_runtime/gpu_op_handler.h"  // from @tf_runtime
-#include "tfrt/gpu/device/device.h"  // from @tf_runtime
-#include "tfrt/gpu/device/device_util.h"  // from @tf_runtime
-#include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
-#endif  // GOOGLE_CUDA
 
 constexpr char const kDefaultHostDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
 
 namespace tensorflow {
 namespace tfrt_stub {
-namespace {
-
-tensorflow::Status InitializeOpHandlers(tfrt::CoreRuntime* corert) {
-  // TODO(b/196962112): Make default device configurable through Runtime.
-  std::string default_device = kDefaultHostDeviceName;
-
-  DeviceNameUtils::ParsedName device_parsed_name;
-  if (!DeviceNameUtils::ParseFullName(default_device, &device_parsed_name) ||
-      !device_parsed_name.has_type) {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                              "Invalid device name");
-  }
-
-  if (device_parsed_name.type == DEVICE_CPU) {
-    default_device = kDefaultHostDeviceName;
-  } else if (device_parsed_name.type == DEVICE_GPU &&
-             (!device_parsed_name.has_job || !device_parsed_name.has_id ||
-              !device_parsed_name.has_replica ||
-              !device_parsed_name.has_task)) {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                              "Device name must be fully specified");
-  }
-
-  tfrt::OpHandler* op_handler = nullptr;
-
-  if (device_parsed_name.type == DEVICE_GPU) {
-#ifdef GOOGLE_CUDA
-    auto fallback_op_handler = tensorflow::tfd::CreateRuntimeFallbackOpHandler(
-        corert, /*tf_device_name=*/"");
-    corert->RegisterOpHandler("tf", fallback_op_handler.get());
-    op_handler = fallback_op_handler.get();
-#endif  // GOOGLE_CUDA
-  } else {
-    auto fallback_op_handler = tensorflow::tfd::CreateKernelFallbackOpHandler(
-        corert, corert->GetHostContext()->GetHostDeviceRef());
-    corert->RegisterOpHandler("tfkernel", fallback_op_handler.get());
-    op_handler = fallback_op_handler.get();
-  }
-
-  if (device_parsed_name.type == DEVICE_CPU) {
-    auto cpu_device = corert->GetHostContext()->GetHostDeviceRef();
-    auto cpu_op_handler =
-        tfrt::CreateCpuOpHandler(corert, std::move(cpu_device), op_handler);
-
-    cpu_op_handler.get()->AddImplicitConversion(
-        tensorflow::tfd::RuntimeFallbackTensor::kTensorType,
-        tfrt::DenseHostTensor::kTensorType);
-    cpu_op_handler.get()->AddImplicitConversion(
-        tensorflow::tfd::RuntimeFallbackTensor::kTensorType,
-        tfrt::AnyScalarHostTensor::kTensorType);
-    cpu_op_handler.get()->AddImplicitConversion(
-        tensorflow::tfd::RuntimeFallbackTensor::kTensorType,
-        tfrt::StringHostTensor::kTensorType);
-    cpu_op_handler.get()->AddImplicitConversion(
-        tensorflow::KernelFallbackTensor::kTensorType,
-        tfrt::DenseHostTensor::kTensorType);
-    cpu_op_handler.get()->AddImplicitConversion(
-        tensorflow::KernelFallbackTensor::kTensorType,
-        tfrt::AnyScalarHostTensor::kTensorType);
-    cpu_op_handler.get()->AddImplicitConversion(
-        tensorflow::KernelFallbackTensor::kTensorType,
-        tfrt::StringHostTensor::kTensorType);
-
-    op_handler = cpu_op_handler.get();
-#ifdef GOOGLE_CUDA
-  } else if (device_parsed_name.type == DEVICE_GPU) {
-    const int gpu_ordinal = 0;
-    auto gpu_device = tfrt::gpu::GetOrCreateGpuDevice(
-        default_device, gpu_ordinal, corert->GetHostContext());
-    auto gpu_op_handler = tfrt::gpu::CreateGpuOpHandler(
-        corert, std::move(gpu_device.get()), op_handler);
-    op_handler = gpu_op_handler.get();
-#endif  // GOOGLE_CUDA
-  } else {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                              "Unknown device type");
-  }
-
-  corert->RegisterOpHandler(default_device, op_handler);
-
-  return OkStatus();
-}
-
-}  // namespace
 
 std::unique_ptr<Runtime> Runtime::Create(
     std::unique_ptr<WorkQueueInterface> work_queue) {
@@ -134,11 +42,6 @@ std::unique_ptr<Runtime> Runtime::Create(
       tfrt::CreateMallocAllocator(), std::move(work_queue),
       kDefaultHostDeviceName);
   DCHECK(expected_core_runtime);
-  const auto& status = InitializeOpHandlers(expected_core_runtime.get().get());
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to initialize op handlers: " << status;
-    return {};
-  }
 
   // We don't use std::make_unique here because the constructor should better be
   // private.

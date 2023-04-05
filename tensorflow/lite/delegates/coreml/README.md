@@ -176,6 +176,12 @@ typedef struct {
   // This sets the minimum number of nodes per partition delegated with
   // Core ML delegate. Defaults to 2.
   int min_nodes_per_partition;
+#ifdef TFLITE_DEBUG_DELEGATE
+  // This sets the index of the first node that could be delegated.
+  int first_delegate_node_index;
+  // This sets the index of the last node that could be delegated.
+  int last_delegate_node_index;
+#endif
 } TfLiteCoreMlDelegateOptions;
 
 // Return a delegate that uses CoreML for ops execution.

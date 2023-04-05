@@ -161,8 +161,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
                                   output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
                                   output_max_mkl_shape, this->native_format_);
-        output_min->flat<float>()(0) = min_input;
-        output_max->flat<float>()(0) = max_input;
+        output_min->scalar<float>()() = min_input;
+        output_max->scalar<float>()() = max_input;
       }
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
@@ -193,11 +193,22 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       const Tensor& grad_tensor =
           MklGetInput(context, kInputTensorIndexInputGradient);
 
-      // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case
-      if (orig_input_tensor.NumElements() == 0 ||
-          grad_tensor.NumElements() == 0)
-        return;
+      // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case.
+      // Follow what native TF does in this case.
 
+      TensorShape output_shape;
+      auto shape_vec = orig_input_tensor.vec<int32>();
+      for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
+        OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
+      }
+      Tensor* output_tensor = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, output_shape, &output_tensor));
+      output_tensor->flat<T>().setZero();
+
+      if (output_shape.num_elements() == 0 || grad_tensor.NumElements() == 0) {
+        return;
+      }
       MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
       GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
                   this->native_format_);
@@ -208,15 +219,9 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // Used to allocate output_diff_src/diff_src.
       MklDnnData<T> grad_dnn_data(&cpu_engine_);
       MklPoolParameters pool_params;
-      auto shape_vec = orig_input_tensor.vec<int32>();
-      TensorShape orig_input_shape;
-      for (int i = 0; i < orig_input_tensor.NumElements(); i++) {
-        (void)orig_input_shape.AddDimWithStatus(shape_vec(i));
-      }
-
       bool is_pool2d = (this->ksize_.size() == 4);
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
-                                  orig_input_shape);
+                                  output_shape);
 
       memory::dims filter_dims, strides, padding_left, padding_right;
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
@@ -225,10 +230,9 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       memory::dims orig_input_dims_mkl_order =
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetSizesAsMklDnnDims()
-              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
-                                                      this->data_format_tf_)
-                          : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
-                                                       this->data_format_tf_);
+          : is_pool2d
+              ? TFShapeToMklDnnDimsInNCHW(output_shape, this->data_format_tf_)
+              : TFShapeToMklDnnDimsInNCDHW(output_shape, this->data_format_tf_);
 
       memory::dims diff_dst_dims =
           grad_mkl_shape.IsMklTensor()
@@ -269,11 +273,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       std::shared_ptr<stream> bwd_cpu_stream;
       bwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_bwd->GetEngine()));
-      Tensor* output_tensor = nullptr;
-      this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),
-                                 orig_input_dims_mkl_order,
-                                 this->tensor_format_mkldnn_, &output_tensor);
-
       // TODO(intel-tf): Refactor (lines 249-262) common code for
       // max & avg pooling into superclass or common utils function.
       // Check whether we need to reorder diff_dst.
@@ -340,6 +339,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
 TF_CALL_float(REGISTER_MKL_AVGPOOL3D_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_AVGPOOL3D_KERNELS);
+#undef REGISTER_MKL_AVGPOOL3D_KERNELS
 
 #define REGISTER_MKL_AVGPOOL_KERNELS(T)                                       \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -367,6 +367,7 @@ TF_CALL_bfloat16(REGISTER_MKL_AVGPOOL3D_KERNELS);
 
 TF_CALL_float(REGISTER_MKL_AVGPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_AVGPOOL_KERNELS);
+#undef REGISTER_MKL_AVGPOOL_KERNELS
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .Device(DEVICE_CPU)

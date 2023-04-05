@@ -41,6 +41,7 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/subgraph.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
@@ -110,6 +112,12 @@ class InterpreterWrapper;  // Class for friend declarations.
 ///
 /// \warning This class is *not* thread-safe. The client is responsible for
 /// ensuring serialized interaction to avoid data races and undefined behavior.
+using Interpreter = impl::Interpreter;
+
+namespace impl {
+
+class InterpreterBuilder;  // Class for friend declarations.
+
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -336,6 +344,14 @@ class Interpreter {
   /// Note, the pointed instance has lifetime same as the Interpreter object
   /// and the SignatureRunner class is *not* thread-safe.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
+
+  /// \warning Experimental interface, subject to change. \n
+  /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
+  /// part of the graph identified by a SignatureDef. The nullptr is returned if
+  /// the given signature key is not valid.
+  /// The async delegate should be applied before calling this function.
+  async::AsyncSignatureRunner* GetAsyncSignatureRunner(
+      const char* signature_key);
 
   /// \warning Experimental interface, subject to change. \n
   /// \brief Return the subgraph index that corresponds to a SignatureDef,
@@ -764,7 +780,7 @@ class Interpreter {
   ErrorReporter* error_reporter() const { return error_reporter_; }
 
  private:
-  friend class InterpreterBuilder;
+  friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
@@ -853,6 +869,14 @@ class Interpreter {
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
 
+  // Sets telemetry settings on model information and interpreter settings.
+  // Used by InterpreterBuilder.
+  TfLiteStatus SetTelemetrySettings(
+      std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings);
+
+  // Reports the telemetry settings with the given setting name.
+  TfLiteStatus ReportTelemetrySettings(const char* setting_name);
+
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
   /// entries. The value pointed to by `first_new_subgraph_index` will be set to
   /// the index of the first new subgraph if `first_new_subgraph_index` is
@@ -931,9 +955,18 @@ class Interpreter {
   // its SignatureDef.
   std::map<std::string, SignatureRunner> signature_runner_map_;
 
+  // Map of signature key to its corresponding AsyncSignatureRunner object.
+  // An AsyncSignatureRunner is basically a wrapper of the AsyncSubgraph
+  // corresponding to its SignatureDef.
+  std::map<std::string, async::AsyncSignatureRunner>
+      async_signature_runner_map_;
+
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.
   std::map<std::string, std::string> metadata_;
+
+  // Telemery data including model metadata and interpreter settings.
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_data_;
 
   // InterpreterOptions object which is being used.
   std::unique_ptr<InterpreterOptions> options_;
@@ -955,6 +988,8 @@ class Interpreter {
   std::atomic_flag continue_invocation_{false};
   bool cancellation_enabled_ = false;
 };
+
+}  // namespace impl
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_INTERPRETER_H_

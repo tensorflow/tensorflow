@@ -25,7 +25,7 @@ namespace mlir {
 namespace quant {
 
 bool HasQuantizedTensors(Operation* op) {
-  if (IsOpNotQuantizable(op)) return false;
+  if (!IsOpQuantizable(op)) return false;
   for (Type operand_type : op->getOperandTypes()) {
     auto tensor_type = operand_type.dyn_cast<TensorType>();
     if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
@@ -246,7 +246,7 @@ llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
 llvm::SmallVector<Value> CloneOpWithReplacedOperands(
     OpBuilder& builder, Operation* op,
     const llvm::SmallVector<Value>& new_operands) {
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (const auto& arg : llvm::enumerate(new_operands)) {
     mapping.map(op->getOperand(arg.index()), arg.value());
   }

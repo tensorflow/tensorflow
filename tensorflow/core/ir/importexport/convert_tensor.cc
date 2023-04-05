@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 
+#include <optional>
+
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -81,19 +83,19 @@ tensorflow::StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                                      ShapedType type) {
   auto arr = input_tensor.flat<T>();
   return ElementsAttr(
-      DenseElementsAttr::get(type, llvm::makeArrayRef(arr.data(), arr.size())));
+      DenseElementsAttr::get(type, llvm::ArrayRef(arr.data(), arr.size())));
 }
 
 ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
-                                   input_tensor.TotalBytes());
+  auto buffer = llvm::ArrayRef(static_cast<char*>(input_tensor.data()),
+                               input_tensor.TotalBytes());
   return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
-                                   tensor.TotalBytes());
+  auto buffer =
+      llvm::ArrayRef(static_cast<char*>(tensor.data()), tensor.TotalBytes());
   return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
@@ -263,13 +265,13 @@ PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
 
 ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
   if (type.isa<UnrankedTensorType>()) {
-    return ShapeAttr::get(type.getContext(), llvm::None);
+    return ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
   if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
     return ShapeAttr::get(
         type.getContext(),
-        llvm::makeArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
+        llvm::ArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
   }
 
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
@@ -280,14 +282,14 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
 // Converts the tensor shape proto into an MLIR shape attribute.
 tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
-  if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
+  if (shape.unknown_rank()) return ShapeAttr::get(context, std::nullopt);
 
   SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim_size());
   for (const auto& dim : shape.dim()) {
     dims.push_back(dim.size());
   }
-  return ShapeAttr::get(context, llvm::makeArrayRef(dims));
+  return ShapeAttr::get(context, llvm::ArrayRef(dims));
 }
 
 // Converts an MLIR dense string elements attribute to a TensorFlow tensor

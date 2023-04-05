@@ -31,5 +31,7 @@ void IncrementThroughput(int64_t bytes) {
 
 std::string TranslateFileName(const std::string& fname) { return fname; }
 
+std::string DefaultDataTransferProtocol() { return "grpc"; }
+
 }  // namespace data
 }  // namespace tensorflow

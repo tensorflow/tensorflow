@@ -29,6 +29,7 @@ cc_library(
     hdrs = ["mock_async_kernel.h"],
     deps = [
         "//tensorflow/lite/core/async:backend_async_kernel_interface",
-        "//testing/base/public:gunit_for_library_testonly",
+        "//tensorflow/lite/core/async/c:types",
+        "@com_google_googletest//:gtest",
     ],
 )

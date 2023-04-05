@@ -19,6 +19,7 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_context",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/distribute/failure_handling:check_preemption_py",
@@ -31,6 +32,7 @@ py_library(
         "//tensorflow/python/platform",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -51,6 +53,8 @@ py_library(
     deps = [
         ":failure_handling_util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -62,12 +66,14 @@ tf_py_test(
     srcs = ["failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/197981388)
     ],
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_context",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
@@ -91,8 +97,8 @@ tf_py_test(
     srcs = ["gce_failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_pip",  # TODO(b/266520226)
         "noasan",  # TODO(b/226154233): Flaky test
-        "nomsan",  # TODO(b/226154233): Flaky test
     ],
     deps = [
         ":failure_handling_lib",

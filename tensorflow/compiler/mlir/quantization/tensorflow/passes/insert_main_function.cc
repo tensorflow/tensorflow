@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -143,7 +144,7 @@ void GetUniqueInputOutputNodeNames(ModuleOp module_op,
   bool need_prefix_for_input_name = false;
   bool need_prefix_for_output_name = false;
   std::vector<StringRef> fn_input_name_vec, fn_output_name_vec;
-  llvm::StringSet<> input_name_set, output_name_set;
+  StringSet<> input_name_set, output_name_set;
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
     if (!ShouldIncludeInMainFunction(func_op)) continue;
     if (auto tf_attrs =
@@ -157,7 +158,7 @@ void GetUniqueInputOutputNodeNames(ModuleOp module_op,
             absl::StrSplit(inputs_attr_str, ',', absl::SkipEmpty());
 
         for (StringRef input_name : fn_input_names) {
-          if (input_name_set.count(input_name) > 0) {
+          if (input_name_set.contains(input_name)) {
             // Found a duplicated name, all input names will be prefixed by
             // their corresponding function names.
             need_prefix_for_input_name = true;
@@ -177,7 +178,7 @@ void GetUniqueInputOutputNodeNames(ModuleOp module_op,
             absl::StrSplit(outputs_attr_str, ',', absl::SkipEmpty());
 
         for (StringRef output_name : fn_output_names) {
-          if (output_name_set.count(output_name) > 0) {
+          if (output_name_set.contains(output_name)) {
             // Found a duplicated name, all output names will be prefixed by
             // their corresponding function names.
             need_prefix_for_output_name = true;
@@ -285,10 +286,10 @@ bool CreateMainFunction(ModuleOp module_op) {
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
     if (!ShouldIncludeInMainFunction(func_op)) continue;
 
-    llvm::ArrayRef<BlockArgument> new_args = llvm::makeArrayRef(
+    llvm::ArrayRef<BlockArgument> new_args = llvm::ArrayRef(
         main_func.getArguments().begin() + arg_idx, func_op.getNumArguments());
     arg_idx += func_op.getNumArguments();
-    llvm::ArrayRef<Type> new_types = llvm::makeArrayRef(
+    llvm::ArrayRef<Type> new_types = llvm::ArrayRef(
         result_types.begin() + result_idx, func_op.getNumResults());
     result_idx += func_op.getNumResults();
 

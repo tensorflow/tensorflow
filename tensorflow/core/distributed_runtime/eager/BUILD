@@ -99,11 +99,7 @@ cc_library(
         ":cluster_function_library_runtime",
         ":remote_mgr",
         ":remote_tensor_handle",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
-        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -119,6 +115,10 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -229,7 +229,7 @@ filegroup(
         "remote_tensor_handle_data.h",
     ],
     visibility = [
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

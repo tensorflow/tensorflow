@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -691,10 +692,10 @@ class Layer(base_layer.Layer):
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor` on all `inputs` because
-        # `SparseTensors` can't be converted to `Tensor`.
+        # Don't call `tensor_conversion.convert_to_tensor` on all `inputs`
+        # because `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2_with_dispatch(x)
+          return tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
         return x
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
@@ -1035,8 +1036,9 @@ class Layer(base_layer.Layer):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tf_type(loss):
-        loss = ops.convert_to_tensor_v2_with_dispatch(
-            loss, dtype=backend.floatx())
+        loss = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx()
+        )
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -1051,8 +1053,9 @@ class Layer(base_layer.Layer):
       if loss is None:
         continue
       if not tensor_util.is_tf_type(loss):
-        loss = ops.convert_to_tensor_v2_with_dispatch(
-            loss, dtype=backend.floatx())
+        loss = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx()
+        )
       # TF Functions should take the eager path.
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
@@ -1213,7 +1216,7 @@ class Layer(base_layer.Layer):
       elif hasattr(x, 'op'):
         update = x.op
       else:
-        update = ops.convert_to_tensor_v2_with_dispatch(x)
+        update = tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
 
       reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
       update._unconditional_update = update not in reachable

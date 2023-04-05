@@ -1,11 +1,15 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow:__subpackages__",
         "//tensorflow:internal",
+        "//tensorflow_estimator:__subpackages__",
+        "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],
     licenses = ["notice"],
@@ -34,7 +38,6 @@ py_library(
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -87,6 +90,7 @@ py_library(
     deps = [
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
@@ -100,7 +104,8 @@ py_library(
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
-        "//tensorflow/python:util",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util:keras_deps",
         "@absl_py//absl:app",
     ],
 )
@@ -145,8 +150,6 @@ py_test(
         "no_oss",
         "no_pip",
         "no_windows",
-        "noasan",  # b/144707533
-        "notsan",  # b/160824139
     ],
     deps = [
         ":convert",
@@ -206,7 +209,8 @@ py_library(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
@@ -251,6 +255,7 @@ py_test(
         ":lite_v2_test_util",
         ":test_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
@@ -326,13 +331,13 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -345,8 +350,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:keras_deps",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -359,7 +366,6 @@ py_library(
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -370,10 +376,12 @@ py_library(
     deps = [
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "convert",
     srcs = ["convert.py"],
     srcs_version = "PY3",
@@ -383,6 +391,7 @@ py_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
@@ -391,7 +400,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -399,30 +408,39 @@ py_library(
 py_library(
     name = "op_hint",
     srcs = ["op_hint.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_test(
+pytype_strict_contrib_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":convert",
         ":interpreter",
         ":op_hint",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
+        "//tensorflow/lite/python/metrics:metrics_wrapper",
+        "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -488,7 +506,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite/schema:utils_friends"],
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
     ],
 )
 

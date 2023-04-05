@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
-#define MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#ifndef MLIR_HLO_MHLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#define MLIR_HLO_MHLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+
+#include <optional>
 
 #include "llvm/Support/raw_ostream.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -97,7 +99,7 @@ class ShapeComponentAnalysis {
     // `1`. This is useful for broadcasts.
     bool isKnownNotOne() const;
     // If this is a reference to a singular symbol, return it.
-    Optional<Symbol> singleton() const;
+    std::optional<Symbol> singleton() const;
 
     bool operator==(const SymbolicExpr &rhs) const {
       return expr == rhs.expr && symbols == rhs.symbols;
@@ -127,10 +129,10 @@ class ShapeComponentAnalysis {
  public:
   // Return the computed components for the shape of a value, e.g., the
   // dimensions of a tensor.
-  Optional<ArrayRef<SymbolicExpr>> GetShapeInfo(Value value);
+  std::optional<ArrayRef<SymbolicExpr>> GetShapeInfo(Value value);
   // Return the computed components for the value of a value, e.g, the elements
   // of a shape tensor.
-  Optional<ArrayRef<SymbolicExpr>> GetValueInfo(Value shape);
+  std::optional<ArrayRef<SymbolicExpr>> GetValueInfo(Value shape);
 
   // Clear analysis data structures.
   void reset();
@@ -165,4 +167,4 @@ struct DenseMapInfo<mlir::ShapeComponentAnalysis::Symbol> {
 
 }  // namespace llvm
 
-#endif  // MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#endif  // MLIR_HLO_MHLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H

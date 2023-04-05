@@ -45,6 +45,8 @@ class PjRtCompatibleArray
   virtual absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() = 0;
   virtual StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>>
   mutable_pjrt_buffers() = 0;
+
+  static char ID;  // NOLINT
 };
 
 // `Array` implementation that wraps a list of `xla::PjRtBuffer`s.

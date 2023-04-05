@@ -35,7 +35,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -376,7 +376,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
   def test_dataset_with_extra_test_iteration_limiting(self):
     def body(it):
       nonlocal i
-      with ops.control_dependencies((control_flow_ops.Assert(i < 3, (i,)),)):
+      with ops.control_dependencies((control_flow_assert.Assert(i < 3, (i,)),)):
         i = it
 
     def set_state(loop_vars):

@@ -50,4 +50,6 @@ const char kXlaShardingStrategyMod[] = "mod";
 
 const char kXlaShardingStrategyDiv[] = "div";
 
+const char kXlaPadValueAttr[] = "_xla_pad_value";
+
 }  // namespace xla
