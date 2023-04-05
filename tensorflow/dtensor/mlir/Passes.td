@@ -274,6 +274,14 @@ def DTensorFunctionRenaming
   ];
 }
 
+def DTensorMultiDeviceExpansion
+    : Pass<"dtensor-multi-device-expansion", "mlir::ModuleOp"> {
+  let summary = "Expands a per-device, post-SPMD graph for multiple devices.";
+  let constructor = "CreateDTensorMultiDeviceExpansionPass()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorMergeClusters
     : Pass<"dtensor-merge-clusters", "mlir::ModuleOp"> {
   let summary = "Merges tf_device.Clusters ops with same mesh specification.";
