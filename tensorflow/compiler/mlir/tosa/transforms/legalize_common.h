@@ -260,12 +260,12 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
 // Lowers TensorFlow and TensorFlow Lite Conv3D to a sequence of TOSA
 // quantization ops.
 std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                          Operation* op, ShapedType output_type,
-                                          Value input, Value filter, Value bias,
-                                          DenseI64ArrayAttr pads,
-                                          DenseI64ArrayAttr strides,
-                                          DenseI64ArrayAttr dilations,
-                                          StringRef data_format_ref);
+                                         Operation* op, ShapedType output_type,
+                                         Value input, Value filter, Value bias,
+                                         DenseI64ArrayAttr pads,
+                                         DenseI64ArrayAttr strides,
+                                         DenseI64ArrayAttr dilations,
+                                         StringRef data_format_ref);
 
 // Lowers Gather operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,

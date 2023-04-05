@@ -3568,12 +3568,12 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
 }
 
 std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                          Operation* op, ShapedType output_type,
-                                          Value input, Value filter, Value bias,
-                                          DenseI64ArrayAttr pads,
-                                          DenseI64ArrayAttr strides,
-                                          DenseI64ArrayAttr dilations,
-                                          StringRef data_format_ref) {
+                                         Operation* op, ShapedType output_type,
+                                         Value input, Value filter, Value bias,
+                                         DenseI64ArrayAttr pads,
+                                         DenseI64ArrayAttr strides,
+                                         DenseI64ArrayAttr dilations,
+                                         StringRef data_format_ref) {
   if (data_format_ref.str() != "NDHWC") {
     (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
     return std::nullopt;
