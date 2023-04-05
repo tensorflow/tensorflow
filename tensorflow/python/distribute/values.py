@@ -751,9 +751,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def _get_replica(self, replica_id):
     """Returns the value on a device with the given replica_id."""
+    value = self._values[replica_id]
     if self._use_packed_variable():
-      return self._packed_var.on_device(self._devices[replica_id])
-    return self._values[replica_id]
+      return self._packed_var.on_device(value.device)
+    else:
+      return value
 
   def _get(self):
     """Returns the value for the current device or raises a ValueError."""
