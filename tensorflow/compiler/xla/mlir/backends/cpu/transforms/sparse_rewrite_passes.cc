@@ -281,6 +281,21 @@ struct SparseDynSliceCallRewriter {
   }
 };
 
+struct SparseReshapeCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 1 && "Need one input tensor");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    // Reconstruct the reshape operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    // TODO(anlunx): Fix the issue that the reshape is rewritten to a collapse +
+    // expand pair where the sparsity encoding is dropped in between.
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, ret_sp_tensor.getType(),
+                                                 op.getInputs()[0]);
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -311,6 +326,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
       std::make_pair("sparse_tensor_dynamic_slice",
                      SparseDynSliceCallRewriter()),
+      std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to target 'sparse_tensor_pack/unpack' to
