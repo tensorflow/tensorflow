@@ -253,6 +253,17 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
   };
 };
 
+class AfterAllLowering : public OpRewritePattern<mhlo::AfterAllOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::AfterAllOp op,
+                                PatternRewriter& rewriter) const override {
+    // We don't reorder collective ops, so after_all is a no-op.
+    rewriter.replaceOp(op, op->getOperand(0));
+    return success();
+  };
+};
+
 class RngBitGeneratorLowering
     : public OpRewritePattern<mhlo::RngBitGeneratorOp> {
   using OpRewritePattern<mhlo::RngBitGeneratorOp>::OpRewritePattern;
@@ -289,8 +300,8 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
 
   // Convert mhlo collective operations to XLA cpu ops.
   RewritePatternSet patterns(ctx);
-  patterns.insert<AddDependencyLowering, AllReduceLowering, AllToAllLowering,
-                  CollectivePermuteLowering, FftLowering,
+  patterns.insert<AddDependencyLowering, AfterAllLowering, AllReduceLowering,
+                  AllToAllLowering, CollectivePermuteLowering, FftLowering,
                   IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
                   IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>,
                   OutfeedLowering, RngBitGeneratorLowering>(ctx);
