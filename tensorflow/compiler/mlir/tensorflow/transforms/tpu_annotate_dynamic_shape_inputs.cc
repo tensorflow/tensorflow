@@ -118,7 +118,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
     return WalkResult::advance();
   });
 
-  // Remove the annotate op after since it is just a placeholder.
+  // Remove the annotated op after since it is just a placeholder.
   getOperation().walk([&](Operation* op) {
     if (llvm::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(op)) {
       for (auto result : llvm::zip(op->getOperands(), op->getResults())) {
@@ -132,7 +132,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass() {
   return std::make_unique<TPUAnnotateDynamicShapeInputsPass>();
 }
