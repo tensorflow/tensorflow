@@ -892,7 +892,10 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
       (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim),
       AnyStaticShapeTensor:$input1, AnyStaticShapeTensor:$input2),
     (TFL_SelectV2Op $pre_broadcast, $input1, $input2),
-    [(HasSameStaticShapes $post_broadcast, $input1)]>;
+    [(HasSameStaticShapes $post_broadcast, $input1),
+     (HasRankAtMost<4> $post_broadcast),
+     (HasRankAtMost<4> $input1),
+     (HasRankAtMost<4> $input2)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<
