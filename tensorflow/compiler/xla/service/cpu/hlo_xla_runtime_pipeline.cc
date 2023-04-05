@@ -255,7 +255,7 @@ static Status CreateHloXlaPipeline(
   if (options.experimental_deallocation) {
     pm.addNestedPass<FuncOp>(
         mlir::deallocation::createXlaBufferArgRewritePass());
-    pm.addNestedPass<FuncOp>(mlir::deallocation::createDeallocatePass());
+    pm.addPass(mlir::deallocation::createDeallocatePass());
     pm.addNestedPass<FuncOp>(
         mlir::deallocation::createDeallocationSimplificationPass());
     // Remove SCF iter args that became redundant after simplification.
