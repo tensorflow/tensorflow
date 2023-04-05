@@ -1561,22 +1561,13 @@ func.func @dot_legal_unranked_rank_type(%arg0: tensor<*xf32>, %arg1: tensor<*xf3
 
 // -----
 
-// CHECK-LABEL: func @imag_fp_input
-func.func @imag_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.imag"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+func.func @imag_c2(%arg0: tensor<2xf32>) -> tensor<2xf16> {
+  // expected-error@+1 {{inferred type(s) 'tensor<2xf32>' are incompatible with return type(s) of operation 'tensor<2xf16>'}}
+  %0 = "mhlo.imag"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
+  func.return %0 : tensor<2xf16>
 }
 
 // -----
-
-func.func @imag_int_input(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  // expected-error@+1 {{operand #0 must be tensor of f8E4M3FN type or f8E5M2 type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or complex type with 32-bit float or 64-bit float elements values, but got 'tensor<*xi32>'}}
-  %0 = "mhlo.imag"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
-}
-
-// -----
-
 // CHECK-LABEL: func @imag_complex_input
 func.func @imag_complex_input(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32> {
   %0 = "mhlo.imag"(%arg0) : (tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32>
@@ -1585,18 +1576,10 @@ func.func @imag_complex_input(%arg0: tensor<2x3xcomplex<f32>>) -> tensor<2x3xf32
 
 // -----
 
-func.func @imag_mismatch_return_shape(%arg0: tensor<2xf32>) -> tensor<4xf32> {
-  // expected-error@+1 {{all non-scalar operands/results must have the same shape and base type}}
-  %0 = "mhlo.imag"(%arg0) : (tensor<2xf32>) -> tensor<4xf32>
-  func.return %0 : tensor<4xf32>
-}
-
-// -----
-
-func.func @imag_mismatch_return_element_type(%arg0: tensor<2xf32>) -> tensor<2xf16> {
-  // expected-error@+1 {{inferred type(s) 'tensor<2xf32>' are incompatible with return type(s) of operation 'tensor<2xf16>'}}
-  %0 = "mhlo.imag"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
-  func.return %0 : tensor<2xf16>
+// CHECK-LABEL: func @imag_unranked
+func.func @imag_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.imag"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
