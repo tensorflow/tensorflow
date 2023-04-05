@@ -29,6 +29,13 @@ namespace xnnpack {
 
 class FullyConnectedTester {
  public:
+  enum class WeightsType {
+    kFP32,
+    kFP16,
+    kTensorWiseQuantizedInt8,
+    kChannelWiseQuantizedInt8,
+  };
+
   FullyConnectedTester() = default;
   FullyConnectedTester(const FullyConnectedTester&) = delete;
   FullyConnectedTester& operator=(const FullyConnectedTester&) = delete;
@@ -73,26 +80,18 @@ class FullyConnectedTester {
   inline bool KeepDims() const { return keep_dims_; }
 
   inline FullyConnectedTester& FP16Weights() {
-    fp16_weights_ = true;
+    weights_type_ = WeightsType::kFP16;
     return *this;
   }
 
-  inline bool FP16Weights() const { return fp16_weights_; }
-
-  inline FullyConnectedTester& INT8Weights() {
-    int8_weights_ = true;
+  inline FullyConnectedTester& TensorWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
     return *this;
   }
 
-  inline bool INT8Weights() const { return int8_weights_; }
-
-  inline FullyConnectedTester& INT8ChannelWiseWeights() {
-    int8_channel_wise_weights_ = true;
+  inline FullyConnectedTester& ChannelWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
     return *this;
-  }
-
-  inline bool INT8ChannelWiseWeights() const {
-    return int8_channel_wise_weights_;
   }
 
   inline FullyConnectedTester& NoBias() {
@@ -133,6 +132,8 @@ class FullyConnectedTester {
 
   inline bool HasBias() const { return has_bias_; }
 
+  inline WeightsType WeightsType() const { return weights_type_; }
+
   inline ::tflite::ActivationFunctionType Activation() const {
     return activation_;
   }
@@ -144,9 +145,7 @@ class FullyConnectedTester {
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
   bool keep_dims_ = false;
-  bool fp16_weights_ = false;
-  bool int8_weights_ = false;
-  bool int8_channel_wise_weights_ = false;
+  enum WeightsType weights_type_ { WeightsType::kFP32 };
   bool has_bias_ = true;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;

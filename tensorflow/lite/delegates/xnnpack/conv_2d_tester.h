@@ -29,6 +29,13 @@ namespace xnnpack {
 
 class Conv2DTester {
  public:
+  enum class WeightsType {
+    kFP32,
+    kFP16,
+    kTensorWiseQuantizedInt8,
+    kChannelWiseQuantizedInt8,
+  };
+
   Conv2DTester() = default;
   Conv2DTester(const Conv2DTester&) = delete;
   Conv2DTester& operator=(const Conv2DTester&) = delete;
@@ -163,26 +170,18 @@ class Conv2DTester {
   }
 
   inline Conv2DTester& FP16Weights() {
-    fp16_weights_ = true;
+    weights_type_ = WeightsType::kFP16;
     return *this;
   }
 
-  inline bool FP16Weights() const { return fp16_weights_; }
-
-  inline Conv2DTester& INT8Weights() {
-    int8_weights_ = true;
+  inline Conv2DTester& TensorWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
     return *this;
   }
 
-  inline bool INT8Weights() const { return int8_weights_; }
-
-  inline Conv2DTester& INT8ChannelWiseWeights() {
-    int8_channel_wise_weights_ = true;
+  inline Conv2DTester& ChannelWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
     return *this;
-  }
-
-  inline bool INT8ChannelWiseWeights() const {
-    return int8_channel_wise_weights_;
   }
 
   inline Conv2DTester& SparseWeights() {
@@ -238,6 +237,8 @@ class Conv2DTester {
   std::vector<char> CreateTfLiteModel() const;
 
  private:
+  inline WeightsType WeightsType() const { return weights_type_; }
+
   inline ::tflite::Padding Padding() const { return padding_; }
 
   inline ::tflite::ActivationFunctionType Activation() const {
@@ -256,9 +257,7 @@ class Conv2DTester {
   int32_t stride_width_ = 1;
   int32_t dilation_height_ = 1;
   int32_t dilation_width_ = 1;
-  bool fp16_weights_ = false;
-  bool int8_weights_ = false;
-  bool int8_channel_wise_weights_ = false;
+  enum WeightsType weights_type_ { WeightsType::kFP32 };
   bool sparse_weights_ = false;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
