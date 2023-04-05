@@ -1,3 +1,4 @@
+#include <iostream>
 /* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
@@ -169,6 +171,57 @@ SmallVector<int64_t> dropZeros(ArrayRef<int64_t> tileSizes) {
   return to_vector(llvm::make_filter_range(
       tileSizes, [](int64_t size) { return size != 0; }));
 }
+
+struct DotAddTransformPattern : public OpRewritePattern<linalg::MapOp> {
+  using OpRewritePattern<linalg::MapOp>::OpRewritePattern;
+
+  explicit DotAddTransformPattern(MLIRContext *context,
+                                  PatternBenefit benefit = 1)
+      : OpRewritePattern<linalg::MapOp>(context, benefit) {}
+
+  LogicalResult matchAndRewrite(linalg::MapOp mapOp,
+                                PatternRewriter &rewriter) const override {
+    auto &region = mapOp.getMapper();
+    if (!region.hasOneBlock()) return failure();
+
+    auto &body = region.front();
+    // The body region should only have one add operation and a linalg.yield.
+    if (body.getOperations().size() != 2) return failure();
+
+    auto &mapperOp = body.front();
+    if (!isa<arith::AddIOp, arith::AddFOp>(mapperOp)) return failure();
+
+    // Map of add should always be binary.
+    if (mapOp.getInputs().size() != 2) return failure();
+    if (ValueRange{body.getArguments()} != ValueRange{mapperOp.getOperands()})
+      return failure();
+
+    if (!llvm::any_of(mapOp.getInputs(), [](Value operand) {
+          auto linalgOp = operand.getDefiningOp<linalg::LinalgOp>();
+          return linalg::isaContractionOpInterface(linalgOp);
+        }))
+      return failure();
+
+    auto foldAddIntoDotOperand = [&](unsigned opIdx) {
+      auto dotOp = mapOp.getInputs()[opIdx].getDefiningOp<linalg::LinalgOp>();
+      auto otherOp = mapOp.getInputs()[1 - opIdx];
+      if (!linalg::isaContractionOpInterface(dotOp)) return false;
+      if (!dotOp.getDpsInitOperand(0)->get().getDefiningOp<linalg::FillOp>())
+        return false;
+      if (!dotOp->hasOneUse()) return false;
+      // TODO(vuson): handle the case where we need to move dotOp up or otherOp
+      // down.
+      mlir::DominanceInfo domInfo(mapOp->getParentOp());
+      if (!domInfo.properlyDominates(otherOp, dotOp)) return false;
+      rewriter.updateRootInPlace(
+          dotOp, [&]() { dotOp.setDpsInitOperand(0, otherOp); });
+      rewriter.replaceOp(mapOp, dotOp->getResults());
+      return true;
+    };
+
+    return success(foldAddIntoDotOperand(0) || foldAddIntoDotOperand(1));
+  }
+};
 
 /// Pattern to tile dot operations (linalg.matvec, linalg.vecmat, linalg.dot)
 /// and peel the generated loops.
@@ -333,6 +386,16 @@ struct TransformDotForCpuPass
   void runOnOperation() override {
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
+
+    // Peephole optimization of dot followed by add.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<DotAddTransformPattern>(ctx);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+        return signalPassFailure();
+      }
+    }
 
     // Dot operations can have at most 3 dimensions ((upto) 2 parallel + 1
     // reduction), so the first two tileSizes' elements are for parallel
