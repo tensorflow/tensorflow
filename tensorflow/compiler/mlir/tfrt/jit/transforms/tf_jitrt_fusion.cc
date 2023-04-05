@@ -39,7 +39,6 @@ using mlir::AffineMap;
 using mlir::MLIRContext;
 using mlir::Operation;
 using mlir::OpOperand;
-using mlir::OpResult;
 using mlir::RewritePatternSet;
 
 namespace linalg = mlir::linalg;
@@ -149,8 +148,7 @@ struct FusionPass : public impl::FusionBase<FusionPass> {
     // Use TopDownTraversal for compile time reasons.
     mlir::GreedyRewriteConfig grc;
     grc.useTopDownTraversal = true;
-    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns),
-                                       grc);
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns), grc);
   }
 };
 

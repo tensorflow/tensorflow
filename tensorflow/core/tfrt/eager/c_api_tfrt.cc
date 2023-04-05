@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/c/eager/abstract_function.h"
@@ -49,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
@@ -288,6 +290,24 @@ int64_t GetNextLocationId() {
   static std::atomic<int64_t> id(0);
   return id.fetch_add(1, std::memory_order_relaxed);
 }
+
+// TODO(b/161370736): Have a formal method to convert between TF's and TFRT's
+// device name. Currently TFRT adopts the suffix of TF's device name,
+// e.g. CPU:0.
+tfrt::Expected<const char*> ConvertTfDeviceNameToTfrt(
+    const char* device_name, tensorflow::EagerContext* eager_context) {
+  // NOTE(fishx): We need to get tf_device first because DeviceMgr in current TF
+  // allows us get the device with simplified name like "CPU:0". However, TFRT
+  // DeviceManager only allows get device via its fullname.
+  tensorflow::Device* tf_device;
+  tensorflow::Status s =
+      eager_context->FindDeviceFromName(device_name, &tf_device);
+  if (!s.ok()) {
+    return MakeStringError(s.error_message());
+  }
+  return tf_device->name().c_str();
+}
+
 }  // namespace
 
 tensorflow::DataType TensorInterface::Type() const {
@@ -537,7 +557,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Failed to build a RequestContext: ", req_ctx.takeError()));
     return nullptr;
   }
@@ -551,7 +571,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   }
   if (target_av->IsError()) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }
@@ -559,13 +579,13 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   return new TensorInterface(std::move(host_tensor_ref));
 }
 
-llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
+std::optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsMetadataAvailable()) {
     context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
   }
   if (th.IsMetadataError()) {
-    return llvm::None;
+    return std::nullopt;
   }
   return &th.GetAvailableMetadata();
 }
@@ -1010,11 +1030,10 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
-    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table, int64_t step_id,
     RCReference<tfrt::RequestContext>* request_context) {
-  auto* step_container = GetEagerContext()->StepContainer();
-  RequestContextBuilder request_context_builder(
-      GetHostContext(), GetResourceContext(), step_container->StepId());
+  RequestContextBuilder request_context_builder(GetHostContext(),
+                                                GetResourceContext(), step_id);
 
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, runner_table, GetEagerContext()));
@@ -1029,7 +1048,8 @@ tensorflow::Status ContextInterface::BuildFunctionRequestContext(
 
 tensorflow::Status ContextInterface::BuildOpRequestContext(
     RCReference<tfrt::RequestContext>* request_context) {
-  return BuildFunctionRequestContext(/*runner_table=*/nullptr, request_context);
+  return BuildFunctionRequestContext(/*runner_table=*/nullptr, /*step_id=*/0,
+                                     request_context);
 }
 
 tensorflow::ImmediateExecutionTensorHandle*
@@ -1099,6 +1119,11 @@ std::vector<std::string> ContextInterface::ListFunctionNames() {
   return GetEagerContext()->ListFunctionNames();
 }
 
+tensorflow::ImmediateExecutionContext::CacheStats
+ContextInterface::GetCacheStats() {
+  return GetEagerContext()->GetCacheStats();
+}
+
 tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   // TODO(tfrt-devs): We need to ensure all invocations of this function is
   // finished before removing it.
@@ -1106,9 +1131,19 @@ tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   return GetEagerContext()->RemoveFunction(func);
 }
 
+tensorflow::Status ContextInterface::AddRemoveFunctionNotifier(
+    const std::string& func, std::function<void()> notifier) {
+  return GetEagerContext()->AddRemoveFunctionNotifier(func, notifier);
+}
+
 const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(
     const std::string& name) const {
   return GetEagerContext()->FindFunctionDef(name);
+}
+
+tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>
+ContextInterface::FindRecord(const std::string& name) const {
+  return GetEagerContext()->FindRecord(name);
 }
 
 const tensorflow::DeviceNameUtils::ParsedName&
@@ -1226,7 +1261,7 @@ tensorflow::Status ContextInterface::RunMetadataRecordFunction(
   mutex_lock l(run_metadata_mu_);
   auto* function_graphs = run_metadata_->add_function_graphs();
   *function_graphs->mutable_pre_optimization_graph() = def;
-  // TODO(b/b/171600738): Figure out a way to record the right post optimization
+  // TODO(b/171600738): Figure out a way to record the right post optimization
   // graph and partition graph.
   *function_graphs->mutable_post_optimization_graph() = def;
   *function_graphs->add_partition_graphs() = def;
@@ -1352,7 +1387,7 @@ tensorflow::Status OperationInterface::Execute(
 
     RCReference<RequestContext> request_ctx;
     TF_RETURN_IF_ERROR(context_->BuildFunctionRequestContext(
-        function_state_->GetRunnerTable(), &request_ctx));
+        function_state_->GetRunnerTable(), step_id(), &request_ctx));
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
@@ -1526,7 +1561,8 @@ tensorflow::Status OperationInterface::Initialize() {
       /*request_ctx_fn=*/
       [this](tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
              RCReference<RequestContext>* request_ctx) {
-        return context_->BuildFunctionRequestContext(runner_table, request_ctx);
+        return context_->BuildFunctionRequestContext(runner_table, step_id(),
+                                                     request_ctx);
       },
       abort_location_handler_.GetCurrentLocation(), compile_options,
       input_devices, &result));
@@ -1676,8 +1712,8 @@ tensorflow::Status OperationInterface::SetAttrShape(const char* attr_name,
     }
 
     // Set RankedShapeAttr.
-    offset = bef_attr_encoder_.EncodeRankedShapeAttr(
-        llvm::makeArrayRef(dims, num_dims));
+    offset =
+        bef_attr_encoder_.EncodeRankedShapeAttr(llvm::ArrayRef(dims, num_dims));
   }
   fallback_attrs_.Set(attr_name, proto);
 
@@ -1733,7 +1769,7 @@ static size_t SerializeTFETensorToDenseAttr(
   for (int i = 0; i < tensor->NumDims(); ++i) {
     shape.push_back(tensor->Dim(i));
   }
-  auto elements = llvm::makeArrayRef(
+  auto elements = llvm::ArrayRef(
       reinterpret_cast<const uint8_t*>(tensor->Data()), tensor->ByteSize());
   return encoder->EncodeDenseAttr(static_cast<DType>(element_type), shape,
                                   elements);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
 #include <array>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -102,16 +103,18 @@ PjRtTpuClient::PjRtTpuClient(
       }()) {
   // We always initialize the tpu client even if libtpu isn't linked in or
   // initialized.
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_InitFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_InitFn();
   }
 }
 
 PjRtTpuClient::~PjRtTpuClient() {
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_ShutdownFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
   }
 }
 
@@ -163,20 +166,43 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
   const TpuExecutable* tpu_executable =
       tensorflow::down_cast<const TpuExecutable*>(
           se_executable->executables()[0]->executable());
-  return tpu_executable->Serialize();
+  ExecutableAndOptionsProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_serialized_executable(),
+                      tpu_executable->Serialize());
+  TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                      se_executable->compile_options_.ToProto());
+  return proto.SerializeAsString();
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
                                      std::optional<CompileOptions> options) {
-  if (!options.has_value()) {
-    return InvalidArgument(
-        "PjRtTpuClient::DeserializeExecutable() requires CompileOptions");
+  ExecutableAndOptionsProto proto;
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "PjRtTpuClient::DeserializeExecutable proto too large (>2GB)");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
-                      TpuExecutable::Deserialize(serialized));
+  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+    return Internal(
+        "PjRtTpuClient::DeserializeExecutable proto deserialization failed");
+  }
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&*options));
+  CompileOptions compile_options;
+  if (options.has_value()) {
+    compile_options = *std::move(options);
+  } else {
+    TF_ASSIGN_OR_RETURN(compile_options,
+                        CompileOptions::FromProto(proto.compile_options()));
+  }
+
+  auto input_options = compile_options;
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<TpuExecutable> tpu_executable,
+      TpuExecutable::Deserialize(proto.serialized_executable()));
+
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
+                      GetExecutableExtras(&compile_options));
 
   // TODO(skyewm): can we streamline this? e.g. removing proto serialization
   XlaComputation computation(tpu_executable->module().ToProto());
@@ -190,22 +216,24 @@ PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
             .transfer_manager()
             ->ChooseCompactLayoutForShape(shape);
       },
-      options->argument_layouts, &options->executable_build_options,
+      compile_options.argument_layouts,
+      &compile_options.executable_build_options,
       &unused_argument_layout_pointers));
 
   auto local_executable = std::make_unique<LocalExecutable>(
       std::move(tpu_executable), client_->mutable_backend(),
-      options->executable_build_options);
+      compile_options.executable_build_options);
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.emplace_back(std::move(local_executable));
 
   auto pjrt_executable = std::make_unique<PjRtStreamExecutorExecutable>(
-      std::move(local_executables), options->parameter_is_tupled_arguments,
-      std::move(extras.device_assignment),
+      std::move(local_executables),
+      compile_options.parameter_is_tupled_arguments,
+      std::move(extras.device_assignment), std::move(input_options),
       std::move(extras.addressable_device_logical_ids),
       std::move(extras.addressable_devices), this);
-  TF_RETURN_IF_ERROR(
-      pjrt_executable->SetUpDonation(options->parameter_is_tupled_arguments));
+  TF_RETURN_IF_ERROR(pjrt_executable->SetUpDonation(
+      compile_options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(pjrt_executable));
 }
 

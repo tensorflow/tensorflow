@@ -212,6 +212,26 @@ class DynamicShardingTest(data_service_test_base.TestBase,
         ds, list(zip(range(smaller_num_elements), range(smaller_num_elements))))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testImbalancedZipAndRepeat(self):
+    smaller_num_elements = 200
+    larger_num_elements = 1000
+    repetitions = 3
+
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    a = dataset_ops.Dataset.range(smaller_num_elements)
+    b = dataset_ops.Dataset.range(larger_num_elements)
+
+    ds = dataset_ops.Dataset.zip((a, b))
+    ds = ds.repeat(repetitions)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+
+    expected = repetitions * (
+        list(zip(range(smaller_num_elements), range(smaller_num_elements)))
+    )
+
+    self.assertDatasetProduces(ds, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testImbalancedZipMultiWorker(self):
     smaller_num_elements = 200
     larger_num_elements = 1000

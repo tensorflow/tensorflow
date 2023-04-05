@@ -14,11 +14,11 @@ cc_library(
         "//tensorflow/tsl/profiler:xla_profiler_backends",
     ],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -79,9 +79,9 @@ cc_library(
         "//tensorflow/tsl/profiler:internal",
     ],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
     ] + if_static([
         ":annotation_stack_impl",
     ]),
@@ -95,7 +95,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow/compiler/xla/service/gpu/tests:__pkg__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/profiler:internal",
     ],
     deps = [

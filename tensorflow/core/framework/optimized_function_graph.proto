@@ -23,4 +23,23 @@ message OptimizedFunctionGraph {
   repeated DataType ret_types = 4;
   // Number of return nodes. This is an output of graph preprocessing.
   uint32 num_return_nodes = 5;
+
+  // Time spent on running the graph optimization passes for this function.
+  optional uint64 optimization_time_secs = 6;
+
+  // Enum for distinguishing the origin where the proto is created.
+  //
+  // AOT: proto is created in ahead-of-time environment, which can be different
+  // from the environment where the graph is actually executed.
+  //
+  // JIT: proto is created in just-in-time execution, which has the same
+  // environment as the one the graph is actually executed.
+  enum OptimizationSource {
+    SOURCE_UNSPECIFIED = 0;
+    AOT = 1;
+    JIT = 2;
+  }
+
+  // Indicates the source environment where this proto is generated.
+  optional OptimizationSource source = 7;
 }

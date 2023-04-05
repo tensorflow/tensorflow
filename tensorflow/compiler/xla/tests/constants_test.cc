@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -74,6 +75,28 @@ TEST_F(ConstantsTest, OneCellU32) {
   ConstantR1<uint32_t>(&builder, constant);
 
   ComputeAndCompareR1<uint32_t>(&builder, constant, {});
+}
+
+TEST_F(ConstantsTest, OneCellF16) {
+  std::vector<half> constant = {half{2.0}};
+
+  XlaBuilder builder(TestName());
+  auto c = ConstantR1<half>(&builder, constant);
+  // F16 outputs are not yet supported so convert to F32
+  ConvertElementType(c, F32);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f}, {}, error_spec_);
+}
+
+TEST_F(ConstantsTest, OneCellF8e4m3fn) {
+  std::vector<tsl::float8_e5m2> constant = {tsl::float8_e5m2{2.0}};
+
+  XlaBuilder builder(TestName());
+  auto c = ConstantR1<tsl::float8_e5m2>(&builder, constant);
+  // F8 outputs are not yet supported so convert to F32
+  ConvertElementType(c, F32);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f}, {}, error_spec_);
 }
 
 TEST_F(ConstantsTest, EightCells) {

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -89,6 +90,12 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
 /// Finalizes sparse semi-ring construction.
 Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b);
 
+/// Returns true if all operands are tensors with rank 0.
+bool allOperandsAreScalarTensors(Operation* op);
+
+/// Returns true if parent op is linalg.
+bool isInBodyOfLinalgOps(Operation* op);
+
 /// Converts a HLO operation to a linalg.generic op that contains the
 /// corresponding scalar operations.
 template <typename OpTy>
@@ -99,6 +106,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
     // Find maximum rank / number of loops.
     auto getRank = [](Value v) {
       return v.getType().cast<ShapedType>().getRank();
@@ -120,7 +128,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     }
 
     // Find result type, if on tensors.
-    Optional<ShapedType> resultTy;
+    std::optional<ShapedType> resultTy;
     resultTy = this->typeConverter->convertType(op->getResultTypes().front())
                    .template dyn_cast<ShapedType>();
 
@@ -132,25 +140,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           op, "mismatched operand/result types or iterator count");
     }
 
-    auto loc = op.getLoc();
-    // Within a linalg op, we can immediately de-tensorsize if the computation
-    // is scalar. We do not do this on the top-level, as that would break the
-    // nice invariant that all programs are exclusively on tensors, which is
-    // currently relied on for fusion in some pipelines.
-    if (nloops == 0 && isInBodyOfLinalgOps(op)) {
-      // No need to create a linalg.generic if all inputs are scalars.
-      SmallVector<Value> inputs;
-      for (auto input : adaptor.getOperands()) {
-        inputs.push_back(
-            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange()));
-      }
-      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
-          op, resultTy->getElementType(), inputs, &rewriter);
-      if (!scalarResult) return failure();
-      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
-                                                          scalarResult);
-      return success();
-    }
+    if (allOperandsAreScalarTensors(op) && isInBodyOfLinalgOps(op))
+      return failure();
 
     // Find input/output values and types.
     ValueRange inputs = adaptor.getOperands();
@@ -188,13 +179,6 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
 
     rewriter.replaceOp(op, linalgOp->getResults());
     return success();
-  }
-
- private:
-  static bool isInBodyOfLinalgOps(Operation* op) {
-    auto* parentOp = op->getParentRegion()->getParentOp();
-    return parentOp->getDialect() ==
-           parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
   }
 };
 

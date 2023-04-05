@@ -90,13 +90,9 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
 }
 
 absl::Status SelectGather(const GatherAttributes& attr,
-                          const OperationDef& op_def,
+                          const OperationDef& op_def, const GpuInfo& gpu_info,
                           std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.axis != Axis::WIDTH) {
-    return absl::UnimplementedError(
-        "No gather for this axis. Only Width axis supported.");
-  }
-  GPUOperation operation = CreateGather(op_def, attr);
+  GPUOperation operation = CreateGather(gpu_info, op_def, attr);
   *ptr = std::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
 }

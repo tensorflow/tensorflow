@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <assert.h>
 
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -230,7 +231,7 @@ static inline std::string GetOperatorName(const Record &def) {
 //
 // The signature of the function is:
 //
-//   llvm::Optional<tflite::BuiltinOperator>
+//   std::optional<tflite::BuiltinOperator>
 //   mlir::GetBuiltinOpCode(mlir::Operation* op);
 //
 // TODO(hinsu): Consider converting this to a static constant associative
@@ -239,7 +240,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
                                  raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
-  os << "llvm::Optional<tflite::BuiltinOperator> "
+  os << "std::optional<tflite::BuiltinOperator> "
         "mlir::GetBuiltinOpCode(mlir::Operation* op) {\n";
 
   for (const auto *def : defs) {
@@ -249,7 +250,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
        << "    return tflite::BuiltinOperator_" << operator_name << ";\n";
   }
 
-  os << "  return llvm::None;\n"
+  os << "  return std::nullopt;\n"
         "}\n";
 }
 
@@ -302,7 +303,7 @@ static void EmitOperandNumbers(const RecordKeeper &record_keeper,
 //
 // The signature of the function is:
 //
-//   llvm::Optional<Flatbuffers::Offset<tflite::Operator>>
+//   std::optional<Flatbuffers::Offset<tflite::Operator>>
 //   mlir::CreateFlatBufferOperator(
 //       mlir::Operation* op,
 //       uint32_t opcode_index,
@@ -315,7 +316,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
   raw_ostream &os = *ostream;
 
   // Signature
-  os << "llvm::Optional<flatbuffers::Offset<tflite::Operator>>\n"
+  os << "std::optional<flatbuffers::Offset<tflite::Operator>>\n"
         "mlir::CreateFlatBufferOperator(mlir::Operation* op, "
         "uint32_t opcode_index, "
         "const std::vector<int32_t>& operands,"
@@ -335,7 +336,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
        << "fbb);\n";
   }
 
-  os << "  return llvm::None;\n"
+  os << "  return std::nullopt;\n"
         "}\n";
 }
 
@@ -499,7 +500,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
        << "::VerifyTflRuntimeConstraints(::mlir::Operation *op, bool "
           "emit_error_on_verify_fail) {\n";
     os << "  auto top = cast<" << op.getCppClassName() << ">(op); (void)top;\n";
-    verify_ctx.withOp("top");
+    verify_ctx.addSubst("_op", "top");
 
     for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
       auto &value = op.getOperand(i);

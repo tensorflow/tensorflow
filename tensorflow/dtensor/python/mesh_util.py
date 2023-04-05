@@ -36,10 +36,9 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
   logging.info('Number of global %s devices: %d', device_type.upper(),
                num_global_devices)
   # pylint: disable=protected-access
-  logging.info('Global device IDs: %s', mesh._global_device_ids)
-  logging.info('Local device IDs: %s', mesh._local_device_ids)
-  logging.info('Local devices: %s',
-               [d.to_string() for d in mesh._local_devices])
+  logging.info('Global device IDs: %s', mesh.global_device_ids())
+  logging.info('Local device IDs: %s', mesh.local_device_ids())
+  logging.info('Local devices: %s', mesh.local_devices())
   # pylint: enable=protected-access
 
 
@@ -214,7 +213,11 @@ def create_distributed_mesh(
     return mesh
 
   if device_type.upper() == 'TPU':
-    mesh = tpu_util.create_tpu_mesh(dim_names, shape, mesh_name, use_xla_spmd)
+    mesh = tpu_util.create_tpu_mesh(
+        mesh_dim_names=dim_names,
+        mesh_shape=shape,
+        mesh_name=mesh_name,
+        use_xla_spmd=use_xla_spmd)
     _print_context(
         config.num_global_devices(device_type), config.num_clients(),
         config.client_id(), device_type, mesh)

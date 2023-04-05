@@ -94,7 +94,7 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
   }
   *tensor_shape = TensorShape();
   for (int i = 0; i < shape.rank(); ++i) {
-    tensor_shape->AddDim(shape.dimensions(i));
+    TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
   }
   return OkStatus();
 }

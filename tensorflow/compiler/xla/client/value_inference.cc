@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -166,7 +166,7 @@ struct HloProtoEvaluator {
                                   .ToProto();
     }
     if (opcode.has_value()) {
-      *inst.mutable_opcode() = HloOpcodeString(opcode.value());
+      *inst.mutable_opcode() = std::string(HloOpcodeString(opcode.value()));
     }
     absl::flat_hash_map<int64_t, HloComputation*> computation_map;
     if (inst.called_computation_ids_size() != 0) {
@@ -510,6 +510,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kSubtract:
     case HloOpcode::kCos:
     case HloOpcode::kSin:
+    case HloOpcode::kTan:
     case HloOpcode::kNegate:
     case HloOpcode::kAbs:
     case HloOpcode::kDivide:
@@ -1125,6 +1126,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kConvert:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       // Forward operand as they don't change if a value is dynamic or static.
       return result.AddVisit([](Literal operand) { return operand; });

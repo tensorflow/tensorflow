@@ -19,7 +19,6 @@ filegroup(
         "tf_op_shim.h",
         "tf_tensor_view.h",
     ],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -92,8 +91,8 @@ tf_cc_test(
     srcs = ["tf_tensor_view_test.cc"],
     deps = [
         ":tf_tensor_view",
-        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -128,7 +127,7 @@ cc_test(
         ":tflite_tensor_view",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -186,10 +185,38 @@ cc_library(
         ":tensor_view",
         ":tflite_tensor_view",
         "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "tflite_op_wrapper",
+    hdrs = ["tflite_op_wrapper.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_kernel",
+        ":status_macros",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_test(
+    name = "tflite_op_wrapper_test",
+    srcs = ["tflite_op_wrapper_test.cc"],
+    deps = [
+        ":op_kernel",
+        ":tflite_op_shim",
+        ":tflite_op_wrapper",
+        "//tensorflow/core/platform:tstring",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
@@ -222,7 +249,7 @@ cc_test(
     deps = [
         ":test_util",
         "//tensorflow/lite:cc_api",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest_main",
     ],
 )

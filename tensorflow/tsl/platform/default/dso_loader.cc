@@ -38,6 +38,7 @@ namespace internal {
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
 string GetCudaRtVersion() { return TF_CUDART_VERSION; }
+string GetCuptiVersion() { return TF_CUPTI_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
@@ -63,8 +64,8 @@ StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
     message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
   }
 #endif
-  LOG(WARNING) << message;
-  return Status(error::FAILED_PRECONDITION, message);
+  VLOG(1) << message;
+  return Status(absl::StatusCode::kFailedPrecondition, message);
 }
 }  // namespace
 
@@ -113,7 +114,7 @@ StatusOr<void*> GetCurandDsoHandle() {
 
 StatusOr<void*> GetCuptiDsoHandle() {
   // Load specific version of CUPTI this is built.
-  auto status_or_handle = GetDsoHandle("cupti", GetCudaVersion());
+  auto status_or_handle = GetDsoHandle("cupti", GetCuptiVersion());
   if (status_or_handle.ok()) return status_or_handle;
   // Load whatever libcupti.so user specified.
   return GetDsoHandle("cupti", "");

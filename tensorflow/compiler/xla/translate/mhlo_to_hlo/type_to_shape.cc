@@ -18,8 +18,10 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
+#include "mlir/Dialect/SparseTensor/IR/Enums.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -70,6 +72,8 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     switch (integer_type.getWidth()) {
       case 1:
         return PrimitiveType::PRED;
+      case 4:
+        return is_unsigned ? PrimitiveType::U4 : PrimitiveType::S4;
       case 8:
         return is_unsigned ? PrimitiveType::U8 : PrimitiveType::S8;
       case 16:
@@ -85,15 +89,20 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   return PrimitiveType::PRIMITIVE_TYPE_INVALID;
 }
 
-std::optional<DimLevelType> ConvertDimLevelType(
+std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
     mlir::sparse_tensor::DimLevelType dlt) {
-  switch (dlt) {
-    case mlir::sparse_tensor::DimLevelType::Singleton:
-      return DimLevelType::DIM_SINGLETON;
-    case mlir::sparse_tensor::DimLevelType::Compressed:
-      return DimLevelType::DIM_COMPRESSED;
-    case mlir::sparse_tensor::DimLevelType::Dense:
-      return DimLevelType::DIM_DENSE;
+  auto f = mlir::sparse_tensor::getLevelFormat(dlt);
+  if (!f) return std::nullopt;
+
+  bool unique = mlir::sparse_tensor::isUniqueDLT(dlt);
+  bool ordered = mlir::sparse_tensor::isOrderedDLT(dlt);
+  switch (*f) {
+    case mlir::sparse_tensor::LevelFormat::Singleton:
+      return std::make_tuple(DimLevelType::DIM_SINGLETON, unique, ordered);
+    case mlir::sparse_tensor::LevelFormat::Compressed:
+      return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
+    case mlir::sparse_tensor::LevelFormat::Dense:
+      return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
     default:
       return std::nullopt;
   }
@@ -196,16 +205,19 @@ Shape TypeToShape(mlir::Type type) {
       // neither does the shape_util MakeShape API.
       if (!t.hasStaticShape()) return {};
 
-      // TODO(atondwal): Handle $pointerBitWidth, $indexBitWidth after they're
+      // TODO(atondwal): Handle $posWidth, $crdWidth after they're
       // added to xla
-      if (sparse.getPointerBitWidth() != 32 || sparse.getIndexBitWidth() != 32)
-        return {};
+      if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
       llvm::SmallVector<DimLevelType, 3> dim_level_types;
+      llvm::SmallVector<bool, 3> level_unique;
+      llvm::SmallVector<bool, 3> level_ordered;
       for (auto dlt : sparse.getDimLevelType()) {
         auto new_dlt = ConvertDimLevelType(dlt);
         if (!new_dlt) return {};
-        dim_level_types.push_back(*new_dlt);
+        dim_level_types.push_back(std::get<0>(*new_dlt));
+        level_unique.push_back(std::get<1>(*new_dlt));
+        level_ordered.push_back(std::get<2>(*new_dlt));
       }
 
       std::vector<int64_t> ordering(rank);
@@ -218,7 +230,8 @@ Shape TypeToShape(mlir::Type type) {
       auto final_ordering = mlir::applyPermutationMap(
           dimOrder, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, dim_level_types);
+          primitive_type, shape, final_ordering, dim_level_types, level_unique,
+          level_ordered);
       return sparse_shape;
     }
 

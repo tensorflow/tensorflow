@@ -405,7 +405,6 @@ class GpuSolver {
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) TF_MUST_USE_RESULT;
 
-#if CUDA_VERSION >= 9020
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
   // Returns OkStatus() if the kernel was launched successfully. See:
@@ -415,7 +414,6 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
-#endif  // CUDA_VERSION >= 9020
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf

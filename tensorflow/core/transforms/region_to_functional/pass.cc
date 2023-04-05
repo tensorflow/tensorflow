@@ -51,7 +51,7 @@ struct RegionToFunctionalPass
     config.enableRegionSimplification = false;
     // Iterate until all regions have been outlined. This is guaranteed to
     // terminate because the IR can only hold a finite depth of regions.
-    config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
+    config.maxIterations = GreedyRewriteConfig::kNoLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       getOperation()->emitError(getArgument() + " pass failed");

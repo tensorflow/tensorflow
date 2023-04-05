@@ -42,11 +42,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       d0 = np.random.randint(1, 10)
       d1 = np.random.randint(1, 10)
@@ -68,11 +65,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       dim_size = 32
       arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
@@ -93,11 +87,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       dim_size = 32
       arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
@@ -118,11 +109,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       dim_size = 32
       arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
@@ -143,11 +131,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       dim_size = 32
       arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
@@ -168,11 +153,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       dim_size = 32
       arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
@@ -197,11 +179,8 @@ class TfTransposeTest(test.TestCase):
         }"""
 
       compiled = jitrt.compile(
-          mlir_function,
-          'test',
-          specialize,
-          vectorize=True,
-          codegen_transpose=True)
+          mlir_function, 'test', specialize, vectorize=True
+      )
 
       d0 = np.random.randint(1, 10)
       d1 = np.random.randint(1, 10)

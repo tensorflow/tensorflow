@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
@@ -117,26 +117,37 @@ class TfLiteSubgraphExecute : public OpKernel {
       // `kTfLiteCustom`.
       if (first_run_) {
         subgraph_selected.ReleaseMemory();
-        OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
-                    errors::Internal("Failed to call allocate tensors"));
+        TfLiteStatus status = subgraph_selected.AllocateTensors();
+        if (status != kTfLiteOk) {
+          CleanUpCustomOutputs();
+          ctx->CtxFailure(errors::Internal("Failed to call allocate tensors",
+                                           subgraph_selected.GetName()));
+          return;
+        }
         first_run_ = false;
       }
     }
     // Copy input tensors to subgraph.
     SetSubgraphInput(ctx, subgraph_selected, resource->GetFlexDelegate());
 
-    // Cache the invocation result in case it fails so that the shared output
-    // tensors can be passed over to TF for deallocation.
-    TfLiteStatus invoke_result = subgraph_selected.Invoke();
+    TfLiteStatus status = subgraph_selected.Invoke();
+    if (status != kTfLiteOk) {
+      CleanUpCustomOutputs();
+      ctx->CtxFailure(errors::Internal("Failed to invoke tflite subgraph",
+                                       subgraph_selected.GetName()));
+      return;
+    }
 
     // Copy tflite results.
     CopyTFLiteSubgraphResult(ctx, subgraph_selected);
-
-    OP_REQUIRES(ctx, invoke_result == kTfLiteOk,
-                errors::Internal("Failed to invoke tflite subgraph"));
   }
 
  private:
+  void CleanUpCustomOutputs() {
+    for (void* ptr : custom_output_ptrs_) {
+      tensorflow::cpu_allocator()->DeallocateRaw(ptr);
+    }
+  }
   // Identifies subgraph inputs which are also outputs and maps the output
   // tensor id to the input number. This means that tensors which are both
   // subgraph inputs and outputs can be handled with zero copies.
@@ -176,6 +187,7 @@ class TfLiteSubgraphExecute : public OpKernel {
   // memory as the TF tensors, reducing memcpys and memory usage.
   void SetCustomAllocatorsForOutputTensors(
       OpKernelContext* ctx, tflite::Subgraph& subgraph_selected) {
+    custom_output_ptrs_.clear();
     for (int i = 0; i < subgraph_selected.outputs().size(); ++i) {
       int tensor_idx = subgraph_selected.outputs()[i];
       TfLiteTensor* subgraph_output = subgraph_selected.tensor(tensor_idx);
@@ -187,6 +199,7 @@ class TfLiteSubgraphExecute : public OpKernel {
       }
       void* ptr = tensorflow::cpu_allocator()->AllocateRaw(
           EIGEN_MAX_ALIGN_BYTES, subgraph_output->bytes);
+      custom_output_ptrs_.push_back(ptr);
       TfLiteCustomAllocation allocation{ptr, subgraph_output->bytes};
       OP_REQUIRES(
           ctx,
@@ -359,7 +372,8 @@ class TfLiteSubgraphExecute : public OpKernel {
         tensorflow::TensorShape shape;
         int num_dims = subgraph_output->dims->size;
         for (int i = 0; i < num_dims; ++i) {
-          shape.AddDim(subgraph_output->dims->data[i]);
+          OP_REQUIRES_OK(
+              ctx, shape.AddDimWithStatus(subgraph_output->dims->data[i]));
         }
         tensor = tensorflow::TensorCApi::MakeTensor(
             tflite::flex::GetTensorFlowDataType(subgraph_output->type), shape,
@@ -381,6 +395,7 @@ class TfLiteSubgraphExecute : public OpKernel {
   std::unordered_map<int, int> output_to_input_map_;
   bool first_run_;
   bool output_tensors_can_be_shared_;
+  std::vector<void*> custom_output_ptrs_;
   std::vector<TfLiteAllocationType> original_allocation_type_;
 };
 

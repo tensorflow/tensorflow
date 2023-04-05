@@ -785,13 +785,17 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
                              params.use_calibration, params.use_implicit_batch,
                              params.use_explicit_precision);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph, &static_graph_properties,
+      /*tf_graph=*/&graph,
+      /*graph_properties=*/&static_graph_properties,
+      /*candidate_fn=*/
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
       // need to check the input edges.
-      [](const Edge* edge) { return true; }, OutputEdgeValidator(),
-      segment_options, &initial_segments));
+      /*input_candidate_fn=*/[](const Edge* edge) { return true; },
+      /*output_candidate_fn=*/OutputEdgeValidator(),
+      /*options=*/segment_options,
+      /*segments=*/&initial_segments));
   LOG(INFO) << "Number of TensorRT candidate segments: "
             << initial_segments.size();
 

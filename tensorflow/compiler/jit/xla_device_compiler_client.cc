@@ -54,6 +54,11 @@ XlaDeviceCompilerClient::BuildExecutable(
 
 StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
     const xla::LocalExecutable& executable) {
+  if (executable.executable() == nullptr) {
+    return errors::FailedPrecondition(
+        "Executable not found for serialization.");
+  }
+
   VLOG(1)
       << "Exporting xla::LocalExecutable as an xla::AotCompilationResult and "
          "serializing it to string.";
@@ -97,6 +102,8 @@ XlaDeviceCompilerClient::LoadExecutable(
 }
 
 void XlaDeviceCompilerClient::WaitForProgramsToFinish() {
+  if (client_ == nullptr) return;
+
   for (auto* executor : client_->backend().stream_executors()) {
     bool ok = executor->SynchronizeAllActivity();
     if (!ok) {

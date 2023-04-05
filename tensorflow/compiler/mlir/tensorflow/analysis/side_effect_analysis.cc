@@ -354,6 +354,17 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
   SideEffectsByResourceId side_effects_by_resource_id;
   if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
 
+  // For fetch op, set unknown effect to guarantee that it depends on every
+  // side-effecting op (directly or indirectly).
+  if (isa<tf_executor::FetchOp>(op)) {
+    SideEffects unknown_effect;
+    unknown_effect.SetUnknownEffect();
+    unknown_effect.SetResourceId(kUnknownResourceId);
+    UpdateSideEffectsByResourceId(unknown_effect,
+                                  side_effects_by_resource_id);
+    return side_effects_by_resource_id;
+  }
+
   if (isa<tf_device::LaunchOp, tf_device::ClusterOp, tf_executor::IslandOp,
           tf_executor::GraphOp, IfRegionOp, CaseRegionOp, WhileRegionOp>(op)) {
     // For ops that are side-effecting only if their attached regions are,

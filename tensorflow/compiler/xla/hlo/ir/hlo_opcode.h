@@ -18,11 +18,9 @@ limitations under the License.
 
 #include <iosfwd>
 #include <optional>
-#include <string>
 
-#include "tensorflow/compiler/xla/comparison_util.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,20 +46,22 @@ namespace xla {
 // the MHLO opset to keep both opsets synchronized.
 // LINT.IfChange
 #define HLO_OPCODE_LIST(V)                                                     \
+  /* go/keep-sorted start */                                                   \
   V(kAbs, "abs", 1)                                                            \
   V(kAdd, "add", 2)                                                            \
   V(kAddDependency, "add-dependency", 2)                                       \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                              \
   V(kAllGather, "all-gather", kHloOpcodeIsVariadic)                            \
-  V(kAllGatherStart, "all-gather-start", kHloOpcodeIsVariadic)                 \
   V(kAllGatherDone, "all-gather-done", 1)                                      \
+  V(kAllGatherStart, "all-gather-start", kHloOpcodeIsVariadic)                 \
   V(kAllReduce, "all-reduce", kHloOpcodeIsVariadic)                            \
-  V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
   V(kAllReduceDone, "all-reduce-done", 1)                                      \
+  V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
+  V(kAnd, "and", 2)                                                            \
+  V(kAsyncDone, "async-done", 1)                                               \
   V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
   V(kAsyncUpdate, "async-update", 1)                                           \
-  V(kAsyncDone, "async-done", 1)                                               \
   V(kAtan2, "atan2", 2)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \
   V(kBatchNormInference, "batch-norm-inference", 5)                            \
@@ -70,13 +70,14 @@ namespace xla {
   V(kBitcastConvert, "bitcast-convert", 1)                                     \
   V(kBroadcast, "broadcast", 1)                                                \
   V(kCall, "call", kHloOpcodeIsVariadic)                                       \
+  V(kCbrt, "cbrt", 1)                                                          \
   V(kCeil, "ceil", 1)                                                          \
   V(kCholesky, "cholesky", 1)                                                  \
   V(kClamp, "clamp", 3)                                                        \
-  V(kCollectivePermute, "collective-permute", kHloOpcodeIsVariadic)            \
-  V(kCollectivePermuteStart, "collective-permute-start", kHloOpcodeIsVariadic) \
-  V(kCollectivePermuteDone, "collective-permute-done", 1)                      \
   V(kClz, "count-leading-zeros", 1)                                            \
+  V(kCollectivePermute, "collective-permute", kHloOpcodeIsVariadic)            \
+  V(kCollectivePermuteDone, "collective-permute-done", 1)                      \
+  V(kCollectivePermuteStart, "collective-permute-start", kHloOpcodeIsVariadic) \
   V(kCompare, "compare", 2)                                                    \
   V(kComplex, "complex", 2)                                                    \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)                         \
@@ -92,6 +93,7 @@ namespace xla {
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
   V(kDot, "dot", 2)                                                            \
+  V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)                      \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
   V(kExp, "exponential", 1)                                                    \
@@ -101,7 +103,6 @@ namespace xla {
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                                   \
   V(kGather, "gather", 2)                                                      \
   V(kGetDimensionSize, "get-dimension-size", 1)                                \
-  V(kSetDimensionSize, "set-dimension-size", 2)                                \
   V(kGetTupleElement, "get-tuple-element", 1)                                  \
   V(kImag, "imag", 1)                                                          \
   V(kInfeed, "infeed", 1)                                                      \
@@ -110,16 +111,14 @@ namespace xla {
   V(kLog, "log", 1)                                                            \
   V(kLog1p, "log-plus-one", 1)                                                 \
   V(kLogistic, "logistic", 1)                                                  \
-  V(kAnd, "and", 2)                                                            \
-  V(kNot, "not", 1)                                                            \
-  V(kOptimizationBarrier, "opt-barrier", 1)                                    \
-  V(kOr, "or", 2)                                                              \
-  V(kXor, "xor", 2)                                                            \
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
   V(kMaximum, "maximum", 2)                                                    \
   V(kMinimum, "minimum", 2)                                                    \
   V(kMultiply, "multiply", 2)                                                  \
   V(kNegate, "negate", 1)                                                      \
+  V(kNot, "not", 1)                                                            \
+  V(kOptimizationBarrier, "opt-barrier", 1)                                    \
+  V(kOr, "or", 2)                                                              \
   V(kOutfeed, "outfeed", 2)                                                    \
   V(kPad, "pad", 2)                                                            \
   V(kParameter, "parameter", 0)                                                \
@@ -136,11 +135,10 @@ namespace xla {
   V(kRemainder, "remainder", 2)                                                \
   V(kReplicaId, "replica-id", 0)                                               \
   V(kReshape, "reshape", 1)                                                    \
-  V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kReverse, "reverse", 1)                                                    \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                         \
-  V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)                      \
   V(kRngBitGenerator, "rng-bit-generator", 1)                                  \
+  V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)                      \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                                  \
   V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
@@ -149,6 +147,7 @@ namespace xla {
   V(kSelectAndScatter, "select-and-scatter", 3)                                \
   V(kSend, "send", 2)                                                          \
   V(kSendDone, "send-done", 1)                                                 \
+  V(kSetDimensionSize, "set-dimension-size", 2)                                \
   V(kShiftLeft, "shift-left", 2)                                               \
   V(kShiftRightArithmetic, "shift-right-arithmetic", 2)                        \
   V(kShiftRightLogical, "shift-right-logical", 2)                              \
@@ -158,13 +157,15 @@ namespace xla {
   V(kSort, "sort", kHloOpcodeIsVariadic)                                       \
   V(kSqrt, "sqrt", 1)                                                          \
   V(kStochasticConvert, "stochastic-convert", 2)                               \
-  V(kCbrt, "cbrt", 1)                                                          \
   V(kSubtract, "subtract", 2)                                                  \
+  V(kTan, "tan", 1)                                                            \
   V(kTanh, "tanh", 1)                                                          \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
-  V(kWhile, "while", 1)
+  V(kWhile, "while", 1)                                                        \
+  V(kXor, "xor", 2)                                                            \
+  /* go/keep-sorted end */
 // LINT.ThenChange(../../mlir_hlo/mhlo/IR/hlo_ops.td)
 
 enum class HloOpcode {
@@ -179,10 +180,10 @@ enum {
 };
 
 // Returns a string representation of the opcode.
-std::string HloOpcodeString(HloOpcode opcode);
+absl::string_view HloOpcodeString(HloOpcode opcode);
 
 // Retrieves the opcode enum by name if the opcode exists.
-StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name);
+StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);
@@ -219,7 +220,7 @@ inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
 }
 
 // Returns the number of HloOpcode values.
-inline const uint32_t HloOpcodeCount() {
+inline constexpr uint32_t HloOpcodeCount() {
 #define HLO_COUNT_ONE(...) +1
 #define HLO_XLIST_LENGTH(list) list(HLO_COUNT_ONE)
   return HLO_XLIST_LENGTH(HLO_OPCODE_LIST);

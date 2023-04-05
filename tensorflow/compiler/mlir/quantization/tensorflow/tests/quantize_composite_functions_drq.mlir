@@ -2,13 +2,13 @@
 
 module {
   // TODO(b/260020937): Support transpose_a, transpose_b for matmul.
-  func.func @matmul(%arg0: tensor<2x512xf32>) -> (tensor<*xf32>) {
-    %cst_0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<512x512xf32>} : () -> tensor<512x512xf32>
-    %1 = "tf.PartitionedCall"(%arg0, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x512xf32>, tensor<512x512xf32>) -> tensor<*xf32>
+  func.func @matmul(%arg0: tensor<2x12xf32>) -> (tensor<*xf32>) {
+    %cst_0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<12x2xf32>} : () -> tensor<12x2xf32>
+    %1 = "tf.PartitionedCall"(%arg0, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x12xf32>, tensor<12x2xf32>) -> tensor<*xf32>
     func.return %1: tensor<*xf32>
   }
-  func.func private @composite_matmul_fn_1(%arg0: tensor<2x512xf32>, %arg1: tensor<512x512xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
-    %0 = "tf.MatMul"(%arg0, %arg1) {attr_map = "0:transpose_a,1:transpose_b", device = "", transpose_a = false, transpose_b = false} : (tensor<2x512xf32>, tensor<512x512xf32>) -> tensor<*xf32>
+  func.func private @composite_matmul_fn_1(%arg0: tensor<2x12xf32>, %arg1: tensor<12x2xf32>) -> tensor<*xf32> attributes {tf_quant.composite_function} {
+    %0 = "tf.MatMul"(%arg0, %arg1) {attr_map = "0:transpose_a,1:transpose_b", device = "", transpose_a = false, transpose_b = false} : (tensor<2x12xf32>, tensor<12x2xf32>) -> tensor<*xf32>
     return %0 : tensor<*xf32>
   }
 
@@ -17,13 +17,14 @@ module {
 // CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<3.93700805E-9> : tensor<f32>} : () -> tensor<f32>
 // CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK: %0 = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @quantized_matmul_fn_0} : (tensor<2x512xf32>, tensor<512x512x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK-SAME: f = @quantized_matmul_fn_0} : (tensor<2x12xf32>, tensor<12x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func private @quantized_matmul_fn_0
 // CHECK:  %0 = "tf.UniformQuantizedDotHybrid"(%arg0, %arg1, %arg2, %arg3)
 // CHECK-SAME: rhs_quantization_axis = -1 : i64
 // CHECK-SAME: rhs_quantization_max_val = 127 : i64
 // CHECK-SAME: rhs_quantization_min_val = -127 : i64
+
 }
 
 // -----
@@ -72,6 +73,7 @@ module {
 // CHECK-LABEL: func private @quantized_conv2d_fn_1
 // CHECK:      %[[CONV2D_0:.*]] = "tf.UniformQuantizedConvolutionHybrid"
 // CHECK-SAME: padding = "SAME"
+
 }
 
 // -----
@@ -131,4 +133,5 @@ module {
 // CHECK-LABEL: func private @quantized_depthwise_conv2d_fn_1
 // CHECK:      %[[CONV2D_0:.*]] = "tf.UniformQuantizedConvolutionHybrid"
 // CHECK-SAME: padding = "SAME"
+
 }

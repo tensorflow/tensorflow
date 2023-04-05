@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
@@ -43,6 +44,8 @@ struct ValidatorRunnerOptions {
   int model_fd = -1;
   size_t model_offset = 0;
   size_t model_size = 0;
+  // Option 3: Read model from buffer. Requires model_buffer and model_size.
+  const uint8_t* model_buffer = nullptr;
 
   // Optional: Custom validation info.
   // Number of sample input.
@@ -68,7 +71,7 @@ struct ValidatorRunnerOptions {
   // timeout is not enabled.
   int per_test_timeout_ms = 0;
 
-  // The nnapi_sl pointer can be used to configure the runner to use
+  // Optional: The nnapi_sl pointer can be used to configure the runner to use
   // the NNAPI implementation coming from the Support Library instead of
   // the NNAPI platform drivers.
   // If nnapi_sl is not null we expect the functions referenced by the
@@ -77,6 +80,11 @@ struct ValidatorRunnerOptions {
   // shared library, dlclose is called only after all this mini-benchmark
   // object has been deleted.
   const NnApiSLDriverImplFL5* nnapi_sl = nullptr;
+  // Optional: A handle to a gpu_plugin provided by TFLite-in-PlayServices GPU
+  // Module. It will be used to lookup the shared object that provides GPU
+  // Delegate Plugin.
+  const TfLiteDelegatePlugin* gpu_plugin_handle = nullptr;
+
   std::string validation_entrypoint_name = TfLiteValidationEntrypointName();
   ErrorReporter* error_reporter = DefaultErrorReporter();
 };
@@ -84,6 +92,9 @@ struct ValidatorRunnerOptions {
 // Create a ValidatorRunnerOptions based on the given settings.
 ValidatorRunnerOptions CreateValidatorRunnerOptionsFrom(
     const MinibenchmarkSettings& settings);
+
+// Create the model path needed for creating ModelLoader.
+std::string CreateModelLoaderPath(const ValidatorRunnerOptions& options);
 
 }  // namespace acceleration
 }  // namespace tflite

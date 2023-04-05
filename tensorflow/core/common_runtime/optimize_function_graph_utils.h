@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/composite_device.h"
@@ -56,10 +57,20 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
 StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
-    const std::shared_ptr<DeviceSet>& dev_set,
-    const FunctionLibraryDefinition* input_lib_def,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
     Device* default_device, Env* env);
+
+// Pre-processes, partitions and post-optimizes the input graph; returns
+// subgraph result (maps from device name to the subgraph); returns error if any
+// optimization or partitioning step fails.
+StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+PreprocessAndPartitionGraph(
+    const std::string& function_name,
+    OptimizedFunctionGraphInfo& input_optimized_graph,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
+    const std::vector<CompositeDevice*>& composite_devices, Env* env);
 
 }  // namespace tensorflow
 

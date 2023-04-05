@@ -16,7 +16,7 @@
 """Utilities for V2 control flow."""
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.data.util import structure  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import function_def_to_graph
@@ -66,9 +66,10 @@ def create_new_tf_function(func_graph):
   Returns:
     The name of the new TF_Function.
   """
-  func = function._EagerDefinedFunction(  # pylint: disable=protected-access
+  func = function.from_func_graph(  # pylint: disable=protected-access
       func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
-  func.add_to_graph(func_graph.outer_graph)
+
+  func_graph.outer_graph._add_function_recursive(func)  # pylint: disable=protected-access
   return func_graph.name
 
 
@@ -162,7 +163,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
     tensor_name: the name of the resource tensor to be resolved to an input.
     input_names: a list of the names of all inputs to the function.
     node_defs: a dict mapping op name -> NodeDef for every op in the function.
-    functions: a dict mapping function name -> _EagerDefinedFunction.
+    functions: a dict mapping function name -> AtomicFunction.
 
   Returns:
     The index into input_names corresponding to `tensor_name`.
@@ -187,7 +188,7 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
 
     def _extract_input_index(function_attribute_name):
       func_name = node_def.attr[function_attribute_name].func.name
-      fdef = functions[func_name].definition
+      fdef = functions[func_name].cached_definition
       output_arg_name = fdef.signature.output_arg[output_idx].name
       output_tensor_name = fdef.ret[output_arg_name]
       return resource_input_index(
@@ -284,8 +285,7 @@ def output_all_intermediates():
     return _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
   if in_defun():
     return False
-  if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-      _is_tpu_strategy(distribution_strategy_context.get_strategy())):
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
     return False
   if (context.context().function_call_options.executor_type ==
       "SINGLE_THREADED_EXECUTOR"):
@@ -301,7 +301,7 @@ def get_func_graph(op, input_shapes, func_name):
   while graph is not None:
     func = graph._get_function(func_name)  # pylint: disable=protected-access
     if func is not None:
-      fdef = func.definition
+      fdef = func.cached_definition
       break
     if hasattr(graph, "outer_graph"):
       graph = graph.outer_graph
@@ -319,7 +319,24 @@ def get_func_graph(op, input_shapes, func_name):
   # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
   with op.graph.as_default():
     func_graph = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes)
+        fdef, input_shapes=input_shapes)
+
+  # TODO(xjun): Ideally we want to retrieve the gradient functions instead of
+  # re-create them. But the lifetime of gradient functions of PartitionedCall
+  # ops is attached to ParitionedCall ops in the original func_graph and
+  # when we are inside this function we don't have access to the original
+  # func_graph or PartitionedCall ops. See cl/499362867 and cl/273858076 for
+  # more context.
+  for operation in func_graph.get_operations():
+    if operation.type in ["PartitionedCall", "StatefulPartitionedCall"]:
+      f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
+      try:
+        cf = function.ConcreteFunction(f.graph, attrs=f.cached_definition.attr)
+      except AttributeError:
+        # f is not found or f is a _DefinedFunction that doesn't have a graph.
+        continue
+      operation._gradient_function = cf._get_gradient_function()  # pylint: disable=protected-access
+
   return func_graph
 
 

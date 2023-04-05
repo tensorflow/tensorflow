@@ -139,6 +139,7 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
     split_dimension = 1 : i64,
     concat_dimension = 0 : i64,
     split_count = 4 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 2, type = 0>,
     replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   func.return %0 : tensor<16x4xf32>
@@ -148,7 +149,9 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
 //  CHECK-SAME: %[[ARG0:.*]]: tensor<4x16xf32>
 //       CHECK: %[[DST:.*]] = tensor.empty() : tensor<16x4xf32>
 //       CHECK: %[[RET:.*]] = "xla_cpu.all_to_all"(%[[ARG0]], %[[DST]]) {
+//  CHECK-SAME:    channel_id_present = 1
 //  CHECK-SAME:    concat_dimension = 0
+//  CHECK-SAME:    op_id = 2
 //  CHECK-SAME:    replica_groups = dense<
 //  CHECK-SAME:    split_count = 4
 //  CHECK-SAME:    split_dimension = 1
@@ -215,7 +218,7 @@ func.func @outfeed_0_input(%token: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK-LABEL: @outfeed_0_input
-//       CHECK: "xla_cpu.outfeed"() {config = "foobar", resultType = []} : () -> ()
+//       CHECK: "xla_cpu.outfeed"() {config = "foobar", result_type = []} : () -> ()
 
 func.func @outfeed_1_input(%data: tensor<2xui32>, %token: !mhlo.token)
   -> !mhlo.token attributes {xlaframework.result_mapping = 1 : i32} {
@@ -228,7 +231,7 @@ func.func @outfeed_1_input(%data: tensor<2xui32>, %token: !mhlo.token)
 // CHECK-LABEL: @outfeed_1_input
 //  CHECK-SAME: %[[DATA:.*]]: tensor<2xui32>
 //  CHECK-SAME: %[[TOKEN:.*]]: !mhlo.token
-//       CHECK: "xla_cpu.outfeed"(%[[DATA]]) {config = "", resultType = [ui32]} : (tensor<2xui32>) -> ()
+//       CHECK: "xla_cpu.outfeed"(%[[DATA]]) {config = "", result_type = [ui32]} : (tensor<2xui32>) -> ()
 //       CHECK: return %[[TOKEN]] : !mhlo.token
 
 func.func @outfeed_2_input(%data1: tensor<3xui32>, %data2: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
@@ -240,5 +243,17 @@ func.func @outfeed_2_input(%data1: tensor<3xui32>, %data2: tensor<3xi32>, %token
 // CHECK-LABEL: @outfeed_2_input
 //  CHECK-SAME: %[[ARG0:.*]]: tensor<3xui32>
 //  CHECK-SAME: %[[ARG1:.*]]: tensor<3xi32>
-//       CHECK: "xla_cpu.outfeed"(%[[ARG0]], %[[ARG1]]) {config = "foobar", resultType = [ui32, i32]}
-//  CHECK-SAME: (tensor<3xui32>, tensor<3xi32>) 
+//       CHECK: "xla_cpu.outfeed"(%[[ARG0]], %[[ARG1]]) {config = "foobar", result_type = [ui32, i32]}
+//  CHECK-SAME: (tensor<3xui32>, tensor<3xi32>)
+
+func.func @add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
+  %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
+  func.return %0 : tensor<16xf32>
+}
+
+// CHECK-LABEL: @add_dependency
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<16xf32>
+//  CHECK-SAME: %[[ARG1:.*]]: !mhlo.token
+//       CHECK: %[[RES:.*]] = "xla_cpu.add_dependency"
+//  CHECK-SAME: %[[ARG0]], %[[ARG1]]
+//       CHECK: return %[[RES]] : tensor<16xf32>

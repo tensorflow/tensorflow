@@ -111,7 +111,7 @@ Status update_inferred_type(Node* target, const FullTypeDef& t, bool& updated) {
       // The only allowable type mismatches are those which would further
       // specialize the existing type.
       return Status(
-          error::INVALID_ARGUMENT,
+          absl::StatusCode::kInvalidArgument,
           absl::StrCat("type mismatch for node '", target->name(),
                        "': expected a subtype of:\n", existing.DebugString(),
                        "\n  got:\n", t.DebugString(), "\n  "));

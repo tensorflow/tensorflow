@@ -39,9 +39,9 @@ int SignificandWidth(PrimitiveType type) {
     case F16:
       return std::numeric_limits<half>::digits;
     case F8E5M2:
-      return 3;
+      return std::numeric_limits<tsl::float8_e5m2>::digits;
     case F8E4M3FN:
-      return 4;
+      return std::numeric_limits<tsl::float8_e4m3fn>::digits;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -76,9 +76,9 @@ int OverflowExponent(PrimitiveType type) {
     case F16:
       return std::numeric_limits<half>::max_exponent;
     case F8E5M2:
-      return 16;
+      return std::numeric_limits<tsl::float8_e5m2>::max_exponent;
     case F8E4M3FN:
-      return 9;
+      return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -92,11 +92,11 @@ bool IsFloatingPointType(PrimitiveType type) {
 bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
 
 bool IsSignedIntegralType(PrimitiveType type) {
-  return type == S8 || type == S16 || type == S32 || type == S64;
+  return type == S4 || type == S8 || type == S16 || type == S32 || type == S64;
 }
 
 bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U8 || type == U16 || type == U32 || type == U64;
+  return type == U4 || type == U8 || type == U16 || type == U32 || type == U64;
 }
 
 bool IsIntegralType(PrimitiveType type) {
@@ -105,6 +105,8 @@ bool IsIntegralType(PrimitiveType type) {
 
 xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 4:
+      return xla::U4;
     case 8:
       return xla::U8;
     case 16:
@@ -120,6 +122,8 @@ xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
 
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 4:
+      return xla::S4;
     case 8:
       return xla::S8;
     case 16:

@@ -109,47 +109,6 @@ ENTRY main {
 
 // -----
 
-HloModule Softmax
-
-// CHECK-LABEL: func @main
-// CHECK: "lmhlo.fusion"()
-// CHECK: %[[ARG:.*]] = bufferization.to_tensor %{{.*}} : memref<32x8x128x128xf32>
-// CHECK: %[[NEG_INF:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK: %[[REDUCE:.*]] = mhlo.reduce(%[[ARG]] init: %[[NEG_INF]]) across dimensions = [3] : (tensor<32x8x128x128xf32>, tensor<f32>) -> tensor<32x8x128xf32>
-// CHECK:    reducer(%[[INIT:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>) {
-// CHECK:    %[[MAX:.*]] = mhlo.maximum %[[INIT]], %[[ARG1]] : tensor<f32>
-// CHECK:    mhlo.return %[[MAX]] : tensor<f32>
-// CHECK: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%[[REDUCE]]) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<32x8x128xf32>) -> tensor<32x8x128x128xf32>
-// CHECK: %[[SUBTRACT:.*]] = mhlo.subtract %[[ARG]], %[[BROADCAST]] : tensor<32x8x128x128xf32>
-// CHECK: memref.tensor_store %[[SUBTRACT]], %{{.*}} : memref<32x8x128x128xf32>
-// CHECK: "lmhlo.terminator"() : () -> ()
-// CHECK: {fusion_type = "softmax_fusion"}
-
-max_computation {
-  arg_0 = f32[] parameter(0)
-  arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(arg_0, arg_1)
-}
-
-softmax_computation {
-  param_0 = f32[32,8,128,128]{3,2,1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f32[32,8,128]{2,1,0} reduce(param_0, constant_neg_inf),
-                                    dimensions={3}, to_apply=max_computation
-  broadcast = f32[32,8,128,128]{3,2,1,0} broadcast(reduce), dimensions={0,1,2}
-  ROOT subtract = f32[32,8,128,128]{3,2,1,0} subtract(param_0, broadcast)
-}
-
-ENTRY main {
-  param = f32[32,8,128,128]{3,2,1,0} parameter(0)
-  ROOT softmax = f32[32,8,128,128]{3,2,1,0} custom-call(param),
-                                      custom_call_target="__softmax_fusion",
-                                      to_apply=softmax_computation,
-                                      backend_config=""
-}
-
-// -----
-
 HloModule Cholesky
 
 // CHECK-LABEL: func @main
@@ -185,6 +144,57 @@ ENTRY main {
   ROOT %sgemm = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B),
                               custom_call_target="__cublas$gemm",
   backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"HIGH\",\"HIGHEST\"]},\"selected_algorithm\":\"7\"}"
+}
+
+// -----
+
+HloModule CublasLtMatmul
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.cublas.lt.matmul"
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: beta = 0.000000e+00 : f64
+// CHECK-NOT: lhs_batching_dimensions
+// CHECK-NOT: rhs_batching_dimensions
+// CHECK-SAME: lhs_contracting_dimensions = [1]
+// CHECK-SAME: rhs_contracting_dimensions = [0]
+// CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+// CHECK: (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+
+ENTRY main {
+  %A = f32[2,2]{1,0} parameter(0)
+  %B = f32[2,2]{1,0} parameter(1)
+  ROOT %custom-call = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B), custom_call_target="__cublas$lt$matmul",
+    backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}"
+}
+
+// -----
+
+HloModule CublasLtMatmulF8
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.cublas.lt.matmul.f8"
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: beta = 0.000000e+00 : f64
+// CHECK-NOT: lhs_batching_dimensions
+// CHECK-NOT: rhs_batching_dimensions
+// CHECK-SAME: lhs_contracting_dimensions = [1]
+// CHECK-SAME: rhs_contracting_dimensions = [0]
+// CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+// CHECK: (memref<16x16xf8E4M3FN>, memref<16x16xf8E4M3FN>, memref<16x16xf16>, memref<f32>, memref<f32>, memref<f32>, memref<f32>, memref<16x16xf8E4M3FN>, memref<f32>) -> ()
+
+ENTRY main {
+  %A = f8e4m3fn[16,16]{1,0} parameter(0)
+  %B = f8e4m3fn[16,16]{1,0} parameter(1)
+  %C = f16[16,16]{1,0} parameter(2)
+  %A_SCALE = f32[] parameter(3)
+  %B_SCALE = f32[] parameter(4)
+  %C_SCALE = f32[] parameter(5)
+  %D_SCALE = f32[] parameter(6)
+  ROOT %custom-call = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call(f8e4m3fn[16,16]{1,0} %A, f8e4m3fn[16,16]{1,0} %B, f16[16,16]{1,0} %C, f32[] %A_SCALE, f32[] %B_SCALE, f32[] %C_SCALE, f32[] %D_SCALE), custom_call_target="__cublas$lt$matmul$f8",
+    backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}"
 }
 
 // -----
@@ -288,7 +298,7 @@ add {
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
-  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT]])
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]])
   start = f32[8] all-reduce-start(param0),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
   ROOT done = f32[8] all-reduce-done(start)
@@ -322,7 +332,7 @@ add {
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
-  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT0]], [[OUTPUT1]])
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]])
   start = (f32[8], f32[9]) all-reduce-start(param0, param1),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
   ROOT done = (f32[8], f32[9]) all-reduce-done(start)
@@ -442,7 +452,7 @@ HloModule Outfeed
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: call_target_name = "foo"
+// CHECK: call_target_name = "foo"
 // CHECK: "lmhlo.outfeed"
 // CHECK-SAME: config = ""
 // CHECK-SAME: (memref<3xf32>, memref<5xf16>) -> ()
@@ -465,11 +475,11 @@ HloModule Test
 // CHECK-SAME:   lhs_contracting_dimensions = [2]
 // CHECK-SAME:   rhs_contracting_dimensions = [1]
 // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-// CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x4x5xf32>
+// CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x3x5xf32>
 ENTRY main {
   %arg0 = f32[1,3,4]{2,1,0} parameter(0)
   %arg1 = f32[1,4,5]{2,1,0} parameter(1)
-  ROOT %out = f32[1,4,5]{2,1,0} dot(%arg0, %arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT %out = f32[1,3,5]{2,1,0} dot(%arg0, %arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 
 // -----
@@ -654,7 +664,7 @@ HloModule CustomCallWithTypedFFIBackendConfig
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: api_version = 4 : i32
+// CHECK: api_version = 4 : i32
 // CHECK-SAME: backend_config = {
 // CHECK-SAME:   user_attr0 = 123 : i32
 // CHECK-SAME:   user_attr1 = dense<42> : tensor<i32>
@@ -676,7 +686,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 1
+// CHECK: num_args = 1
 // CHECK-SAME: num_results = 2
 // CHECK-SAME: args_to_target_args = []
 // CHECK-SAME: results_to_target_results = [0]
@@ -692,7 +702,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 3
+// CHECK: num_args = 3
 // CHECK-SAME: num_results = 3
 // CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0, 2]
@@ -710,7 +720,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 3
+// CHECK: num_args = 3
 // CHECK-SAME: num_results = 1
 // CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0]
@@ -728,7 +738,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 1
+// CHECK: num_args = 1
 // CHECK-SAME: num_results = 4
 // CHECK-SAME: args_to_target_args = [0]
 // CHECK-SAME: results_to_target_results = [1]
@@ -794,4 +804,158 @@ ENTRY main {
   %parameter.2 = s32[] parameter(1)
   %custom-call = s32[<=2]{0} custom-call(s32[2]{0} %parameter.1, s32[] %parameter.2), custom_call_target="SliceToDynamic"
   ROOT %copy = s32[<=2]{0} copy(s32[<=2]{0} %custom-call)
+}
+
+// -----
+
+HloModule CustomCallNoComputation
+
+// CHECK: "lmhlo.custom_call"
+// CHECK: call_target_name = "__custom"
+
+ENTRY main {
+  param = f32[] parameter(0)
+  ROOT cr = f32[] custom-call(param), custom_call_target="__custom"
+}
+
+// -----
+
+HloModule CustomCallWithComputation
+
+// CHECK: "lmhlo.custom_call"
+// CHECK: %0 = mhlo.add
+// CHECK: mhlo.return %0
+// CHECK: call_target_name = "__custom"
+
+computation1 {
+  param_0 = f32[] parameter(0)
+  ROOT r = f32[] add(param_0, param_0)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  ROOT cr = f32[] custom-call(param), custom_call_target="__custom",
+                                      to_apply=computation1
+}
+
+// -----
+
+HloModule Send
+
+// CHECK: func @main
+// CHECK: %[[ARG1:arg[0-9]+]]: memref<16xi8> {lmhlo.params = 1 : index}
+// CHECK: %[[VIEW:.*]] = memref.view %[[ARG1]][%c0][]
+// CHECK: %[[TOKEN:.*]] = "lmhlo.send"(%[[VIEW]]) {
+// CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
+// CHECK:   frontend_attributes = {_xla_dcn_recv_channel = "2",
+// CHECK:                          _xla_host_transfer_handler_name = "undef",
+// CHECK                           _xla_host_transfer_is_lower_bits = "false",
+// CHECK:                          _xla_host_transfer_original_type = "f32",
+// CHECK:                          _xla_host_transfer_rendezvous = "undef"}
+// CHECK:   is_host_transfer = true
+// CHECK: } : (memref<4xf32>) -> !mhlo.token
+// CHECK: "lmhlo.send_done"(%0) {
+// CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
+// CHECK    is_host_transfer = true
+// CHECK: } : (!mhlo.token) -> ()
+ENTRY main {
+  %tok = token[] parameter(0)
+  %buf = f32[4]{0} parameter(1)
+  %send = (f32[4]{0}, u32[], token[]) send(f32[4]{0} %buf, token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_dcn_recv_channel="2",_xla_host_transfer_handler_name="undef",_xla_host_transfer_is_lower_bits="false",_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="undef"}
+  ROOT %send-done = token[] send-done((f32[4]{0}, u32[], token[]) %send), channel_id=1, is_host_transfer=true
+}
+
+// -----
+
+HloModule Recv
+
+// CHECK: func @main
+// CHECK: %[[ARG1:arg[0-9]+]]: memref<16xi8> {lmhlo.output_index = dense<0> : tensor<1xi64>}
+// CHECK: %[[VIEW:.*]] = memref.view %[[ARG1]][%c0][]
+// CHECK: %[[TOKEN:.*]] = "lmhlo.recv"(%[[VIEW]]) {
+// CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
+// CHECK:    frontend_attributes = {_xla_host_transfer_handler_name = "undef",
+// CHECK:                           _xla_host_transfer_is_lower_bits = "false",
+// CHECK:                           _xla_host_transfer_original_type = "f32",
+// CHECK:                           _xla_host_transfer_rendezvous = "undef"}
+// CHECK:   is_host_transfer = true
+// CHECK: } : (memref<4xf32>) -> !mhlo.token
+// CHECK: "lmhlo.recv_done"(%0) {
+// CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
+// CHECK    is_host_transfer = true
+// CHECK: } : (!mhlo.token) -> ()
+ENTRY main {
+  %tok = token[] parameter(0)
+  %recv = (f32[4]{0}, u32[], token[]) recv(token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="undef",_xla_host_transfer_is_lower_bits="false",_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="undef"}
+  ROOT %recv-done = (f32[4]{0}, token[]) recv-done((f32[4]{0}, u32[], token[]) %recv), channel_id=1, is_host_transfer=true
+}
+
+// -----
+
+HloModule TestAllGatherAsync
+
+// CHECK: func @main
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) {
+// CHECK-SAME: all_gather_dimension = 1 : i64
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+// CHECK-SAME: use_global_device_ids = false
+// CHECK ""lmhlo_gpu.all_gather_done"(%[[TOKEN]])
+ENTRY main {
+  param0 = f32[10,20] parameter(0)
+  ags = (f32[10,20], f32[10,80]) all-gather-start(param0), replica_groups={{0,1,2,3}},
+    dimensions={1}
+  ROOT ag = f32[10,80] all-gather-done(ags)
+}
+
+// -----
+
+HloModule AsyncReduceScatter
+
+// CHECK: func @main
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.reduce_scatter_start"(%{{.*}}, %{{.*}}) ({
+// CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+// CHECK:    mhlo.return [[ADD]] : tensor<f32>
+// CHECK:  }) {
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+// CHECK-SAME: scatter_dimension = 0
+// CHECK-SAME: use_global_device_ids = false
+// CHECK ""lmhlo_gpu.reduce_scatter_done"(%[[TOKEN]])
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+reduce_scatter {
+  p0 = f32[8] parameter(0)
+  ROOT result = f32[4] reduce-scatter(p0), replica_groups={{0,1}},
+                    dimensions={0}, to_apply=add
+}
+
+ENTRY main {
+  input = f32[8] parameter(0)
+  rs-start = ((f32[8]), f32[4]) async-start(input), calls=reduce_scatter
+  ROOT rs-done = f32[4] async-done(rs-start), calls=reduce_scatter
+}
+
+// -----
+
+HloModule AsyncAllToAll
+
+// CHECK: func @main
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_to_all_start"(%{{.*}}, %{{.*}}) {
+// CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+// CHECK ""lmhlo_gpu.all_to_all_done"(%[[TOKEN]])
+
+all_to_all {
+  p0 = f32[128,4] parameter(0)
+  ROOT a2a = f32[128,4] all-to-all(p0), replica_groups={{0,1}}
+}
+
+ENTRY main {
+  p0 = f32[128,4] parameter(0)
+  a2a-start = ((f32[128,4]), f32[128,4]) async-start(p0), calls=all_to_all
+  ROOT a2a-done = f32[128,4] async-done(a2a-start), calls=all_to_all
 }

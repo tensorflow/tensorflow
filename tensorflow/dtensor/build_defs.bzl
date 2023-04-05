@@ -1,7 +1,6 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
-load("//devtools/build_cleaner/skylark:build_defs.bzl", "register_extension_info")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 # LINT.IfChange
 ALL_BACKENDS = ["cpu", "gpu", "tpu"]
@@ -9,12 +8,14 @@ TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"
 TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"
 GPU_2DEVS_BACKEND = "2gpus"
 PATHWAYS = "pw"
+PATHWAYS_V3_DONUT_BACKEND = "pw_v3_2x2"
 # LINT.ThenChange(
 #     python/tests/test_backend_name.py:backend_name,
 #     python/tests/test_backend_name.oss.py:backend_name
 # )
 
 # FIXME(feyu): Gradually increase the coverage of OSS tests.
+# LINT.IfChange
 def _get_configurations(
         disable,
         enable,
@@ -27,11 +28,43 @@ def _get_configurations(
     disabled_tags = ["manual", "disabled"]
     disabled_tfrt_configs = [d + "_tfrt" for d in disable_tfrt]
     disabled_backends = [backend for backend in disable if backend not in enable]
+
+    backend_variant_deps = {
+        "gpu": [],
+        "tpu": [
+        ],
+        TPU_V3_DONUT_BACKEND: [
+        ],
+        TPU_V4_DONUT_BACKEND: [
+        ],
+        PATHWAYS: [
+        ],
+        PATHWAYS_V3_DONUT_BACKEND: [
+        ],
+    }
     configurations = [
         dict(suffix = "cpu", backend = "cpu", tags = [], flags = [], env = {}, deps = []),
+        dict(
+            suffix = "gpu",
+            backend = "gpu",
+            tags = ["requires-gpu", "gpu"],
+            flags = [],
+            env = {},
+            deps = [],
+        ),
     ]
-
-    backend_variant_deps = {}
+    if GPU_2DEVS_BACKEND in additional_backends:
+        configurations = configurations + [
+            dict(
+                suffix = GPU_2DEVS_BACKEND,
+                backend = GPU_2DEVS_BACKEND,
+                tags = ["requires-gpu:2", "gpu"],
+                flags = [],
+                env = {
+                },
+                deps = [],
+            ),
+        ]
 
     # Post processing configurations.
     for config in configurations:
@@ -48,6 +81,8 @@ def _get_configurations(
         )
         config["shard_count"] = shard_count.get(config["backend"], None) if shard_count else None
     return configurations
+
+# LINT.ThenChange(build_defs.bzl)
 
 def dtensor_test(
         name,
@@ -66,7 +101,8 @@ def dtensor_test(
         main = None,
         shard_count = None,
         size = None,
-        get_configurations = _get_configurations):
+        get_configurations = _get_configurations,
+        test_rule = py_strict_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:
@@ -119,7 +155,6 @@ def dtensor_test(
 
         all_tests.append(config_name)
 
-        test_rule = py_strict_test
         python_version = "PY3"
         test_env = {}
         test_env.update(config["env"])
@@ -134,14 +169,8 @@ def dtensor_test(
             args = config["flags"] + args,
             deps = config["deps"] + deps,
             tags = config["tags"] + tags,
-            malloc = "//third_party/tcmalloc:tcmalloc_or_debug",
             python_version = python_version,
             shard_count = config["shard_count"],
             size = size,
         )
     native.test_suite(name = name, tests = all_tests, tags = ["-manual"])
-
-register_extension_info(
-    extension = dtensor_test,
-    label_regex_for_dep = "{extension_name}_cpu",
-)

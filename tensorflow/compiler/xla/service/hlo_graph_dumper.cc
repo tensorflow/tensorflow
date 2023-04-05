@@ -190,7 +190,7 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
     case kRed:
       return NodeColors{"filled", "#ffcdd2", "#cb9ca1", "black"};
     case kWhite:
-      return NodeColors{"filled", "white", "black", "black"};
+      return NodeColors{"filled", "white", "#9e9e9e", "black"};
     case kYellow:
       return NodeColors{"filled", "#fff9c4", "#cbc693", "black"};
     case kDashedBorder:
@@ -891,7 +891,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     std::string constant_name;
     if (absl::StartsWith(constant->name(), "constant")) {
-      constant_name = constant->name();
+      constant_name = std::string(constant->name());
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
@@ -928,7 +928,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
                       operand->operand(0)->name(),
                       ShapeUtil::HumanStringWithLayout(operand->shape()));
       } else {
-        operand_str = operand->name();
+        operand_str = std::string(operand->name());
       }
     }
 
@@ -1024,6 +1024,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
@@ -1044,59 +1045,45 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
-      // De-emphasize scalar-shaped elementwise ops -- they're generally
-      // uninteresting.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        return kWhite;
-      }
-      return kYellow;
-    case HloOpcode::kBitcast:
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kAfterAll:
+      return kWhite;
     case HloOpcode::kAddDependency:
-    case HloOpcode::kTuple:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kGetTupleElement:
     case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kPad:
+    case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kConstant:
       // Constants aren't usually shown as their own nodes, but they'll be
       // present if e.g. they're the root of a computation.
       return kWhite;
     case HloOpcode::kBroadcast:
-      // De-emphasize nodes which broadcast a scalar within a fusion node --
-      // these are essentially free.
-      if (instr->IsFused() &&
-          ShapeUtil::IsEffectiveScalar(instr->operand(0)->shape())) {
-        return kWhite;
-      }
-      return kGreen;
+    case HloOpcode::kDynamicUpdateSlice:
+      return kYellow;
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicSlice:
-    case HloOpcode::kGather:
-    case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kTranspose:
-      // De-emphasize scalar-shaped data movement ops and all data movement ops
-      // inside fusion nodes, both of which are essentially free.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape()) || instr->IsFused()) {
-        return kWhite;
-      }
-      return kGreen;
-    case HloOpcode::kDynamicUpdateSlice:
-      // Unlike the data-movement ops above, dynamic-update-slice is not ~free
-      // inside of fusion nodes, so we de-emphasize it only if it's
-      // scalar-shaped.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        return kWhite;
-      }
+      // These data-movement ops can be expensive; emphasize them.  (Yes, even
+      // concat can be expensive, at least on GPU, as it can create warp
+      // divergence.)
       return kGreen;
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
+      return kGreen;
+    case HloOpcode::kBitcast:
+      // Unfused bitcast is free, but fused bitcast should count as a non-free
+      // data-movement op (e.g. requires linearization of indices on GPU).
+      if (!instr->IsFused()) {
+        return kWhite;
+      }
       return kGreen;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1108,8 +1095,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
       return kDarkBlue;
-    case HloOpcode::kReducePrecision:
-      return kRed;
     case HloOpcode::kParameter:
       return parameter_color;
     case HloOpcode::kBatchNormGrad:
@@ -1119,6 +1104,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:  // scatter is a kind of reduction
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kGather:  // not a reduction, but goes with scatter
       return kPurple;
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -1249,6 +1235,10 @@ ExtractGemmBackendConfigProps(const gpu::GemmBackendConfig& config,
               {{", ", "<br/>"}}));
   if (config.algorithm_case() == gpu::GemmBackendConfig::kSelectedAlgorithm) {
     props.emplace_back("algorithm", StrCat(config.selected_algorithm()));
+  }
+  if (config.epilogue() != gpu::GemmBackendConfig::DEFAULT) {
+    props.emplace_back(
+        "epilogue", gpu::GemmBackendConfig::Epilogue_Name(config.epilogue()));
   }
   return props;
 }
@@ -2048,7 +2038,7 @@ void RegisterGraphToURLRenderer(
     std::function<StatusOr<std::string>(absl::string_view)> renderer) {
   absl::MutexLock lock(&url_renderer_mu);
   if (url_renderer != nullptr) {
-    LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer.  Last call "
+    LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer. Last call "
                     "wins, but because order of initialization in C++ is "
                     "nondeterministic, this may not be what you want.";
   }

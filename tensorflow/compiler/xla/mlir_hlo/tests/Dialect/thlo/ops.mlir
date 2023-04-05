@@ -16,6 +16,18 @@ func.func @concatenate(%arg1: tensor<?x?xf32>,
 
 // -----
 
+func.func @concatenate_result_number(%dst: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %a:2 = "test.op"() : () -> (tensor<?x?xf32>, tensor<?x?xf32>)
+  %cat = thlo.concatenate
+      ins(%a#0: tensor<?x?xf32>, %a#1: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?xf32>)
+      dimension = 0
+  func.return %cat : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @concatenate_result_number
+
+// -----
+
 func.func @concatenate_memref(%arg1: memref<?x?xf32>,
                               %arg2: memref<?x?xf32>,
                               %dst: memref<?x?xf32>) {
@@ -141,3 +153,27 @@ func.func @sort_memref(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
   func.return
 }
 // CHECK-LABEL: func @sort_memref
+
+// -----
+
+func.func @reverse_static(%input: tensor<100xf32>, %init: tensor<100xf32>)
+  -> tensor<100xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<100xf32>)
+         outs(%init: tensor<100xf32>)
+         reverse_dimensions = [0]
+  func.return %res : tensor<100xf32>
+}
+// CHECK-LABEL: func @reverse_static
+
+// -----
+
+func.func @reverse_dynamic(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
+  -> tensor<?x?xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<?x?xf32>)
+         outs(%init: tensor<?x?xf32>)
+         reverse_dimensions = [0, 1]
+  func.return %res : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @reverse_dynamic

@@ -4,6 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
@@ -81,7 +82,7 @@ filegroup(
         "tracking_allocator.h",
         "type_traits.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 # Files needed for tf2xla build.
@@ -152,11 +153,11 @@ cc_library(
         "cpu_allocator_impl.cc",
         "tracking_allocator.h",
     ],
-    visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+    visibility = set_external_visibility([
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
     deps = [
         ":numeric_types",
         ":type_traits",
@@ -192,14 +193,12 @@ cc_library(
         ":metrics",
         ":shared_counter",
         "//tensorflow/tsl/lib/core:bits",
-        "//tensorflow/tsl/lib/monitoring:counter",
-        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:numbers",
-        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:thread_annotations",
@@ -207,7 +206,6 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -268,10 +266,10 @@ filegroup(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":fixedpoint_types",
         "//tensorflow/tsl/platform:types",
@@ -310,9 +308,9 @@ cc_library(
 cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/framework:__pkg__",
-    ],
+    ]),
     deps = [
         ":numeric_types",
         "//tensorflow/tsl/platform:types",
@@ -324,7 +322,7 @@ filegroup(
     srcs = [
         "cancellation.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 cc_library(
@@ -380,12 +378,12 @@ exports_files(
         "shared_counter.h",
         "tracking_allocator.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime:__pkg__",
         "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/framework:__pkg__",
-    ],
+    ]),
 )
 
 # Files whose users still need to be migrated from core:framework to the

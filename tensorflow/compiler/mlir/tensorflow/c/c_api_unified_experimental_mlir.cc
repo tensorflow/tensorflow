@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
@@ -119,6 +120,12 @@ class MlirTensor : public TracingTensorHandle {
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
     return ptr->getKind() == kMlir;
+  }
+
+  // Return default (TFT_UNSET) full type information. This could be updated in
+  // the future if full type information is needed.
+  tensorflow::FullTypeDef FullType() const override {
+    return tensorflow::FullTypeDef();
   }
 
  private:
@@ -247,9 +254,9 @@ class MlirFunctionContext : public TracingContext {
     RegisterDialects(*context_);
     // TODO(aminim) figure out the location story here
     module_ = ModuleOp::create(builder_.getUnknownLoc());
-    func_ =
-        func::FuncOp::create(builder_.getUnknownLoc(), name,
-                             builder_.getFunctionType(llvm::None, llvm::None));
+    func_ = func::FuncOp::create(
+        builder_.getUnknownLoc(), name,
+        builder_.getFunctionType(std::nullopt, std::nullopt));
     module_->push_back(func_);
     builder_ = OpBuilder::atBlockBegin(func_.addEntryBlock());
   }

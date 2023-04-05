@@ -21,7 +21,9 @@ from absl.testing import parameterized
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -32,16 +34,18 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import summary_test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
@@ -77,6 +81,66 @@ class TPUStrategyModelParallelismTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.TwoDeviceDistributionTestBase,
     parameterized.TestCase):
+
+  @parameterized.named_parameters([("packed", True), ("unpacked", False)])
+  def test_spmd_variable_structure(self, enable_packing):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    # pylint: disable=protected-access
+    if enable_packing:
+      self.assertTrue(strategy._enable_packed_variable_in_eager_mode,
+                      "packed variables should be enabled by default")
+    else:
+      strategy._enable_packed_variable_in_eager_mode = False
+    # pylint: enable=protected-access
+
+    tensor = constant_op.constant([[0., 1.], [2., 3.]])
+
+    # Test TPUMirroredVariable and TPUSyncOnReadVariable
+    with strategy.scope():
+      v = variables.Variable(
+          tensor, name="v", synchronization=vs.VariableSynchronization.ON_READ)
+      w = variables.Variable(
+          tensor, name="w", synchronization=vs.VariableSynchronization.ON_WRITE)
+
+    def test_read(x):
+      @def_function.function
+      def fn():
+        return x.read_value()
+
+      results = strategy.run(fn)
+      results = strategy.experimental_local_results(results)
+
+      for i in range(num_replicas):
+        self.assertAllClose(results[i], tensor)
+
+    def test_structure(values):
+      for i, value in enumerate(values):
+        self.assertIsInstance(
+            value, tpu_replicated_variable.TPUReplicatedVariable)
+        packed_var = getattr(value, "_packed_var", None)
+        if enable_packing:
+          if i == 0:
+            self.assertIsInstance(packed_var, packed.PackedDistributedVariable)
+          else:
+            self.assertIs(packed_var, values[0]._packed_var,  # pylint: disable=protected-access
+                          "all vals should share the same packed var instance")
+        else:
+          self.assertIsNone(packed_var)
+
+      if enable_packing:
+        # pylint: disable=protected-access
+        resources = sum((value._vars for value in values), [])
+        dist_vars = packed_var._distributed_variables
+        # pylint: enable=protected-access
+        self.assertLen(resources, len(dist_vars))
+        for dist_var, resource in zip(dist_vars, resources):
+          self.assertIs(dist_var, resource)
+
+    test_read(v)
+    test_structure(v.values)
+    test_read(w)
+    test_structure(w.values)
 
   def test_logical_device_assignment(self):
     strategy, num_replicas = get_tpu_strategy()
@@ -369,22 +433,34 @@ class TPUStrategyModelParallelismTest(
     strategy, _ = get_tpu_strategy(enable_spmd=True)
     summary_dir = self.get_temp_dir()
     writer = summary_ops.create_file_writer_v2(summary_dir)
+    const_multiple = 2
+    num_iters = 10
+    expected_event_count = num_iters + 1
 
     with strategy.scope():
-      step = variables.Variable(0, dtype=dtypes.int64)
+      step = variables.Variable(1, dtype=dtypes.int64)
 
     @def_function.function
     def run():
       with writer.as_default():
-        summary_ops.scalar("result", step * 2, step=step)
-        step.assign_add(1)
+        with summary_ops.record_if(True):
+          summary_ops.scalar("result", step * const_multiple, step=step)
+          step.assign_add(1)
 
-    for _ in range(10):
+    for _ in range(num_iters):
       strategy.run(run, args=())
 
     for val in step.values:
       for var in val.variables:
-        self.assertAllEqual(10, var)
+        self.assertAllEqual(expected_event_count, var)
+
+    events = summary_test_util.events_from_logdir(summary_dir)
+    self.assertLen(events, expected_event_count)
+
+    # Event[0] is generic metadata and summary_ops data starts at event[1].
+    for logged_step in range(1, expected_event_count):
+      self.assertEqual(events[logged_step].summary.value[0].simple_value,
+                       logged_step * const_multiple)
 
     config.set_soft_device_placement(original_device_placement)
 
@@ -403,7 +479,7 @@ class TPUStrategyModelParallelismTest(
       if split:
         x = strategy.experimental_split_to_logical_devices(x, [1, 2])
       y = x + 1
-      z = tpu.outside_compilation(host_inc, y)
+      z = tpu_replication.outside_compilation(host_inc, y)
       a = z + 1
       return a
 

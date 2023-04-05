@@ -94,6 +94,36 @@ bool HasTPUDevice(const DeviceSet& device_set) {
   return false;
 }
 
+// Check if the `graph` has parameter serverjobs and resource variable arguments
+// that are on parameter servers
+bool HasPsWithResourceVariable(const Graph& graph) {
+  // Check parameter serverjobs and resource variable arguments that are
+  // on parameter servers.
+  const std::string jobType = "ps";
+  const std::string nodeType = "_Arg";
+  const std::string attrKey = "T";
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == nodeType) {
+      auto device_name = node->assigned_device_name();
+      DeviceNameUtils::ParsedName device;
+      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
+          device.has_job && device.job == jobType) {
+        for (const auto& attr : node->attrs()) {
+          auto attr_key = attr.first;
+          auto attr_value = attr.second;
+          if (attr_key == attrKey &&
+              attr_value.value_case() == AttrValue::kType &&
+              attr_value.type() == DT_RESOURCE) {
+            return true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 // Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
 bool HasQualifiedNonTPUOp(const Graph& graph) {
   const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
@@ -110,9 +140,11 @@ bool HasQualifiedNonTPUOp(const Graph& graph) {
   return false;
 }
 
-// Check if non TPU pipeline should be used.
+// Check if non TPU pipeline should be used
 bool EnableNonTpuBridge(const Graph& graph) {
-  return HasQualifiedNonTPUOp(graph);
+  // Remark that this is staging change. It will be expanded later for further
+  // check based on the requirement.
+  return HasPsWithResourceVariable(graph) && HasQualifiedNonTPUOp(graph);
 }
 
 }  // namespace
@@ -139,11 +171,6 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
-  // Note we are recording the stats using LogGraphFeatures in the pass
-  // that calls this one to avoid duplicate logging due to
-  // GetMlirBridgeRolloutPolicy being called multiple times for the same graph.
-  // TODO(b/241853328): Add caching of pass state and call logging/metrics
-  // related to graph analysis from here.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, &function_library, config_proto,
       /*uses_uninitialized_resource_args=*/false,
@@ -164,6 +191,14 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
                  "graph has unsupported features. Old bridge will evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
                                                    "invalid_graph");
+      // We set `uses_uninitialized_resource_args` to false here because the
+      // first phase of the bridge is not affected by uninitialized resource
+      // args.
+      // For Invalid Graph Analysis we need to log here because Run will not be
+      // called.
+      LogGraphFeatures(graph, &function_library, config_proto,
+                       /*uses_uninitialized_resource_args=*/false,
+                       /*is_v1_compat=*/false);
       return MlirOptimizationPassState::Disabled;
   }
 }
@@ -174,7 +209,8 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 // and attached to a "compile" operation, whose result is fed to an "execute"
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
-Status MlirBridgePass::Run(const ConfigProto& config_proto,
+Status MlirBridgePass::Run(const std::string& function_name,
+                           const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph,
                            const FunctionLibraryDefinition& function_library) {
   static absl::once_flag flag;
@@ -211,15 +247,25 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
 
   if (is_qualified_for_tpu_bridge) {
     bool fallback_enabled = false;
-    if (pass_state == MlirOptimizationPassState::FallbackEnabled)
+    if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      // We set `uses_uninitialized_resource_args` to false here because the
+      // first phase of the bridge is not affected by uninitialized resource
+      // args.
+      // TODO (b/241853328) Consider moving logging if caching for graph
+      // analysis or GetPassState is added
+      LogGraphFeatures(graph, &function_library, config_proto,
+                       /*uses_uninitialized_resource_args=*/false,
+                       /*is_v1_compat=*/false);
       fallback_enabled = true;
+    }
     VLOG(1) << "Running MLIR TPU Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
-    return mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1),
-                                  fallback_enabled);
+    return mlir::TFTPU::TPUBridge(module,
+                                  /*enable_logging=*/VLOG_IS_ON(1),
+                                  fallback_enabled, function_name);
   }
   VLOG(1) << "Running MLIR non-TPU Bridge";
-  return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1));
+  return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1), function_name);
 }
 
 MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
@@ -229,15 +275,8 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // Skip MLIR TPU Bridge if no TPU devices found.
   if (device_set && !HasTPUDevice(*device_set))
     return MlirOptimizationPassState::Disabled;
-
-  // Do not run the bridge if it's enabled by the graph analysis,
-  // only run if it's enabled by the user explicitly.
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
-  // Note we are recording the stats using LogGraphFeatures in the pass
-  // that calls this one.
-  // TODO(b/241853328): Add caching of pass state and call logging/metrics
-  // related to graph analysis from here.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
       /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
@@ -259,6 +298,14 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
                  "evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
                                                    "invalid_graph");
+      // We set `uses_uninitialized_resource_args` to false here because the
+      // first phase of the bridge is not affected by uninitialized resource
+      // args.
+      // For Invalid Graph Analysis we need to log here because Run will not be
+      // called.
+      LogGraphFeatures(graph, &function_library, config_proto,
+                       /*uses_uninitialized_resource_args=*/false,
+                       /*is_v1_compat=*/true);
       return MlirOptimizationPassState::Disabled;
   }
 }
@@ -296,9 +343,18 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
 
-  bool fallback_enabled = true;
-  if (pass_state == MlirOptimizationPassState::Enabled)
-    fallback_enabled = false;
+  bool fallback_enabled = false;
+  if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+    // We set `uses_uninitialized_resource_args` to false here because the first
+    // phase of the bridge is not affected by uninitialized resource args.
+    // TODO (b/241853328) Consider moving logging if caching for graph analysis
+    // or GetPassState is added
+    LogGraphFeatures(**options.graph, options.flib_def,
+                     options.session_options->config,
+                     /*uses_uninitialized_resource_args=*/false,
+                     /*is_v1_compat=*/true);
+    fallback_enabled = true;
+  }
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
 

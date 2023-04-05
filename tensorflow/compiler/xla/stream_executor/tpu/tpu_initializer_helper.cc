@@ -24,17 +24,19 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstring>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -95,8 +97,9 @@ bool IsTpuUsed(int64_t pid) {
   std::string tpu_dev_path = "/dev/accel0";
   line.resize(tpu_dev_path.size());
   while ((ent = readdir(raw_fd_dir))) {
-    if (!isdigit(*ent->d_name)) continue;
-    int64_t fd = strtol(ent->d_name, nullptr, 10);
+    if (!absl::ascii_isdigit(*ent->d_name)) continue;
+    int64_t fd;
+    if (!absl::SimpleAtoi(ent->d_name, &fd)) continue;
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
     if (!readlink(path.c_str(), &line[0], line.size())) continue;
     if (line != tpu_dev_path) continue;
@@ -110,7 +113,7 @@ bool IsTpuUsed(int64_t pid) {
 // permission to processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-stream_executor::port::StatusOr<int64_t> FindLibtpuProcess() {
+tsl::StatusOr<int64_t> FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
@@ -118,11 +121,11 @@ stream_executor::port::StatusOr<int64_t> FindLibtpuProcess() {
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
-  int64_t pid;
   while ((ent = readdir(proc))) {
-    if (!isdigit(*ent->d_name)) continue;
+    if (!absl::ascii_isdigit(*ent->d_name)) continue;
 
-    pid = strtol(ent->d_name, nullptr, 10);
+    int64_t pid;
+    if (!absl::SimpleAtoi(ent->d_name, &pid)) continue;
     if (IsTpuUsed(pid)) {
       return pid;
     }
@@ -130,7 +133,7 @@ stream_executor::port::StatusOr<int64_t> FindLibtpuProcess() {
   return tsl::errors::NotFound("did not find which pid uses the libtpu.so");
 }
 
-stream_executor::port::Status TryAcquireTpuLock() {
+tsl::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
@@ -196,8 +199,8 @@ stream_executor::port::Status TryAcquireTpuLock() {
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
-  stream_executor::port::Status s = InitializeTpuStructFns(library_handle);
+tsl::Status InitializeTpuLibrary(void* library_handle) {
+  tsl::Status s = InitializeTpuStructFns(library_handle);
 
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
@@ -217,19 +220,6 @@ stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
   }
 
   return s;
-}
-
-typedef const PJRT_Api* (*PjRtFuncPtr)();
-stream_executor::port::Status MaybeInitializePjRt(void* library_handle) {
-  PjRtFuncPtr fptr = &GetTpuPjrtApi;
-  *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
-  if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found. PjrtApi will not be used.";
-  } else {
-    LOG(INFO) << "GetTpuPjrtApi was found";
-    TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi("TPU", fptr()));
-  }
-  return ::tsl::OkStatus();
 }
 
 namespace {
@@ -269,18 +259,22 @@ void InitializeCreateGcsFileSystemFnPtr() {
   });
 }
 }  // namespace
-stream_executor::port::Status FindAndLoadTpuLibrary() {
+
+// TODO(b/261484192): refactor this function to align with supporting different
+// PJRT plugins.
+tsl::Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
-  void* library = dlopen(libtpu_path, RTLD_NOW);
+  void* library = dlopen(libtpu_path, RTLD_LAZY);
   if (library) {
     // We can open the shared library which means we are in a TPU environment.
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
-    TF_RETURN_IF_ERROR(MaybeInitializePjRt(library));
+  } else {
+    LOG(INFO) << "Failed to open libtpu: " << dlerror();
   }
 
   InitializeCreateGcsFileSystemFnPtr();
@@ -291,7 +285,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-stream_executor::port::Status InitializeTpuLibrary() {
+tsl::Status InitializeTpuLibrary() {
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
       GetLibTpuInitArguments();
@@ -303,7 +297,7 @@ stream_executor::port::Status InitializeTpuLibrary() {
   return ::tsl::OkStatus();
 }
 
-stream_executor::port::Status FindAndLoadTpuLibrary() {
+tsl::Status FindAndLoadTpuLibrary() {
   // We can open the shared library which means we are in a TPU environment.
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
@@ -312,7 +306,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
 }
 
 #else   // PLATFORM_GOOGLE
-stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
+tsl::Status InitializeTpuLibrary(void* library_handle) {
   return tsl::errors::Unimplemented(
       "You must statically link in a TPU library.");
 }

@@ -21,11 +21,43 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 
+// Creates Einsum Op from XlaDotV2 Op by generating equation.
+def CreateEinsumOpFromXlaDotV2Op : NativeCodeCall<
+  "CreateEinsumOpFromXlaDotV2Op($_builder, $_loc, $0...)">;
+
+// Only handles the case where precision config is default.
+def IsPrecisionEmpty :
+  Constraint<CPred<"IsPrecisionEmpty($0)">>;
+
+// Convert XlaDotV2 Op to Einsum Op with above two functions.
+def ConvertXlaDotV2OpToEinsumOp : Pat<
+  (TF_XlaDotV2Op:$dot $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+  (CreateEinsumOpFromXlaDotV2Op $lhs, $rhs, $dot, $dot_dimension_numbers),
+  [(IsPrecisionEmpty $precision_config)]>;
+
 // Converts arith.constant ops from freezing passes back to tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
   (Arith_ConstantOp:$res DenseElementsAttr:$value),
   (TF_ConstOp $value),
   [(AnyStaticShapeTensor $res)]>;
+
+
+// Only handles the case where batch_dimension is empty.
+def IsXlaGatherWithoutBatch :
+  Constraint<CPred<"IsXlaGatherWithoutBatch($0, $1)">>;
+
+// Create Slice op from XlaGather op without batch dimension.
+def CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch : NativeCodeCall<
+  "CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch($_builder, $_loc, $0...)">;
+
+// Convert XlaGather op without batch to Slice op with above two functions.
+def ConvertXlaGatherOpWithoutBatch : Pat<
+  (TF_XlaGatherOp:$gather $operand,
+    $start_indices, $slice_sizes, $dimension_numbers, $indices_are_sorted),
+  (CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch $operand,
+    $start_indices, $slice_sizes, $gather, $dimension_numbers),
+  [(IsXlaGatherWithoutBatch $operand, $start_indices)]>;
+
 
 // Converts tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
@@ -46,13 +78,13 @@ def FoldFusedBatchNormV3: Pattern<
         $x, $scale, $offset, $mean, $variance,
         F32Attr:$epsilon, $exponential_avg_factor,
         $data_format, IsFalseBoolAttr:$is_training),
-    [(TF_AddOp
+    [(TF_AddV2Op
         (TF_MulOp
             $x,
             (TF_MulOp:$multiplier
                 $scale,
                 (TF_RsqrtOp
-                    (TF_AddOp $variance,
+                    (TF_AddV2Op $variance,
                               (TF_ConstOp $epsilon))))),
         (TF_SubOp $offset, (TF_MulOp $mean, $multiplier))),
      // We already guaranteed that the last five results have no use so it does
@@ -66,15 +98,10 @@ def FoldFusedBatchNormV3: Pattern<
      (HasNoUseOf:$root__3), (HasNoUseOf:$root__4),
      (HasNoUseOf:$root__5)]>;
 
-class HasRank<int n> : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-        "$0.getType().cast<ShapedType>().getRank() == " # n>,
-  "Checks if the value has rank of 'n'.">;
-
 class HasEqualElementSize<list<int> shape_1, list<int> shape_2> : Constraint<
   CPred<"quant::HasEqualElementSize($0, $1,"
-  "llvm::ArrayRef<unsigned>({" # !interleave(shape_1, ", ") # "}),"
-  "llvm::ArrayRef<unsigned>({" # !interleave(shape_2, ", ") # "}))">,
+  "llvm::ArrayRef<int>({" # !interleave(shape_1, ", ") # "}),"
+  "llvm::ArrayRef<int>({" # !interleave(shape_2, ", ") # "}))">,
   "Checks if the given dimensions contain the same number of elements.">;
 
 def HasEqualShape : Constraint<CPred<
@@ -83,121 +110,78 @@ def HasEqualShape : Constraint<CPred<
   "$0.getType().cast<ShapedType>().getShape() == $1.getType().cast<ShapedType>().getShape()">,
   "Checks if the shapes of tensors are same.">;
 
-def Expand1DTo4DForConv2D : NativeCodeCall<
-  "$0.cast<DenseElementsAttr>().reshape("
-  "RankedTensorType::get({1,1,1,$0.getType().cast<ShapedType>().getNumElements()},"
-  "getElementTypeOrSelf($0.getType())))">;
+// Make the 1D value $0 broadcastable with the shape of $1.
+def MakeOneDimValueBroadcastable : NativeCodeCall<
+  "MakeOneDimValueBroadcastable($_builder, $_loc, $0, $1.getType().cast<ShapedType>())">;
 
-def Expand1DTo4DForDepthwiseConv2D : NativeCodeCall<
-  "$0.cast<DenseElementsAttr>().reshape("
-  "RankedTensorType::get({1,1,$1.getType().cast<ShapedType>().getDimSize(2),$1.getType().cast<ShapedType>().getDimSize(3)},"
-  "getElementTypeOrSelf($0.getType())))">;
+// Match convolution op with "NHWC" data format or matmul op.
+def SupportedAffineOpMatcher : NativeCodeCall<
+  "MatchSupportedAffineOp($_self, $0, $1, $2)">;
 
-def CreateUnrankedTensorTypeWithElementType : NativeCodeCall<
-    "UnrankedTensorType::get(getElementTypeOrSelf($0.getType()))">;
+// Checks if a value can be symetrically quantized.
+def CanBeSymmetricallyQuantized : Constraint<CPred<"CanBeSymmetricallyQuantized($0)">>;
 
-// Matching AffineOp followed by an AddOp patterns.
-def MatchConv2dAndAddPattern : Pat<
-  (TF_AddOp (TF_Conv2DOp:$conv_out $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-            (TF_ConstOp IsFloatElementsAttr:$value)),
-  (TF_BiasAddOp (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, $data_format, $dilations), (TF_ConstOp $value), $data_format),
-  [(HasOneUse $conv_out), (HasRank<1> $value), (HasRank<4> $filter),
-   (HasEqualElementSize<[3],[0]> $filter, $value)]>;
+// Multiplies the value followed by a FakeQuant op and adjusts its params.
+def MultiplyFakeQuantValue : NativeCodeCall<
+  "MultiplyFakeQuantValue($_builder, $_loc, $0...)">;
 
-def MatchDepthwiseConv2dAndAddPattern : Pat<
-  (TF_AddOp (TF_DepthwiseConv2dNativeOp:$conv_out $input, $filter, $strides, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-         (TF_ConstOp IsFloatElementsAttr:$value)),
-  (TF_BiasAddOp (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
-         $explicit_padding, $data_format, $dilations,
-         (returnType (CreateUnrankedTensorTypeWithElementType $input))),
-         (TF_ConstOp $value), $data_format),
-  [(HasOneUse $conv_out), (HasRank<1> $value), (HasRank<4> $filter),
-   (HasEqualElementSize<[2,3],[0]> $filter, $value)]>;
+// Convert AddV2Op following an AffineOp to BiasAddOp.
+// For Conv3D, even though the Conv3D op has "NDHWC" data format, the BiasAdd
+// will still has the data format of "NHWC".
+def ConvertAddToBiasAdd : Pat<
+  (TF_AddV2Op
+    (SupportedAffineOpMatcher $conv_out, $input, $weight),
+    (TF_ConstOp:$add_rhs IsFloatElementsAttr:$add_rhs_value)),
+  (TF_BiasAddOp $conv_out, $add_rhs, (CreateStringAttr<"NHWC">)),
+  [(HasRankOf<1> $add_rhs_value),
+   (HasEqualElementSize<[-1], [0]> $conv_out, $add_rhs)]>;
 
-// Fusing AffineOp followed by an MulOp patterns.
-def FuseConv2dAndMul : Pat<
-  (TF_MulOp (TF_Conv2DOp:$conv_out $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-            (TF_ConstOp IsFloatElementsAttr:$value)),
-  (TF_Conv2DOp $input, (TF_MulOp $filter,
-        (TF_ConstOp (Expand1DTo4DForConv2D $value))), $strides, $use_cudnn, $padding,
-         $explicit_padding, $data_format, $dilations),
-  [(HasOneUse $conv_out), (HasRank<1> $value), (HasRank<4> $filter),
-   (HasEqualElementSize<[3],[0]> $filter, $value)]>;
-
-def FuseDepthwiseConv2dAndMul : Pat<
-  (TF_MulOp (TF_DepthwiseConv2dNativeOp:$conv_out $input, $filter, $strides, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-            (TF_ConstOp IsFloatElementsAttr:$value)),
-  (TF_DepthwiseConv2dNativeOp $input, (TF_MulOp $filter,
-        (TF_ConstOp (Expand1DTo4DForDepthwiseConv2D $value, $filter))), $strides, $padding,
-         $explicit_padding, $data_format, $dilations),
-  [(HasOneUse $conv_out), (HasRank<1> $value), (HasRank<4> $filter),
-   (HasEqualElementSize<[2,3],[0]> $filter, $value)]>;
-
-// Fusing AffineOp followed by an BiasAddOp and an AddOp patterns.
-def FuseConv2dWithBiasAndAdd : Pat<
-  (TF_AddOp
-   (TF_BiasAddOp:$biasadd_out
-    (TF_Conv2DOp:$conv_out $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-    $bias, IsDataFormatNHWC:$bias_data_format),
-    (TF_ConstOp IsFloatElementsAttr:$value)),
+// Fuse consecutive BiasAddOp and an AddV2Op.
+def FuseBiasAndAddV2 : Pat<
+  (TF_AddV2Op
+    (TF_BiasAddOp:$bias_add
+      $conv_out,
+      (TF_ConstOp:$bias IsFloatElementsAttr:$bias_value), $data_format),
+    (TF_ConstOp:$add_rhs IsFloatElementsAttr:$add_rhs_value)),
   (TF_BiasAddOp
-   (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
-    $explicit_padding, $data_format, $dilations),
-   (TF_AddOp $bias, (TF_ConstOp $value)), $bias_data_format),
-  [(HasOneUse $conv_out), (HasOneUse $biasadd_out), (HasRank<1> $value),
-   (HasEqualShape $value, $bias)]>;
+    $conv_out, (TF_AddV2Op $bias, $add_rhs), $data_format),
+  [(HasOneUse $bias_add),
+   (HasEqualShape $bias_value, $add_rhs_value)]>;
 
-def FuseDepthwiseConv2dWithBiasAndAdd : Pat<
-  (TF_AddOp
-   (TF_BiasAddOp:$biasadd_out
-    (TF_DepthwiseConv2dNativeOp:$conv_out $input, $filter, $strides, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-    $bias, IsDataFormatNHWC:$bias_data_format),
-    (TF_ConstOp IsFloatElementsAttr:$value)),
+// Fuse AffineOp followed by an MulOp patterns.
+def FuseAffineOpAndMul : Pat<
+  (TF_MulOp
+    (SupportedAffineOpMatcher $conv_out, $input, $weight),
+    (TF_ConstOp:$mul_rhs IsFloatElementsAttr:$mul_rhs_value)),
+  (CloneOpWithReplacedOperands
+        (GetDefiningOp $conv_out),
+        $input,
+        (MultiplyFakeQuantValue $weight,
+          (MakeOneDimValueBroadcastable $mul_rhs, $weight))),
+  [(HasOneUse $conv_out),
+   (HasRankOf<1> $mul_rhs_value),
+   (HasStaticShapeConstraint $weight),
+   (CanBeSymmetricallyQuantized $weight),
+   (HasEqualElementSize<[-1], [0]> $conv_out, $mul_rhs)]>;
+
+// Fuse AffineOp followed by an BiasAddOp and an MulOp patterns.
+def FuseAffineOpWithBiasAddAndMul : Pat<
+  (TF_MulOp
+    (TF_BiasAddOp:$bias_add
+      (SupportedAffineOpMatcher $conv_out, $input, $weight),
+      $bias, $data_format),
+    (TF_ConstOp:$mul_rhs IsFloatElementsAttr:$mul_rhs_value)),
   (TF_BiasAddOp
-   (TF_DepthwiseConv2dNativeOp $input, $filter, $strides, $padding,
-    $explicit_padding, $data_format, $dilations,
-    (returnType (CreateUnrankedTensorTypeWithElementType $input))),
-   (TF_AddOp $bias, (TF_ConstOp $value)), $bias_data_format),
-  [(HasOneUse $conv_out), (HasOneUse $biasadd_out), (HasRank<1> $value),
-   (HasEqualShape $value, $bias)]>;
-
-// Fusing AffineOp followed by an BiasAddOp and an MulOp patterns.
-def FuseConv2dWithBiasAndMul : Pat<
-  (TF_MulOp
-   (TF_BiasAddOp:$biasadd_out
-    (TF_Conv2DOp:$conv_out $input, $filter, $strides, $use_cudnn, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-    $bias, IsDataFormatNHWC:$bias_data_format),
-    (TF_ConstOp IsFloatElementsAttr:$value)),
-  (TF_BiasAddOp (TF_Conv2DOp $input, (TF_MulOp $filter,
-        (TF_ConstOp (Expand1DTo4DForConv2D $value))), $strides, $use_cudnn, $padding,
-         $explicit_padding, $data_format, $dilations), (TF_MulOp $bias,
-        (TF_ConstOp $value)), $bias_data_format),
-  [(HasOneUse $conv_out), (HasOneUse $biasadd_out),
-   (HasRank<1> $value), (HasRank<4> $filter),
-   (HasEqualElementSize<[3],[0]> $filter, $value),
-   (HasEqualShape $value, $bias)]>;
-
-def FuseDepthwiseConv2dWithBiasAndMul : Pat<
-  (TF_MulOp
-   (TF_BiasAddOp:$biasadd_out
-    (TF_DepthwiseConv2dNativeOp:$conv_out $input, $filter, $strides, $padding,
-         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
-    $bias, IsDataFormatNHWC:$bias_data_format),
-    (TF_ConstOp IsFloatElementsAttr:$value)),
-  (TF_BiasAddOp (TF_DepthwiseConv2dNativeOp $input, (TF_MulOp $filter,
-        (TF_ConstOp (Expand1DTo4DForDepthwiseConv2D $value, $filter))), $strides, $padding,
-         $explicit_padding, $data_format, $dilations,
-        (returnType (CreateUnrankedTensorTypeWithElementType $input))),
-        (TF_MulOp $bias, (TF_ConstOp $value)), $bias_data_format),
-  [(HasOneUse $conv_out), (HasOneUse $biasadd_out),
-   (HasRank<1> $value), (HasRank<4> $filter),
-   (HasEqualElementSize<[2,3],[0]> $filter, $value),
-   (HasEqualShape $value, $bias)]>;
+    (CloneOpWithReplacedOperands
+      (GetDefiningOp $conv_out),
+      $input,
+      (MultiplyFakeQuantValue $weight,
+        (MakeOneDimValueBroadcastable $mul_rhs, $weight))),
+    (MultiplyFakeQuantValue $bias, $mul_rhs), $data_format),
+  [(HasOneUse $conv_out),
+   (HasOneUse $bias_add),
+   (HasRankOf<1> $mul_rhs_value),
+   (HasStaticShapeConstraint $weight),
+   (CanBeSymmetricallyQuantized $weight),
+   (CanBeSymmetricallyQuantized $bias),
+   (HasEqualShape $bias, $mul_rhs_value)]>;

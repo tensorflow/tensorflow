@@ -70,18 +70,12 @@ cc_library_with_stable_tflite_abi(
         "//tensorflow/lite/tools/delegates:delegate_provider_lib",
     ],
     tflite_deps_selects = [{
-        # XNNPACK does not support s390x
-        # (see <https://github.com/tensorflow/tensorflow/pull/51655>).
-        "//tensorflow:linux_s390x": [],
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "//tensorflow/lite/core/shims:xnnpack_plugin",
         ],
     }],
     deps = select({
-        # XNNPACK does not support s390x
-        # (see <https://github.com/tensorflow/tensorflow/pull/51655>).
-        "//tensorflow:linux_s390x": [],
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
@@ -197,7 +198,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
 }
 
 LogicalResult DTensorLayout::inferReturnTypes(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   assert(operands.size() == 1);

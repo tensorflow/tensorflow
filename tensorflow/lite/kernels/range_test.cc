@@ -38,6 +38,18 @@ class RangeOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(start_), GetShape(limit_), GetShape(delta_)});
   }
 
+  explicit RangeOpModel(const TensorType& dtype, const std::vector<T>& start,
+                        const std::vector<T>& limit,
+                        const std::vector<T>& delta) {
+    start_ = AddConstInput(dtype, start);
+    limit_ = AddConstInput(dtype, limit);
+    delta_ = AddConstInput(dtype, delta);
+    output_ = AddOutput(dtype);
+    SetBuiltinOp(BuiltinOperator_RANGE, BuiltinOptions_RangeOptions,
+                 CreateRangeOptions(builder_).Union());
+    BuildInterpreter({GetShape(start_), GetShape(limit_), GetShape(delta_)});
+  }
+
   int start() { return start_; }
   int limit() { return limit_; }
   int delta() { return delta_; }
@@ -62,11 +74,25 @@ TEST(RangeOpModel, Simple) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
 }
 
+TEST(RangeOpModel, SimpleConst) {
+  RangeOpModel<int32_t> model(TensorType_INT32, {0}, {4}, {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+}
+
 TEST(RangeOpModel, DeltaGreaterThanOne) {
   RangeOpModel<int32_t> model(TensorType_INT32);
   model.PopulateTensor<int32_t>(model.start(), {2});
   model.PopulateTensor<int32_t>(model.limit(), {9});
   model.PopulateTensor<int32_t>(model.delta(), {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(2, 4, 6, 8));
+}
+
+TEST(RangeOpModel, DeltaGreaterThanOneConst) {
+  RangeOpModel<int32_t> model(TensorType_INT32, {2}, {9}, {2});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAre(2, 4, 6, 8));
@@ -82,11 +108,25 @@ TEST(RangeOpModel, NegativeDelta) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
 }
 
+TEST(RangeOpModel, NegativeDeltaConst) {
+  RangeOpModel<int32_t> model(TensorType_INT32, {10}, {3}, {-3});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
+}
+
 TEST(RangeOpModel, FloatSimple) {
   RangeOpModel<float> model(TensorType_FLOAT32);
   model.PopulateTensor<float>(model.start(), {0});
   model.PopulateTensor<float>(model.limit(), {4});
   model.PopulateTensor<float>(model.delta(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+}
+
+TEST(RangeOpModel, FloatSimpleConst) {
+  RangeOpModel<float> model(TensorType_FLOAT32, {0}, {4}, {1});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
@@ -102,6 +142,13 @@ TEST(RangeOpModel, FloatDeltaGreaterThanOne) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(2, 4, 6, 8));
 }
 
+TEST(RangeOpModel, FloatDeltaGreaterThanOneConst) {
+  RangeOpModel<float> model(TensorType_FLOAT32, {2}, {9}, {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(2, 4, 6, 8));
+}
+
 TEST(RangeOpModel, FloatNegativeDelta) {
   RangeOpModel<float> model(TensorType_FLOAT32);
   model.PopulateTensor<float>(model.start(), {10});
@@ -112,11 +159,25 @@ TEST(RangeOpModel, FloatNegativeDelta) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
 }
 
+TEST(RangeOpModel, FloatNegativeDeltaConst) {
+  RangeOpModel<float> model(TensorType_FLOAT32, {10}, {3}, {-3});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
+}
+
 TEST(RangeOpModel, EmptyOutput) {
   RangeOpModel<int32_t> model(TensorType_INT32);
   model.PopulateTensor<int32_t>(model.start(), {0});
   model.PopulateTensor<int32_t>(model.limit(), {0});
   model.PopulateTensor<int32_t>(model.delta(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(0));
+  EXPECT_THAT(model.GetOutput(), ElementsAre());
+}
+
+TEST(RangeOpModel, EmptyOutputConst) {
+  RangeOpModel<int32_t> model(TensorType_INT32, {0}, {0}, {1});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(0));
   EXPECT_THAT(model.GetOutput(), ElementsAre());

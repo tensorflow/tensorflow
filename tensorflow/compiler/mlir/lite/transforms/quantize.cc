@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -50,7 +51,7 @@ namespace TFL {
 
 //===----------------------------------------------------------------------===//
 // The actual Quantize Pass.
-//
+//===----------------------------------------------------------------------===//
 namespace {
 #define GEN_PASS_DEF_QUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
@@ -58,16 +59,16 @@ namespace {
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 // Base struct for quantization.
-template <QuantizationTrait quantization_trait, typename ConcretTy,
-          typename RootOp = DequantizeOp>
+template <QuantizationTrait quantization_trait, typename ConcreteT,
+          typename RootOpT = DequantizeOp>
 struct TFLQuantizationBase
-    : public quant::QuantizationPattern<ConcretTy, QuantizeOp, DequantizeOp,
-                                        NumericVerifyOp, RootOp> {
+    : public quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                        NumericVerifyOp, RootOpT> {
   explicit TFLQuantizationBase(MLIRContext* ctx,
                                const quant::QuantPassSpec& quant_params)
-      : quant::QuantizationPattern<ConcretTy, QuantizeOp, DequantizeOp,
-                                   NumericVerifyOp, RootOp>(ctx, quant_params) {
-  }
+      : quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                   NumericVerifyOp, RootOpT>(ctx,
+                                                             quant_params) {}
 
   static bool IsQuantizableCustomOp(Operation* op,
                                     const quant::CustomOpMap& custom_op_map) {
@@ -77,7 +78,7 @@ struct TFLQuantizationBase
     // behaviors. In that case, these ops can be marked in the custom map and
     // treated separately in this pass.
 
-    auto custom_op = llvm::dyn_cast_or_null<TFL::CustomOp>(op);
+    auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op);
     if (!custom_op) return false;
 
     // Custom op which is marked in the custom op map is quantizable.
@@ -89,7 +90,6 @@ struct TFLQuantizationBase
       Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
-
     return quantization_trait == kDynamicRangeQuantization &&
            (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
             IsQuantizableCustomOp(quantized_op, custom_op_map));
@@ -99,15 +99,16 @@ struct TFLQuantizationBase
       Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
-
     return quantization_trait == kDynamicRangeQuantization &&
            (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
             IsQuantizableCustomOp(quantized_op, custom_op_map));
   }
 
-  static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
-                             bool weight_only_quantization,
-                             const quant::CustomOpMap& custom_op_map) {
+  static bool IsWeightOnlyOp(
+      Operation* quantized_op,
+      const absl::flat_hash_set<std::string>& ops_blocklist,
+      const bool weight_only_quantization,
+      const quant::CustomOpMap& custom_op_map) {
     // Check whether the quantized_op needs to be quantized in weight-only
     // manner.
     bool is_blocklisted = false;
@@ -234,13 +235,13 @@ void QuantizePass::runOnOperation() {
   quant_specs.weight_quantization = enable_dynamic_range_quantization_;
   quant_specs.weight_only_quantization = enable_weight_only_quantization_;
   if (!ops_blocklist_flag_.empty()) {
-    quant_specs.ops_blocklist =
-        StringSet(ops_blocklist_flag_.begin(), ops_blocklist_flag_.end());
+    quant_specs.ops_blocklist = absl::flat_hash_set<std::string>(
+        ops_blocklist_flag_.begin(), ops_blocklist_flag_.end());
   }
 
   if (!nodes_blocklist_flag_.empty()) {
-    quant_specs.nodes_blocklist =
-        StringSet(nodes_blocklist_flag_.begin(), nodes_blocklist_flag_.end());
+    quant_specs.nodes_blocklist = absl::flat_hash_set<std::string>(
+        nodes_blocklist_flag_.begin(), nodes_blocklist_flag_.end());
   }
 
   if (!enable_custom_op_weight_only_.empty()) {
@@ -254,7 +255,7 @@ void QuantizePass::runOnOperation() {
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  TFL::populateWithGenerated(patterns);
+  populateWithGenerated(patterns);
 
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
@@ -277,8 +278,9 @@ void QuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quant_specs, const StringSet& ops_blocklist,
-    const StringSet& nodes_blocklist) {
+    const quant::QuantizationSpecs& quant_specs,
+    const absl::flat_hash_set<std::string>& ops_blocklist,
+    const absl::flat_hash_set<std::string>& nodes_blocklist) {
   quant::QuantizationSpecs updated_quant_specs;
   updated_quant_specs = quant_specs;
   // If there's new blocklists given, update quant_specs to use the new one.
@@ -296,8 +298,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass() {
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    bool verify_numeric, bool whole_model_verify, bool legacy_float_scale,
-    const StringSet& ops_blocklist, const StringSet& nodes_blocklist) {
+    const bool verify_numeric, const bool whole_model_verify,
+    const bool legacy_float_scale,
+    const absl::flat_hash_set<std::string>& ops_blocklist,
+    const absl::flat_hash_set<std::string>& nodes_blocklist) {
   quant::QuantizationSpecs quant_specs;
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;

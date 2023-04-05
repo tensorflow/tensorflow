@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -111,11 +112,18 @@ struct RngGetAndUpdateStatePattern
 
 template <typename OpTy>
 struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
-  using OpConversionPattern<OpTy>::OpConversionPattern;
+  ScalarHloToArithmeticPattern(
+      TypeConverter& typeConverter, MLIRContext* context,
+      llvm::function_ref<bool(Operation*)> filterFn = nullptr,
+      PatternBenefit benefit = 1)
+      : OpConversionPattern<OpTy>(typeConverter, context, benefit),
+        filterFn(filterFn) {}
 
   LogicalResult matchAndRewrite(
       OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    if (filterFn && !filterFn(op)) return failure();
+
     auto isScalar = [&](Value v) {
       return v.getType().cast<ShapedType>().getRank() == 0;
     };
@@ -125,7 +133,7 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
 
     auto loc = op.getLoc();
 
-    Optional<ShapedType> resultTy;
+    std::optional<ShapedType> resultTy;
     resultTy = this->typeConverter->convertType(op->getResultTypes().front())
                    .template dyn_cast<ShapedType>();
 
@@ -141,6 +149,9 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
                                                         scalarResult);
     return success();
   }
+
+ private:
+  llvm::function_ref<bool(Operation*)> filterFn;
 };
 
 struct HloLegalizeToArithmeticPass
@@ -177,7 +188,8 @@ void populateHloToArithmeticConversionPatterns(RewritePatternSet* patterns) {
 
 void populateScalarHloToArithmeticConversionPatterns(
     MLIRContext* context, TypeConverter& typeConverter,
-    RewritePatternSet* patterns) {
+    RewritePatternSet* patterns,
+    llvm::function_ref<bool(Operation*)> filterFn) {
   // clang-format off
   patterns->add<
       ScalarHloToArithmeticPattern<mhlo::AbsOp>,
@@ -225,9 +237,10 @@ void populateScalarHloToArithmeticConversionPatterns(
       ScalarHloToArithmeticPattern<mhlo::SineOp>,
       ScalarHloToArithmeticPattern<mhlo::SqrtOp>,
       ScalarHloToArithmeticPattern<mhlo::SubtractOp>,
+      ScalarHloToArithmeticPattern<mhlo::TanOp>,
       ScalarHloToArithmeticPattern<mhlo::TanhOp>,
       ScalarHloToArithmeticPattern<mhlo::XorOp>
-  >(typeConverter, context);
+  >(typeConverter, context, filterFn);
   // clang-format on
 }
 

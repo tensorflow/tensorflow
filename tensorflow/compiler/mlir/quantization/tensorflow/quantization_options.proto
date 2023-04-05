@@ -23,6 +23,7 @@ option cc_enable_arenas = true;
 // Various techniques for model quantization are defined within this message
 // along with a field that specifies a method to be used for a particular
 // quantization request.
+// NEXT ID: 3
 message QuantizationMethod {
   // Quantization methods that are supported as a stable API.
   enum Method {
@@ -45,6 +46,9 @@ message QuantizationMethod {
     // determined in the graph executions. The weights are quantized during
     // conversion.
     DYNAMIC_RANGE = 2;
+
+    // Weight-only quantization. Only weights are quantized during conversion.
+    WEIGHT_ONLY = 3;
   }
 
   // Quantization method is either exprimental or non-experimental method.
@@ -71,8 +75,10 @@ enum QuantizationPrecision {
 // Unit (either nodes or ops at this moment) wise quantization method for
 // mixed bit precision quantization. It contains the name of the unit,
 // the granularity of the unit, and the quantization method for each unit.
+// NEXT ID: 6
 message UnitWiseQuantizationPrecision {
   // Quantization unit granularity.
+  // NEXT ID: 3
   enum UnitType {
     // This should never be used. Using this will generally result in an error.
     UNIT_UNSPECIFIED = 0;
@@ -98,6 +104,7 @@ message UnitWiseQuantizationPrecision {
 
 // List of supported opsets to deploy the quantized model.
 // The quantized model contains different set of ops depending on the opset.
+// NEXT ID: 4
 enum OpSet {
   OP_SET_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
   // Uses TF ops that mimic quantization behavior. Used when the corresponding
@@ -110,6 +117,7 @@ enum OpSet {
 }
 
 // Configurations for variable freezing during quantization passes.
+// NEXT ID: 2
 message FreezeAllVariables {
   // Setting this to true freezes all variables to constants during
   // quantization. Setting this to `false` is an experimental feature and does
@@ -124,6 +132,7 @@ message FreezeAllVariables {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
+// NEXT ID: 11
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this default quantization
@@ -158,4 +167,18 @@ message QuantizationOptions {
   // not applied regardless of the op support. Currently, it is supported for
   // Uniform Quantized opset only.
   bool enable_per_channel_quantization = 7;
+
+  // Enables two inputs of an operation to be both tensors.
+  // Currently supports MatMul and BatchMatMul ops for XLA.
+  // TODO(b/263528090): Check the condition when this feature is beneficial.
+  bool enable_two_input_tensors = 8;
+
+  // Supports TPU model quantization. If the target model for the quantization
+  // is already converted for TPU, this flag may be helpful. Note that this
+  // feature may be unstable as it is under the experimental stage.
+  bool experimental_enable_tpu_model_support = 9;
+
+  // Produces legacy weight-only graph where the qconst op(containing quantized
+  // values) is followed by a dequantization op.
+  bool enable_legacy_weight_only = 10;
 }

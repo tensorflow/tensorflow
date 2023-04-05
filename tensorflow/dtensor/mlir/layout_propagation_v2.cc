@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <string>
 
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -67,6 +69,14 @@ namespace {
 // This value dictates how many times during layout propagation we allow
 // fixing of oscillatory behaviors.
 constexpr int kLayoutPropagationMaxStages = 3;
+
+bool IsProducerResourceOpWithEmptyLayout(const mlir::Value& producer_value,
+                                         const Layout& producer) {
+  return (
+      producer.IsEmpty() &&
+      llvm::isa<mlir::TF::ResourceType>(
+          producer_value.getType().cast<mlir::TensorType>().getElementType()));
+}
 
 bool AllOpResultsHaveLayouts(
     mlir::ModuleOp* module, mlir::Dialect* tf_dialect,
@@ -190,7 +200,7 @@ void FilterkAnySpecs(std::vector<std::string>& proposed_specs) {
 // sharded over is not already sharded over by the producer, then we add that
 // sharding to the producer layout.
 StatusOr<Layout> MergeLayouts(
-    const absl::optional<Layout>& producer,
+    const mlir::Value& producer_value, const absl::optional<Layout>& producer,
     const mlir::DenseMap<mlir::OpOperand*, Layout>& consumers) {
   if (consumers.empty()) return producer.value();
 
@@ -239,7 +249,9 @@ StatusOr<Layout> MergeLayouts(
 
   // Return layout if there is no producer, else move into producer algorithm.
   const Mesh mesh = consumers.begin()->second.mesh();
-  if (!producer) {
+
+  if (!producer ||
+      IsProducerResourceOpWithEmptyLayout(producer_value, *producer)) {
     FilterkAnySpecs(proposed_specs);
     return Layout::GetLayout(proposed_specs, mesh);
   }
@@ -446,7 +458,8 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
       }
       continue;
     }
-    auto merged = MergeLayouts(producer_layout, consumer_requests[value]);
+    auto merged =
+        MergeLayouts(value, producer_layout, consumer_requests[value]);
     if (!merged.ok())
       return value.getDefiningOp()->emitOpError()
              << merged.status().error_message();
@@ -643,17 +656,37 @@ mlir::LogicalResult UpdateLayoutsForOp(
         const bool exempt_restore_unknown_rank =
             ValueRank(value) == -1 && value.getDefiningOp() &&
             llvm::isa<mlir::TF::RestoreV2Op>(value.getDefiningOp());
-        if (!exempt_restore_unknown_rank &&
-            input_layout->second.rank() != ValueRank(value))
-          return op->emitOpError()
-                 << "Rank for input " << i << " layout is "
-                 << input_layout->second.rank() << " but actual rank is "
-                 << ValueRank(value);
+        bool producer_is_resource =
+            value.getDefiningOp() &&
+            llvm::isa<mlir::TF::VarHandleOp>(value.getDefiningOp());
+        if (producer_is_resource) {
+          // If producer is a VarHandleOp, the input layout could be empty,
+          // In this case  ComputeBackward method for Assign op will derive a
+          // replicated layout for the resource based on the rank of value.
+          // This block will update resource layout.
+          // Read and Assign ops.
+          //
+          // If resource has a non-empty value, the existing layout will be
+          // returned from ComputeBackward and Forward methods for Assign and
+          // Read variable ops.
+          //
+          // Thus, it is safe to update the producer layout here for the
+          // resource.
+          producer_request[value] = input_layout->second;
+          is_updated.insert(value);
+        } else {
+          if (!exempt_restore_unknown_rank &&
+              input_layout->second.rank() != ValueRank(value))
+            return op->emitOpError()
+                   << "Rank for input " << i << " layout is "
+                   << input_layout->second.rank() << " but actual rank is "
+                   << ValueRank(value);
 
-        // If there was a layout returned and either no previous request or the
-        // request changed, insert and mark as updated.
-        consumer_request[operand] = input_layout->second;
-        is_updated.insert(value);
+          // If there was a layout returned and either no previous request or
+          // the request changed, insert and mark as updated.
+          consumer_request[operand] = input_layout->second;
+          is_updated.insert(value);
+        }
       } else if (input_layout == new_input_layouts.end() &&
                  consumer_request_from_op_operand != consumer_request.end()) {
         // If no layout was returned and there is previous request, erase the
@@ -670,6 +703,12 @@ mlir::LogicalResult UpdateLayoutsForOp(
   for (int i = 0; i < op->getNumResults(); ++i) {
     const auto output_layout = new_output_layouts.find(i);
     if (output_layout == new_output_layouts.end()) continue;
+    if (output_layout->second.IsEmpty()) {
+      // Empty layout is derived from var handle op, bypass the check for update
+      // layout and let the next passes propagate layout update for producer to
+      // handle it.
+      continue;
+    }
     const auto& result = op->getOpResult(i);
     if (producer_request[result] != output_layout->second) {
       if (output_layout->second.rank() != ValueRank(result))
@@ -677,6 +716,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
                                  << output_layout->second.rank()
                                  << " but actual rank is " << ValueRank(result);
       producer_request[result] = output_layout->second;
+
       is_updated.insert(result);
     }
   }
@@ -763,7 +803,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
       os_ << ": ";
       printType(arg.getType());
     }
-    printOptionalAttrDict(argAttrs, llvm::None);
+    printOptionalAttrDict(argAttrs, std::nullopt);
   }
 
   void printOperand(mlir::Value value) override { printOperand(value, os_); }
@@ -1029,36 +1069,6 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   }
   (void)file_writer->Close();
   LOG(INFO) << "Dumped MLIR module to " << prefix;
-}
-
-// Canonicalizer and DCE transformation passes may removed ops in the graph and
-// result in multiple consecutive DTensorLayout ops. Detect all such cases and
-// replace unnecessary DTensorLayout ops with Identity ops.
-mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
-    mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
-  module.walk([&](mlir::TF::DTensorLayout op) { layout_ops.emplace_back(op); });
-
-  for (auto layout_op : llvm::reverse(layout_ops)) {
-    auto input_op = layout_op.getInput().getDefiningOp();
-    if (auto input_layout_op =
-            llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(input_op)) {
-      // Check that layout of input DTensorLayout op is equivalent to
-      // the layout of its connected DTensorLayout op.
-      if (layout_op.getLayout() != input_layout_op.getLayout())
-        return layout_op.emitOpError(
-            "Found inconsistent layout. This should never happen.");
-
-      // Replace DTensorLayout op with identity op.
-      mlir::OpBuilder builder(layout_op);
-      auto identity = builder.create<mlir::TF::IdentityOp>(
-          layout_op->getLoc(), layout_op.getType(), layout_op.getInput());
-      layout_op.getOutput().replaceAllUsesWith(identity.getOutput());
-      layout_op.erase();
-    }
-  }
-
-  return mlir::success();
 }
 
 // Inserts/changes DTensorLayout op after IfRegion op and results of then/else

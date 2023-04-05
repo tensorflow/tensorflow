@@ -381,8 +381,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     data->per_channel_output_multiplier.resize(channels_out);
     data->per_channel_output_shift.resize(channels_out);
+    auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
-        context, input, weights, bias, output, kTfLiteActNone,
+        context, input, weights, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier.data(),
@@ -398,6 +399,10 @@ void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
                const TfLiteTensor* weights, const TfLiteTensor* bias,
                const TfLiteTensor* transposed_weights, TfLiteTensor* col2im,
                TfLiteTensor* output) {
+  float output_activation_min, output_activation_max;
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
+
   tflite::ConvParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -406,6 +411,8 @@ void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
   op_params.padding_values.height_offset = data->padding.height_offset;
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
+  op_params.float_activation_min = output_activation_min;
+  op_params.float_activation_max = output_activation_max;
 
   switch (kernel_type) {
     case kReference: {

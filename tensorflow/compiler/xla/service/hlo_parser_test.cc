@@ -201,6 +201,17 @@ ENTRY %IsFiniteR1F32s.v2 () -> pred[6] {
 
 )"
 },
+// NaN constants for F8E4M3FN
+{
+"ConstantNonFiniteE4M3",
+R"(HloModule ConstantR1F8E4M3FNs_module, entry_computation_layout={()->f8e4m3fn[3]{0}}
+
+ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3fn[3] {
+  ROOT %constant = f8e4m3fn[3]{0} constant({nan, 7, -nan})
+}
+
+)"
+},
 // constant f16
 {
 "ConstantF16",
@@ -354,7 +365,7 @@ R"(HloModule CopyStartAndCopyDone_module, entry_computation_layout={(f32[],f32[2
 
 ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
   %v1 = f32[] parameter(0)
-  %copy-start.1 = (f32[], f32[], u32[]) copy-start(f32[] %v1), is_cross_program_prefetch=true
+  %copy-start.1 = (f32[], f32[], u32[]) copy-start(f32[] %v1), cross_program_prefetch_index=0
   %copy-done.1 = f32[] copy-done((f32[], f32[], u32[]) %copy-start.1)
   %v2 = f32[2,3]{1,0:S(1)} parameter(1)
   %copy-start.2 = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(f32[2,3]{1,0:S(1)} %v2)
@@ -1330,7 +1341,19 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }, execution_thread="main_thread"
 
 )"
-  },
+},
+
+{
+"MetadataFields",
+R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
+
+ENTRY %test (p: f32[100]) -> u32[100] {
+  %p = f32[100]{0} parameter(0)
+  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d"}
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -2605,6 +2628,19 @@ ENTRY %configuration_test() -> s32[] {
                            ->raw_backend_config_string());
 }
 
+TEST_F(HloParserTest, LiteralDimensionsError) {
+  const std::string original = R"(HloModule some_2x3_module
+
+ENTRY %some_2x3 () -> f32[2,3] {
+  ROOT %constant = f32[2,3]{1,0} constant(}{1, 2, 3}, {4, 5, 6}})
+}
+
+)";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(OkStatus(), result.status());
+  ExpectHasSubstr(result.status().error_message(), "unexpected '}' token");
+}
+
 TEST_F(HloParserTest, LiteralDimensionsMismatch_1) {
   const std::string original = R"(HloModule some_2_module
 
@@ -2811,6 +2847,34 @@ ENTRY %NanPayload () -> bf16[2] {
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
+}
+
+TEST_F(HloParserTest, InvalidNanPayloadBf16) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadBf16_module, entry_computation_layout={()->bf16[1]{0}}
+
+ENTRY %NanPayload () -> bf16[1] {
+  ROOT %constant = bf16[1]{0} constant({nan(0x3ff)})
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "tries to set NaN payload 0x3ff");
+}
+
+TEST_F(HloParserTest, InvalidNanPayloadF8e4m3fn) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadF8e4m3fn_module, entry_computation_layout={()->f8e4m3fn[1]{0}}
+
+ENTRY %NanPayload () -> f8e4m3fn[1] {
+  ROOT %constant = f8e4m3fn[1]{0} constant({nan(0x1)})
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "tries to set NaN payload 0x1");
 }
 
 TEST_F(HloParserTest, AttributesAnyOrder) {
@@ -3878,6 +3942,18 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithDynamicShapeMetadataPrefix) {
+  // Tile, element size, and memory space.
+  std::string shape_string = "f32[123,456]{1,0:T(16,128)M(1024)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {1, 0},
+                                                       {Tile({16, 128})});
+  expected.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(1024);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseOpaqueType) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
   Shape expected = ShapeUtil::MakeOpaqueShape();
@@ -4145,6 +4221,46 @@ ENTRY TestComputation {
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
 }
 
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutput) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_output=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(
+      (*result)->config().allow_spmd_sharding_propagation_to_output().size(),
+      1);
+  EXPECT_TRUE(
+      (*result)->config().allow_spmd_sharding_propagation_to_output()[0]);
+}
+
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutputVec) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_output={true,false}
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(
+      (*result)->config().allow_spmd_sharding_propagation_to_output().size(),
+      2);
+  EXPECT_TRUE(
+      (*result)->config().allow_spmd_sharding_propagation_to_output()[0]);
+  EXPECT_FALSE(
+      (*result)->config().allow_spmd_sharding_propagation_to_output()[1]);
+}
+
 TEST_F(HloParserTest, NestedBroadcastWithoutDimensionsAttribute) {
   const char* const hlo_string = R"(
 HloModule test
@@ -4206,6 +4322,104 @@ ENTRY test {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));
+}
+
+TEST_F(HloParserTest, ParseSingleComputation) {
+  const std::string original = R"(
+test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseSingleEntryComputation) {
+  const std::string original = R"(
+ENTRY test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseMultiComputations) {
+  const std::string original = R"(
+comp1 {
+  ROOT root =  f32[1,64,10,128]{3,2,1,0} parameter(0)
+}
+comp2 {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseMultiComputationsWithEntry) {
+  const std::string original = R"(
+ENTRY comp1 {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+}
+comp2 {
+  ROOT root =  f32[1,64,10,128]{3,2,1,0} parameter(0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(original));
+  EXPECT_TRUE(module->entry_computation()
+                  ->ComputeProgramShape()
+                  .parameters()[0]
+                  .has_layout());
+  EXPECT_TRUE(
+      module->entry_computation()->ComputeProgramShape().result().has_layout());
+  EXPECT_EQ(module->entry_computation()
+                ->ComputeProgramShape()
+                .parameters()[0]
+                .layout(),
+            Layout({1, 0, 2, 3}));
+  EXPECT_EQ(
+      module->entry_computation()->ComputeProgramShape().result().layout(),
+      Layout({1, 0, 2, 3}));
 }
 
 }  // namespace

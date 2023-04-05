@@ -1,12 +1,12 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
-load("//tensorflow/tsl:tsl.bzl", "if_oss", "tsl_gpu_library")
+load("//tensorflow/tsl:tsl.bzl", "if_oss", "set_external_visibility", "tsl_gpu_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -106,6 +106,7 @@ tsl_cc_test(
     deps = [
         ":coordination_client",
         ":coordination_service",
+        ":coordination_service_error_util",
         ":coordination_service_impl",
         ":test_device_proto_cc",
         "//tensorflow/tsl/distributed_runtime:call_options",

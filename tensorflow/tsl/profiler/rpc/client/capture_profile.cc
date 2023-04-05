@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/tsl/platform/host_info.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/convert/trace_events_to_json.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_analysis.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
@@ -157,7 +159,7 @@ Status Profile(const std::string& repository_root,
   }
 
   if (!has_trace_data) {
-    return Status(error::Code::UNAVAILABLE,
+    return Status(absl::StatusCode::kUnavailable,
                   "No trace event was collected because there were no responses"
                   " from clients or the responses did not have trace data.");
   }
@@ -186,9 +188,9 @@ Status NewSession(absl::string_view repository_root,
 
 }  // namespace
 
-Status Trace(const std::string& logdir, int num_tracing_attempts,
-             RemoteProfilerSessionManagerOptions& opts,
-             bool is_cloud_tpu_session) {
+Status CaptureRemoteTrace(const std::string& logdir, int num_tracing_attempts,
+                          RemoteProfilerSessionManagerOptions& opts,
+                          bool is_cloud_tpu_session) {
   DCHECK_GT(opts.profiler_options().duration_ms(), 0);
   DCHECK(!opts.service_addresses().empty());
 
@@ -243,9 +245,22 @@ Status Monitor(const std::string& service_addr, int duration_ms,
   return OkStatus();
 }
 
-Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
-  return SaveXSpace(GetTensorBoardProfilePluginDir(logdir),
-                    GetCurrentTimeStampAsString(), port::Hostname(), xspace);
+Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
+                           bool also_export_trace_json) {
+  std::string repository_root =
+      tsl::profiler::GetTensorBoardProfilePluginDir(logdir);
+  std::string run = tsl::profiler::GetCurrentTimeStampAsString();
+  std::string host = tsl::port::Hostname();
+  TF_RETURN_IF_ERROR(
+      tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
+  if (also_export_trace_json) {
+    tsl::profiler::TraceContainer container =
+        tsl::profiler::ConvertXSpaceToTraceContainer(xspace);
+    return tsl::profiler::SaveGzippedToolData(
+        repository_root, run, host, "trace.json.gz",
+        tsl::profiler::TraceContainerToJson(container));
+  }
+  return OkStatus();
 }
 
 }  // namespace profiler

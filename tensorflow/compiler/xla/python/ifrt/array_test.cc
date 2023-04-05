@@ -28,9 +28,7 @@ namespace {
 
 class MockArray : public llvm::RTTIExtends<MockArray, Array> {
  public:
-  static std::unique_ptr<Array> Create() {
-    return std::make_unique<MockArray>();
-  }
+  static tsl::RCReference<Array> Create() { return tsl::MakeRef<MockArray>(); }
 
   MOCK_METHOD(Client*, client, (), (const, override));
 
@@ -40,8 +38,9 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(std::shared_ptr<const Sharding>, shared_ptr_sharding, (),
               (const, override));
 
-  MOCK_METHOD(StatusOr<std::vector<std::unique_ptr<Array>>>, Explode,
-              (ArrayCopySemantics semantics), (override));
+  MOCK_METHOD(StatusOr<std::vector<tsl::RCReference<Array>>>,
+              DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
+              (override));
 
   MOCK_METHOD(Future<Status>, CopyToHostBuffer,
               (void* data,
@@ -49,7 +48,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
                ArrayCopySemantics semantics),
               (override));
 
-  MOCK_METHOD(StatusOr<std::unique_ptr<Array>>, Reshard,
+  MOCK_METHOD(StatusOr<tsl::RCReference<Array>>, Reshard,
               (std::shared_ptr<const Sharding> new_sharding,
                ArrayCopySemantics semantics),
               (override));
@@ -69,7 +68,7 @@ char MockArray::ID ABSL_ATTRIBUTE_UNUSED = 0;
 
 TEST(ArrayTest, MakeArrayPointerListTest) {
   const int kNumArrays = 3;
-  std::vector<std::unique_ptr<Array>> arrays;
+  std::vector<tsl::RCReference<Array>> arrays;
   arrays.reserve(kNumArrays);
   for (int i = 0; i < kNumArrays; ++i) {
     arrays.push_back(MockArray::Create());

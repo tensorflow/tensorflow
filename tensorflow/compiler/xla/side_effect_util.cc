@@ -37,6 +37,8 @@ const char kXlaComputeTypeSparse[] = "sparse";
 
 const char kXlaComputeTypeDense[] = "dense";
 
+const char kXlaComputeTypeHost[] = "host";
+
 const char kXlaMaxIdsPerPartitionAttr[] = "_xla_max_ids_per_partition";
 
 const char kXlaMaxUniqueIdsPerPartitionAttr[] =
@@ -47,5 +49,7 @@ const char kXlaShardingStrategyAttr[] = "_xla_sharding_strategy";
 const char kXlaShardingStrategyMod[] = "mod";
 
 const char kXlaShardingStrategyDiv[] = "div";
+
+const char kXlaPadValueAttr[] = "_xla_pad_value";
 
 }  // namespace xla

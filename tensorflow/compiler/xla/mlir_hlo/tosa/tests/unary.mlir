@@ -79,7 +79,7 @@ func.func @negate(%arg : tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @slice
 func.func @slice(%arg : tensor<4x3xf32>) -> tensor<2x2xf32> {
-  // CHECK: "tosa.slice"(%arg0) {size = [2, 2], start = [2, 1]}
+  // CHECK: "tosa.slice"(%arg0) {size = array<i64: 2, 2>, start = array<i64: 2, 1>}
   %0 = "mhlo.slice"(%arg) {
     start_indices = dense<[2, 1]> : tensor<2xi64>,
     limit_indices = dense<[4, 3]> : tensor<2xi64>,

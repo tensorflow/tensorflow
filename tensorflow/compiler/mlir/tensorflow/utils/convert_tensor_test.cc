@@ -25,13 +25,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace tensorflow {
 namespace {
@@ -140,6 +140,12 @@ TEST_F(ConvertTensorTest, Simple) {
       {1.0, -1.0}, DT_FLOAT, mlir::FloatType::getF32(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<double>(
       {1.0, -1.0}, DT_DOUBLE, mlir::FloatType::getF64(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2>(
+      {tsl::float8_e5m2{1.0}, tsl::float8_e5m2{-1.0}}, DT_FLOAT8_E5M2,
+      mlir::FloatType::getFloat8E5M2(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fn>(
+      {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
+      mlir::FloatType::getFloat8E4M3FN(&context)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int8>(
       {1, -1}, DT_INT8, mlir::IntegerType::get(&context, 8)));

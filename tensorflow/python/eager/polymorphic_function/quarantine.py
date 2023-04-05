@@ -14,8 +14,8 @@
 # ==============================================================================
 """Internal APIs to be removed in the future."""
 
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
-from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.eager.polymorphic_function import atomic_function
+from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
@@ -99,29 +99,18 @@ def add_function_callback(function_callback):
 
   The callback function has the signature:
 
-    `def function_callback(function, name, graph, inputs, outputs):`
+    `def function_callback(function: AtomicFunction) -> AtomicFunction`
 
-  where:
-  - `function`: _EagerDefinedFunction being created before finalizing the graph.
-      Do not modify the function directly but instead modify the graph.
-  - `name`: name of the function.
-  - `graph`: Graph of the function.
-  - `inputs`: `tuple` of tensors used as inputs to the function.
-  - `outputs`: `tuple` of tensors used as outputs from the function.
+  Repeated registration of the same callback function will cause repeated
+  transformations.
 
-  The callback is at the top of the `_EagerDefinedFunction` construction, giving
-  callback an opportunity to make the last edits to the graph. Do not make
-  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
-  `graph` as the default then define ops.
-
-  Repeated registration of the same callback function is idempotent.
   After a callback is added, it can be removed with the
   `remove_function_callback()` method.
 
   Args:
     function_callback: The callback to add.
   """
-  monomorphic_function._function_callbacks.add(function_callback)  # pylint: disable=protected-access
+  atomic_function.FUNCTION_TRANSFORMS.append(function_callback)
 
 
 # TODO(b/244360504): Remove this API in favour of the graph transformation API.
@@ -133,13 +122,13 @@ def remove_function_callback(function_callback):
   Args:
     function_callback: The callback to remove.
   """
-  monomorphic_function._function_callbacks.remove(function_callback)  # pylint: disable=protected-access
+  atomic_function.FUNCTION_TRANSFORMS.remove(function_callback)
 
 
 # TODO(b/244360504): Remove this API in favour of the graph transformation API.
 def clear_function_callbacks():
   """Clear all function callbacks, if any have been regisered."""
-  monomorphic_function._function_callbacks.clear()  # pylint: disable=protected-access
+  atomic_function.FUNCTION_TRANSFORMS.clear()
 
 
 @deprecation.deprecated(
@@ -165,7 +154,7 @@ def experimental_run_functions_eagerly(run_eagerly):
   Returns:
     None
   """
-  return polymorphic_function.run_functions_eagerly(run_eagerly)
+  return eager_function_run.run_functions_eagerly(run_eagerly)
 
 
 @deprecation.deprecated(
@@ -174,4 +163,4 @@ def experimental_run_functions_eagerly(run_eagerly):
 @tf_export("config.experimental_functions_run_eagerly")
 def experimental_functions_run_eagerly():
   """Returns the value of the `experimental_run_functions_eagerly` setting."""
-  return polymorphic_function.functions_run_eagerly()
+  return eager_function_run.functions_run_eagerly()

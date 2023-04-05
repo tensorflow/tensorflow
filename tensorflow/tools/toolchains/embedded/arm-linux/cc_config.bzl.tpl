@@ -17,7 +17,7 @@ load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 
 def _impl(ctx):
     if (ctx.attr.cpu == "aarch64"):
-        toolchain_identifier = "aarch64-linux-gnu"
+        toolchain_identifier = "aarch64-none-linux-gnu"
         host_system_name = "aarch64"
         target_system_name = "aarch64"
         target_cpu = "aarch64"
@@ -245,13 +245,13 @@ def _impl(ctx):
                         flag_group(
                             flags = [
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-linux-gnu/8.3.0/include",
+                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include",
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-linux-gnu/8.3.0/include-fixed",
+                                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include-fixed",
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/include/c++/8.3.0/",
+                                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/include/c++/11.3.1/",
                                 "-isystem",
-                                "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/libc/usr/include/",
+                                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/libc/usr/include/",
                                 "-isystem",
                                 "%{PYTHON_INCLUDE_PATH}%",
                                 "-isystem",
@@ -344,13 +344,13 @@ def _impl(ctx):
                         flag_group(
                             flags = [
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/8.3.0/include",
+                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include",
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/8.3.0/include-fixed",
+                                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include-fixed",
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/8.3.0/",
+                                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/include/c++/11.3.1/",
                                 "-isystem",
-                                "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/",
+                                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/libc/usr/include/",
                                 "-isystem",
                                 "%{PYTHON_INCLUDE_PATH}%",
                                 "-isystem",
@@ -470,18 +470,18 @@ def _impl(ctx):
 
     if (ctx.attr.cpu == "aarch64"):
         cxx_builtin_include_directories = [
-                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-linux-gnu/8.3.0/include",
-                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-linux-gnu/8.3.0/include-fixed",
-                "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/include/c++/8.3.0/",
-                "%{AARCH64_COMPILER_PATH}%/aarch64-linux-gnu/libc/usr/include/",
+                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include",
+                "%{AARCH64_COMPILER_PATH}%/lib/gcc/aarch64-none-linux-gnu/11.3.1/include-fixed",
+                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/include/c++/11.3.1/",
+                "%{AARCH64_COMPILER_PATH}%/aarch64-none-linux-gnu/libc/usr/include/",
                 "/usr/include",
             ]
     elif (ctx.attr.cpu == "armhf"):
         cxx_builtin_include_directories = [
-                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/8.3.0/include",
-                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-linux-gnueabihf/8.3.0/include-fixed",
-                "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/include/c++/8.3.0/",
-                "%{ARMHF_COMPILER_PATH}%/arm-linux-gnueabihf/libc/usr/include/",
+                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include",
+                "%{ARMHF_COMPILER_PATH}%/lib/gcc/arm-none-linux-gnueabihf/11.3.1/include-fixed",
+                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/include/c++/11.3.1/",
+                "%{ARMHF_COMPILER_PATH}%/arm-none-linux-gnueabihf/libc/usr/include/",
                 "/usr/include",
             ]
     else:
@@ -495,88 +495,88 @@ def _impl(ctx):
         tool_paths = [
             tool_path(
                 name = "ar",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-ar",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-ar",
             ),
             tool_path(name = "compat-ld", path = "/bin/false"),
             tool_path(
                 name = "cpp",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-cpp",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-cpp",
             ),
             tool_path(
                 name = "dwp",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-dwp",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-dwp",
             ),
             tool_path(
                 name = "gcc",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-gcc",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-gcc",
             ),
             tool_path(
                 name = "gcov",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-gcov",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-gcov",
             ),
             tool_path(
                 name = "ld",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-ld",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-ld",
             ),
             tool_path(
                 name = "nm",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-nm",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-nm",
             ),
             tool_path(
                 name = "objcopy",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-objcopy",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-objcopy",
             ),
             tool_path(
                 name = "objdump",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-objdump",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-objdump",
             ),
             tool_path(
                 name = "strip",
-                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-linux-gnu-strip",
+                path = "%{AARCH64_COMPILER_PATH}%/bin/aarch64-none-linux-gnu-strip",
             ),
         ]
     elif (ctx.attr.cpu == "armhf"):
         tool_paths = [
             tool_path(
                 name = "ar",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ar",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-ar",
             ),
             tool_path(name = "compat-ld", path = "/bin/false"),
             tool_path(
                 name = "cpp",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-cpp",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-cpp",
             ),
             tool_path(
                 name = "dwp",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-dwp",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-dwp",
             ),
             tool_path(
                 name = "gcc",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-gcc",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-gcc",
             ),
             tool_path(
                 name = "gcov",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-gcov",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-gcov",
             ),
             tool_path(
                 name = "ld",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-ld",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-ld",
             ),
             tool_path(
                 name = "nm",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-nm",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-nm",
             ),
             tool_path(
                 name = "objcopy",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-objcopy",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-objcopy",
             ),
             tool_path(
                 name = "objdump",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-objdump",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-objdump",
             ),
             tool_path(
                 name = "strip",
-                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-linux-gnueabihf-strip",
+                path = "%{ARMHF_COMPILER_PATH}%/bin/arm-none-linux-gnueabihf-strip",
             ),
         ]
     else:

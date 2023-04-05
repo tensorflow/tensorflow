@@ -54,12 +54,12 @@ class VariantTensorData {
   // Directly supported types include string POD types.
   template <typename T>
   void set_metadata(const T& value) {
-    SetMetadata<T>(value, PODResolver<T>());
+    SetMetadata(value, PODResolver<T>());
   }
 
   template <typename T>
   bool get_metadata(T* value) const {
-    return GetMetadata<T>(value, PODResolver<T>());
+    return GetMetadata(value, PODResolver<T>());
   }
 
   std::string& metadata_string() { return metadata_; }
@@ -96,16 +96,24 @@ class VariantTensorData {
   std::vector<Tensor> tensors_;
 
  private:
-  template <typename T>
   void SetMetadata(const std::string& value,
-                   PODResolver<T, false /* is_pod */>) {
+                   PODResolver<std::string, false /* is_pod */>) {
     metadata_ = value;
   }
 
-  template <typename T>
   bool GetMetadata(std::string* value,
-                   PODResolver<T, false /* is_pod */>) const {
+                   PODResolver<std::string, false /* is_pod */>) const {
     *value = metadata_;
+    return true;
+  }
+
+  // Specialize for bool, it is undefined behvaior to assign a non 0/1 value to
+  // a bool. Now we coerce a non-zero value to true.
+  bool GetMetadata(bool* value, PODResolver<bool, true /* is_pod */>) const {
+    if (metadata_.size() != sizeof(bool)) return false;
+    *value = false;
+    for (size_t i = 0; i < sizeof(bool); ++i)
+      *value = *value || (metadata_.data()[i] != 0);
     return true;
   }
 

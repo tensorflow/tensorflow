@@ -52,7 +52,6 @@ limitations under the License.
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
@@ -61,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -93,8 +93,8 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {86, 80, 75, 72, 70, 62, 61, 60,
-                              53, 52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {90, 89, 87, 86, 80, 75, 72, 70, 62,
+                              61, 60, 53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -177,19 +177,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       llvm_ir::AsStringRef(feature_str), target_options,
       llvm::codegen::getExplicitRelocModel(),
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
-}
-
-// Emits the given module to a bit code file.
-void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
-  std::error_code error_code;
-  llvm::ToolOutputFile outfile(std::string(filename).c_str(), error_code,
-                               llvm::sys::fs::OF_None);
-  if (error_code) {
-    LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
-  }
-
-  llvm::WriteBitcodeToFile(module, outfile.os());
-  outfile.keep();
 }
 
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
@@ -318,10 +305,15 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const HloModuleConfig& hlo_module_config) {
+  // TODO(b/266678775): Make it always PTX 7.1 as soon as TF driver requirements
+  // are updated.
+  const std::string ptx_ver =
+      hlo_module_config.debug_options().xla_gpu_enable_triton_gemm() ? "+ptx71"
+                                                                     : "+ptx60";
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          hlo_module_config, "+ptx60");
+                          hlo_module_config, ptx_ver);
 }
 
 using TargetModuleLinker = std::function<Status(
@@ -406,9 +398,9 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   llvm::PassInstrumentationCallbacks pic;
 
   llvm::StandardInstrumentations si(module->getContext(), false);
-  si.registerCallbacks(pic, &fam);
+  si.registerCallbacks(pic, &mam);
 
-  llvm::PassBuilder pb(target_machine, pto, llvm::None, &pic);
+  llvm::PassBuilder pb(target_machine, pto, std::nullopt, &pic);
   pb.registerModuleAnalyses(mam);
   pb.registerCGSCCAnalyses(cgam);
   pb.registerFunctionAnalyses(fam);
@@ -517,13 +509,62 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
 
 namespace nvptx {
 
+std::string CantFindCudaMessage(absl::string_view msg,
+                                absl::string_view xla_gpu_cuda_data_dir) {
+  return absl::StrCat(
+      msg, "\nSearched for CUDA in the following directories:\n  ",
+      absl::StrJoin(tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir}),
+                    "\n  "),
+      "\nYou can choose the search directory by setting xla_gpu_cuda_data_dir "
+      "in HloModule's DebugOptions.  For most apps, setting the environment "
+      "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.");
+}
+
+static std::string GetLibdeviceDir(absl::string_view xla_gpu_cuda_data_dir) {
+  for (const std::string& cuda_root :
+       tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir})) {
+    std::string libdevice_dir =
+        tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
+    if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      VLOG(2) << "Found libdevice dir " << libdevice_dir;
+      return libdevice_dir;
+    }
+  }
+  LOG(WARNING) << CantFindCudaMessage(
+      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
+      "result in compilation or runtime failures, if the program we try to run "
+      "uses routines from libdevice.",
+      xla_gpu_cuda_data_dir);
+
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
+  // return it anyway.  Better than returning the empty string.
+  return ".";
+}
+
 StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config,
-    const std::string& libdevice_dir_path,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
   absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
+
+  absl::string_view xla_gpu_cuda_data_dir =
+      hlo_module_config.debug_options().xla_gpu_cuda_data_dir();
+
+  static absl::Mutex libdevice_cache_mu(absl::kConstInit);
+  static auto& libdevice_dir_path_cache ABSL_GUARDED_BY(libdevice_cache_mu) =
+      *new absl::flat_hash_map<std::string, std::string>();
+  std::string libdevice_dir_path = [&] {
+    absl::MutexLock l(&libdevice_cache_mu);
+    auto it = libdevice_dir_path_cache.find(xla_gpu_cuda_data_dir);
+    if (it != libdevice_dir_path_cache.end()) {
+      return it->second;
+    }
+    auto [it2, inserted] = libdevice_dir_path_cache.emplace(
+        xla_gpu_cuda_data_dir, GetLibdeviceDir(xla_gpu_cuda_data_dir));
+    return it2->second;
+  }();
 
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -751,7 +792,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string error_message;
   int lld_result =
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
-                                llvm::None, {}, 0, 0, &error_message);
+                                std::nullopt, {}, 0, 0, &error_message);
   if (lld_result) {
     return xla::InternalError("ld.lld execute fail: %s, error code %d",
                               error_message, lld_result);

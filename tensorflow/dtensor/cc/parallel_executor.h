@@ -17,12 +17,15 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_CC_PARALLEL_EXECUTOR_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
-#include "tensorflow/dtensor/cc/dtensor_device_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/cc/tensor_with_layout.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -34,21 +37,42 @@ using Future = ::xla::PjRtFuture<T>;
 // Note: The interface is under development and APIs are subject to change.
 class ParallelExecutor {
  public:
-  using ExecutionResult = tsl::StatusOr<std::vector<TensorWithLayout*>>;
-
   virtual ~ParallelExecutor() = default;
 
-  // Takes input TensorWithLayouts, a MLIR module and the entry function name.
+  // Broadcasts `tensor` to `mesh` using replicated sharding and returns a
+  // DTensor representation. `mesh` can be a single device mesh and in that case
+  // `const_value` is useless.
+  virtual StatusOr<std::unique_ptr<TensorWithLayout>> Broadcast(
+      const Tensor& tensor, const Mesh& mesh,
+      std::optional<NodeDef> const_value) = 0;
+
+  // Takes input TensorWithLayouts and a MLIR module.
+  // The MLIR module should have `main` as its entry function name.
   // Attributes are forwarded to executed operations unmodified.
   // The execute is non-blocking and returns a Future of output TensorWithLayout
   // raw pointers.
   // The client is responsible for the ownership of the outputs.
-  virtual Future<ExecutionResult> Execute(
+  struct ExecutionResult {
+    Future<Status> status;
+    // The pointed data of `outputs` are filled after `status` future resolves
+    // as ok.
+    std::vector<TensorWithLayout*> outputs;
+  };
+  virtual StatusOr<ExecutionResult> Execute(
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
-      mlir::OwningOpRef<mlir::ModuleOp> module_ref,
-      const llvm::StringRef entry_function_name,
-      const TFE_OpAttrs* attributes) const = 0;
+      mlir::ModuleOp module, const TFE_OpAttrs* attributes) const = 0;
+
+  // Disassembles `t` into multiple TensorWithLayouts. `t` may or may not be
+  // valid to use afterwards.
+  virtual StatusOr<std::vector<std::unique_ptr<TensorWithLayout>>> Disassemble(
+      TensorWithLayout* t) = 0;
+
+  // Returns a tensor copied from `t` when `t` contains only a single device.
+  virtual Future<StatusOr<Tensor>> ToHostBuffer(TensorWithLayout* t) = 0;
 };
+
+// Factory method for Default ParallelExecutor instance.
+StatusOr<std::unique_ptr<ParallelExecutor>> CreateDefaultParallelExecutor();
 
 }  // namespace dtensor
 }  // namespace tensorflow

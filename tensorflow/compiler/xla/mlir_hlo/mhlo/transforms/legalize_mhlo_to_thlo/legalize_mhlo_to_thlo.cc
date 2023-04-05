@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
@@ -360,8 +361,41 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
   }
 };
 
+struct ReversePattern : public OpConversionPattern<mhlo::ReverseOp> {
+  using OpConversionPattern<mhlo::ReverseOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ReverseOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto reverseDimensions =
+        llvm::to_vector(op.getDimensions().getValues<int64_t>());
+    Type resultType = typeConverter->convertType(op->getResultTypes()[0]);
+    if (!resultType)
+      return rewriter.notifyMatchFailure(op, "failed to convert result type");
+    Location loc = op.getLoc();
+    auto operandType =
+        adaptor.getOperand().getType().dyn_cast<RankedTensorType>();
+    if (!operandType)
+      return rewriter.notifyMatchFailure(op, "expects known-rank operand");
+    auto tensorResultType = resultType.cast<RankedTensorType>();
+    SmallVector<Value, 8> dynShape =
+        tensor::createDynamicDimValues(rewriter, loc, adaptor.getOperand());
+    Value initTensor = rewriter.create<tensor::EmptyOp>(
+        loc, tensorResultType.getShape(), tensorResultType.getElementType(),
+        dynShape);
+    rewriter.replaceOpWithNewOp<thlo::ReverseOp>(
+        op, resultType, adaptor.getOperand(), initTensor, reverseDimensions);
+    return success();
+  }
+};
+
 class LegalizeMHLOToTHLOPass
     : public impl::LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
+ public:
+  explicit LegalizeMHLOToTHLOPass(bool enableExperimentalOps) {
+    enableExperimental = enableExperimentalOps;
+  }
+
+ private:
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
@@ -380,19 +414,24 @@ class LegalizeMHLOToTHLOPass
 
     auto typeConverter = std::make_unique<LinalgTypeConverter>();
 
-    populateScalarHloToArithmeticConversionPatterns(ctx, *typeConverter,
-                                                    &patterns);
+    populateScalarHloToArithmeticConversionPatterns(
+        ctx, *typeConverter, &patterns,
+        [](Operation* op) { return isInBodyOfThloOp(op); });
 
     // List of patterns.
     // clang-format off
     patterns.insert<
         ConcatenateOpPattern,
-        DynamicBroadcastInDimOpPattern,
         GatherPattern,
+        ReversePattern,
         ScatterPattern,
         SortPattern,
         ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
+
+    if (enableExperimental) {
+      patterns.insert<DynamicBroadcastInDimOpPattern>(*typeConverter, ctx);
+    }
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
@@ -403,8 +442,9 @@ class LegalizeMHLOToTHLOPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass() {
-  return std::make_unique<LegalizeMHLOToTHLOPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
+    bool enableExperimentalOps) {
+  return std::make_unique<LegalizeMHLOToTHLOPass>(enableExperimentalOps);
 }
 
 }  // namespace mhlo

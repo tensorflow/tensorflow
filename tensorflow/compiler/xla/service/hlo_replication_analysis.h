@@ -114,7 +114,7 @@ class HloReplicationAnalysis {
         support_partial_replication_(support_partial_replication) {}
 
   // Computes hlo_replication_.
-  void ComputeHloReplication();
+  Status ComputeHloReplication();
 
   // A helper function to recursively compute hlo_replication on a computation.
   // Returns whether hlo_replication_ is changed.

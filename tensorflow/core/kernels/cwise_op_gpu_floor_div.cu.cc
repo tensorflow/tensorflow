@@ -26,6 +26,7 @@ DEFINE_BINARY1(floor_div, int32);
 DEFINE_BINARY4(floor_div, uint8, uint16, int16, int64);
 DEFINE_BINARY3(floor_div_real, Eigen::half, float, double);
 #endif
+DEFINE_BINARY1(floor_div_real, bfloat16);
 
 }  // namespace functor
 }  // namespace tensorflow

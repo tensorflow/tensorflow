@@ -39,7 +39,7 @@ SubComponentItem = collections.namedtuple("SubComponentItem",
                                           ["name", "component"])
 
 
-class SubComponent(enum.Enum):
+class SubComponent(SubComponentItem, enum.Enum):
   """Enum class defining name of the converter subcomponents.
 
   This enum only defines the subcomponents in Python, there might be more

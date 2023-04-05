@@ -67,6 +67,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
+                                 llvm::Value* value) override;
+
   StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type, llvm::Value* value,
                                  absl::string_view name) override;
 

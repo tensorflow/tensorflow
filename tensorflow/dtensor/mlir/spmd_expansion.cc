@@ -174,17 +174,19 @@ mlir::LogicalResult UpdateResourceArgumentType(
 
 // Returns whether `value` is used by AssignVariable op, skipping DTensorLayout
 // op.
-bool IsValueUsedByAssignVariableOp(
+bool GetResourceArgIndexIfUsedInAssignmentOp(
     mlir::Value value, int* resource_argument_index_for_assign_variable) {
   for (auto user : value.getUsers()) {
     if (auto assign_variable_op =
             llvm::dyn_cast_or_null<mlir::TF::AssignVariableOp>(
                 NextTFOp(user))) {
-      *resource_argument_index_for_assign_variable =
-          GetForwardedDTensorLayoutInput(assign_variable_op.getResource())
-              .cast<mlir::BlockArgument>()
-              .getArgNumber();
-      return true;
+      auto resource =
+          GetForwardedDTensorLayoutInput(assign_variable_op.getResource());
+      if (llvm::isa<mlir::BlockArgument>(resource)) {
+        *resource_argument_index_for_assign_variable =
+            resource.cast<mlir::BlockArgument>().getArgNumber();
+        return true;
+      }
     }
   }
   return false;
@@ -203,6 +205,11 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
       return function.emitOpError(llvm::formatv(
           "Invalid layout attribute found during SPMD expansion: {0}",
           arg_layout.status().error_message()));
+
+    // XLA SPMD will handle argument shape updating for us.
+    if (arg_layout->mesh().use_xla_spmd()) {
+      continue;
+    }
 
     mlir::Type arg_type = mlir::getElementTypeOrSelf(
         function.getFunctionType().getInput(argument_index));
@@ -230,12 +237,14 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
         arg_local_shape, ranked_type.getElementType());
     UpdateFunctionInputShape(argument_index, new_arg_type, function);
 
-    // If non-resource value was used for AssignVariable op, then ensure that
+    // If Resource is an input to the function and a non-resource value was used
+    // for AssignVariable op, then ensure that
     // resource shape of updated/assigned resource is consistent with the
     // local shape of assigned value.
     int assigned_resource_argument_index = -1;
-    if (IsValueUsedByAssignVariableOp(function.getArgument(argument_index),
-                                      &assigned_resource_argument_index)) {
+    if (GetResourceArgIndexIfUsedInAssignmentOp(
+            function.getArgument(argument_index),
+            &assigned_resource_argument_index)) {
       (void)UpdateResourceArgumentType(assigned_resource_argument_index,
                                        function, new_arg_type);
     }
@@ -286,14 +295,14 @@ mlir::LogicalResult UpdateReturnValueShapes(mlir::ModuleOp module,
       auto callsite_op = function_use.getUser();
       if (!callsite_op) continue;
 
-      for (auto& output_type_and_index : llvm::enumerate(output_types)) {
+      for (const auto& output_type_and_index : llvm::enumerate(output_types)) {
         int index = output_type_and_index.index();
         const auto& type = output_type_and_index.value();
         callsite_op->getResult(index).setType(type);
       }
     }
   } else {
-    for (auto& output_type_and_index : llvm::enumerate(output_types)) {
+    for (const auto& output_type_and_index : llvm::enumerate(output_types)) {
       int index = output_type_and_index.index();
       const auto& type = output_type_and_index.value();
       parent_op->getResult(index).setType(type);
@@ -353,17 +362,6 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   return mlir::success();
 }
 
-// DTensorLayout only conveys layout information of tensors which is no
-// longer needed after SPMD expansion. As so, remove all layouts from
-// graph.
-void RemoveDTensorLayoutOps(mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
-  module.walk(
-      [&](mlir::TF::DTensorLayout layout) { layout_ops.emplace_back(layout); });
-
-  for (auto layout_op : layout_ops) RemoveDTensorLayoutOp(layout_op);
-}
-
 // Removes temporary attrs created during SPMD expansion.
 void RemoveTemporarySPMDAttrs(mlir::ModuleOp module) {
   module.walk([&](mlir::Operation* op) {
@@ -387,7 +385,7 @@ struct DTensorSPMDExpansion
     auto module = getOperation();
     if (failed(ConductSPMDExpansion(module))) return signalPassFailure();
 
-    RemoveDTensorLayoutOps(module);
+    RemoveDTensorLayoutOps(module, /*remove_xla_spmd_layouts=*/false);
 
     RemoveTemporarySPMDAttrs(module);
   };

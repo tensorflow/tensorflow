@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
 namespace tensorflow {
@@ -128,14 +129,11 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
-int64_t CostAnalysis::GetCost(mlir::Operation* op, int64_t op_key) const {
-  // Try to use its measured cost.
-  const auto& measured_cost_map = op_cost_map_proto_.op_cost_map();
-  if (const auto op_cost = measured_cost_map.find(op_key);
-      op_cost != measured_cost_map.end()) {
-    return op_cost->second;
-  }
+bool HasCostFunctionRegistered(absl::string_view op_name) {
+  return GetCostFunctionRegistry().contains(op_name);
+}
 
+int64_t CostAnalysis::GetCost(mlir::Operation* op) const {
   assert(cost_map_.count(op) > 0);
   return cost_map_.lookup(op);
 }
@@ -163,15 +161,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     return;
   }
 
-  // These ops are cheap regardless of their input sizes.
-  //
-  // TODO(chky): Find a more scalable way to figure out cheap ops.
-  if (llvm::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
-                mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
-    cost_map_[op] = kDefaultCheapCost;
-    return;
-  }
-
   // Try to use its cost function if it is registered.
   const auto& registry = GetCostFunctionRegistry();
   absl::string_view op_name = op->getName().getStringRef();
@@ -180,6 +169,25 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     CostContext context;
     context.default_unranked_tensor_size = max_arg_size_;
     cost_map_[op] = iter->second(context, op);
+    return;
+  }
+
+  // Try to use the recorded cost if any.
+  if (cost_recorder_ != nullptr) {
+    const auto op_key_attr =
+        op->getAttrOfType<mlir::IntegerAttr>(kOpKeyAttrName);
+    if (op_key_attr) {
+      cost_map_[op] = cost_recorder_->GetCostNanosecond(op_key_attr.getInt());
+      return;
+    }
+  }
+
+  // These ops are cheap regardless of their input sizes.
+  //
+  // TODO(chky): Find a more scalable way to figure out cheap ops.
+  if (llvm::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
+                mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
+    cost_map_[op] = kDefaultCheapCost;
     return;
   }
 
@@ -199,17 +207,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
   }
 
   cost_map_[op] = cost;
-}
-
-Status CostAnalysis::ReadMeasuredCosts() {
-  const char* env_var = getenv("TF_TFRT_MEASURED_COST_PATH");
-  // No need to read because the cost measurement is disabled.
-  if (env_var == nullptr) return OkStatus();
-
-  tensorflow::Env* env = Env::Default();
-  const std::string measured_cost_path(env_var);
-  TF_RETURN_IF_ERROR(env->FileExists(measured_cost_path));
-  return ReadTextProto(env, measured_cost_path, &op_cost_map_proto_);
 }
 
 }  // namespace tfrt_compiler

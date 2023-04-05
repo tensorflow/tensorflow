@@ -15,10 +15,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -27,6 +30,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
@@ -40,31 +44,32 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
-                           mlir::PassManager& pass_manager,
-                           mlir::ModuleOp module_op) {
+absl::Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
+                                 mlir::PassManager& pass_manager,
+                                 mlir::ModuleOp module_op) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
 
   const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> dump_file =
       MaybeEnableIrPrinting(pass_manager, mlir_dump_file_name);
   if (!dump_file.ok()) {
-    return tsl::FromAbslStatus(dump_file.status());
+    return dump_file.status();
   }
 
   if (failed(pass_manager.run(module_op))) {
-    return statusHandler.ConsumeStatus();
+    return tsl::ToAbslStatus(statusHandler.ConsumeStatus());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status PreprocessAndFreezeGraph(const absl::string_view mlir_dump_file_prefix,
-                                mlir::ModuleOp module_op,
-                                mlir::MLIRContext* context,
-                                llvm::Optional<Session*> session) {
+absl::Status PreprocessAndFreezeGraph(
+    const absl::string_view mlir_dump_file_prefix, const bool is_inliner_run,
+    const absl::flat_hash_set<std::string>& noinline_functions,
+    mlir::ModuleOp module_op, mlir::MLIRContext* context,
+    std::optional<Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
@@ -81,30 +86,33 @@ Status PreprocessAndFreezeGraph(const absl::string_view mlir_dump_file_prefix,
   mlir::PassManager pm_after_freezing_variables(context);
   pm_after_freezing_variables.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm_after_freezing_variables.addPass(mlir::createCanonicalizerPass());
-  pm_after_freezing_variables.addPass(mlir::createInlinerPass());
 
-  if (const auto status = RunPassesOnModuleOp(
+  // Makes certain functions immune to the `InlinerPass`. Used to preserve
+  // aliased functions.
+  pm_after_freezing_variables.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateMarkFunctionsNoinlinePass(std::vector<std::string>(
+          noinline_functions.begin(), noinline_functions.end())));
+  if (is_inliner_run) {
+    pm_after_freezing_variables.addPass(mlir::createInlinerPass());
+  }
+
+  if (const auto pre_variable_freezing_status = RunPassesOnModuleOp(
           /*mlir_dump_file_name=*/absl::StrCat(
               mlir_dump_file_prefix, "_preprocess_pre_variable_freezing"),
           pm_before_freezing_variables, module_op);
-      !status.ok()) {
-    return status;
+      !pre_variable_freezing_status.ok()) {
+    return pre_variable_freezing_status;
   }
 
   if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
                                  module_op, session.value()))) {
-    return statusHandler.ConsumeStatus();
+    return tsl::ToAbslStatus(statusHandler.ConsumeStatus());
   }
 
-  if (const auto status = RunPassesOnModuleOp(
-          /*mlir_dump_file_name=*/absl::StrCat(
-              mlir_dump_file_prefix, "_preprocess_post_variable_freezing"),
-          pm_after_freezing_variables, module_op);
-      !status.ok()) {
-    return status;
-  }
-
-  return OkStatus();
+  return RunPassesOnModuleOp(
+      /*mlir_dump_file_name=*/absl::StrCat(
+          mlir_dump_file_prefix, "_preprocess_post_variable_freezing"),
+      pm_after_freezing_variables, module_op);
 }
 
 }  // namespace quantization

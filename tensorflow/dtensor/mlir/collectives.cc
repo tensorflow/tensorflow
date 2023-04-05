@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -110,7 +111,11 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
-  assert(original_layout.rank() == desired_layout.rank());
+  if (original_layout.rank() != desired_layout.rank()) {
+    return errors::InvalidArgument(absl::StrCat(
+        "Rank mismatch for original layout (", original_layout.ToString(),
+        ") and desired layout (", desired_layout.ToString(), ")"));
+  }
   for (int i = 0; i < original_layout.rank(); ++i) {
     if (original_layout.sharding_spec(i) != desired_layout.sharding_spec(i) &&
         Layout::IsShardedDimension(original_layout.sharding_spec(i))) {
@@ -222,7 +227,11 @@ StatusOr<mlir::Value> EmitRelayout(
         "have a rank");
 
   if (src_layout.mesh() != tgt_layout.mesh()) {
-    return errors::Internal("Attempted to relayout to a different mesh.");
+    return errors::Internal(
+        absl::StrCat("Attempted to relayout to a different "
+                     " mesh. Source Mesh = (",
+                     src_layout.mesh().ToString(),
+                     "). Target Mesh = ", tgt_layout.mesh().ToString(), ")."));
   }
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::Internal(
@@ -458,7 +467,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 

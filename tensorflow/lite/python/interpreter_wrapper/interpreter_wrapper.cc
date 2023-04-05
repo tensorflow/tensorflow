@@ -22,6 +22,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
@@ -29,9 +30,9 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
@@ -44,14 +45,6 @@ limitations under the License.
 #define TFLITE_PY_CHECK(x)               \
   if ((x) != kTfLiteOk) {                \
     return error_reporter_->exception(); \
-  }
-
-#define TFLITE_PY_TENSOR_BOUNDS_CHECK(i)                                    \
-  if (i >= interpreter_->tensors_size() || i < 0) {                         \
-    PyErr_Format(PyExc_ValueError,                                          \
-                 "Invalid tensor index %d exceeds max tensor index %lu", i, \
-                 interpreter_->tensors_size());                             \
-    return nullptr;                                                         \
   }
 
 #define TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(i, subgraph_index)             \
@@ -91,7 +84,8 @@ using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
-    const tflite::MutableOpResolver& resolver, bool preserve_all_tensors) {
+    const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   if (!model) {
     return nullptr;
   }
@@ -101,6 +95,7 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   std::unique_ptr<Interpreter> interpreter;
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
+  options.SetDisableDelegateClustering(disable_delegate_clustering);
   InterpreterBuilder builder(*model, resolver, &options);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
@@ -204,7 +199,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::unique_ptr<PythonErrorReporter> error_reporter,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-    std::string* error_msg, bool preserve_all_tensors) {
+    std::string* error_msg, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -237,7 +233,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     registerer(reinterpret_cast<uintptr_t>(resolver.get()));
   }
   auto interpreter =
-      CreateInterpreter(model.get(), *resolver, preserve_all_tensors);
+      CreateInterpreter(model.get(), *resolver, preserve_all_tensors,
+                        disable_delegate_clustering);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -259,7 +256,7 @@ InterpreterWrapper::InterpreterWrapper(
       resolver_(std::move(resolver)),
       interpreter_(std::move(interpreter)) {}
 
-InterpreterWrapper::~InterpreterWrapper() {}
+InterpreterWrapper::~InterpreterWrapper() = default;
 
 // LINT.IfChange
 static constexpr int kUndeterminedSubgraphIndex = -1;
@@ -368,27 +365,32 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
   Py_RETURN_NONE;
 }
 
-int InterpreterWrapper::NumTensors() const {
+int InterpreterWrapper::NumTensors(int subgraph_index) const {
   if (!interpreter_) {
     return 0;
   }
-  return interpreter_->tensors_size();
+  return interpreter_->subgraph(subgraph_index)->tensors_size();
 }
 
-std::string InterpreterWrapper::TensorName(int i) const {
-  if (!interpreter_ || i >= interpreter_->tensors_size() || i < 0) {
+std::string InterpreterWrapper::TensorName(int tensor_index,
+                                           int subgraph_index) const {
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  if (!interpreter_ || tensor_index >= subgraph->tensors_size() ||
+      tensor_index < 0) {
     return "";
   }
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   return tensor->name ? tensor->name : "";
 }
 
-PyObject* InterpreterWrapper::TensorType(int i) const {
+PyObject* InterpreterWrapper::TensorType(int tensor_index,
+                                         int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   if (tensor->type == kTfLiteNoType) {
     PyErr_Format(PyExc_ValueError, "Tensor with no type found.");
     return nullptr;
@@ -402,11 +404,13 @@ PyObject* InterpreterWrapper::TensorType(int i) const {
   return PyArray_TypeObjectFromType(code);
 }
 
-PyObject* InterpreterWrapper::TensorSize(int i) const {
+PyObject* InterpreterWrapper::TensorSize(int tensor_index,
+                                         int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   if (tensor->dims == nullptr) {
     PyErr_Format(PyExc_ValueError, "Tensor with no shape found.");
     return nullptr;
@@ -417,11 +421,13 @@ PyObject* InterpreterWrapper::TensorSize(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
+PyObject* InterpreterWrapper::TensorSizeSignature(int tensor_index,
+                                                  int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   const int32_t* size_signature_data = nullptr;
   int32_t size_signature_size = 0;
   if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
@@ -437,10 +443,13 @@ PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-PyObject* InterpreterWrapper::TensorSparsityParameters(int i) const {
+PyObject* InterpreterWrapper::TensorSparsityParameters(
+    int tensor_index, int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
+
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   if (tensor->sparsity == nullptr) {
     return PyDict_New();
   }
@@ -448,17 +457,23 @@ PyObject* InterpreterWrapper::TensorSparsityParameters(int i) const {
   return PyDictFromSparsityParam(*tensor->sparsity);
 }
 
-PyObject* InterpreterWrapper::TensorQuantization(int i) const {
+PyObject* InterpreterWrapper::TensorQuantization(int tensor_index,
+                                                 int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
+
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   return PyTupleFromQuantizationParam(tensor->params);
 }
 
-PyObject* InterpreterWrapper::TensorQuantizationParameters(int i) const {
+PyObject* InterpreterWrapper::TensorQuantizationParameters(
+    int tensor_index, int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
+
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   const TfLiteQuantization quantization = tensor->quantization;
   float* scales_data = nullptr;
   int32_t* zero_points_data = nullptr;
@@ -489,11 +504,11 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(int i) const {
   return result;
 }
 
-PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
+PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
                                         int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
-  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(i, subgraph_index);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
   std::unique_ptr<PyObject, PyDecrefDeleter> array_safe(
       PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr));
@@ -504,7 +519,8 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
   }
 
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
-  TfLiteTensor* tensor = interpreter_->subgraph(subgraph_index)->tensor(i);
+  TfLiteTensor* tensor =
+      interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
 
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
@@ -512,7 +528,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
                  " Got value of type %s"
                  " but expected type %s for input %d, name: %s ",
                  TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
-                 TfLiteTypeGetName(tensor->type), i, tensor->name);
+                 TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
     return nullptr;
   }
 
@@ -521,7 +537,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
                  "Cannot set tensor: Dimension mismatch."
                  " Got %d"
                  " but expected %d for input %d.",
-                 PyArray_NDIM(array), tensor->dims->size, i);
+                 PyArray_NDIM(array), tensor->dims->size, tensor_index);
     return nullptr;
   }
 
@@ -531,7 +547,8 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
                    "Cannot set tensor: Dimension mismatch."
                    " Got %ld"
                    " but expected %d for dimension %d of input %d.",
-                   PyArray_SHAPE(array)[j], tensor->dims->data[j], j, i);
+                   PyArray_SHAPE(array)[j], tensor->dims->data[j], j,
+                   tensor_index);
       return nullptr;
     }
   }
@@ -688,13 +705,14 @@ PyObject* InterpreterWrapper::GetSubgraphIndexFromSignature(
   return PyLong_FromLong(static_cast<int64_t>(subgraph_index));
 }
 
-PyObject* InterpreterWrapper::GetTensor(int i, int subgraph_index) const {
+PyObject* InterpreterWrapper::GetTensor(int tensor_index,
+                                        int subgraph_index) const {
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
   int type_num = 0;
 
-  PyObject* check_result = CheckGetTensorArgs(interpreter_.get(), i, &tensor,
-                                              &type_num, subgraph_index);
+  PyObject* check_result = CheckGetTensorArgs(
+      interpreter_.get(), tensor_index, &tensor, &type_num, subgraph_index);
   if (check_result == nullptr) return check_result;
   Py_XDECREF(check_result);
 
@@ -751,7 +769,7 @@ PyObject* InterpreterWrapper::GetTensor(int i, int subgraph_index) const {
         Py_DECREF(py_object);
         PyErr_Format(PyExc_ValueError,
                      "Could not create PyBytes from string %d of input %d.", j,
-                     i);
+                     tensor_index);
         return nullptr;
       }
       // PyArray_EMPTY produces an array full of Py_None, which we must decref.
@@ -787,30 +805,32 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const char* model_path, int op_resolver_id,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-    std::string* error_msg, bool preserve_all_tensors) {
+    std::string* error_msg, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
-  return CreateInterpreterWrapper(std::move(model), op_resolver_id,
-                                  std::move(error_reporter),
-                                  registerers_by_name, registerers_by_func,
-                                  error_msg, preserve_all_tensors);
+  return CreateInterpreterWrapper(
+      std::move(model), op_resolver_id, std::move(error_reporter),
+      registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
+      disable_delegate_clustering);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const char* model_path, int op_resolver_id,
     const std::vector<std::string>& registerers, std::string* error_msg,
-    bool preserve_all_tensors) {
-  return CreateWrapperCPPFromFile(model_path, op_resolver_id, registerers,
-                                  {} /*registerers_by_func*/, error_msg,
-                                  preserve_all_tensors);
+    bool preserve_all_tensors, bool disable_delegate_clustering) {
+  return CreateWrapperCPPFromFile(
+      model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
+      error_msg, preserve_all_tensors, disable_delegate_clustering);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, int op_resolver_id,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-    std::string* error_msg, bool preserve_all_tensors) {
+    std::string* error_msg, bool preserve_all_tensors,
+    bool disable_delegate_clustering) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -820,18 +840,19 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   }
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromBuffer(buf, length, error_reporter.get());
-  return CreateInterpreterWrapper(std::move(model), op_resolver_id,
-                                  std::move(error_reporter),
-                                  registerers_by_name, registerers_by_func,
-                                  error_msg, preserve_all_tensors);
+  return CreateInterpreterWrapper(
+      std::move(model), op_resolver_id, std::move(error_reporter),
+      registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
+      disable_delegate_clustering);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, int op_resolver_id,
     const std::vector<std::string>& registerers, std::string* error_msg,
-    bool preserve_all_tensors) {
+    bool preserve_all_tensors, bool disable_delegate_clustering) {
   return CreateWrapperCPPFromBuffer(data, op_resolver_id, registerers, {},
-                                    error_msg, preserve_all_tensors);
+                                    error_msg, preserve_all_tensors,
+                                    disable_delegate_clustering);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

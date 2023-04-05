@@ -12,24 +12,6 @@ package(
 )
 
 cc_library(
-    name = "capture_profile",
-    hdrs = ["capture_profile.h"],
-    copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/compiler/xla/python:__pkg__",
-        "//tensorflow/python/profiler/internal:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
-        "//tensorflow/tsl/profiler/rpc/client:capture_profile",
-    ],
-)
-
-cc_library(
     name = "save_profile",
     hdrs = ["save_profile.h"],
     copts = tf_profiler_copts(),
@@ -71,17 +53,20 @@ cc_library(
         "profiler_client.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

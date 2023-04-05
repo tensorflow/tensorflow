@@ -40,4 +40,15 @@ def MathOptimizationPass
   ];
 }
 
+def MathApproximationPass
+    : Pass<"xla-math-approximation", "mlir::func::FuncOp"> {
+  let summary = "Approximate math operations for accuracy and speed.";
+  let constructor = "::xla::CreateMathApproximationPass()";
+  let options = [
+   ListOption<"oplist", "oplist", "std::string",
+              "List of math operations to be approximated. Use 'all' to select "
+              "all supported math operations.">,
+  ];
+}
+
 #endif  // XLA_MATH_PASSES

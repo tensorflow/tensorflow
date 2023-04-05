@@ -653,7 +653,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
       bool status = input.CheckReorderToOpMem(output_tf_md, output_tf_tensor,
                                               net, net_args, cpu_engine);
       if (!status) {
-        return Status(error::Code::INTERNAL,
+        return Status(absl::StatusCode::kInternal,
                       "ConvertMklToTF(): Failed to create reorder for input");
       }
       ExecutePrimitive(net, &net_args, cpu_engine, context);
@@ -663,7 +663,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
           output_tf_tensor->CopyFrom(input_mkl_tensor, output_tf_shape);
       if (!status) {
         return Status(
-            error::Code::INTERNAL,
+            absl::StatusCode::kInternal,
             "ConvertMklToTF(): Failed to forward input tensor to output");
       }
     }
@@ -1061,7 +1061,8 @@ inline memory::format_tag MklTensorFormatToMklDnnDataFormat(
 inline MklTensorFormat TFDataFormatToMklDnn3DDataFormat(TensorFormat format) {
   if (format == FORMAT_NHWC) return MklTensorFormat::FORMAT_NDHWC;
   if (format == FORMAT_NCHW) return MklTensorFormat::FORMAT_NCDHW;
-  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
+  TF_CHECK_OK(
+      Status(absl::StatusCode::kInvalidArgument, "Unsupported data format"));
   return MklTensorFormat::FORMAT_INVALID;
 }
 
@@ -1073,7 +1074,8 @@ inline MklTensorFormat TFDataFormatToMklDnn3DDataFormat(TensorFormat format) {
 inline MklTensorFormat TFDataFormatToMklDnnDataFormat(TensorFormat format) {
   if (format == FORMAT_NHWC) return MklTensorFormat::FORMAT_NHWC;
   if (format == FORMAT_NCHW) return MklTensorFormat::FORMAT_NCHW;
-  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
+  TF_CHECK_OK(
+      Status(absl::StatusCode::kInvalidArgument, "Unsupported data format"));
   return MklTensorFormat::FORMAT_INVALID;
 }
 
@@ -1089,7 +1091,8 @@ inline TensorFormat MklDnnDataFormatToTFDataFormat(MklTensorFormat format) {
   if (format == MklTensorFormat::FORMAT_NCHW ||
       format == MklTensorFormat::FORMAT_NCDHW)
     return FORMAT_NCHW;
-  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
+  TF_CHECK_OK(
+      Status(absl::StatusCode::kInvalidArgument, "Unsupported data format"));
 
   // Return to prevent compiler warnings, otherwise TF_CHECK_OK will ensure
   // that we don't come here.
@@ -1255,7 +1258,7 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   } catch (dnnl::error& e) {
     delete[] input_dims;
     delete[] input_strides;
-    return Status(error::Code::INTERNAL,
+    return Status(absl::StatusCode::kInternal,
                   tensorflow::strings::StrCat(
                       "Failed to create blocked memory descriptor.",
                       "Status: ", e.status, ", message: ", e.message));
@@ -1947,10 +1950,14 @@ class MklPrimitiveFactory {
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
+#ifdef DNNL_AARCH64_USE_ACL
+    return false;
+#else
     static const bool is_legacy_platform =
         (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
          !port::TestCPUFeature(port::CPUFeature::AVX2));
     return is_legacy_platform;
+#endif  // DNNL_AARCH64_USE_ACL
   }
 
   /// Function to check whether primitive memory optimization is enabled
@@ -1978,7 +1985,6 @@ class MklPrimitiveFactory {
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
 #else
     static LRUCache<MklPrimitive> lru_cache_(kCapacity);
-    TF_GUARDED_BY(lru_mu_)
 #endif
     return lru_cache_;
   }

@@ -160,7 +160,8 @@ class IfOp : public AsyncOpKernel {
           then_handle_(then_handle),
           else_handle_(else_handle),
           done_(std::move(done)),
-          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+          lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
         args_.push_back(ctx_->input(i));
@@ -286,7 +287,8 @@ class CaseOp : public AsyncOpKernel {
           branch_(branch),
           branch_handles_(branch_handles),
           done_(std::move(done)),
-          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+          lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
         args_.push_back(ctx_->input(i));
@@ -507,7 +509,8 @@ class WhileOp : public AsyncOpKernel {
           cond_handle_(cond_handle),
           body_handle_(body_handle),
           done_(std::move(done)),
-          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+          lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
       GetArgsFromContext(ctx, &args_, &loop_var_types_);
       body_frame_ =
@@ -751,6 +754,7 @@ class ForOp : public AsyncOpKernel {
           ctx_(ctx),
           done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()),
           args_(1 + ctx_->num_inputs() - 3) {
       args_[0] = Tensor(DT_INT32, {});
       iter_ = &args_[0].scalar<int32>()();

@@ -43,7 +43,7 @@ Status WrapError(const std::string& message, const ::grpc::Status& status) {
     // errors use other status codes (b/258285154).
     // TODO(aaudibert): Upstream this to FromGrpcStatus.
     if (status.error_message() == kStreamRemovedMessage) {
-      return Status(tensorflow::error::UNAVAILABLE, kStreamRemovedMessage);
+      return Status(absl::StatusCode::kUnavailable, kStreamRemovedMessage);
     }
     Status s = FromGrpcStatus(status);
     return Status(s.code(),

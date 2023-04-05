@@ -6,7 +6,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
-        "//tensorflow:structured_tensor_whitelist",
+        "//tensorflow:structured_tensor_allowlist",
     ],
     licenses = ["notice"],
 )
@@ -50,6 +50,11 @@ py_library(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:extension_type",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/ops/ragged:dynamic_ragged_shape",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
@@ -169,7 +174,6 @@ py_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],  # Times out frequently.
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",

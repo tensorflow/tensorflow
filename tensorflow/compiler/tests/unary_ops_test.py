@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for XLA JIT compiler."""
 
+import platform
 import unittest
 
 import numpy as np
@@ -22,6 +23,7 @@ import six
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -864,51 +866,70 @@ class UnaryOpsTest(xla_test.XLATestCase):
         expected=np.array([14., 22.], dtype=np.float32))
 
   def testCast(self):
-    shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
         dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
     }
     for src_type in types:
       for dst_type in types:
-        src_np_dtype = src_type.as_numpy_dtype
-        dst_np_dtype = dst_type.as_numpy_dtype
+        self._testCast(src_type, dst_type)
 
-        for shape in shapes:
-          src = np.arange(np.prod(shape)).astype(src_np_dtype)
+  def testCastFp8(self):
+    if platform.system() == "Darwin":
+      # TODO(b/271327511): Fix issue where casts to FP8 very rarely result in
+      # NaN on Mac
+      self.skipTest("Casts to FP8 sometimes result in NaN on Mac")
+    fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
+    other_types = {
+        dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
+    }
+    for fp8_type in fp8_types:
+      for other_type in other_types | fp8_types:
+        self._testCast(fp8_type, other_type)
+        self._testCast(other_type, fp8_type)
 
-          if src_type in self.complex_tf_types:
-            src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
-          src = src.reshape(shape)
-          dst = src.astype(dst_np_dtype)
-          self._assertOpOutputMatchesExpected(
-              lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
-              src,
-              expected=dst)
+  def _testCast(self, src_type, dst_type):
+    with self.subTest(src_type=src_type, dst_type=dst_type):
+      shapes = [[], [4], [2, 3], [2, 0, 4]]
+      src_np_dtype = src_type.as_numpy_dtype
+      dst_np_dtype = dst_type.as_numpy_dtype
 
-        # Check special values.
-        if src_type.is_integer:
-          imin = np.iinfo(src_np_dtype).min
-          imax = np.iinfo(src_np_dtype).max
-          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
-        elif src_type in self.float_tf_types:
-          if dst_type.is_integer:
-            imin = np.iinfo(dst_np_dtype).min
-            imax = np.iinfo(dst_np_dtype).max // 2
-            src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
-          elif dst_type in self.float_tf_types:
-            fmin = np.finfo(dst_np_dtype).min
-            fmax = np.finfo(dst_np_dtype).max
-            tiny = np.finfo(dst_np_dtype).tiny
-            eps = np.finfo(dst_np_dtype).eps
-            src = np.array(
-                [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
-                dtype=src_np_dtype)
+      for shape in shapes:
+        src = np.arange(np.prod(shape)).astype(src_np_dtype)
+
+        if src_type in self.complex_tf_types:
+          src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
+        src = src.reshape(shape)
         dst = src.astype(dst_np_dtype)
         self._assertOpOutputMatchesExpected(
             lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
             src,
             expected=dst)
+
+      # Check special values.
+      if src_type.is_integer:
+        imin = np.iinfo(src_np_dtype).min
+        imax = np.iinfo(src_np_dtype).max
+        src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+      elif src_type in self.float_tf_types:
+        if dst_type.is_integer:
+          imin = np.iinfo(dst_np_dtype).min
+          imax = np.iinfo(dst_np_dtype).max // 2
+          src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+        elif dst_type in self.float_tf_types:
+          fmin = np.finfo(dst_np_dtype).min
+          fmax = np.finfo(dst_np_dtype).max
+          tiny = np.finfo(dst_np_dtype).tiny
+          eps = np.finfo(dst_np_dtype).eps
+          src = np.array(
+              [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
+              dtype=src_np_dtype)
+      dst = src.astype(dst_np_dtype)
+      self._assertOpOutputMatchesExpected(
+          lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
+          src,
+          expected=dst)
 
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
@@ -1028,7 +1049,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testUnpack(self):
     self._assertOpOutputMatchesExpected(
-        array_ops.unstack,
+        array_ops_stack.unstack,
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 2.], dtype=np.float32),
@@ -1038,7 +1059,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         equality_test=self.ListsAreClose)
 
     self._assertOpOutputMatchesExpected(
-        lambda x: array_ops.unstack(x, axis=1),
+        lambda x: array_ops_stack.unstack(x, axis=1),
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 3., 5.], dtype=np.float32),

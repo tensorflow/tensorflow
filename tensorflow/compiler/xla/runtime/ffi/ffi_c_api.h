@@ -28,6 +28,9 @@ limitations under the License.
 extern "C" {
 #endif
 
+// Forward declare.
+typedef struct XLA_FFI_Api XLA_FFI_Api;
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Type checking.
 //===----------------------------------------------------------------------===//
@@ -68,12 +71,6 @@ typedef enum {
 } XLA_FFI_Error_Code;
 
 //===----------------------------------------------------------------------===//
-// XLA FFI registry for exporting FFI functions to runtime.
-//===----------------------------------------------------------------------===//
-
-typedef struct XLA_FFI_Registry XLA_FFI_Registry;
-
-//===----------------------------------------------------------------------===//
 // XLA FFI module defines a set of exported FFI functions and their state.
 //===----------------------------------------------------------------------===//
 
@@ -82,10 +79,18 @@ typedef struct XLA_FFI_Registry XLA_FFI_Registry;
 // of such modules at run time.
 typedef struct XLA_FFI_Module XLA_FFI_Module;
 
-// When a module is instantiated for each executable it can optionally create a
-// state object that can be used to implement stateful functions, to keep
-// state between FFI functions invocations. State can be accessed from different
-// executable invocations running concurrently.
+// XLA FFI module state can be instantiated once for each XLA executable, and
+// its life time will be bound to the executable iself, or it can be
+// instantiated for each separate execution.
+typedef enum {
+  XLA_FFI_Module_State_PER_EXECUTABLE = 1,
+  XLA_FFI_Module_State_PER_EXECUTION = 2,
+} XLA_FFI_Module_StateType;
+
+// Exported FFI functions will have access to the state object that they can
+// use to share data between different function invocations. If the state is
+// instantiated for each executable, it is the user's responsibility to
+// guarantee that it is thread-safe to use from multiple concurrent executions.
 typedef struct XLA_FFI_Module_State XLA_FFI_Module_State;
 
 // Creates a new per-executable module state.
@@ -116,22 +121,8 @@ const size_t XLA_FFI_Module_DestroyState_Args_STRUCT_SIZE =
 typedef void XLA_FFI_Module_DestroyState(
     XLA_FFI_Module_DestroyState_Args* args);
 
-// Exports module functions to the given FFI registry.
-typedef struct {
-  size_t struct_size;
-  void* priv;
-  XLA_FFI_Module* module;
-  XLA_FFI_Registry* registry;
-} XLA_FFI_Module_ExportFunctions_Args;
-
-const size_t XLA_FFI_Module_ExportFunctions_Args_STRUCT_SIZE =
-    XLA_FFI_STRUCT_SIZE(XLA_FFI_Module_ExportFunctions_Args, registry);
-
-typedef void XLA_FFI_Module_ExportFunctions(
-    XLA_FFI_Module_ExportFunctions_Args* args);
-
 //===----------------------------------------------------------------------===//
-// Execution context passed to FFI functions.
+// XLA FFI Error Reporting APIs.
 //===----------------------------------------------------------------------===//
 
 typedef struct {
@@ -146,36 +137,57 @@ const size_t XLA_FFI_Error_Create_Args_STRUCT_SIZE =
 
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
-#define XLA_FFI_EXECUTION_CONTEXT_STRUCT_FIELD(fn_type) fn_type* fn_type
+//===----------------------------------------------------------------------===//
+// XLA FFI Stream.
+//===----------------------------------------------------------------------===//
 
-#define XLA_FFI_EXECUTION_CONTEXT_TYPEID_FIELD(type) \
-  XLA_FFI_Get_TypeId* XLA_FFI_Get_##type##_TypeId
-
-typedef struct {
-  XLA_FFI_EXECUTION_CONTEXT_STRUCT_FIELD(XLA_FFI_Error_Create);
-
-  // Type ids for supported scalar types.
-  XLA_FFI_EXECUTION_CONTEXT_TYPEID_FIELD(Float);
-  XLA_FFI_EXECUTION_CONTEXT_TYPEID_FIELD(Int32);
-
-  // Type ids for supported buffer types.
-  XLA_FFI_EXECUTION_CONTEXT_TYPEID_FIELD(BufferArg);
-  XLA_FFI_EXECUTION_CONTEXT_TYPEID_FIELD(StridedBufferArg);
-} XLA_FFI_ExecutionContext;
-
-#undef XLA_FFI_EXECUTION_CONTEXT_STRUCT_FIELD
-#undef XLA_FFI_EXECUTION_CONTEXT_TYPEID_FIELD
+// XLA FFI stream is an opaque handle to the underlying stream executor `Stream`
+// implementation. In XLA:GPU it is `se::gpu::GpuStreamHandle` (when running on
+// CUDA platform it is a `CUstream`).
+typedef struct XLA_FFI_Stream XLA_FFI_Stream;
 
 //===----------------------------------------------------------------------===//
-// XLA FFI Api.
+// XLA FFI Execution Context.
+//===----------------------------------------------------------------------===//
+
+typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
+
+// Get `XLA_FFI_Module_State` from the execution context.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_ExecutionContext* ctx;
+} XLA_FFI_ExecutionContext_GetModuleState_Args;
+
+const size_t XLA_FFI_ExecutionContext_GetModuleState_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_ExecutionContext_GetModuleState_Args, ctx);
+
+typedef XLA_FFI_Module_State* XLA_FFI_ExecutionContext_GetModuleState(
+    XLA_FFI_ExecutionContext_GetModuleState_Args* args);
+
+// Get `XLA_FFI_Stream` from the execution context.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_ExecutionContext* ctx;
+} XLA_FFI_ExecutionContext_GetStream_Args;
+
+const size_t XLA_FFI_ExecutionContext_GetStream_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_ExecutionContext_GetStream_Args, ctx);
+
+typedef XLA_FFI_Stream* XLA_FFI_ExecutionContext_GetStream(
+    XLA_FFI_ExecutionContext_GetStream_Args* args);
+
+//===----------------------------------------------------------------------===//
+// XLA FFI Function API.
 //===----------------------------------------------------------------------===//
 
 // Arguments passed to an FFI function.
 typedef struct {
   size_t struct_size;
   void* priv;
+  const XLA_FFI_Api* api;
   XLA_FFI_ExecutionContext* ctx;
-  XLA_FFI_Module_State* state;
   void** args;
   void** attrs;
   void** rets;
@@ -187,44 +199,65 @@ const size_t XLA_FFI_Function_Args_STRUCT_SIZE =
 // XLA FFI function type that can be exported to a runtime.
 typedef XLA_FFI_Error* XLA_FFI_Function(XLA_FFI_Function_Args* args);
 
+//===----------------------------------------------------------------------===//
+// XLA FFI Api.
+//===----------------------------------------------------------------------===//
+
 // Register FFI module with an XLA runtime.
 typedef struct {
   size_t struct_size;
   void* priv;
   const char* name;
   XLA_FFI_Module* module;
+  XLA_FFI_Module_StateType state_type;
   XLA_FFI_Module_CreateState* create_state;
   XLA_FFI_Module_DestroyState* destroy_state;
-  XLA_FFI_Module_ExportFunctions* export_functions;
-} XLA_FFI_RegisterModule_Args;
+  int64_t num_exported_functions;
+  const char** exported_names;            // length == num_exported_functions
+  XLA_FFI_Function** exported_functions;  // length == num_exported_functions
+} XLA_FFI_Module_Register_Args;
 
-const size_t XLA_FFI_RegisterModule_Args_STRUCT_SIZE =
-    XLA_FFI_STRUCT_SIZE(XLA_FFI_RegisterModule_Args, export_functions);
+const size_t XLA_FFI_Module_Register_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_Module_Register_Args, exported_functions);
 
-typedef void XLA_FFI_RegisterModule(XLA_FFI_RegisterModule_Args* args);
-
-// Export FFI function from the module to an XLA runtime.
-typedef struct {
-  size_t struct_size;
-  void* priv;
-  const char* target;
-  XLA_FFI_Function* function;
-  XLA_FFI_Registry* registry;
-} XLA_FFI_ExportFunction_Args;
-
-const size_t XLA_FFI_ExportFunction_Args_STRUCT_SIZE =
-    XLA_FFI_STRUCT_SIZE(XLA_FFI_ExportFunction_Args, registry);
-
-typedef void XLA_FFI_ExportFunction(XLA_FFI_ExportFunction_Args* args);
+typedef void XLA_FFI_Module_Register(XLA_FFI_Module_Register_Args* args);
 
 #define XLA_FFI_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
-typedef struct {
-  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RegisterModule);
-  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExportFunction);
+#define XLA_FFI_API_TYPEID_FIELD(type) \
+  XLA_FFI_Get_TypeId* XLA_FFI_Get_##type##_TypeId
+
+typedef struct XLA_FFI_Api {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Module_Register);
+
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_GetModuleState);
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_GetStream);
+
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
+
+  XLA_FFI_API_TYPEID_FIELD(String);
+  XLA_FFI_API_TYPEID_FIELD(Float);
+  XLA_FFI_API_TYPEID_FIELD(Double);
+  XLA_FFI_API_TYPEID_FIELD(Int1);
+  XLA_FFI_API_TYPEID_FIELD(Int32);
+  XLA_FFI_API_TYPEID_FIELD(Int64);
+  XLA_FFI_API_TYPEID_FIELD(FloatArray);
+  XLA_FFI_API_TYPEID_FIELD(DoubleArray);
+  XLA_FFI_API_TYPEID_FIELD(Int32Array);
+  XLA_FFI_API_TYPEID_FIELD(Int64Array);
+  XLA_FFI_API_TYPEID_FIELD(BufferArg);
+  XLA_FFI_API_TYPEID_FIELD(StridedBufferArg);
+  XLA_FFI_API_TYPEID_FIELD(Dictionary);
 } XLA_FFI_Api;
 
 #undef XLA_FFI_API_STRUCT_FIELD
+#undef XLA_FFI_API_TYPEID_FIELD
+
+const size_t XLA_FFI_Api_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_Api, XLA_FFI_Get_StridedBufferArg_TypeId);
 
 // Does not pass ownership of returned XLA_FFI_Api* to caller.
 const XLA_FFI_Api* GetXlaFfiApi();

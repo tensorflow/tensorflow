@@ -33,28 +33,29 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/stacktrace.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/static_threadlocal.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/threadpool.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/static_threadlocal.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 bool FLAGS_gpuexec_cuda_device_0_only = false;
 
-#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                            \
-  do {                                                                 \
-    CUresult _res = (expr);                                            \
-    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                    \
-      return port::InternalError(absl::StrCat(                         \
-          __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
-    }                                                                  \
+#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                 \
+  do {                                                                      \
+    CUresult _res = (expr);                                                 \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                         \
+      return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
+                                   ::stream_executor::gpu::ToString(_res)); \
+    }                                                                       \
   } while (0)
 
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
@@ -98,9 +99,9 @@ CUcontext CurrentContext() {
 // stack-limited threads (such as those spawned by a default-argument
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
-port::ThreadPool* GetDriverExecutor() {
-  static port::ThreadPool* thread_pool = new port::ThreadPool(
-      port::Env::Default(), port::ThreadOptions(), "cuda_driver", 1);
+tsl::thread::ThreadPool* GetDriverExecutor() {
+  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), tsl::ThreadOptions(), "cuda_driver", 1);
   return thread_pool;
 }
 
@@ -122,7 +123,7 @@ namespace {
 // Call cuCtxtSynchronize and crash if it doesn't succeed.
 void SynchronizeOrDie() {
   FAIL_IF_CUDA_RES_ERROR(cuCtxSynchronize(),
-                         "Synchronize fail: ", port::CurrentStackTrace());
+                         "Synchronize fail: ", tsl::CurrentStackTrace());
 }
 
 struct ThreadLocalData {
@@ -131,7 +132,7 @@ struct ThreadLocalData {
   int depth;
 };
 
-SE_STATIC_THREAD_LOCAL_POD(ThreadLocalData, tls_data);
+TSL_STATIC_THREAD_LOCAL_POD(ThreadLocalData, tls_data);
 
 }  // namespace
 
@@ -251,7 +252,7 @@ std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
 
 // Actually performs the work of CUDA initialization. Wrapped up in one-time
 // execution guard.
-static port::Status InternalInit() {
+static tsl::Status InternalInit() {
   CUresult res = CUDA_ERROR_NO_DEVICE;
   if (FLAGS_gpuexec_cuda_driver_inject_init_error) {
     LOG(ERROR) << "injecting CUDA init error; initialization will fail";
@@ -262,36 +263,36 @@ static port::Status InternalInit() {
   if (res == CUDA_SUCCESS) {
     return ::tsl::OkStatus();
   } else if (res == CUDA_ERROR_SHARED_OBJECT_INIT_FAILED) {
-    LOG(WARNING) << "failed call to cuInit: " << ToString(res);
+    VLOG(1) << "failed call to cuInit: " << ToString(res);
   } else {
     LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   }
 
   Diagnostician::LogDiagnosticInformation();
-  return port::Status(port::error::ABORTED,
-                      absl::StrCat("failed call to cuInit: ", ToString(res)));
+  return tsl::Status(absl::StatusCode::kAborted,
+                     absl::StrCat("failed call to cuInit: ", ToString(res)));
 }
 
 }  // namespace
 
-/* static */ port::Status GpuDriver::Init() {
+/* static */ tsl::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status* init_retval = [] {
-    return new port::Status(InternalInit());
+  static tsl::Status* init_retval = [] {
+    return new tsl::Status(InternalInit());
   }();
   return *init_retval;
 }
 
-/* static */ port::Status GpuDriver::GetDevice(int device_ordinal,
-                                               CUdevice* device) {
+/* static */ tsl::Status GpuDriver::GetDevice(int device_ordinal,
+                                              CUdevice* device) {
   RETURN_IF_CUDA_RES_ERROR(cuDeviceGet(device, device_ordinal),
                            "Failed call to cuDeviceGet");
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::GetDeviceName(CUdevice device,
-                                                   std::string* device_name) {
+/* static */ tsl::Status GpuDriver::GetDeviceName(CUdevice device,
+                                                  std::string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   RETURN_IF_CUDA_RES_ERROR(
@@ -326,7 +327,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return true;
 }
 
-/* static */ port::Status GpuDriver::CreateContext(
+/* static */ tsl::Status GpuDriver::CreateContext(
     int device_ordinal, CUdevice device, const DeviceOptions& device_options,
     GpuContext** context) {
   *context = nullptr;
@@ -401,7 +402,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     }
   }
 
-  return port::Status(port::error::INTERNAL, message);
+  return tsl::Status(absl::StatusCode::kInternal, message);
 }
 
 /* static */ void GpuDriver::DestroyContext(GpuContext* context) {
@@ -427,22 +428,22 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return context->context();
 }
 
-/* static */ port::Status GpuDriver::FuncGetAttribute(
+/* static */ tsl::Status GpuDriver::FuncGetAttribute(
     CUfunction_attribute attribute, CUfunction func, int* attribute_value) {
   RETURN_IF_CUDA_RES_ERROR(cuFuncGetAttribute(attribute_value, attribute, func),
                            "Failed to query kernel attribute: ", attribute);
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::FuncSetCacheConfig(
+/* static */ tsl::Status GpuDriver::FuncSetCacheConfig(
     CUfunction function, CUfunc_cache cache_config) {
   RETURN_IF_CUDA_RES_ERROR(cuFuncSetCacheConfig(function, cache_config),
                            "Failed to set CUDA kernel cache config");
   return ::tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<CUsharedconfig>
-GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
+/* static */ tsl::StatusOr<CUsharedconfig> GpuDriver::ContextGetSharedMemConfig(
+    GpuContext* context) {
   CUsharedconfig shared_mem_config;
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuCtxGetSharedMemConfig(&shared_mem_config),
@@ -450,7 +451,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return shared_mem_config;
 }
 
-/* static */ port::Status GpuDriver::ContextSetSharedMemConfig(
+/* static */ tsl::Status GpuDriver::ContextSetSharedMemConfig(
     GpuContext* context, CUsharedconfig shared_mem_config) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuCtxSetSharedMemConfig(shared_mem_config),
@@ -458,7 +459,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::LaunchKernel(
+/* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, CUfunction function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
     unsigned int block_dim_x, unsigned int block_dim_y,
@@ -480,20 +481,20 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::LoadCubin(GpuContext* context,
-                                               const char* cubin_bytes,
-                                               CUmodule* module) {
+/* static */ tsl::Status GpuDriver::LoadCubin(GpuContext* context,
+                                              const char* cubin_bytes,
+                                              CUmodule* module) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuModuleLoadFatBinary(module, cubin_bytes),
                            "Failed to load in-memory CUBIN");
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::LoadPtx(GpuContext* context,
-                                             const char* ptx_contents,
-                                             CUmodule* module) {
+/* static */ tsl::Status GpuDriver::LoadPtx(GpuContext* context,
+                                            const char* ptx_contents,
+                                            CUmodule* module) {
   absl::Notification notification;
-  port::Status ret = ::tsl::OkStatus();
+  tsl::Status ret = ::tsl::OkStatus();
   GetDriverExecutor()->Schedule([context, ptx_contents, module, &ret,
                                  &notification]() {
     ScopedActivateContext activation(context);
@@ -543,8 +544,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                               : 0] = '\0';
       LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
                  << " bytes): " << error_log_buffer.data();
-      ret = port::InternalError(
-          absl::StrCat("Failed to load PTX text as a module: ", ToString(res)));
+      ret = tsl::errors::Internal("Failed to load PTX text as a module: ",
+                                  ToString(res));
       notification.Notify();
     }
 
@@ -560,22 +561,24 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ret;
 }
 
-/* static */ port::Status GpuDriver::LoadHsaco(GpuContext* context,
-                                               const char* hsaco_contents,
-                                               CUmodule* module) {
-  return port::InternalError(
+/* static */ tsl::Status GpuDriver::LoadHsaco(GpuContext* context,
+                                              const char* hsaco_contents,
+                                              CUmodule* module) {
+  return tsl::errors::Internal(
       "Feature not supported on CUDA platform (LoadHsaco)");
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemsetUint8(
-    GpuContext* context, CUdeviceptr location, uint8_t value, size_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemsetUint8(GpuContext* context,
+                                                           CUdeviceptr location,
+                                                           uint8_t value,
+                                                           size_t size) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(cuMemsetD8(location, value, size),
                            "Failed to memset memory");
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemsetUint32(
+/* static */ tsl::Status GpuDriver::SynchronousMemsetUint32(
     GpuContext* context, CUdeviceptr location, uint32_t value,
     size_t uint32_count) {
   ScopedActivateContext activation(context);
@@ -584,7 +587,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::AsynchronousMemsetUint8(
+/* static */ tsl::Status GpuDriver::AsynchronousMemsetUint8(
     GpuContext* context, CUdeviceptr location, uint8_t value,
     size_t uint32_count, CUstream stream) {
   ScopedActivateContext activation(context);
@@ -594,7 +597,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::AsynchronousMemsetUint32(
+/* static */ tsl::Status GpuDriver::AsynchronousMemsetUint32(
     GpuContext* context, CUdeviceptr location, uint32_t value,
     size_t uint32_count, CUstream stream) {
   ScopedActivateContext activation(context);
@@ -662,7 +665,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 }
 
-/* static */ port::StatusOr<CUdevice> GpuDriver::DeviceFromContext(
+/* static */ tsl::StatusOr<CUdevice> GpuDriver::DeviceFromContext(
     GpuContext* context) {
   ScopedActivateContext activated{context};
   CUdevice device = -1;
@@ -671,8 +674,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     return device;
   }
 
-  return port::Status(
-      port::error::INTERNAL,
+  return tsl::Status(
+      absl::StatusCode::kInternal,
       absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
@@ -733,7 +736,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
     // implements a retry if the first allocation fails).
     LOG(INFO) << "failed to allocate "
-              << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
+              << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
               << " bytes) from device: " << ToString(res);
     return nullptr;
   }
@@ -838,14 +841,14 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 }
 
 #if CUDA_VERSION >= 10020
-/* static */ port::StatusOr<GpuDriver::VmemSpan>
-GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
+/* static */ tsl::StatusOr<GpuDriver::VmemSpan> GpuDriver::ReserveVirtualMemory(
+    GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   CUdeviceptr base;
   CUresult res = cuMemAddressReserve(&base, bytes, /*alignment=*/0,
                                      /*addr=*/0, /*flags=*/0);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("error reserving %d bytes of virtual GPU memory: %s",
                         bytes, ToString(res)));
   }
@@ -862,7 +865,7 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
   }
 }
 
-/* static */ port::StatusOr<uint64_t> GpuDriver::GetMinAllocationGranularity(
+/* static */ tsl::StatusOr<uint64_t> GpuDriver::GetMinAllocationGranularity(
     GpuDeviceHandle device) {
   CUmemAllocationProp props = {};
   props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -873,13 +876,13 @@ GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
   CUresult res = cuMemGetAllocationGranularity(
       &granularity, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(absl::StrCat(
-        "failed to get min allocation granularity: ", ToString(res)));
+    return tsl::errors::Internal("failed to get min allocation granularity: ",
+                                 ToString(res));
   }
   return granularity;
 }
 
-/* static */ port::StatusOr<GpuDriver::GenericMemoryHandle>
+/* static */ tsl::StatusOr<GpuDriver::GenericMemoryHandle>
 GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   auto device = DeviceFromContext(context);
@@ -896,7 +899,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUmemGenericAllocationHandle mem_handle;
   CUresult res = cuMemCreate(&mem_handle, bytes, &props, 0);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(
+    return tsl::errors::Internal(
         absl::StrFormat("failed to create memory allocation of size %d: %s",
                         bytes, ToString(res)));
   }
@@ -914,7 +917,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   }
 }
 
-/* static */ port::Status GpuDriver::MapMemory(
+/* static */ tsl::Status GpuDriver::MapMemory(
     GpuContext* context, CUdeviceptr va,
     const GpuDriver::GenericMemoryHandle& handle,
     const std::vector<GpuDeviceHandle>& device_handles) {
@@ -929,7 +932,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult res =
       cuMemMap(va, handle.bytes, /*offset=*/0, handle.handle, /*flags=*/0);
   if (res != CUDA_SUCCESS) {
-    return port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "Failed to map %d bytes at %d: %s", handle.bytes, va, ToString(res)));
   }
 
@@ -948,7 +951,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       LOG(ERROR)
           << "Failed to unmap memory in GpuDriver::MapMemory error path.";
     }
-    return port::InternalError(absl::StrFormat(
+    return tsl::errors::Internal(absl::StrFormat(
         "Failed to set read/write access on memory mapped at %d: %s", va,
         ToString(res)));
   }
@@ -968,11 +971,11 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 
 #endif
 
-/* static */ port::Status GpuDriver::DestroyEvent(GpuContext* context,
-                                                  CUevent* event) {
+/* static */ tsl::Status GpuDriver::DestroyEvent(GpuContext* context,
+                                                 CUevent* event) {
   if (*event == nullptr) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "input event cannot be null");
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "input event cannot be null");
   }
 
   ScopedActivateContext activated{context};
@@ -981,22 +984,22 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::RecordEvent(GpuContext* context,
-                                                 CUevent event,
-                                                 CUstream stream) {
+/* static */ tsl::Status GpuDriver::RecordEvent(GpuContext* context,
+                                                CUevent event,
+                                                CUstream stream) {
   ScopedActivateContext activated{context};
   RETURN_IF_CUDA_RES_ERROR(cuEventRecord(event, stream),
                            "Error recording CUDA event");
   return ::tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
-                                                            CUevent event) {
+/* static */ tsl::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
+                                                           CUevent event) {
   ScopedActivateContext activated{context};
   CUresult res = cuEventQuery(event);
   if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
-    return port::Status(
-        port::error::INTERNAL,
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to query event: %s", ToString(res)));
   }
 
@@ -1041,15 +1044,15 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   CUresult res = cuCtxSynchronize();
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not synchronize on CUDA context: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
+               << " :: " << tsl::CurrentStackTrace();
     return false;
   }
 
   return true;
 }
 
-/* static */ port::Status GpuDriver::SynchronizeStream(GpuContext* context,
-                                                       CUstream stream) {
+/* static */ tsl::Status GpuDriver::SynchronizeStream(GpuContext* context,
+                                                      CUstream stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
   RETURN_IF_CUDA_RES_ERROR(cuStreamSynchronize(stream),
@@ -1072,10 +1075,10 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return false;
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemcpyD2H(GpuContext* context,
-                                                          void* host_dst,
-                                                          CUdeviceptr gpu_src,
-                                                          uint64_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemcpyD2H(GpuContext* context,
+                                                         void* host_dst,
+                                                         CUdeviceptr gpu_src,
+                                                         uint64_t size) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyDtoH(host_dst, gpu_src, size),
@@ -1087,10 +1090,10 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemcpyH2D(GpuContext* context,
-                                                          CUdeviceptr gpu_dst,
-                                                          const void* host_src,
-                                                          uint64_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemcpyH2D(GpuContext* context,
+                                                         CUdeviceptr gpu_dst,
+                                                         const void* host_src,
+                                                         uint64_t size) {
   ScopedActivateContext activation(context);
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyHtoD(gpu_dst, host_src, size),
@@ -1102,10 +1105,10 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemcpyD2D(GpuContext* context,
-                                                          CUdeviceptr gpu_dst,
-                                                          CUdeviceptr gpu_src,
-                                                          uint64_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemcpyD2D(GpuContext* context,
+                                                         CUdeviceptr gpu_dst,
+                                                         CUdeviceptr gpu_src,
+                                                         uint64_t size) {
   ScopedActivateContext activation(context);
 
   CUresult result;
@@ -1121,14 +1124,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
         CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
     if (static_cast<void*>(dst_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
       if (tmp_context.ok()) {
         dst_context = tmp_context.value()->context();
       }
     }
 
     if (static_cast<void*>(src_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
       if (tmp_context.ok()) {
         src_context = tmp_context.value()->context();
       }
@@ -1183,6 +1186,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     return false;
   }
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
+          << " from " << host_src << " to " << absl::bit_cast<void*>(gpu_dst)
           << " on stream " << stream;
   return true;
 }
@@ -1194,9 +1198,40 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult result;
-  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
-  // This happens when the size is 0.
+
+  // Check if the stream is doing graph capture.
+  cudaStreamCaptureStatus stream_capture_status;
+  cudaError_t err =
+      cudaStreamGetCaptureInfo(stream, &stream_capture_status, /*pId=*/nullptr);
+  if (err != cudaSuccess) {
+    LOG(ERROR) << "Failed to get stream capture info: "
+               << cudaGetErrorString(err);
+    return false;
+  }
+
   if (gpu_dst == 0 || gpu_src == 0) {
+    // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+    // This happens when the size is 0.
+    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  } else if (stream_capture_status == cudaStreamCaptureStatusActive) {
+    // cuMemcpyPeerAsync is not supported during graph capture, so we use
+    // cuMemcpyDtoDAsync instead. This is only valid if UVA is supported.
+
+    // Check if UVA is enabled.
+    for (int i = 0; i < GetDeviceCount(); ++i) {
+      GpuDeviceAttribute attribute = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
+      auto result = GetDeviceAttribute(attribute, i);
+      if (!result.ok()) {
+        LOG(ERROR) << "Failed to get device attribute";
+        return false;
+      }
+
+      if (result.value() == 0) {
+        LOG(ERROR) << "Unified addressing is not enabled";
+        return false;
+      }
+    }
+
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
@@ -1206,14 +1241,14 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
         CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
     if (static_cast<void*>(dst_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
       if (tmp_context.ok()) {
         dst_context = tmp_context.value()->context();
       }
     }
 
     if (static_cast<void*>(src_context) == nullptr) {
-      port::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
+      tsl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
       if (tmp_context.ok()) {
         src_context = tmp_context.value()->context();
       }
@@ -1237,13 +1272,15 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
 
     return false;
   }
-  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes";
+  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes"
+          << " from " << absl::bit_cast<void*>(gpu_src) << " to "
+          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream;
   return true;
 }
 
-/* static */ port::Status GpuDriver::InitEvent(GpuContext* context,
-                                               CUevent* result,
-                                               EventFlags flags) {
+/* static */ tsl::Status GpuDriver::InitEvent(GpuContext* context,
+                                              CUevent* result,
+                                              EventFlags flags) {
   int cuflags;
   switch (flags) {
     case EventFlags::kDefault:
@@ -1262,11 +1299,11 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   if (res == CUDA_SUCCESS) {
     return ::tsl::OkStatus();
   } else if (res == CUDA_ERROR_OUT_OF_MEMORY) {
-    return port::Status(port::error::RESOURCE_EXHAUSTED,
-                        "could not create CUDA event: out of device memory");
+    return tsl::Status(absl::StatusCode::kResourceExhausted,
+                       "could not create CUDA event: out of device memory");
   } else {
-    return port::Status(
-        port::error::FAILED_PRECONDITION,
+    return tsl::Status(
+        absl::StatusCode::kFailedPrecondition,
         absl::StrCat("could not create CUDA event: ", ToString(res)));
   }
 }
@@ -1285,7 +1322,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return device_count;
 }
 
-/* static */ port::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
+/* static */ tsl::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
     CUdeviceptr pointer) {
   GpuContext* context = nullptr;
   CUresult result =
@@ -1297,20 +1334,20 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // handling.  So all is working fine, but TF have a different
     // error then the original one.
     if (context == nullptr) {
-      return port::Status(
-          port::error::UNAVAILABLE,
+      return tsl::Status(
+          absl::StatusCode::kUnavailable,
           "Empty context returned while querying context for device pointer");
     }
     return context;
   }
 
-  return port::Status(
-      port::error::INTERNAL,
+  return tsl::Status(
+      absl::StatusCode::kInternal,
       absl::StrCat("failed to query context for device pointer: ",
                    ToString(result)));
 }
 
-/* static */ port::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
+/* static */ tsl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
     CUdeviceptr pointer) {
   unsigned int value;
   CUresult result =
@@ -1322,21 +1359,21 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
       case CU_MEMORYTYPE_HOST:
         return MemorySpace::kHost;
       default:
-        return port::Status(
-            port::error::INTERNAL,
+        return tsl::Status(
+            absl::StatusCode::kInternal,
             absl::StrCat("unknown memory space provided by CUDA API: ", value));
     }
   }
 
-  return port::Status(
-      port::error::INTERNAL,
+  return tsl::Status(
+      absl::StatusCode::kInternal,
       absl::StrCat("failed to query device pointer for memory space: ",
                    ToString(result)));
 }
 
-/* static */ port::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
-                                                            CUdeviceptr* base,
-                                                            size_t* size) {
+/* static */ tsl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
+                                                           CUdeviceptr* base,
+                                                           size_t* size) {
   CUresult result = cuMemGetAddressRange(base, size, dptr);
   if (result == CUDA_SUCCESS) {
     return ::tsl::OkStatus();
@@ -1344,19 +1381,19 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
     // below).
-    return port::Status(
-        port::error::NOT_FOUND,
+    return tsl::Status(
+        absl::StatusCode::kNotFound,
         absl::StrFormat("not a device pointer %p; %s",
                         reinterpret_cast<void*>(dptr), ToString(result)));
   }
 
-  return port::Status(
-      port::error::INTERNAL,
+  return tsl::Status(
+      absl::StatusCode::kInternal,
       absl::StrFormat("failed to get pointer into for device pointer %p; %s",
                       reinterpret_cast<void*>(dptr), ToString(result)));
 }
 
-/* static */ port::StatusOr<CUdevice> GpuDriver::GetPointerDevice(
+/* static */ tsl::StatusOr<CUdevice> GpuDriver::GetPointerDevice(
     CUdeviceptr pointer) {
   auto result = GetPointerContext(pointer);
   if (!result.ok()) {
@@ -1366,17 +1403,17 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return DeviceFromContext(result.value());
 }
 
-/* static */ port::Status GpuDriver::GetComputeCapability(int* cc_major,
-                                                          int* cc_minor,
-                                                          CUdevice device) {
+/* static */ tsl::Status GpuDriver::GetComputeCapability(int* cc_major,
+                                                         int* cc_minor,
+                                                         CUdevice device) {
   *cc_major = 0;
   *cc_minor = 0;
 
   CUresult res = cuDeviceGetAttribute(
       cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device);
   if (res != CUDA_SUCCESS) {
-    return port::Status(
-        port::error::INTERNAL,
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed to get compute capability major for device: %s; %d",
             ToString(res), device));
@@ -1385,8 +1422,8 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   res = cuDeviceGetAttribute(
       cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device);
   if (res != CUDA_SUCCESS) {
-    return port::Status(
-        port::error::INTERNAL,
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed to get compute capability minor for device: %s; %d",
             ToString(res), device));
@@ -1395,24 +1432,24 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
   return ::tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::GetGpuISAVersion(int* version,
-                                                      CUdevice device) {
-  return port::Status{
-      port::error::INTERNAL,
+/* static */ tsl::Status GpuDriver::GetGpuISAVersion(int* version,
+                                                     CUdevice device) {
+  return tsl::Status{
+      absl::StatusCode::kInternal,
       "Feature not supported on CUDA platform (GetGpuISAVersion)"};
 }
 
-/* static */ port::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
-  return port::Status{
-      port::error::INTERNAL,
+/* static */ tsl::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
+  return tsl::Status{
+      absl::StatusCode::kInternal,
       "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
 // T and wraps it in a StatusOr.
 template <typename T>
-static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
-                                            CUdevice_attribute attribute) {
+static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
+                                           CUdevice_attribute attribute) {
   int value = -1;
   RETURN_IF_CUDA_RES_ERROR(cuDeviceGetAttribute(&value, attribute, device),
                            "Could not retrieve CUDA device attribute (",
@@ -1421,43 +1458,43 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return converted;
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetMultiprocessorCount(
+/* static */ tsl::StatusOr<int> GpuDriver::GetMultiprocessorCount(
     CUdevice device) {
   return GetSimpleAttribute<int>(device,
                                  CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(device,
                                      CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
 }
@@ -1512,13 +1549,13 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return true;
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetDeviceAttribute(
+/* static */ tsl::StatusOr<int> GpuDriver::GetDeviceAttribute(
     CUdevice_attribute attribute, CUdevice device) {
   int val;
   CUresult res = cuDeviceGetAttribute(&val, attribute, device);
   if (res != CUDA_SUCCESS) {
-    return port::Status(
-        port::error::INTERNAL,
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to get device attribute %d for device %d: %s",
                         attribute, device, ToString(res)));
   }
@@ -1615,8 +1652,8 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return can_access_peer;
 }
 
-/* static */ port::Status GpuDriver::EnablePeerAccess(GpuContext* from,
-                                                      GpuContext* to) {
+/* static */ tsl::Status GpuDriver::EnablePeerAccess(GpuContext* from,
+                                                     GpuContext* to) {
   if (from == to) {
     return ::tsl::OkStatus();  // A context can always access its own
                                // memory.
@@ -1626,8 +1663,8 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   CUresult result = cuCtxEnablePeerAccess(to->context(), 0 /* = flags */);
   if (result != CUDA_SUCCESS &&
       result != CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED) {
-    return port::Status(
-        port::error::INTERNAL,
+    return tsl::Status(
+        absl::StatusCode::kInternal,
         absl::StrFormat("failed to enable peer access from %p to %p: %s", from,
                         to, ToString(result)));
   }
@@ -1635,7 +1672,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return ::tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
+/* static */ tsl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     GpuContext* context, CUfunction kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {
   ScopedActivateContext activation(context);

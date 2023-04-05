@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/strings/escaping.h"
@@ -74,7 +75,7 @@ void TFTypeDialect::initialize() {
 
 namespace {
 template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser) {
+Type ParseTypeWithSubtype(MLIRContext* context, DialectAsmParser& parser) {
   // Default type without inferred subtypes.
   if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
 
@@ -100,7 +101,7 @@ Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser) {
 
 template <typename TypeWithSubtype>
 void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
-                          DialectAsmPrinter &os) {
+                          DialectAsmPrinter& os) {
   os << type;
   ArrayRef<TensorType> subtypes = ty.getSubtypes();
   if (subtypes.empty()) return;
@@ -109,19 +110,19 @@ void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
   interleaveComma(subtypes, os);
   os << ">";
 }
-Type ParseResourceType(MLIRContext *context, DialectAsmParser &parser) {
+Type ParseResourceType(MLIRContext* context, DialectAsmParser& parser) {
   return ParseTypeWithSubtype<ResourceType>(context, parser);
 }
 
-void PrintResourceType(ResourceType ty, DialectAsmPrinter &os) {
+void PrintResourceType(ResourceType ty, DialectAsmPrinter& os) {
   return PrintTypeWithSubtype("resource", ty, os);
 }
 
-Type ParseVariantType(MLIRContext *context, DialectAsmParser &parser) {
+Type ParseVariantType(MLIRContext* context, DialectAsmParser& parser) {
   return ParseTypeWithSubtype<VariantType>(context, parser);
 }
 
-void PrintVariantType(VariantType ty, DialectAsmPrinter &os) {
+void PrintVariantType(VariantType ty, DialectAsmPrinter& os) {
   return PrintTypeWithSubtype("variant", ty, os);
 }
 
@@ -129,7 +130,7 @@ void PrintVariantType(VariantType ty, DialectAsmPrinter &os) {
 
 // Entry point for Type parsing, TableGen generated code will handle the
 // dispatch to the individual classes.
-Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
+Type TFTypeDialect::parseType(DialectAsmParser& parser) const {
   StringRef type_tag;
   llvm::SMLoc loc = parser.getNameLoc();
 
@@ -161,7 +162,7 @@ Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
 
 // Entry point for Type parsing, TableGen generated code will handle the
 // dispatch to the individual classes.
-void TFTypeDialect::printType(Type type, DialectAsmPrinter &printer) const {
+void TFTypeDialect::printType(Type type, DialectAsmPrinter& printer) const {
 #define HANDLE_TF_TYPE(tftype, enumerant, name)          \
   if (auto derived_ty = type.dyn_cast<tftype##Type>()) { \
     printer << name;                                     \
@@ -183,7 +184,7 @@ void TFTypeDialect::printType(Type type, DialectAsmPrinter &printer) const {
 // Attributes
 //===----------------------------------------------------------------------===//
 
-Attribute VersionAttr::parse(AsmParser &parser, Type) {
+Attribute VersionAttr::parse(AsmParser& parser, Type) {
   if (failed(parser.parseLess())) return {};
 
   int32_t producer, min_consumer;
@@ -212,8 +213,8 @@ Attribute VersionAttr::parse(AsmParser &parser, Type) {
                           bad_consumers);
 }
 
-void VersionAttr::print(AsmPrinter &printer) const {
-  llvm::raw_ostream &os = printer.getStream();
+void VersionAttr::print(AsmPrinter& printer) const {
+  llvm::raw_ostream& os = printer.getStream();
   os << "<producer = " << getProducer()
      << ", min_consumer = " << getMinConsumer();
   ArrayRef<int32_t> badConsumers = getBadConsumers();
@@ -225,7 +226,7 @@ void VersionAttr::print(AsmPrinter &printer) const {
   os << ">";
 }
 
-FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
+FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser& parser) {
   SmallVector<FullTypeAttr> args;
 
   // Parse variable 'type_id'
@@ -237,7 +238,7 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
         "'type_id'");
     return failure();
   }
-  Optional<FullTypeId> type_id = symbolizeFullTypeId(type_id_str);
+  std::optional<FullTypeId> type_id = symbolizeFullTypeId(type_id_str);
   if (!type_id) {
     parser.emitError(parser.getCurrentLocation(),
                      "failed to parse TFType_FullTypeAttr parameter "
@@ -246,13 +247,14 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
   }
 
   // Parse variable 'args'
-  if (parser.parseCommaSeparatedList(
-      AsmParser::Delimiter::OptionalLessGreater, [&]() {
-        FailureOr<tf_type::FullTypeAttr> arg = RawFullTypeAttrParser(parser);
-        if (failed(arg)) return failure();
-        args.push_back(*arg);
-        return success();
-      }))
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::OptionalLessGreater,
+                                     [&]() {
+                                       FailureOr<tf_type::FullTypeAttr> arg =
+                                           RawFullTypeAttrParser(parser);
+                                       if (failed(arg)) return failure();
+                                       args.push_back(*arg);
+                                       return success();
+                                     }))
     return failure();
 
   // Parse variable 'attr'
@@ -262,14 +264,14 @@ FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
                            args, attr);
 }
 
-Attribute FullTypeAttr::parse(AsmParser &parser, Type odsType) {
+Attribute FullTypeAttr::parse(AsmParser& parser, Type odsType) {
   if (failed(parser.parseLess())) return {};
   FailureOr<tf_type::FullTypeAttr> ret = RawFullTypeAttrParser(parser);
   if (succeeded(ret) && failed(parser.parseGreater())) return {};
   return ret.value_or(FullTypeAttr());
 }
 
-static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
+static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter& printer) {
   printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getTypeId()));
   if (!tfattr.getArgs().empty()) {
     printer << "<";
@@ -287,7 +289,7 @@ static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
   }
 }
 
-void FullTypeAttr::print(AsmPrinter &printer) const {
+void FullTypeAttr::print(AsmPrinter& printer) const {
   printer << "<";
   RawFullTypeAttrPrint(*this, printer);
   printer << ">";
@@ -299,7 +301,7 @@ void FullTypeAttr::print(AsmPrinter &printer) const {
 // or
 //   #tf.func<"", {attr = "value"}>
 // in case of null symbol ref.
-void FuncAttr::print(AsmPrinter &os) const {
+void FuncAttr::print(AsmPrinter& os) const {
   if (getName().getRootReference().getValue().empty())
     os << "<\"\", " << getAttrs() << ">";
   else
@@ -312,7 +314,7 @@ void FuncAttr::print(AsmPrinter &os) const {
 //
 // where the first element is a SymbolRefAttr and the second element is a
 // DictionaryAttr.
-Attribute FuncAttr::parse(AsmParser &parser, Type type) {
+Attribute FuncAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
   llvm::SMLoc loc = parser.getCurrentLocation();
   Attribute name, dict;
@@ -345,11 +347,11 @@ Attribute FuncAttr::parse(AsmParser &parser, Type type) {
                        dict.cast<DictionaryAttr>());
 }
 
-void PlaceholderAttr::print(AsmPrinter &os) const {
+void PlaceholderAttr::print(AsmPrinter& os) const {
   os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
 
-Attribute PlaceholderAttr::parse(AsmParser &parser, Type type) {
+Attribute PlaceholderAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
   std::string content;
   if (failed(parser.parseOptionalString(&content))) {
@@ -361,7 +363,7 @@ Attribute PlaceholderAttr::parse(AsmParser &parser, Type type) {
   return PlaceholderAttr::get(parser.getContext(), content);
 }
 
-void ShapeAttr::print(AsmPrinter &os) const {
+void ShapeAttr::print(AsmPrinter& os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
@@ -377,7 +379,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << ">";
 }
 
-Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
+Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
 
   if (succeeded(parser.parseOptionalStar())) {
@@ -387,7 +389,7 @@ Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
              "attribute";
       return {};
     }
-    return ShapeAttr::get(parser.getContext(), llvm::None);
+    return ShapeAttr::get(parser.getContext(), std::nullopt);
   }
 
   SmallVector<int64_t> shape;
@@ -410,28 +412,28 @@ Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
         return {};
     }
   }
-  return ShapeAttr::get(parser.getContext(), llvm::makeArrayRef(shape));
+  return ShapeAttr::get(parser.getContext(), llvm::ArrayRef(shape));
 }
 
 // Get or create a shape attribute.
-ShapeAttr ShapeAttr::get(MLIRContext *context,
-                         llvm::Optional<ArrayRef<int64_t>> shape) {
+ShapeAttr ShapeAttr::get(MLIRContext* context,
+                         std::optional<ArrayRef<int64_t>> shape) {
   if (shape) return Base::get(context, *shape, /*unranked=*/false);
 
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
 // Get or create a shape attribute.
-ShapeAttr ShapeAttr::get(MLIRContext *context, ShapedType shaped_type) {
+ShapeAttr ShapeAttr::get(MLIRContext* context, ShapedType shaped_type) {
   if (shaped_type.hasRank())
     return Base::get(context, shaped_type.getShape(), /*unranked=*/false);
 
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
-llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
+std::optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
   if (hasRank()) return getShape();
-  return llvm::None;
+  return std::nullopt;
 }
 
 bool ShapeAttr::hasRank() const { return !getImpl()->unranked; }
@@ -452,12 +454,12 @@ bool ShapeAttr::hasStaticShape() const {
 }
 
 namespace {
-// Returns the shape of the given value if it's ranked; returns llvm::None
+// Returns the shape of the given value if it's ranked; returns std::nullopt
 // otherwise.
-Optional<ArrayRef<int64_t>> GetShape(Value value) {
+std::optional<ArrayRef<int64_t>> GetShape(Value value) {
   auto shaped_type = value.getType().cast<ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Merges cast compatible shapes and returns a more refined shape. The two
@@ -467,7 +469,7 @@ Optional<ArrayRef<int64_t>> GetShape(Value value) {
 // precise than the two input shapes.
 bool GetCastCompatibleShape(ArrayRef<int64_t> a_shape,
                             ArrayRef<int64_t> b_shape,
-                            SmallVectorImpl<int64_t> *refined_shape) {
+                            SmallVectorImpl<int64_t>* refined_shape) {
   if (a_shape.size() != b_shape.size()) return false;
   int64_t rank = a_shape.size();
   refined_shape->reserve(rank);
@@ -500,12 +502,12 @@ bool GetCastCompatibleShape(ArrayRef<int64_t> a_shape,
 
 OperandShapeIterator::OperandShapeIterator(Operation::operand_iterator it)
     : llvm::mapped_iterator<Operation::operand_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 ResultShapeIterator::ResultShapeIterator(Operation::result_iterator it)
     : llvm::mapped_iterator<Operation::result_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 //===----------------------------------------------------------------------===//
@@ -526,7 +528,7 @@ bool TensorFlowRefType::classof(Type type) {
 }
 
 TensorFlowType TensorFlowRefType::get(Type type) {
-  MLIRContext *ctx = type.getContext();
+  MLIRContext* ctx = type.getContext();
   type = getElementTypeOrSelf(type);
   if (type.isF16()) {
     return HalfRefType::get(ctx);
@@ -536,6 +538,10 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return DoubleRefType::get(ctx);
   } else if (type.isBF16()) {
     return Bfloat16RefType::get(ctx);
+  } else if (type.isFloat8E4M3FN()) {
+    return Float8E4M3FNRefType::get(ctx);
+  } else if (type.isFloat8E5M2()) {
+    return Float8E5M2RefType::get(ctx);
   } else if (auto complex_type = type.dyn_cast<ComplexType>()) {
     Type etype = complex_type.getElementType();
     if (etype.isF32()) {
@@ -575,11 +581,13 @@ TensorFlowType TensorFlowRefType::get(Type type) {
 }
 
 Type TensorFlowRefType::RemoveRef() {
-  MLIRContext *ctx = getContext();
+  MLIRContext* ctx = getContext();
   if (isa<HalfRefType>()) return FloatType::getF16(ctx);
   if (isa<FloatRefType>()) return FloatType::getF32(ctx);
   if (isa<DoubleRefType>()) return FloatType::getF64(ctx);
   if (isa<Bfloat16RefType>()) return FloatType::getBF16(ctx);
+  if (isa<Float8E4M3FNType>()) return FloatType::getFloat8E4M3FN(ctx);
+  if (isa<Float8E5M2Type>()) return FloatType::getFloat8E5M2(ctx);
   if (isa<BoolRefType>()) return IntegerType::get(ctx, 1);
   if (isa<Int8RefType>()) return IntegerType::get(ctx, 8);
   if (isa<Int16RefType>()) return IntegerType::get(ctx, 16);
@@ -609,7 +617,7 @@ bool TensorFlowTypeWithSubtype::classof(Type type) {
 }
 
 Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
-  MLIRContext *ctx = getContext();
+  MLIRContext* ctx = getContext();
   if (isa<VariantType>()) return VariantType::get(ctx);
   if (isa<ResourceType>()) return ResourceType::get(ctx);
   llvm_unreachable("unexpected tensorflow type with subtypes kind");
@@ -617,7 +625,7 @@ Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
 
 TensorFlowTypeWithSubtype TensorFlowTypeWithSubtype::clone(
     ArrayRef<TensorType> new_subtypes) {
-  MLIRContext *ctx = getContext();
+  MLIRContext* ctx = getContext();
   if (isa<VariantType>())
     return VariantType::get(new_subtypes, ctx)
         .cast<TensorFlowTypeWithSubtype>();
@@ -842,7 +850,7 @@ Type DropRefType(Type ty) { return DropTypeHelper<TensorFlowRefType>(ty); }
 
 Type DropRefAndSubTypes(Type ty) { return DropRefType(DropSubTypes(ty)); }
 
-Attribute TensorProtoAttr::parse(AsmParser &parser, Type type) {
+Attribute TensorProtoAttr::parse(AsmParser& parser, Type type) {
   if (parser.parseColon()) {
     return nullptr;
   }
@@ -860,7 +868,7 @@ Attribute TensorProtoAttr::parse(AsmParser &parser, Type type) {
   return TensorProtoAttr::get(type, bytes_data);
 }
 
-void TensorProtoAttr::print(mlir::AsmPrinter &printer) const {
+void TensorProtoAttr::print(mlir::AsmPrinter& printer) const {
   StringRef bytes_str = getValue();
   printer << " : \"0x" << llvm::toHex(bytes_str) << "\"";
 }

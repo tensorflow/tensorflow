@@ -23,12 +23,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op_impl.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
-
-#include "tensorflow/core/kernels/cast_op_impl.h"
 
 namespace tensorflow {
 
@@ -46,6 +45,7 @@ typedef Eigen::GpuDevice GPUDevice;
   FN(arg0, int32);               \
   FN(arg0, int64_t);             \
   FN(arg0, Eigen::half);         \
+  FN(arg0, bfloat16);            \
   FN(arg0, float);               \
   FN(arg0, double);              \
   FN(arg0, std::complex<float>); \
@@ -156,6 +156,10 @@ Status CpuCastOp::Prepare() {
     work_ = GetCpuCastFromComplex128(dst_dtype_);
   } else if (src_dtype_ == DT_BFLOAT16) {
     work_ = GetCpuCastFromBfloat(dst_dtype_);
+  } else if (src_dtype_ == DT_FLOAT8_E5M2) {
+    work_ = GetCpuCastFromFloat8e5m2(dst_dtype_);
+  } else if (src_dtype_ == DT_FLOAT8_E4M3FN) {
+    work_ = GetCpuCastFromFloat8e4m3fn(dst_dtype_);
   }
 
   // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
@@ -210,6 +214,10 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromComplex128(dst_dtype_);
     } else if (src_dtype_ == DT_BFLOAT16) {
       work_ = GetGpuCastFromBfloat(dst_dtype_);
+    } else if (src_dtype_ == DT_FLOAT8_E5M2) {
+      work_ = GetGpuCastFromFloat8e5m2(dst_dtype_);
+    } else if (src_dtype_ == DT_FLOAT8_E4M3FN) {
+      work_ = GetGpuCastFromFloat8e4m3fn(dst_dtype_);
     }
 
     return work_ == nullptr ? Unimplemented() : OkStatus();
@@ -245,14 +253,47 @@ CURRY_TYPES2(REGISTER_CAST_GPU, float);
 CURRY_TYPES2(REGISTER_CAST_GPU, double);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
-#endif
-
+#else
+REGISTER_CAST_GPU(bool, bfloat16);
+REGISTER_CAST_GPU(int8, bfloat16);
+REGISTER_CAST_GPU(int16, bfloat16);
+REGISTER_CAST_GPU(int32, bfloat16);
+REGISTER_CAST_GPU(int64, bfloat16);
+REGISTER_CAST_GPU(uint8, bfloat16);
+REGISTER_CAST_GPU(uint16, bfloat16);
+REGISTER_CAST_GPU(uint32, bfloat16);
+REGISTER_CAST_GPU(uint64, bfloat16);
+REGISTER_CAST_GPU(Eigen::half, bfloat16);
 REGISTER_CAST_GPU(float, bfloat16);
-REGISTER_CAST_GPU(bfloat16, float);
+REGISTER_CAST_GPU(double, bfloat16);
+REGISTER_CAST_GPU(std::complex<float>, bfloat16);
+REGISTER_CAST_GPU(std::complex<double>, bfloat16);
+#endif
+CURRY_TYPES2(REGISTER_CAST_GPU, bfloat16);
+
+REGISTER_CAST_GPU(float, float8_e5m2);
+REGISTER_CAST_GPU(float, float8_e4m3fn);
+
+REGISTER_CAST_GPU(bfloat16, float8_e5m2);
+REGISTER_CAST_GPU(bfloat16, float8_e4m3fn);
+
+REGISTER_CAST_GPU(Eigen::half, float8_e5m2);
+REGISTER_CAST_GPU(Eigen::half, float8_e4m3fn);
+
+REGISTER_CAST_GPU(float8_e5m2, float);
+REGISTER_CAST_GPU(float8_e5m2, bfloat16);
+REGISTER_CAST_GPU(float8_e5m2, Eigen::half);
+REGISTER_CAST_GPU(float8_e5m2, float8_e5m2);
+REGISTER_CAST_GPU(float8_e5m2, float8_e4m3fn);
+
+REGISTER_CAST_GPU(float8_e4m3fn, float);
+REGISTER_CAST_GPU(float8_e4m3fn, bfloat16);
+REGISTER_CAST_GPU(float8_e4m3fn, Eigen::half);
+REGISTER_CAST_GPU(float8_e4m3fn, float8_e5m2);
+REGISTER_CAST_GPU(float8_e4m3fn, float8_e4m3fn);
 
 #undef REGISTER_CAST_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 #undef CURRY_TYPES2
 

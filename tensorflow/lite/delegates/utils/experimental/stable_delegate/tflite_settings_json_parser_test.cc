@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace {
@@ -29,6 +30,25 @@ TEST(TfLiteSettingsJsonParserTest, SuccessWithValidXNNPackDelegateSettings) {
       "tensorflow/lite/delegates/utils/experimental/"
       "stable_delegate/test_xnnpack_settings.json");
 
+  EXPECT_NE(parser.GetBufferPointer(), nullptr);
+  EXPECT_NE(parser.GetBufferSize(), 0);
+  ASSERT_NE(tflite_settings, nullptr);
+  EXPECT_EQ(tflite_settings->delegate(), tflite::Delegate_XNNPACK);
+  ASSERT_NE(tflite_settings->xnnpack_settings(), nullptr);
+  EXPECT_EQ(tflite_settings->xnnpack_settings()->num_threads(), 5);
+}
+
+TEST(TfLiteSettingsJsonParserTest, GetBufferPointerReturnsValidBufferPointers) {
+  TfLiteSettingsJsonParser parser;
+  parser.Parse(
+      "tensorflow/lite/delegates/utils/experimental/"
+      "stable_delegate/test_xnnpack_settings.json");
+  const uint8_t* buffer_pointer = parser.GetBufferPointer();
+
+  ASSERT_NE(buffer_pointer, nullptr);
+  ASSERT_NE(parser.GetBufferSize(), 0);
+  const TFLiteSettings* tflite_settings =
+      flatbuffers::GetRoot<TFLiteSettings>(buffer_pointer);
   ASSERT_NE(tflite_settings, nullptr);
   EXPECT_EQ(tflite_settings->delegate(), tflite::Delegate_XNNPACK);
   ASSERT_NE(tflite_settings->xnnpack_settings(), nullptr);
@@ -44,6 +64,8 @@ TEST(TfLiteSettingsJsonParserTest, FailedToParseInvalidSettings) {
       parser.Parse("tensorflow/lite/tools/delegates/experimental/"
                    "stable_delegate/test_invalid_settings.json"),
       nullptr);
+  EXPECT_EQ(parser.GetBufferPointer(), nullptr);
+  EXPECT_EQ(parser.GetBufferSize(), 0);
 }
 
 }  // namespace

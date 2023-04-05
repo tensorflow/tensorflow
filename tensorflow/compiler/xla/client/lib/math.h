@@ -93,9 +93,6 @@ XlaOp Asin(XlaOp x);
 // Computes the arc tangent of 'x'.
 XlaOp Atan(XlaOp x);
 
-// Computes the tangent of 'x'.
-XlaOp Tan(XlaOp x);
-
 // Hyperbolic trigonometric functions
 
 // Computes the inverse hyperbolic cosine of 'x'.

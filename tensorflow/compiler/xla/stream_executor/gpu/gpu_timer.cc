@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -26,8 +26,8 @@ namespace gpu {
 bool GpuTimer::Init() {
   CHECK(start_event_ == nullptr && stop_event_ == nullptr);
   GpuContext* context = parent_->gpu_context();
-  port::Status status = GpuDriver::InitEvent(context, &start_event_,
-                                             GpuDriver::EventFlags::kDefault);
+  tsl::Status status = GpuDriver::InitEvent(context, &start_event_,
+                                            GpuDriver::EventFlags::kDefault);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return false;
@@ -50,7 +50,7 @@ bool GpuTimer::Init() {
 
 void GpuTimer::Destroy() {
   GpuContext* context = parent_->gpu_context();
-  port::Status status = GpuDriver::DestroyEvent(context, &start_event_);
+  tsl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -72,7 +72,7 @@ float GpuTimer::GetElapsedMilliseconds() const {
 }
 
 bool GpuTimer::Start(GpuStream* stream) {
-  port::Status status = GpuDriver::RecordEvent(
+  tsl::Status status = GpuDriver::RecordEvent(
       parent_->gpu_context(), start_event_, stream->gpu_stream());
   if (!status.ok()) {
     LOG(ERROR) << status;
@@ -81,7 +81,7 @@ bool GpuTimer::Start(GpuStream* stream) {
 }
 
 bool GpuTimer::Stop(GpuStream* stream) {
-  port::Status status = GpuDriver::RecordEvent(
+  tsl::Status status = GpuDriver::RecordEvent(
       parent_->gpu_context(), stop_event_, stream->gpu_stream());
   if (!status.ok()) {
     LOG(ERROR) << status;

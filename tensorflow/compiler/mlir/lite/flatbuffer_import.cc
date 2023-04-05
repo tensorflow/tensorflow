@@ -20,6 +20,7 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -33,8 +34,6 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -70,8 +69,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -110,6 +111,9 @@ namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 bool IsQuantized(const TensorT& tensor) {
   return (tensor.quantization != nullptr) &&
@@ -333,11 +337,11 @@ std::string GetMlirOpName(const tflite::OperatorT& op,
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
-// bytes that represent little-endian values.
+// bytes that represent host endianness values.
 // The read_size parameter is present to allow reading both float16 and float32s
 // without a case split.
 template <typename T>
-std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
+std::vector<T> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
   std::vector<T> ret;
   size_t read_size = sizeof(T);
   int bytes_len = bytes.size();
@@ -348,9 +352,9 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
   for (int i = 0; i < elem_count; i++) {
-    ret.push_back(
-        llvm::support::endian::readNext<T, llvm::support::little,
-                                        llvm::support::unaligned>(data_ptr));
+    ret.push_back(llvm::support::endian::readNext<
+                  T, llvm::support::endian::system_endianness(),
+                  llvm::support::unaligned>(data_ptr));
   }
   return ret;
 }
@@ -396,9 +400,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       auto& semantics = elem_type.getFloatSemantics();
 
       for (int i = 0; i < elem_count; i++) {
-        uint16_t bit_repr =
-            llvm::support::endian::readNext<uint16_t, llvm::support::little,
-                                            llvm::support::unaligned>(data);
+        uint16_t bit_repr = llvm::support::endian::readNext<
+            uint16_t, llvm::support::endian::system_endianness(),
+            llvm::support::unaligned>(data);
         llvm::APInt int_repr(16, bit_repr);
         values.emplace_back(semantics, int_repr);
       }
@@ -414,9 +418,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint32_t bit_repr =
-            llvm::support::endian::readNext<uint32_t, llvm::support::little,
-                                            llvm::support::unaligned>(data);
+        uint32_t bit_repr = llvm::support::endian::readNext<
+            uint32_t, llvm::support::endian::system_endianness(),
+            llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
       return mlir::ElementsAttr(
@@ -431,9 +435,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint64_t bit_repr =
-            llvm::support::endian::readNext<uint64_t, llvm::support::little,
-                                            llvm::support::unaligned>(data);
+        uint64_t bit_repr = llvm::support::endian::readNext<
+            uint64_t, llvm::support::endian::system_endianness(),
+            llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<double>(bit_repr));
       }
       return mlir::ElementsAttr(
@@ -481,17 +485,17 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer)));
     }
     case 16: {
-      auto values = ReadAsLittleEndian<uint16_t>(buffer);
+      auto values = ReadAsHostEndian<uint16_t>(buffer);
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values)));
     }
     case 32: {
-      auto values = ReadAsLittleEndian<uint32_t>(buffer);
+      auto values = ReadAsHostEndian<uint32_t>(buffer);
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values)));
     }
     case 64: {
-      auto values = ReadAsLittleEndian<uint64_t>(buffer);
+      auto values = ReadAsHostEndian<uint64_t>(buffer);
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values)));
     }
@@ -849,10 +853,8 @@ StatusOr<Operation*> ConvertOp(
 
       mlir::SmallVector<mlir::Attribute, 4> shape;
       for (auto s : new_shape) {
-        // TODO(b/259719789): clean up dynamic shape check (e.g. into a
-        // discrete function) once bug is completely fixed.
-        shape.push_back(builder.getI32IntegerAttr(
-            mlir::ShapedType::isDynamic(s) ? -1 : static_cast<int32_t>(s)));
+        shape.push_back(
+            builder.getI32IntegerAttr(mlir::TFL::ConvertToTfliteSize(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
       auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
@@ -909,12 +911,8 @@ StatusOr<Operation*> ConvertOp(
         int32_t dim_size = 0;
         for (const auto& dim :
              llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
-          const int64_t size = dim.value().getSExtValue();
-          // TODO(b/259719789): clean up dynamic shape check (e.g. into a
-          // discrete function) once bug is completely fixed.
           shape.push_back(builder.getI32IntegerAttr(
-              mlir::ShapedType::isDynamic(size) ? -1
-                                                : static_cast<int32_t>(size)));
+              mlir::TFL::ConvertToTfliteSize(dim.value().getSExtValue())));
           ++dim_size;
         }
         auto shape_type = tensorflow::GetTypeFromTFTensorShape(
@@ -1124,8 +1122,6 @@ void SetSignature(
     FuncOp func, const tflite::SignatureDefT* signature,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors) {
   auto* context = func->getContext();
-  static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
-  static const char kExportedNameAttr[] = "tf_saved_model.exported_names";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   auto dict_attr =
@@ -1146,7 +1142,7 @@ void SetSignature(
       return;
     }
     func.setArgAttr(
-        arg_index, kSignatureDefIndexPath,
+        arg_index, kTfSavedModelIndexPathAttr,
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
@@ -1161,14 +1157,14 @@ void SetSignature(
       func->emitWarning("Invalid signature tensors specified.");
       return;
     }
-    func.setResultAttr(arg_index, kSignatureDefIndexPath,
+    func.setResultAttr(arg_index, kTfSavedModelIndexPathAttr,
                        mlir::ArrayAttr::get(
                            context, {mlir::StringAttr::get(
                                         context, output_pair.value()->name)}));
     seen_indices.insert(arg_index);
   }
   func->setAttr(
-      kExportedNameAttr,
+      kTfSavedModelExportedNamesAttr,
       mlir::ArrayAttr::get(
           context, {mlir::StringAttr::get(context, signature->signature_key)}));
 }
@@ -1179,7 +1175,7 @@ void SetSignature(
 // source vertices.
 struct ControlNodeDesc {
   std::set<int> incoming;
-  llvm::Optional<mlir::Value> outgoing;
+  std::optional<mlir::Value> outgoing;
 };
 
 using ControlNodes = llvm::DenseMap<int, ControlNodeDesc>;
@@ -1380,7 +1376,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   // Construct MLIR operators from TFLite operators
-  for (auto& it : llvm::enumerate(subgraph.operators)) {
+  for (const auto& it : llvm::enumerate(subgraph.operators)) {
     auto& op = it.value();
 
     if (experimental_prune_unreachable_nodes_unconditionally &&

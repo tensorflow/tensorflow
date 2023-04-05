@@ -16,7 +16,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
+
+#include "absl/base/casts.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -33,7 +36,7 @@ StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
     tf_shared_lock lock(mu_);
     auto it = map_.find(key);
     if (it != map_.end()) {
-      DCHECK_EQ(it->second->op_kernel()->name(), op_name);
+      DCHECK_EQ(it->second->op_kernel()->def().op(), op_name);
       return it->second.get();
     }
   }
@@ -49,10 +52,13 @@ StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
   VLOG(1) << "KernelFallbackExecuteCompat creating op " << op_name
           << " at location " << loc.data << " on device " << device_name;
 
+  std::string node_name = absl::StrCat(
+      op_name, "_", loc.data, "_", absl::bit_cast<uintptr_t>(loc.GetHandler()));
+
   TF_ASSIGN_OR_RETURN(
-      auto runner,
-      OpKernelRunner::Create(op_name, device_name, num_args, attr_builder,
-                             device_manager, process_function_library_runtime));
+      auto runner, OpKernelRunner::Create(
+                       op_name, node_name, device_name, num_args, attr_builder,
+                       device_manager, process_function_library_runtime));
 
   auto runner_uptr = std::make_unique<OpKernelRunner>(std::move(runner));
 

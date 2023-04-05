@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 
@@ -86,17 +85,17 @@ inline std::string GetCanonicalHardwareName(const std::string& hardware_name) {
 }
 
 // Get the target annotation form the op.
-inline llvm::Optional<std::string> GetTargetAnnotation(Operation* op) {
+inline std::optional<std::string> GetTargetAnnotation(Operation* op) {
   auto device = op->getAttrOfType<StringAttr>(kDevice);
-  if (device == nullptr || device.getValue().empty()) return llvm::None;
+  if (device == nullptr || device.getValue().empty()) return std::nullopt;
 
   return GetCanonicalHardwareName(device.getValue().str());
 }
 
 // Get inference type attribute from the operation if available.
-inline llvm::Optional<InferenceType> GetInferenceTypeAnnotation(Operation* op) {
+inline std::optional<InferenceType> GetInferenceTypeAnnotation(Operation* op) {
   auto inference_type = op->getAttrOfType<StringAttr>(kInferenceType);
-  if (inference_type == nullptr) return llvm::None;
+  if (inference_type == nullptr) return std::nullopt;
 
   llvm::StringRef device_name_str = inference_type.getValue();
   return GetInferenceTypeEnum(device_name_str);
@@ -126,13 +125,13 @@ struct InferenceDeviceType {
 };
 
 // Get InferenceDeviceType attribute from the operation if available.
-inline llvm::Optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
+inline std::optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
     Operation* op) {
   auto hardware = GetTargetAnnotation(op);
-  if (!hardware.has_value()) return llvm::None;
+  if (!hardware.has_value()) return std::nullopt;
 
   auto inference_type = GetInferenceTypeAnnotation(op);
-  if (!inference_type.has_value()) return llvm::None;
+  if (!inference_type.has_value()) return std::nullopt;
 
   InferenceDeviceType inference_device_type;
   inference_device_type.hardware = hardware.value();

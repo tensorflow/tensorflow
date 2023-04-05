@@ -20,11 +20,11 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/pjrt_client_registry.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -185,6 +186,27 @@ StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
 }
 
 /* static */
+StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface&& hlo_pass,
+                                       HloModuleGroup* module_group) {
+  const std::string module_group_str_before_run =
+      module_group->ToProto().ShortDebugString();
+  const auto status_or = hlo_pass.RunOnModuleGroup(module_group);
+  if (status_or.status().ok()) {
+    const std::string module_group_str_after_run =
+        module_group->ToProto().ShortDebugString();
+    const bool passChangedHlo = status_or.value();
+    if (passChangedHlo) {
+      // Check that the proto actually changed.
+      EXPECT_NE(module_group_str_after_run, module_group_str_before_run);
+    } else {
+      // Check that the proto remains same.
+      EXPECT_EQ(module_group_str_after_run, module_group_str_before_run);
+    }
+  }
+  return status_or;
+}
+
+/* static */
 PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
@@ -228,6 +250,40 @@ void HloTestBase::RunAndFilecheckHloRewrite(
     if (after_pass_checks) {
       after_pass_checks(module.get());
     }
+  }
+}
+
+void HloTestBase::RunAndFilecheckHloModuleGroupRewrite(
+    absl::Span<const absl::string_view> hlo_module_strs,
+    HloPassInterface&& hlo_pass,
+    std::optional<absl::Span<const absl::string_view>> expected) {
+  std::vector<std::unique_ptr<HloModule>> modules;
+  for (absl::string_view hlo : hlo_module_strs) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    modules.push_back(std::move(module));
+  }
+  HloModuleGroup module_group("test_input_module_group", std::move(modules));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(std::move(hlo_pass), &module_group));
+  EXPECT_EQ(changed, expected.has_value()) << module_group.ToString();
+
+  if (!changed) {
+    return;
+  }
+
+  EXPECT_THAT(module_group.modules(),
+              ::testing::SizeIs(expected.value().size()));
+  int index = 0;
+  for (auto expected_str : expected.value()) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool filecheck_matches,
+        RunFileCheck(module_group.module(index).ToString(
+                         HloPrintOptions{}.set_print_operand_shape(false)),
+                     expected_str));
+    EXPECT_TRUE(filecheck_matches);
+    index++;
   }
 }
 
@@ -491,10 +547,11 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                   .shape()
             : params_1[i]->shape();
 
-    if (!ShapeUtil::Equal(param_shape_0, param_shape_1)) {
+    if (!Shape::Equal().IgnoreTilesInLayout()(param_shape_0, param_shape_1)) {
       return ::testing::AssertionFailure()
              << "Error : mismatching parameter shapes: "
-             << param_shape_0.ToString() << " Vs. " << param_shape_1.ToString();
+             << param_shape_0.ToString(true) << " Vs. "
+             << param_shape_1.ToString(true);
     }
   }
 
@@ -811,9 +868,15 @@ StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
 StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunnerForTest(
     se::Platform* test_platform) {
   if (ShouldUsePjRt()) {
-    TF_ASSIGN_OR_RETURN(auto client, GetGlobalPjRtClientTestFactory().Get()());
+    PjRtClientTestFactoryRegistry& pjrt_registry =
+        GetGlobalPjRtClientTestFactory();
+    TF_ASSIGN_OR_RETURN(auto client, pjrt_registry.Get()());
+
+    auto device_shape_representation_fn =
+        pjrt_registry.GetDeviceShapeRepresentationFn(client.get());
+
     return std::unique_ptr<HloRunnerInterface>(
-        new HloRunnerPjRt(std::move(client)));
+        new HloRunnerPjRt(std::move(client), device_shape_representation_fn));
   } else {
     return std::unique_ptr<HloRunnerInterface>(new HloRunner(test_platform));
   }

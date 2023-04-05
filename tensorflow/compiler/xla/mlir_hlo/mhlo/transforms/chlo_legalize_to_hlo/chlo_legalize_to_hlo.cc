@@ -19,7 +19,9 @@ limitations under the License.
 // https://docs.microsoft.com/en-us/cpp/c-runtime-library/math-constants
 #define _USE_MATH_DEFINES
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -260,11 +262,14 @@ template <typename FTy>
 Value materializePolynomialApproximation(ConversionPatternRewriter &rewriter,
                                          Location loc, Value x,
                                          ArrayRef<FTy> coefficients) {
-  Value poly = chlo::getConstantLike(rewriter, loc, 0.0, x);
-  for (FTy c : coefficients) {
+  if (coefficients.empty()) return chlo::getConstantLike(rewriter, loc, 0.0, x);
+
+  Value poly = chlo::getConstantLike(rewriter, loc, coefficients[0], x);
+  for (size_t i = 1; i < coefficients.size(); ++i) {
     poly = rewriter.create<mhlo::MulOp>(loc, x.getType(), poly, x);
     poly = rewriter.create<mhlo::AddOp>(
-        loc, x.getType(), poly, chlo::getConstantLike(rewriter, loc, c, x));
+        loc, x.getType(), poly,
+        chlo::getConstantLike(rewriter, loc, coefficients[i], x));
   }
   return poly;
 }
@@ -311,19 +316,19 @@ Value materializeErfcApproximationF64ForMagnituteGeOne(
   Value expZ = rewriter.create<mhlo::ExpOp>(loc, z);
   Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
   Value polP = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcPCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcPCoefficients));
   Value expZMulPolyP = rewriter.create<mhlo::MulOp>(loc, expZ, polP);
   Value polQ = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcQCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcQCoefficients));
   Value erfcApprox18 = rewriter.create<mhlo::DivOp>(loc, expZMulPolyP, polQ);
 
   // Materialize polynomial approximation for x in >= 8 as
   //   erfc(x) exp(z) R(|x|) / S(|x|).
   Value polR = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcRCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcRCoefficients));
   Value expZMulPolyR = rewriter.create<mhlo::MulOp>(loc, expZ, polR);
   Value polS = materializePolynomialApproximation(
-      rewriter, loc, absX, llvm::makeArrayRef(kErfcSCoefficients));
+      rewriter, loc, absX, llvm::ArrayRef(kErfcSCoefficients));
   Value erfcApprox8Inf = rewriter.create<mhlo::DivOp>(loc, expZMulPolyR, polS);
 
   // Combine polynomial approximations for x >= 1.
@@ -375,10 +380,10 @@ Value materializeErfApproximationF64ForMagnituteLeOne(
   //   erf(x) = x T(x^2) / U(x^2).
   Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
   Value polyT = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kErfTCoefficients));
+      rewriter, loc, xSq, llvm::ArrayRef(kErfTCoefficients));
   Value xMulPolyT = rewriter.create<mhlo::MulOp>(loc, x, polyT);
   Value polyU = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kErfUCoefficients));
+      rewriter, loc, xSq, llvm::ArrayRef(kErfUCoefficients));
   return rewriter.create<mhlo::DivOp>(loc, xMulPolyT, polyU);
 }
 
@@ -475,9 +480,9 @@ Value materializeErfcApproximationF32ForMagnitudeGeOne(
   Value absXLtTwo = rewriter.create<mhlo::CompareOp>(
       loc, absX, two, mhlo::ComparisonDirection::LT);
   Value polP = materializePolynomialApproximation(
-      rewriter, loc, reciprocalXSq, llvm::makeArrayRef(kErfcPCoefficients));
+      rewriter, loc, reciprocalXSq, llvm::ArrayRef(kErfcPCoefficients));
   Value polR = materializePolynomialApproximation(
-      rewriter, loc, reciprocalXSq, llvm::makeArrayRef(kErfcRCoefficients));
+      rewriter, loc, reciprocalXSq, llvm::ArrayRef(kErfcRCoefficients));
   Value poly = rewriter.create<mhlo::SelectOp>(loc, absXLtTwo, polP, polR);
   Value erfcApprox = rewriter.create<mhlo::MulOp>(loc, expZMulOneDivAbsX, poly);
 
@@ -519,7 +524,7 @@ Value materializeErfApproximationF32ForMagnitudeLeOne(
   //   erf(x) = x T(x^2).
   Value xSq = rewriter.create<mhlo::MulOp>(loc, x, x);
   Value polyT = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kErfTCoefficients));
+      rewriter, loc, xSq, llvm::ArrayRef(kErfTCoefficients));
   return rewriter.create<mhlo::MulOp>(loc, x, polyT);
 }
 
@@ -547,12 +552,15 @@ Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
 
   // Materialize polynomial approximation for x in [-4, 4] as
   //   erf(x) = x * Alpha(x^2) / Beta(x^2).
-  Value alphaPoly = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kAlpha));
-  Value betaPoly = materializePolynomialApproximation(
-      rewriter, loc, xSq, llvm::makeArrayRef(kBeta));
+  Value alphaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
+                                                       llvm::ArrayRef(kAlpha));
+  Value betaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
+                                                      llvm::ArrayRef(kBeta));
   Value xMulAlphaPoly = rewriter.create<mhlo::MulOp>(loc, x, alphaPoly);
-  return rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value erf = rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value lbErf = chlo::getConstantLike(rewriter, loc, -1.0, x);
+  Value ubErf = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  return rewriter.create<mhlo::ClampOp>(loc, erf.getType(), lbErf, erf, ubErf);
 }
 
 Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
@@ -629,6 +637,184 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
         op, materializeWithUpcast(rewriter, loc, adaptor.getOperands(),
                                   rewriter.getF32Type(),
                                   &materializeErfcApproximationF32));
+    return success();
+  }
+};
+
+Value erfInv32(ConversionPatternRewriter &b, Location loc, ValueRange args) {
+  constexpr int kDegree = 9;
+  constexpr std::array<float, 9> wLessThan5Constants = {
+      2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
+      -4.39150654e-06f, 0.00021858087f,  -0.00125372503f,
+      -0.00417768164f,  0.246640727f,    1.50140941f};
+  constexpr std::array<float, 9> wGreaterThan5Constants = {
+      -0.000200214257f, 0.000100950558f, 0.00134934322f,
+      -0.00367342844f,  0.00573950773f,  -0.0076224613f,
+      0.00943887047f,   1.00167406f,     2.83297682f};
+
+  Value x = args[0];
+  // Compute logarithm of (1+arg) using log1p(arg) which is more precise than
+  // log(1+arg) when arg is close to zero. For more details, see
+  // https://en.cppreference.com/w/cpp/numeric/math/log1p
+  Value minusXSquared =
+      b.create<mhlo::MulOp>(loc, x, b.create<mhlo::NegOp>(loc, x));
+  Value w =
+      b.create<mhlo::NegOp>(loc, b.create<mhlo::Log1pOp>(loc, minusXSquared));
+
+  Value lt = b.create<mhlo::CompareOp>(loc, w, getConstantLike(b, loc, 5.0, x),
+                                       mhlo::ComparisonDirection::LT);
+  auto coefficient = [&](int i) {
+    return b.create<mhlo::SelectOp>(
+        loc, lt, getConstantLike(b, loc, wLessThan5Constants[i], x),
+        getConstantLike(b, loc, wGreaterThan5Constants[i], x));
+  };
+  w = b.create<mhlo::SelectOp>(
+      loc, lt,
+      b.create<mhlo::SubtractOp>(loc, w, getConstantLike(b, loc, 2.5, x)),
+      b.create<mhlo::SubtractOp>(loc, b.create<mhlo::SqrtOp>(loc, w),
+                                 getConstantLike(b, loc, 3.0, x)));
+  Value p = coefficient(0);
+  for (int i = 1; i < kDegree; ++i) {
+    p = b.create<mhlo::AddOp>(loc, coefficient(i),
+                              b.create<mhlo::MulOp>(loc, p, w));
+  }
+
+  // Result modulo edge cases.
+  Value result = b.create<mhlo::MulOp>(loc, p, x);
+
+  // Handle edge cases, namely erfinv(+/-1) = +/-inf.  (The above computation is
+  // indeterminate, and can give nan or -/+inf.)
+  return b.create<mhlo::SelectOp>(
+      loc,
+      b.create<mhlo::CompareOp>(loc, b.create<mhlo::AbsOp>(loc, x),
+                                getConstantLike(b, loc, 1, x),
+                                mhlo::ComparisonDirection::EQ),
+      b.create<mhlo::MulOp>(loc, x, getConstantLikeInfValue(b, loc, x, false)),
+      result);
+}
+
+Value erfInv64(ConversionPatternRewriter &b, Location loc, ValueRange args) {
+  constexpr std::array<double, 23> wLessThan625Constants = {
+      -3.6444120640178196996e-21, -1.685059138182016589e-19,
+      1.2858480715256400167e-18,  1.115787767802518096e-17,
+      -1.333171662854620906e-16,  2.0972767875968561637e-17,
+      6.6376381343583238325e-15,  -4.0545662729752068639e-14,
+      -8.1519341976054721522e-14, 2.6335093153082322977e-12,
+      -1.2975133253453532498e-11, -5.4154120542946279317e-11,
+      1.051212273321532285e-09,   -4.1126339803469836976e-09,
+      -2.9070369957882005086e-08, 4.2347877827932403518e-07,
+      -1.3654692000834678645e-06, -1.3882523362786468719e-05,
+      0.0001867342080340571352,   -0.00074070253416626697512,
+      -0.0060336708714301490533,  0.24015818242558961693,
+      1.6536545626831027356};
+  constexpr std::array<double, 19> wLessThan16Constants = {
+      2.2137376921775787049e-09,  9.0756561938885390979e-08,
+      -2.7517406297064545428e-07, 1.8239629214389227755e-08,
+      1.5027403968909827627e-06,  -4.013867526981545969e-06,
+      2.9234449089955446044e-06,  1.2475304481671778723e-05,
+      -4.7318229009055733981e-05, 6.8284851459573175448e-05,
+      2.4031110387097893999e-05,  -0.0003550375203628474796,
+      0.00095328937973738049703,  -0.0016882755560235047313,
+      0.0024914420961078508066,   -0.0037512085075692412107,
+      0.005370914553590063617,    1.0052589676941592334,
+      3.0838856104922207635,
+  };
+  constexpr std::array<double, 17> wGreaterThan16Constants = {
+      -2.7109920616438573243e-11, -2.5556418169965252055e-10,
+      1.5076572693500548083e-09,  -3.7894654401267369937e-09,
+      7.6157012080783393804e-09,  -1.4960026627149240478e-08,
+      2.9147953450901080826e-08,  -6.7711997758452339498e-08,
+      2.2900482228026654717e-07,  -9.9298272942317002539e-07,
+      4.5260625972231537039e-06,  -1.9681778105531670567e-05,
+      7.5995277030017761139e-05,  -0.00021503011930044477347,
+      -0.00013871931833623122026, 1.0103004648645343977,
+      4.8499064014085844221,
+  };
+
+  Value x = args[0];
+  // Compute logarithm of (1+arg) using log1p(arg) which is more precise than
+  // log(1+arg) when arg is close to zero. For more details, see
+  // https://en.cppreference.com/w/cpp/numeric/math/log1p
+  Value minusXSquared =
+      b.create<mhlo::MulOp>(loc, x, b.create<mhlo::NegOp>(loc, x));
+  Value w =
+      b.create<mhlo::NegOp>(loc, b.create<mhlo::Log1pOp>(loc, minusXSquared));
+
+  Value lt625 = b.create<mhlo::CompareOp>(
+      loc, w, getConstantLike(b, loc, 6.25, x), mhlo::ComparisonDirection::LT);
+  Value lt16 = b.create<mhlo::CompareOp>(loc, w, getConstantLike(b, loc, 16, x),
+                                         mhlo::ComparisonDirection::LT);
+
+  auto coefficient = [&](int i) {
+    Value c = getConstantLike(b, loc, wLessThan625Constants[i], x);
+    if (i < 19) {
+      c = b.create<mhlo::SelectOp>(
+          loc, lt625, c, getConstantLike(b, loc, wLessThan16Constants[i], x));
+    }
+    if (i < 17) {
+      c = b.create<mhlo::SelectOp>(
+          loc, lt16, c, getConstantLike(b, loc, wGreaterThan16Constants[i], x));
+    }
+    return c;
+  };
+
+  Value sqrtW = b.create<mhlo::SqrtOp>(loc, w);
+  Value wMinus3125 =
+      b.create<mhlo::SubtractOp>(loc, w, getConstantLike(b, loc, 3.125, x));
+  Value select2 =
+      b.create<mhlo::SelectOp>(loc, lt16, getConstantLike(b, loc, 3.25, w),
+                               getConstantLike(b, loc, 5.0, w));
+  Value select2Result = b.create<mhlo::SubtractOp>(loc, sqrtW, select2);
+  w = b.create<mhlo::SelectOp>(loc, lt625, wMinus3125, select2Result);
+
+  Value p = coefficient(0);
+  for (int i = 1; i < 17; ++i) {
+    p = b.create<mhlo::AddOp>(loc, coefficient(i),
+                              b.create<mhlo::MulOp>(loc, p, w));
+  }
+  for (int i = 17; i < 19; ++i) {
+    p = b.create<mhlo::SelectOp>(
+        loc, lt16,
+        b.create<mhlo::AddOp>(loc, coefficient(i),
+                              b.create<mhlo::MulOp>(loc, p, w)),
+        p);
+  }
+  for (int i = 19; i < 23; ++i) {
+    p = b.create<mhlo::SelectOp>(
+        loc, lt625,
+        b.create<mhlo::AddOp>(loc, coefficient(i),
+                              b.create<mhlo::MulOp>(loc, p, w)),
+        p);
+  }
+
+  // Result modulo edge cases.
+  Value result = b.create<mhlo::MulOp>(loc, p, x);
+
+  // Handle edge cases, namely erfinv(+/-1) = +/-inf.  (The above computation is
+  // indeterminate, and can give nan or -/+inf.)
+  return b.create<mhlo::SelectOp>(
+      loc,
+      b.create<mhlo::CompareOp>(loc, b.create<mhlo::AbsOp>(loc, x),
+                                getConstantLike(b, loc, 1, x),
+                                mhlo::ComparisonDirection::EQ),
+      b.create<mhlo::MulOp>(loc, x, getConstantLikeInfValue(b, loc, x, false)),
+      result);
+}
+
+struct ConvertErfInvOp : public OpConversionPattern<ErfInvOp> {
+  using OpConversionPattern<ErfInvOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      ErfInvOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    if (op.getResult().getType().getElementType().isF64()) {
+      rewriter.replaceOp(op, erfInv64(rewriter, loc, adaptor.getOperands()));
+      return success();
+    }
+    FloatType minPrecisionTy = rewriter.getF32Type();
+    rewriter.replaceOp(
+        op, materializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  minPrecisionTy, &erfInv32));
     return success();
   }
 };
@@ -1337,26 +1523,6 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
   }
 };
 
-Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
-                     ValueRange operands) {
-  TanOp::Adaptor transformed(operands);
-  return rewriter.create<mhlo::DivOp>(
-      loc, rewriter.create<mhlo::SineOp>(loc, transformed.getOperand()),
-      rewriter.create<mhlo::CosineOp>(loc, transformed.getOperand()));
-}
-
-struct ConvertTanOp : public OpConversionPattern<TanOp> {
-  using OpConversionPattern<TanOp>::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      TanOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOp(
-        op, materializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
-                                  rewriter.getF32Type(), &materializeTan));
-    return success();
-  }
-};
-
 // Converts chlo.top_k to MHLO iota, sort, and slice ops.
 //
 // chlo.top_k sorts along last dimension of the input tensor and then returns
@@ -1397,13 +1563,34 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
-    assert(lastDimSize != ShapedType::kDynamic);
+    int64_t isDynamic = !operandType.hasStaticShape();
+    Value shape;
+    if (isDynamic) {
+      SmallVector<Value> sizesI32x1;
+      for (auto i = 0; i < operandType.getRank(); ++i) {
+        auto sizeI32 = rewriter.create<mhlo::GetDimensionSizeOp>(
+            op.getLoc(), op.getOperand(), i);
+        auto sizeI32x1 = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(), RankedTensorType::get({1}, rewriter.getI32Type()),
+            sizeI32);
+        sizesI32x1.push_back(sizeI32x1);
+      }
+      shape = rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
+                                                   /*dimension=*/0);
+    }
 
     // Create an Iota op for indices.
     auto i32Type = rewriter.getIntegerType(32);
     Type iotaType = RankedTensorType::get(operandType.getShape(), i32Type);
-    Value iotaOp = rewriter.create<mhlo::IotaOp>(
-        op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+    Value iotaOp;
+    if (isDynamic) {
+      iotaOp = rewriter.create<mhlo::DynamicIotaOp>(
+          op.getLoc(), iotaType, shape,
+          rewriter.getI64IntegerAttr(lastDimIndex));
+    } else {
+      iotaOp = rewriter.create<mhlo::IotaOp>(
+          op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+    }
 
     // Create the sort op. It takes two inputs, one for the original input, the
     // other for the indices. Use TOTALORDER comparison type instead of the
@@ -1426,16 +1613,42 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
 
     // Get the slice for the top K elements.
     auto indicesTy = RankedTensorType::get(operandRank, rewriter.getI64Type());
-    Value values = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tupleFirstElement,
-        DenseIntElementsAttr::get(indicesTy, beginIndices),
-        DenseIntElementsAttr::get(indicesTy, endIndices),
-        DenseIntElementsAttr::get(indicesTy, strides));
-    Value indices = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tupleSecondElement,
-        DenseIntElementsAttr::get(indicesTy, beginIndices),
-        DenseIntElementsAttr::get(indicesTy, endIndices),
-        DenseIntElementsAttr::get(indicesTy, strides));
+    Value values, indices;
+    if (isDynamic) {
+      Value startIndices = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get(indicesTy, beginIndices));
+      Value lastIndices = rewriter.create<mhlo::ConvertOp>(
+          op.getLoc(), shape, rewriter.getI64Type());
+      Value stridesOp = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get(indicesTy, strides));
+
+      SmallVector<int64_t, 4> resultShape =
+          llvm::to_vector<4>(operandType.getShape());
+      resultShape.back() =
+          std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+      RankedTensorType resultType = RankedTensorType::get(
+          resultShape, elementType, operandType.getEncoding());
+      RankedTensorType indexResultType =
+          RankedTensorType::get(resultShape, i32Type);
+
+      values = rewriter.create<mhlo::RealDynamicSliceOp>(
+          op.getLoc(), resultType, tupleFirstElement, startIndices, lastIndices,
+          stridesOp);
+      indices = rewriter.create<mhlo::RealDynamicSliceOp>(
+          op.getLoc(), indexResultType, tupleSecondElement, startIndices,
+          lastIndices, stridesOp);
+    } else {
+      values = rewriter.create<mhlo::SliceOp>(
+          op.getLoc(), tupleFirstElement,
+          DenseIntElementsAttr::get(indicesTy, beginIndices),
+          DenseIntElementsAttr::get(indicesTy, endIndices),
+          DenseIntElementsAttr::get(indicesTy, strides));
+      indices = rewriter.create<mhlo::SliceOp>(
+          op.getLoc(), tupleSecondElement,
+          DenseIntElementsAttr::get(indicesTy, beginIndices),
+          DenseIntElementsAttr::get(indicesTy, endIndices),
+          DenseIntElementsAttr::get(indicesTy, strides));
+    }
 
     rewriter.replaceOp(op, {values, indices});
     return success();
@@ -1725,11 +1938,11 @@ void populateDecomposeChloPatterns(MLIRContext *context,
                    ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,
+                   ConvertErfInvOp,
                    ConvertLgammaOp,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
-                   ConvertTanOp,
                    ConvertTopKOp,
                    ConvertZetaOp>(context);
   // clang-format on

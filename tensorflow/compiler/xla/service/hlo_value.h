@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/lazy.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -61,7 +62,7 @@ struct HloPosition {
 
   template <typename H>
   friend H AbslHashValue(H h, const HloPosition& pos) {
-    return H::combine(std::move(h), *pos.instruction, pos.index);
+    return H::combine(std::move(h), pos.instruction, pos.index);
   }
 };
 
@@ -72,7 +73,7 @@ struct HloUse {
   // Instruction at which the value is used.
   HloInstruction* instruction;
 
-  // The operand number in which the value is appears.
+  // The operand number in which the value appears.
   int64_t operand_number;
 
   // The shape index within the operand in which the value appears.
@@ -148,10 +149,7 @@ class HloValue : public BufferValue {
   // overhead could be non-trivial for the first invocation. Therefore even
   // though it is marked `const`, it actually can mutate its data members. It is
   // kept this way to allow passing around const references.
-  absl::Span<const HloUse> GetUses() const {
-    return uses_.MaybeInitAndGet(
-        [this](std::vector<HloUse>& uses) { ComputeUses(uses); });
-  }
+  absl::Span<const HloUse> GetUses() const { return uses_.get(); }
 
   // Returns true if this has a position that is the root of the given
   // computation.
@@ -169,24 +167,8 @@ class HloValue : public BufferValue {
   std::string ToString() const override { return ToString(0); }
 
  private:
-  template <typename T>
-  class Lazy {
-   public:
-    Lazy() = default;
-    const T& MaybeInitAndGet(absl::FunctionRef<void(T&)> func) const {
-      if (!initialized_) {
-        func(uses_);
-        initialized_ = true;
-      }
-      return uses_;
-    }
-
-   private:
-    mutable T uses_;
-    mutable bool initialized_ = false;
-  };
   // Called when lazily computing the uses.
-  void ComputeUses(std::vector<HloUse>& uses) const;
+  std::vector<HloUse> ComputeUses() const;
 
   // The set of positions of this HloValue. The first element is always the
   // position of the definition.

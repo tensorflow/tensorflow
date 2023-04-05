@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
@@ -91,7 +93,6 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = vectorize;
-  tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
@@ -193,7 +194,7 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
 void RunEigenBenchmark(
     ::testing::benchmark::State& state,
     std::function<void(llvm::ArrayRef<Tensor>,
-                       llvm::Optional<Eigen::ThreadPoolDevice>)>
+                       std::optional<Eigen::ThreadPoolDevice>)>
         compute,
     llvm::ArrayRef<InputTensorSpec> input_specs) {
   // Number of worker threads.
@@ -201,7 +202,7 @@ void RunEigenBenchmark(
 
   // Maybe construct an Eigen thread pool device for evaluating expressions.
   Eigen::ThreadPool thread_pool(num_threads);
-  llvm::Optional<Eigen::ThreadPoolDevice> device;
+  std::optional<Eigen::ThreadPoolDevice> device;
   if (num_threads > 0) device.emplace(&thread_pool, num_threads);
 
   // Generate random inputs based on the tensor specs.

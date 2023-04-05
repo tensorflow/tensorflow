@@ -15,22 +15,84 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <deque>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+namespace {
+
+// Exports all XLA functions in the form of XlaLaunch, and their nested
+// functions.
+StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
+  // Find all XLA functions.
+  std::vector<std::string> xla_functions;
+  module.walk([&](mlir::TF::XlaLaunchOp xla_launch_op) {
+    std::string func_name =
+        xla_launch_op.getFunctionAttr().getRootReference().str();
+    xla_functions.push_back(func_name);
+  });
+
+  // Convert all XLA functions and their nested functions.
+  std::deque<std::string> queue;
+  for (const std::string& func : xla_functions) {
+    queue.push_back(func);
+  }
+
+  const mlir::SymbolTable symbol_table(module);
+  absl::flat_hash_set<std::string> visited;
+  std::vector<FunctionDef> xla_func_defs;
+  while (!queue.empty()) {
+    const std::string func_name = queue.front();
+    queue.pop_front();
+
+    if (visited.contains(func_name)) continue;
+
+    const auto func_op = symbol_table.lookup<mlir::func::FuncOp>(func_name);
+    if (!func_op) {
+      return tensorflow::errors::Internal(
+          absl::StrCat("Function ", func_name, " is not found."));
+    }
+    FunctionDef func_def;
+    TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
+        func_op, GraphExportConfig(), &func_def));
+    xla_func_defs.push_back(func_def);
+
+    // Visit each op in the function and find out referenced functions from the
+    // attributes.
+    func_op->walk([&](mlir::Operation* op) {
+      for (const mlir::NamedAttribute& attr : op->getAttrs()) {
+        if (const auto sym =
+                attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+          mlir::Operation* func =
+              mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
+          if (func) {
+            queue.push_back(sym.getValue().str());
+          }
+        }
+      }
+    });
+    visited.insert(func_name);
+  }
+  return xla_func_defs;
+}
+
+}  // namespace
 
 Status ConvertFunctionToBef(
     mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
@@ -61,8 +123,12 @@ Status ConvertFunctionToBef(
   return tensorflow::CompileTFMLIRToBEF(options, module.get(), bef_buffer);
 }
 
-Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer) {
+Status ConvertTfMlirToRuntimeExecutable(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
+                             const tensorflow::TfrtPipelineOptions& options)>
+        emit_executable,
+    tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
@@ -97,6 +163,21 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       return diag_handler.Combine(tensorflow::errors::Internal(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
+  } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
+             options.use_bridge_for_gpu) {
+    TF_RETURN_IF_ERROR(
+        mlir::TF::RunTFXLABridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+
+    // GPU XLA clusters are wrapped in functions, which could be transformed by
+    // bridge. Hence, the MLIR functions for XLA clusters are exported and added
+    // to the function library.
+    if (fallback_state != nullptr) {
+      TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
+                          ExportXlaFunctions(module));
+      for (const auto& func_def : xla_func_defs) {
+        TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
+      }
+    }
   }
 
   if (VLOG_IS_ON(1)) {
@@ -120,10 +201,17 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.target_tpurt =
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
+  pass_options.target_gpu =
+      (options.device_target == TfrtDeviceInfraTarget::kGpu);
+  pass_options.use_bridge_for_gpu = options.use_bridge_for_gpu;
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
+  pass_options.tpu_allow_unpadded_batch = options.tpu_allow_unpadded_batch;
+  pass_options.sink_in_invariant_ops = options.sink_in_invariant_ops;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
+  pass_options.fuse_get_resource_ops_in_hoisting =
+      options.fuse_get_resource_ops_in_hoisting;
   pass_options.func_use_fallback_tensor = true;
   pass_options.enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
@@ -134,25 +222,43 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.upper_cost_threshold = options.upper_cost_threshold;
   pass_options.merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
-  tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
 
-  if (mlir::failed(pm.run(module)))
-    return diag_handler.Combine(tensorflow::errors::Internal(
-        "failed to lower TF Dialect to CoreRT dialect."));
+  TF_RETURN_IF_ERROR(
+      tensorflow::CreateTFExecutorToTFPipeline(pm, pass_options));
+
+  auto status = emit_executable(pm, module, pass_options);
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tfrt_dialect", module);
   }
 
-  *bef_buffer =
-      tfrt::ConvertMLIRToBEF(module, /*disable_optional_sections=*/true);
-  if (bef_buffer->empty())
-    return diag_handler.Combine(
-        tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+  return status;
+}
 
-  bef_buffer->shrink_to_fit();
+Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
+                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          tfrt_stub::FallbackState* fallback_state) {
+  return ConvertTfMlirToRuntimeExecutable(
+      options, module,
+      [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
+                   const tensorflow::TfrtPipelineOptions& options) {
+        mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+        tensorflow::CreateTfToTfrtPipeline(pm, options);
 
-  return OkStatus();
+        if (mlir::failed(pm.run(module)))
+          return diag_handler.Combine(tensorflow::errors::Internal(
+              "failed to lower TF Dialect to CoreRT dialect."));
+
+        *bef_buffer =
+            tfrt::ConvertMLIRToBEF(module, /*disable_optional_sections=*/true);
+        if (bef_buffer->empty())
+          return diag_handler.Combine(
+              tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+
+        bef_buffer->shrink_to_fit();
+        return OkStatus();
+      },
+      fallback_state);
 }
 
 }  // namespace tensorflow

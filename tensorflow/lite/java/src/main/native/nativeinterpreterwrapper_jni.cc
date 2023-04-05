@@ -104,6 +104,15 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   }
 };
 
+// Like JNIEnv's FindClass method, but converts the result to a
+// JNI global reference rather than returning a local reference.
+jclass FindClassAndMakeGlobalRef(JNIEnv* env, const char* class_name) {
+  jclass local_ref = env->FindClass(class_name);
+  jclass global_ref = static_cast<jclass>(env->NewGlobalRef(local_ref));
+  env->DeleteLocalRef(local_ref);
+  return global_ref;
+}
+
 }  // namespace
 
 extern "C" {
@@ -116,7 +125,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
 
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  jclass string_class = env->FindClass("java/lang/String");
+  static jclass string_class =
+      FindClassAndMakeGlobalRef(env, "java/lang/String");
   if (string_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -191,7 +201,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureKeys(
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  jclass string_class = env->FindClass("java/lang/String");
+  static jclass string_class =
+      FindClassAndMakeGlobalRef(env, "java/lang/String");
   if (string_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -275,7 +286,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
 
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  jclass string_class = env->FindClass("java/lang/String");
+  static jclass string_class =
+      FindClassAndMakeGlobalRef(env, "java/lang/String");
   if (string_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -396,7 +408,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     jint num_threads, jboolean useXnnpack, jobject delegate_handle_list) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
-  static jclass list_class = env->FindClass("java/util/List");
+  static jclass list_class = FindClassAndMakeGlobalRef(env, "java/util/List");
   if (list_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,
@@ -422,7 +434,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     }
     return 0;
   }
-  static jclass long_class = env->FindClass("java/lang/Long");
+  static jclass long_class = FindClassAndMakeGlobalRef(env, "java/lang/Long");
   if (long_class == nullptr) {
     if (!env->ExceptionCheck()) {
       ThrowException(env, tflite::jni::kUnsupportedOperationException,

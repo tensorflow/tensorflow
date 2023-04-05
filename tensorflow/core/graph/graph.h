@@ -102,7 +102,6 @@ class Node {
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
-  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
   NodeDef* mutable_def();
 
   // input and output types
@@ -268,6 +267,15 @@ class Node {
 
   // Erases type information from the node.
   void ClearTypeInfo();
+
+  // Update type information for a node with a list of inputs and/or outputs
+  // described by its TYPE_ATTR_NAME attr when removing some of these. The keys
+  // of INDEX_MAPPING are the indexes of the inputs/outputs that are not
+  // removed. dtype information in the TYPE_ATTR_NAME attr is always updated.
+  // Use UPDATE_FULL_TYPE=true when this changes the node's outputs to also
+  // update the node's full type information (if present).
+  Status ShrinkTypeInfo(const absl::flat_hash_map<int, int>& index_mapping,
+                        const string& type_attr_name, bool update_full_type);
 
   // Called after an incident non-control edge has changed. Does nothing if not
   // all input edges are defined.
@@ -539,7 +547,7 @@ class Graph {
   // Clone the current graph into a new one.
   std::unique_ptr<Graph> Clone();
 
-  static const int kControlSlot;
+  static constexpr int kControlSlot = -1;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const;
@@ -587,7 +595,9 @@ class Graph {
                              bool allow_duplicates = false);
 
   // Removes edge from the graph. Does not update the destination node's
-  // NodeDef.
+  // NodeDef. Does not update the full type information of the source node's
+  // NodeDef. (See ShrinkTypeInfo for an example of updating full type
+  // information when removing some outputs from a node.)
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
@@ -609,8 +619,27 @@ class Graph {
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
   // imported function differs from an existing function or op with the same
-  // name.
+  // name. This overload adds the function definitions with no stack traces.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                            const StackTracesMap& stack_traces);
+
+  // Adds the function definition and its stacktraces to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionDef(const FunctionDef& fdef,
+                        const StackTracesMap& stack_traces);
+
+  // Adds the gradient definition to this graph's op registry. Ignores duplicate
+  // gradients of the same function, and returns a bad status if an imported
+  // gradient differs from an existing gradient of the same function name.
+  Status AddGradientDef(const GradientDef& gdef);
 
   // The number of live nodes in the graph.
   //
@@ -688,7 +717,6 @@ class Graph {
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
-  // TODO(mdan): This is only used by control_flow_deps_o_chains. Remove?
   FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
 
   void CheckDeviceNameIndex(int index) {
@@ -751,6 +779,22 @@ class Graph {
   ConstructionContext GetConstructionContextInternal() const {
     return construction_context_;
   }
+
+  // Set full type information for a node given its name.
+  // Note that if this is called in a loop iterating over all the nodes
+  // elsewhere it would be O(n^2) complexity. If this case was important in the
+  // future, an alternative method could be added that takes in a flat_hash_map
+  // of name: type and simply iterates through the graph once and annotates all
+  // nodes.
+  void SetNodeType(StringPiece name, const FullTypeDef& type);
+
+  // Get full type information for a node given its name.
+  // Note that if this is called in a loop iterating over all the nodes
+  // elsewhere it would be O(n^2) complexity. If this case was important in the
+  // future, an alternative method could be added that takes in flat_hash_map of
+  // name: type and simply iterates through the graph once and stores all the
+  // information in the map.
+  void NodeType(StringPiece name, const FullTypeDef** result);
 
   // TODO(josh11b): uint64 hash() const;
 

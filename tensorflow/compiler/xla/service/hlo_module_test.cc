@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -46,10 +46,10 @@ namespace xla {
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
-template <>
-std::unique_ptr<test::TestCompilationEnvironment1>
-CompilationEnvironments::ProcessNewEnv(
-    std::unique_ptr<test::TestCompilationEnvironment1> env) {
+std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
+    std::unique_ptr<tsl::protobuf::Message> msg) {
+  std::unique_ptr<test::TestCompilationEnvironment1> env(
+      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);
@@ -63,7 +63,10 @@ namespace op = ::xla::testing::opcode_matchers;
 
 class HloModuleTest : public HloTestBase {
  protected:
-  HloModuleTest() {}
+  static void SetUpTestSuite() {
+    CompilationEnvironments::RegisterProcessNewEnvFn(
+        test::TestCompilationEnvironment1::descriptor(), ProcessNewEnv);
+  }
 
   // Create a computation which returns a constant.
   std::unique_ptr<HloComputation> CreateConstantComputation() {
@@ -126,7 +129,7 @@ TEST_F(HloModuleTest, CloneTest) {
   // Add a compilation environment to module
   auto env = std::make_unique<test::TestCompilationEnvironment1>();
   env->set_some_flag(10);
-  module->comp_envs().AddEnv(std::move(env));
+  TF_ASSERT_OK(module->comp_envs().AddEnv(std::move(env)));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
@@ -142,7 +145,7 @@ TEST_F(HloModuleTest, CloneTest) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+    EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
   }
 }
 
@@ -181,9 +184,9 @@ TEST_F(HloModuleTest, CloneHasFusion) {
     if ((*origin)->name() == "Fused") {
       // Clone of the fused computation is handled when its fusion instruction
       // is cloned, which always use suffix ".clone".
-      EXPECT_EQ((*origin)->name() + ".clone", (*copied)->name());
+      EXPECT_EQ(absl::StrCat((*origin)->name(), ".clone"), (*copied)->name());
     } else {
-      EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+      EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
     }
   }
 }
@@ -751,9 +754,8 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_TRUE(diff.Compare(proto, reconstructed_module_proto));
 }
 
-static HloModuleConfigProto::ShardableValueUpdatePairProto MakeShardPair(
-    int offset) {
-  HloModuleConfigProto::ShardableValueUpdatePairProto pear;
+static ShardableValueUpdatePairProto MakeShardPair(int offset) {
+  ShardableValueUpdatePairProto pear;
   pear.set_input_parameter_number(offset + 1);
   for (int64_t i = 0; i < 5; ++i) {
     pear.add_parameter_shape_index(offset + i);
@@ -849,12 +851,7 @@ static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
   }
   proto.set_phase_index(2);
 
-  // flag config
-  for (int idx = 1; idx <= 3; ++idx) {
-    proto.mutable_flag_config()->insert(
-        {absl::StrCat("Flag", idx), absl::StrCat("Value", idx)});
-  }
-  proto.set_allow_spmd_sharding_propagation_to_output(true);
+  proto.add_allow_spmd_sharding_propagation_to_output(true);
   for (int idx = 1; idx <= 3; ++idx) {
     int64_t allowance = 35 * idx;
     proto.mutable_analysis_allowance_map()->insert(

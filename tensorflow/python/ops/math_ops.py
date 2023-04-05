@@ -70,17 +70,17 @@ import builtins
 import numbers
 import numpy as np
 
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -1007,10 +1007,15 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
+      if x.dtype.is_complex and base_type.is_floating:
+        logging.warn(
+            f"You are casting an input of type {x.dtype.name} to an "
+            f"incompatible dtype {base_type.name}.  This will "
+            "discard the imaginary part and may not be what you "
+            "intended."
+        )
       if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
-    if x.dtype.is_complex and base_type.is_floating:
-      logging.warn("Casting complex to real discards imaginary part.")
     return x
 
 
@@ -1049,10 +1054,10 @@ def saturate_cast(value, dtype, name=None):
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
-                  np.complex(real_out_dtype.min, real_out_dtype.min),
+                  builtins.complex(real_out_dtype.min, real_out_dtype.min),
                   dtype=in_dtype),
               ops.convert_to_tensor(
-                  np.complex(real_out_dtype.max, real_out_dtype.max),
+                  builtins.complex(real_out_dtype.max, real_out_dtype.max),
                   dtype=in_dtype),
               name="clamp")
         return cast(value, dtype, name=name)
@@ -1065,26 +1070,32 @@ def saturate_cast(value, dtype, name=None):
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
+      # The output min/max may not actually be representable in the
+      # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
+      # behavior when trying to cast a value outside the valid range of the
+      # target type. We work around this by nudging the min/max to fall within
+      # the valid output range.  The catch is that we may actually saturate
+      # to a value less than the true saturation limit, but this is the best we
+      # can do in order to avoid UB without introducing a separate SaturateCast
+      # op.
+      min_limit = in_dtype.as_numpy_dtype(out_real_dtype.min)
+      if min_limit < out_real_dtype.min:
+        min_limit = np.nextafter(
+            out_real_dtype.min, 0, dtype=in_dtype.as_numpy_dtype
+        )
 
-      # Forward-compatibility required for Brella if output is real:
-      if not dtype.is_complex and not tf_compat.forward_compatible(
-          2022, 12, 16):
-        # Old behavior using max/min.
-        if in_dtype.min < dtype.min:
-          value = gen_math_ops.maximum(
-              value,
-              ops.convert_to_tensor(dtype.min, dtype=value.dtype, name="min"))
-        if in_dtype.max > dtype.max:
-          value = gen_math_ops.minimum(
-              value,
-              ops.convert_to_tensor(dtype.max, dtype=value.dtype, name="max"))
-      else:
-        # New behavior using clip.
-        value = gen_math_ops._clip_by_value(
-            value,
-            ops.convert_to_tensor(out_real_dtype.min, dtype=in_dtype),
-            ops.convert_to_tensor(out_real_dtype.max, dtype=in_dtype),
-            name="clamp")
+      max_limit = in_dtype.as_numpy_dtype(out_real_dtype.max)
+      if max_limit > out_real_dtype.max:
+        max_limit = np.nextafter(
+            out_real_dtype.max, 0, dtype=in_dtype.as_numpy_dtype
+        )
+
+      value = gen_math_ops._clip_by_value(
+          value,
+          ops.convert_to_tensor(min_limit, dtype=in_dtype),
+          ops.convert_to_tensor(max_limit, dtype=in_dtype),
+          name="clamp",
+      )
     return cast(value, dtype, name=name)
 
 
@@ -2178,8 +2189,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-ops.register_tensor_conversion_function(builtins.range,
-                                        _range_tensor_conversion_function)
+tensor_conversion_registry.register_tensor_conversion_function(
+    builtins.range, _range_tensor_conversion_function)
 
 
 # Reduction operations
@@ -3878,40 +3889,6 @@ tf_export(v1=["sparse_matmul"])(sparse_matmul)
 @dispatch.add_dispatch_support
 
 
-@ops.RegisterStatistics("MatMul", "flops")
-def _calc_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for MatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[0])
-  else:
-    k = int(a_shape[1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
-@ops.RegisterStatistics("BatchMatMul", "flops")
-@ops.RegisterStatistics("BatchMatMulV2", "flops")
-@ops.RegisterStatistics("BatchMatMulV3", "flops")
-def _calc_batch_mat_mul_flops(graph, node):
-  """Calculates the compute resources needed for BatchMatMul."""
-  transpose_a = node.attr["transpose_a"].b
-  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
-  a_shape.assert_is_fully_defined()
-  if transpose_a:
-    k = int(a_shape[-2])
-  else:
-    k = int(a_shape[-1])
-  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
-  output_shape.assert_is_fully_defined()
-  output_count = np.prod(output_shape.as_list())
-  return ops.OpStats("flops", (k * output_count * 2))
-
-
 def _as_indexed_slices(x, optimize=True):
   """Convert 'x' to IndexedSlices.
 
@@ -4038,8 +4015,8 @@ def add(x, y, name=None):
 
   Args:
     x: A `tf.Tensor`. Must be one of the following types: bfloat16, half,
-      float32, float64, uint8, int8, int16, int32, int64, complex64, complex128,
-      string.
+      float16, float32, float64, uint8, uint16, uint32, uint64, int8, int16,
+      int32, int64, complex64, complex128, string.
     y: A `tf.Tensor`. Must have the same type as x.
     name: A name for the operation (optional)
   """
@@ -4094,7 +4071,7 @@ def add_n(inputs, name=None):
   if not inputs or not isinstance(inputs, collections_abc.Iterable):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(
       isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
       for x in inputs):
@@ -4110,7 +4087,6 @@ def add_n(inputs, name=None):
       return array_ops.identity(values, name=name)
     return values
   return gen_math_ops.add_n(inputs, name=name)
-
 
 
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
@@ -4172,7 +4148,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _input_error()
-  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  inputs = indexed_slices.convert_n_to_tensor_or_indexed_slices(inputs)
   if not all(isinstance(x, ops.Tensor) for x in inputs):
     raise _input_error()
   if not all(x.dtype == inputs[0].dtype for x in inputs):
@@ -5139,10 +5115,10 @@ def tensordot(a, b, axes, name=None):
       prod_axes_dims = reduce_prod(axes_dims)
       if flipped:
         perm = array_ops.concat([axes, free], 0)
-        new_shape = array_ops.stack([prod_axes_dims, prod_free_dims])
+        new_shape = array_ops_stack.stack([prod_axes_dims, prod_free_dims])
       else:
         perm = array_ops.concat([free, axes], 0)
-        new_shape = array_ops.stack([prod_free_dims, prod_axes_dims])
+        new_shape = array_ops_stack.stack([prod_free_dims, prod_axes_dims])
       reshaped_a = array_ops.reshape(array_ops.transpose(a, perm), new_shape)
       return reshaped_a, free_dims, free_dims_static
 

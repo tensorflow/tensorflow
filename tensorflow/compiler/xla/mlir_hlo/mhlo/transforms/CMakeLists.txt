@@ -42,6 +42,7 @@ add_mlir_library(MhloPasses
   constraint_fusion/constraint_fusion_pass.cc
   convert_to_signless/convert_to_signless_pass.cc
   expand_hlo_tuples/expand_hlo_tuples.cc
+  expand_ops_simplifier/expand_ops_simplifier.cc
   group_reduction_dimensions/group_reduction_dimensions.cc
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc
@@ -53,6 +54,7 @@ add_mlir_library(MhloPasses
   materialize_broadcasts/materialize_broadcasts.cc
   materialize_broadcasts/materialize_broadcasts_pass.cc
   merge_assuming_ops/merge_assuming_ops.cc
+  mhlo_canonicalize_dot/mhlo_canonicalize_dot.cc
   mhlo_canonicalize_gather/mhlo_canonicalize_gather.cc
   mhlo_canonicalize_reduction/mhlo_canonicalize_reduction.cc
   mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc
@@ -62,9 +64,12 @@ add_mlir_library(MhloPasses
   optimize_mhlo/optimize_mhlo_pass.cc
   rank_specialization/rank_specialization.cc
   restrict_max_rank/restrict_max_rank.cc
+  shape_legalize_to_hlo/shape_legalize_to_hlo.cc
   shape_reification/shape_reification_pass.cc
+  shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
   sparse_rewriting/sparse_rewriting.cc
+  symbolic_shape_optimization/symbolic_shape_optimization.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc
   unfuse_batch_norm/unfuse_batch_norm.cc
   unfuse_batch_norm/unfuse_batch_norm_pass.cc
@@ -79,12 +84,16 @@ add_mlir_library(MhloPasses
 
   LINK_LIBS PUBLIC
   ChloOps
+  MhloAnalysis
   MhloDialect
   MhloScatterUtils
   MhloTypeConversion
   MLIRIR
+  MLIRLinalgDialect
+  MLIRMathDialect
   MLIRMhloUtils
   MLIRPass
+  MLIRSCFDialect
   MLIRSideEffectInterfaces
   MLIRTransformUtils
   StablehloBroadcastUtils
@@ -95,7 +104,6 @@ add_mlir_library(MhloToThloConversion
 
   DEPENDS
   MLIRMhloPassIncGen
-  MLIRGmlStTilingInterfaceIncGen
   THLODialect
 
   LINK_COMPONENTS
@@ -103,6 +111,7 @@ add_mlir_library(MhloToThloConversion
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MhloToArithmeticConversion
   MhloTypeConversion
   THLODialect
   MLIRIR
@@ -147,6 +156,7 @@ add_mlir_library(MhloToMemrefConversion
   Core
 
   LINK_LIBS PUBLIC
+  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -172,6 +182,7 @@ add_mlir_library(MhloToArithmeticConversion
   MLIRIR
   MLIRPass
   MLIRMathDialect
+  MLIRSCFDialect
   MLIRTransforms
   MLIRTransformUtils
 )
@@ -194,7 +205,9 @@ add_mlir_library(MhloToStandard
   LINK_LIBS PUBLIC
   MhloDialect
   MLIRIR
+  MLIRMathDialect
   MLIRPass
+  MLIRSCFDialect
   MLIRTensorDialect
   MLIRTransformUtils
 )
@@ -237,6 +250,8 @@ add_mlir_library(MhloToLinalg
   HloToLinalgUtils
   LmhloDialect
   MhloDialect
+  MhloRngUtils
+  MhloToArithmeticConversion
   MhloTypeConversion
   MLIRBufferizationDialect
   MLIRComplexDialect
@@ -302,6 +317,7 @@ add_mlir_library(StablehloToMhlo
   LINK_LIBS PUBLIC
   MhloDialect
   MhloTypeConversion
+  MLIRAsmParser
   MLIRIR
   MLIRPass
   MLIRSupport

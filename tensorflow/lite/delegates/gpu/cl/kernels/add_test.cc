@@ -29,17 +29,17 @@ namespace {
 
 TEST_F(OpenCLOperationTest, AddTwoEqualTensors) {
   auto status = AddTwoEqualTensorsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, AddFirstTensorHasMoreChannelsThanSecond) {
   auto status = AddFirstTensorHasMoreChannelsThanSecondTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, AddFirstTensorHasLessChannelsThanSecond) {
   auto status = AddFirstTensorHasLessChannelsThanSecond(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

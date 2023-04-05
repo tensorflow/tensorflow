@@ -23,8 +23,10 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -39,6 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace Eigen {
 struct half;
@@ -59,13 +64,13 @@ using llvm::ArrayRef;
 
 using EncodedArg = CustomCallArgEncodingSet::Encoded;
 
-FailureOr<EncodedArg> CustomCallArgEncodingSet::Encode(Globals &g,
+FailureOr<EncodedArg> CustomCallArgEncodingSet::Encode(Globals &g, Allocas &a,
                                                        ImplicitLocOpBuilder &b,
                                                        Value value,
                                                        Value converted) const {
   for (auto &encoding : encodings_)
     if (succeeded(encoding->Match(value, converted)))
-      return encoding->Encode(g, b, value, converted);
+      return encoding->Encode(g, a, b, value, converted);
   return failure();
 }
 
@@ -75,13 +80,13 @@ FailureOr<EncodedArg> CustomCallArgEncodingSet::Encode(Globals &g,
 
 using EncodedRet = CustomCallRetEncodingSet::Encoded;
 
-FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g,
+FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g, Allocas &a,
                                                        ImplicitLocOpBuilder &b,
                                                        Type type,
                                                        Type converted) const {
   for (auto &encoding : encodings_)
     if (succeeded(encoding->Match(type, converted)))
-      return encoding->Encode(g, b, type, converted);
+      return encoding->Encode(g, a, b, type, converted);
   return failure();
 }
 
@@ -344,7 +349,7 @@ static LLVM::GlobalOp EncodeDenseArrayAttribute(Globals &g,
   Type ptr = LLVM::LLVMPointerType::get(ctx);
 
   // Stored array type: !llvm.array<element_type x size>
-  Type element_type = base_array.getType().getElementType();
+  Type element_type = base_array.getElementType();
   Type arr_type = LLVM::LLVMArrayType::get(element_type, size);
 
   // Encoded array type: !llvm.struct<(i64, !llvm.ptr)>.
@@ -410,22 +415,14 @@ static FuncOp GetParentFunc(Value value) {
 }
 
 // Packs value on the stack. Returns allocation holding the value.
-static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Value value) {
-  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Allocas &a,
+                                Value value) {
+  LLVM::AllocaOp alloca = a.GetOrCreate(b, value.getType());
+  // Start the lifetime of encoded value.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
+  b.create<LLVM::StoreOp>(value, alloca);
 
-  // Always create an `alloca` in the parent function entry block.
-  // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  LLVM::AllocaOp mem = [&]() -> LLVM::AllocaOp {
-    Block &block = GetParentFunc(value).getBody().front();
-    OpBuilder::InsertionGuard guard(b);
-    b.setInsertionPointToStart(&block);
-    Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, value.getType(), one, 0);
-  }();
-
-  b.create<LLVM::StoreOp>(value, mem);
-
-  return mem;
+  return alloca;
 }
 
 //===----------------------------------------------------------------------===//
@@ -524,6 +521,50 @@ mlir::FailureOr<mlir::LLVM::GlobalOp> Globals::TryGetOrCreate(
 }
 
 //===----------------------------------------------------------------------===//
+// A helper class to create alloca operations for encoded arguments.
+//===----------------------------------------------------------------------===//
+
+Allocas::Allocas(Block *block,
+                 llvm::DenseMap<mlir::Type, TypedAllocas> *allocas)
+    : block_(block), allocas_(allocas) {
+  for (auto &[_, v] : *allocas_) {
+    assert(v.offset == 0 && "expected zero offset");
+    (void)v;
+  }
+}
+
+Allocas::~Allocas() {
+  for (auto &[k, v] : *allocas_) v.offset = 0;
+}
+
+mlir::LLVM::AllocaOp Allocas::GetOrCreate(mlir::ImplicitLocOpBuilder &b,
+                                          mlir::Type type) {
+  TypedAllocas &allocas = (*allocas_)[type];
+
+  // Reuse existing alloca for the given type.
+  if (allocas.offset < allocas.allocas.size()) {
+    return allocas.allocas[allocas.offset++];
+  }
+
+  // Create a new alloca at the beginning of the block.
+  OpBuilder::InsertionGuard guard(b);
+  b.setInsertionPointToStart(block_);
+  Value c1 = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  auto alloca = b.create<LLVM::AllocaOp>(ptr, type, c1, 0);
+
+  ++allocas.offset;
+  return allocas.allocas.emplace_back(alloca);
+}
+
+Allocas EncodingAllocas::GetForOperation(mlir::Operation *op) {
+  // Always create an `alloca` in the parent function entry block.
+  // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+  Block *block = &op->getParentOfType<func::FuncOp>().getBody().front();
+  return Allocas(block, &allocas_[block]);
+}
+
+//===----------------------------------------------------------------------===//
 // Helper functions for encoding attributes and values for custom calls.
 //===----------------------------------------------------------------------===//
 
@@ -588,6 +629,8 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
   if (type.isInteger(64)) return PrimitiveType::S64;
 
   // Floating point types.
+  if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
+  if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
@@ -604,12 +647,39 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
 }
 
 static TypeID ArrayRuntimeTypeId(Type elem_type) {
-  if (elem_type.isInteger(8)) return TypeID::get<Tagged<ArrayRef<int8_t>>>();
-  if (elem_type.isInteger(16)) return TypeID::get<Tagged<ArrayRef<int16_t>>>();
-  if (elem_type.isInteger(32)) return TypeID::get<Tagged<ArrayRef<int32_t>>>();
-  if (elem_type.isInteger(64)) return TypeID::get<Tagged<ArrayRef<int64_t>>>();
-  if (elem_type.isF32()) return TypeID::get<Tagged<ArrayRef<float>>>();
-  if (elem_type.isF64()) return TypeID::get<Tagged<ArrayRef<double>>>();
+  if (elem_type.isInteger(8))
+    return TypeID::get<Tagged<absl::Span<const int8_t>>>();
+  if (elem_type.isInteger(16))
+    return TypeID::get<Tagged<absl::Span<const int16_t>>>();
+  if (elem_type.isInteger(32))
+    return TypeID::get<Tagged<absl::Span<const int32_t>>>();
+  if (elem_type.isInteger(64))
+    return TypeID::get<Tagged<absl::Span<const int64_t>>>();
+
+  if (elem_type.isF32()) return TypeID::get<Tagged<absl::Span<const float>>>();
+  if (elem_type.isF64()) return TypeID::get<Tagged<absl::Span<const double>>>();
+
+  assert(false && "unsupported type id");
+  return TypeID::getFromOpaquePointer(reinterpret_cast<void *>(0xDEADBEEF));
+}
+
+static TypeID AsyncValueRuntimeTypeId(Type elem_type) {
+  if (elem_type.isInteger(1))
+    return TypeID::get<Tagged<tsl::AsyncValueRef<bool>>>();
+  if (elem_type.isInteger(8))
+    return TypeID::get<Tagged<tsl::AsyncValueRef<int8_t>>>();
+  if (elem_type.isInteger(16))
+    return TypeID::get<Tagged<tsl::AsyncValueRef<int16_t>>>();
+  if (elem_type.isInteger(32))
+    return TypeID::get<Tagged<tsl::AsyncValueRef<int32_t>>>();
+  if (elem_type.isInteger(64))
+    return TypeID::get<Tagged<tsl::AsyncValueRef<int64_t>>>();
+  if (elem_type.isF32())
+    return TypeID::get<Tagged<tsl::AsyncValueRef<float>>>();
+  if (elem_type.isF64())
+    return TypeID::get<Tagged<tsl::AsyncValueRef<double>>>();
+  if (elem_type.isa<MemRefType>())
+    return TypeID::get<Tagged<tsl::AsyncValueRef<MemrefView>>>();
 
   assert(false && "unsupported type id");
   return TypeID::getFromOpaquePointer(reinterpret_cast<void *>(0xDEADBEEF));
@@ -751,7 +821,7 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(mlir::SymbolTable &,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
-  Type elem_type = attr.cast<DenseArrayAttr>().getType().getElementType();
+  Type elem_type = attr.cast<DenseArrayAttr>().getElementType();
 
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);
@@ -779,7 +849,7 @@ FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(mlir::SymbolTable &,
                                                       Attribute attr) const {
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);
-  encoded.type_id = EncodeTypeId(g, b, TypeID::get<Tagged<EmptyArrayRef>>());
+  encoded.type_id = EncodeTypeId(g, b, TypeID::get<Tagged<EmptyArray>>());
   encoded.value = EncodeEmptyArrayAttribute(g, b, attr, kAttrValue);
 
   return encoded;
@@ -838,6 +908,35 @@ FailureOr<EncodedAttr> UnitAttrEncoding::Encode(mlir::SymbolTable &, Globals &g,
 }
 
 //===----------------------------------------------------------------------===//
+
+LogicalResult DictionaryAttrEncoding::Match(mlir::SymbolTable &,
+                                            std::string_view,
+                                            Attribute attr) const {
+  return success(attr.isa<DictionaryAttr>());
+}
+
+FailureOr<EncodedAttr> DictionaryAttrEncoding::Encode(
+    mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
+  // TODO(ezhulenev): Add current set of available encodings to `Encode`
+  // arguments and remove it from `AggregateAttrEncoding` constructor.
+  CustomCallAttrEncodingSet encoding = DefaultAttrEncodings();
+
+  auto dict = cast<DictionaryAttr>(attr);
+  auto encoded_dict = EncodeAttributes(
+      sym_table, g, b, encoding, "__rt_dictionary",
+      // We rely on the fact that dictionary keeps attributes sorted by name.
+      llvm::SmallVector<NamedAttribute>(dict.begin(), dict.end()));
+  if (mlir::failed(encoded_dict)) return mlir::failure();
+
+  Encoded encoded;
+  encoded.name = EncodeString(g, b, name, kAttrName);
+  encoded.type_id = EncodeTypeId(g, b, TypeID::get<Tagged<Dictionary>>());
+  encoded.value = *encoded_dict;
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Encoding for collection of attributes.
 //===----------------------------------------------------------------------===//
 
@@ -878,7 +977,7 @@ FailureOr<LLVM::GlobalOp> EncodeAttributes(
     insert_value(Globals::AddrOf(b, num_attrs), 0);
 
     // Insert encoded attributes into the allocated storage.
-    for (auto &pair : llvm::enumerate(encoded_attrs)) {
+    for (const auto &pair : llvm::enumerate(encoded_attrs)) {
       CustomCallAttrEncoding::Encoded encoded = pair.value().second;
       int64_t offset = 1 + pair.index() * 3;
 
@@ -919,7 +1018,7 @@ LogicalResult ScalarArgEncoding::Match(Value value, Value converted) const {
   return success(IsSupportedScalarType(value.getType()));
 }
 
-FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g,
+FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Value value,
                                                 Value converted) const {
@@ -927,7 +1026,16 @@ FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g,
 
   Encoded encoded;
   encoded.type_id = EncodeTypeId(g, b, ScalarRuntimeTypeId(type));
-  encoded.value = PackValue(b, converted);
+
+  // Encode constant arguments as global values.
+  if (IntegerAttr cst; matchPattern(converted, m_Constant(&cst))) {
+    std::string name = llvm::formatv("__rt_c{0}", cst.getValue());
+    encoded.value = g.GetOrCreate(b, cst, name);
+  } else if (FloatAttr cst; matchPattern(converted, m_Constant(&cst))) {
+    encoded.value = g.GetOrCreate(b, cst, "__rt_cst");
+  } else {
+    encoded.value = PackValue(b, a, converted);
+  }
 
   return encoded;
 }
@@ -951,13 +1059,13 @@ LogicalResult OpaqueArgEncoding::Match(Value value, Value converted) const {
   return failure();
 }
 
-FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
+FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Value value,
                                                 Value converted) const {
   Encoded encoded;
   encoded.type_id = EncodeTypeId(g, b, type_id_);
-  encoded.value = PackValue(b, converted);
+  encoded.value = PackValue(b, a, converted);
   return encoded;
 }
 
@@ -1045,11 +1153,10 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
     Value offset = b.create<ConstantOp>(i64(memref_offset));
-    Value data = b.create<LLVM::GEPOp>(desc->getElementPtrType(),
-                                       desc->alignedPtr(b, loc), offset);
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
-    memref = b.create<LLVM::InsertValueOp>(
-        memref, b.create<LLVM::BitcastOp>(ptr, data), 2);
+    Value data = b.create<LLVM::GEPOp>(ptr, memref_ty.getElementType(),
+                                       desc->alignedPtr(b, loc), offset);
+    memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
   }
 
   return memref;
@@ -1059,7 +1166,7 @@ LogicalResult MemrefArgEncoding::Match(Value value, Value converted) const {
   return success(value.getType().isa<MemRefType>());
 }
 
-FailureOr<EncodedArg> MemrefArgEncoding::Encode(Globals &g,
+FailureOr<EncodedArg> MemrefArgEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Value value,
                                                 Value converted) const {
@@ -1073,7 +1180,7 @@ FailureOr<EncodedArg> MemrefArgEncoding::Encode(Globals &g,
 
   Encoded encoded;
   encoded.type_id = EncodeTypeId(g, b, type_id);
-  encoded.value = PackValue(b, EncodeMemRef(b, memref_type, converted));
+  encoded.value = PackValue(b, a, EncodeMemRef(b, memref_type, converted));
 
   return encoded;
 }
@@ -1086,16 +1193,16 @@ LogicalResult ScalarRetEncoding::Match(Type type, Type converted) const {
   return success(IsSupportedScalarType(type));
 }
 
-FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
+FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Type type,
                                                 Type converted) const {
-  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
-  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-
   Encoded encoded;
   encoded.type_id = EncodeTypeId(g, b, ScalarRuntimeTypeId(converted));
-  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
+  encoded.value = a.GetOrCreate(b, converted);
+
+  // Start the lifetime of encoded result.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), encoded.value);
 
   return encoded;
 }
@@ -1123,16 +1230,16 @@ LogicalResult OpaqueRetEncoding::Match(Type type, Type converted) const {
   return failure();
 }
 
-FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
+FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Type value,
                                                 Type converted) const {
-  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
-  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-
   Encoded encoded;
   encoded.type_id = EncodeTypeId(g, b, type_id_);
-  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
+  encoded.value = a.GetOrCreate(b, converted);
+
+  // Start the lifetime of encoded result.
+  b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), encoded.value);
 
   return encoded;
 }
@@ -1150,7 +1257,7 @@ LogicalResult MemrefRetEncoding::Match(Type type, Type converted) const {
                  converted.isa<LLVM::LLVMStructType>());
 }
 
-FailureOr<EncodedRet> MemrefRetEncoding::Encode(Globals &g,
+FailureOr<EncodedRet> MemrefRetEncoding::Encode(Globals &g, Allocas &a,
                                                 ImplicitLocOpBuilder &b,
                                                 Type type,
                                                 Type converted) const {
@@ -1165,7 +1272,7 @@ FailureOr<EncodedRet> MemrefRetEncoding::Encode(Globals &g,
   // No memref descriptor for result, we only encode compile time known info:
   // dtype, rank, dims
   encoded.value =
-      PackValue(b, EncodeMemRef(b, memref_ty, /*descriptor=*/nullptr));
+      PackValue(b, a, EncodeMemRef(b, memref_ty, /*descriptor=*/nullptr));
 
   return encoded;
 }
@@ -1192,8 +1299,7 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 
   // Fill memref descriptor pointers and offset.
   Value gep = b.create<LLVM::GEPOp>(ptr, encoded, alloca, ValueRange({c0, c2}));
-  Value data_ptr = b.create<LLVM::BitcastOp>(memref_desc.getElementPtrType(),
-                                             b.create<LLVM::LoadOp>(ptr, gep));
+  Value data_ptr = b.create<LLVM::LoadOp>(ptr, gep);
   memref_desc.setAllocatedPtr(b, loc, data_ptr);
   memref_desc.setAlignedPtr(b, loc, data_ptr);
 
@@ -1218,6 +1324,69 @@ FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
 }
 
 //===----------------------------------------------------------------------===//
+
+LogicalResult AsyncValueRetEncoding::Match(Type type, Type converted) const {
+  return success(
+      (type.isa<async::ValueType>() || type.isa<async::TokenType>()) &&
+      converted.isa<LLVM::LLVMPointerType>());
+}
+
+FailureOr<EncodedRet> AsyncValueRetEncoding::Encode(Globals &g, Allocas &a,
+                                                    ImplicitLocOpBuilder &b,
+                                                    Type type,
+                                                    Type converted) const {
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
+
+  auto type_id = type.isa<async::ValueType>()
+                     ? AsyncValueRuntimeTypeId(
+                           type.cast<async::ValueType>().getValueType())
+                     : TypeID::get<Tagged<tsl::AsyncValueRef<tsl::Chain>>>();
+
+  Encoded encoded;
+  encoded.type_id = EncodeTypeId(g, b, type_id);
+
+  // for !async.value<memref> encoding its dtype, rank and dims with
+  // EncodedMemRef struct; we use its data field to store async value ptr.
+  if (auto value_ty = type.dyn_cast<async::ValueType>()) {
+    if (auto memref_ty = value_ty.getValueType().dyn_cast<MemRefType>()) {
+      encoded.value =
+          PackValue(b, a, EncodeMemRef(b, memref_ty, /*descriptor=*/nullptr));
+      return encoded;
+    }
+  }
+
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
+
+  return encoded;
+}
+
+FailureOr<Value> AsyncValueRetEncoding::Decode(ImplicitLocOpBuilder &b,
+                                               Type type, Type converted,
+                                               LLVM::AllocaOp alloca) const {
+  if (auto value_ty = type.dyn_cast<async::ValueType>()) {
+    if (auto memref_ty = value_ty.getValueType().dyn_cast<MemRefType>()) {
+      // TODO(ezhulenev): Add support for returning dynamically shaped memref.
+      if (!memref_ty.hasStaticShape()) return failure();
+
+      Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
+      Value c2 = b.create<ConstantOp>(b.getI64IntegerAttr(2));
+      Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+      LLVM::LLVMStructType encoded = GetEncodeMemRefType(b, memref_ty);
+      Value gep =
+          b.create<LLVM::GEPOp>(ptr, encoded, alloca, ValueRange({c0, c2}));
+      Value async_value = b.create<LLVM::LoadOp>(converted, gep);
+      auto casted = b.create<UnrealizedConversionCastOp>(type, async_value);
+      return casted.getResult(0);
+    }
+  }
+
+  auto async_value = Value{b.create<LLVM::LoadOp>(converted, alloca)};
+  auto casted = b.create<UnrealizedConversionCastOp>(type, async_value);
+  return casted.getResult(0);
+}
+
+//===----------------------------------------------------------------------===//
 // Default encodings for arguments, attributes, and results
 //===----------------------------------------------------------------------===//
 
@@ -1226,13 +1395,11 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
   encodings
       .Add<StringAttrEncoding, ScalarAttrEncoding, DenseElementsAttrEncoding,
            ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding,
-           SymbolRefAttrEncoding, UnitAttrEncoding>();
+           SymbolRefAttrEncoding, UnitAttrEncoding, DictionaryAttrEncoding>();
 
   encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
-      encodings, AggregateAttrDef<HloTraceAttr>()
-                     .Add("hlo_op", &HloTraceAttr::getHloOp)
-                     .Add("module", &HloTraceAttr::getModule)
-                     .Add("program_id", &HloTraceAttr::getProgramId));
+      encodings,
+      AggregateAttrDef<HloTraceAttr>().Add("hlo_op", &HloTraceAttr::getHloOp));
 
   return encodings;
 }
@@ -1245,7 +1412,8 @@ CustomCallArgEncodingSet DefaultArgEncodings() {
 
 CustomCallRetEncodingSet DefaultRetEncodings() {
   CustomCallRetEncodingSet encodings;
-  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding, MemrefRetEncoding>();
+  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding, MemrefRetEncoding,
+                AsyncValueRetEncoding>();
   return encodings;
 }
 

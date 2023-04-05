@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -65,13 +66,13 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
 // attribute already exists then this will just retain the set value.
 template <typename ContainerT,
           typename = typename std::enable_if<std::is_same<
-              llvm::Optional<llvm::ArrayRef<int64_t>>,
+              std::optional<llvm::ArrayRef<int64_t>>,
               decltype(*std::declval<ContainerT>().begin())>::value>::type>
 void SetShapeAttribute(absl::string_view name, ContainerT shapes,
                        AttrValueMap* values) {
   AttrValue value;
   auto& shape_list = *value.mutable_list();
-  for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
+  for (const std::optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
     if (shape.has_value()) {
       for (int64_t dim : *shape) {

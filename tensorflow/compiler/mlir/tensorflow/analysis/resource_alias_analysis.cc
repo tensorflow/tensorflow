@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -71,11 +71,12 @@ class BacktrackAnalysisInfo {
 
   // Returns the argument index of the region to which the given result number
   // can backtracked to. Such results will be called "function passthrough". If
-  // the result cannot be backtracked to a region argument, returns llvm::None.
-  llvm::Optional<int> GetArg(int result_index) const {
+  // the result cannot be backtracked to a region argument, returns
+  // std::nullopt.
+  std::optional<int> GetArg(int result_index) const {
     if (auto arg = GetValue(result_index).dyn_cast<BlockArgument>())
       if (arg.getParentBlock() == &region_->front()) return arg.getArgNumber();
-    return llvm::None;
+    return std::nullopt;
   }
 
  private:
@@ -137,14 +138,14 @@ class BacktrackAnalysis {
   }
 
   // Returns the backtrack analysis for the given region if it exists.
-  // If the region has not yet been analyzed, returns llvm::None.
-  Optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
+  // If the region has not yet been analyzed, returns std::nullopt.
+  std::optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
     auto it = info_map_.find(&region);
-    if (it == info_map_.end()) return llvm::None;
+    if (it == info_map_.end()) return std::nullopt;
     return &it->second;
   }
 
-  Optional<const InfoT*> GetAnalysisIfExists(func::FuncOp func) const {
+  std::optional<const InfoT*> GetAnalysisIfExists(func::FuncOp func) const {
     return GetAnalysisIfExists(func.getBody());
   }
 
@@ -206,9 +207,10 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
-      Optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
+      std::optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
       if (!callee_info) break;
-      Optional<int> passthrough_arg = callee_info.value()->GetArg(res_index);
+      std::optional<int> passthrough_arg =
+          callee_info.value()->GetArg(res_index);
       if (!passthrough_arg) break;
       value = call.getArgOperands()[passthrough_arg.value()];
     } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
@@ -495,7 +497,7 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
   // Seed the resource IDs for the results using either the resource ID of the
   // passthrough arg, or unknown. We need to perform further analysis if we
   // find a passthrough arg which is not the same as corresponding the result #.
-  llvm::SmallVector<Optional<int>, 4> passthrough_args(
+  llvm::SmallVector<std::optional<int>, 4> passthrough_args(
       while_op->getNumResults());
   bool need_analysis = false;
   for (auto result : filter_resources(while_op->getResults())) {
@@ -545,13 +547,13 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
   // If a result is a passthrough of all branches' inputs, merge the resource
   // IDs of corresponding operands for all the inputs.
   for (auto result : filter_resources(case_or_if_op.getResults())) {
-    llvm::SmallVector<llvm::Optional<int>, 2> passthrough_args;
+    llvm::SmallVector<std::optional<int>, 2> passthrough_args;
     passthrough_args.reserve(functions.size());
     for (const auto* info : infos)
       passthrough_args.emplace_back(info->GetArg(result.getResultNumber()));
 
     const bool all_passthrough_args_known = llvm::all_of(
-        passthrough_args, [](const llvm::Optional<int>& passthrough_arg) {
+        passthrough_args, [](const std::optional<int>& passthrough_arg) {
           return passthrough_arg.has_value();
         });
     if (all_passthrough_args_known) {

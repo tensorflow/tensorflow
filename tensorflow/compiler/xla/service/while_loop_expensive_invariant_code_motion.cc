@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_expensive_invariant_code_motion.h"
 
+#include <iterator>
+#include <string>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -171,7 +174,9 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
 
   // LICM in the presence of domain instructions is complex, bail.
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
-    if (instruction->opcode() == HloOpcode::kDomain) {
+    if (instruction->opcode() == HloOpcode::kDomain ||
+        instruction->IsCustomCall("SPMDFullToShardShape") ||
+        instruction->IsCustomCall("SPMDShardShapeToFull")) {
       return false;
     }
   }
@@ -292,7 +297,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
       continue;
     }
 
-    if (!worth_hoisting_individually_(*instruction)) {
+    if (!worth_hoisting_individually_(instruction)) {
       continue;
     }
 
@@ -342,9 +347,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->computations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kWhile;
-                    });
+                    HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
   for (HloInstruction* while_instr : while_instrs) {

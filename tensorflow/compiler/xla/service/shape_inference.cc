@@ -263,6 +263,7 @@ StatusOr<PrimitiveType> MaybeUpcast(
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
@@ -1179,16 +1180,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         continue;
       }
     }
-
-    std::vector<std::string> pieces;
-    pieces.reserve(arg_shapes.size());
-    for (const Shape* shape : arg_shapes) {
-      pieces.push_back(ShapeUtil::HumanString(*shape));
-    }
     return InvalidArgument(
         "Map operation requires all operands to have the same shape; got: "
         "%s.",
-        StrJoin(pieces, ", "));
+        absl::StrJoin(arg_shapes, ", ",
+                      [](std::string* out, const Shape* shape) {
+                        absl::StrAppend(out, ShapeUtil::HumanString(*shape));
+                      }));
   }
 
   // Check that dimensions.size == arg_shape.dimensions_size() (we currently

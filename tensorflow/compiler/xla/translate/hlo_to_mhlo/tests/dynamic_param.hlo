@@ -1,0 +1,104 @@
+# RUN: xla-translate -hlo-to-mlir-hlo %s | FileCheck %s
+hlo_module       {
+  name: "main"
+  entry_computation_name: "main.4"
+  computations {
+    name: "main.4"
+    instructions {
+      name: "Arg_0.1"
+      opcode: "parameter"
+      shape {
+        element_type: S32
+        layout {
+        }
+      }
+      metadata {
+      }
+      id: 1
+      frontend_attributes {
+      }
+    }
+    instructions {
+      name: "Arg_1.2"
+      opcode: "parameter"
+      shape {
+        element_type: F32
+        dimensions: 2
+        layout {
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: true
+      }
+      metadata {
+      }
+      parameter_number: 1
+      id: 2
+      frontend_attributes {
+      }
+    }
+    instructions {
+      name: "tuple.3"
+      opcode: "tuple"
+      shape {
+        element_type: TUPLE
+      }
+      metadata {
+      }
+      id: 3
+      frontend_attributes {
+      }
+    }
+    program_shape {
+      parameters {
+        element_type: S32
+        layout {
+        }
+      }
+      parameters {
+        element_type: F32
+        dimensions: 2
+        layout {
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: true
+      }
+      result {
+        element_type: TUPLE
+      }
+      parameter_names: "Arg_0"
+      parameter_names: "Arg_1"
+    }
+    id: 4
+    root_id: 3
+  }
+  host_program_shape {
+    parameters {
+      element_type: S32
+      layout {
+      }
+    }
+    parameters {
+      element_type: F32
+      dimensions: 2
+      layout {
+        minor_to_major: 0
+      }
+      is_dynamic_dimension: true
+    }
+    result {
+      element_type: TUPLE
+    }
+    parameter_names: "Arg_0"
+    parameter_names: "Arg_1"
+  }
+  id: 4
+  entry_computation_id: 4
+  # CHECK: mhlo.dynamic_parameter_bindings = [#mhlo.dynamic_parameter_binding<dynamic_param_num = 0, dynamic_param_indices = [], target_param_num = 1, target_param_indices = [], target_param_dim_num = 0
+  dynamic_parameter_binding {
+    entries {
+      target_param_num: 1
+    }
+  }
+}
+
+# CHECK: func.func @main(%arg0: tensor<i32>, %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tuple<> {

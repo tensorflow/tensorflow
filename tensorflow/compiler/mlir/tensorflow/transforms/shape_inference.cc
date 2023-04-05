@@ -19,12 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <stack>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -229,7 +231,7 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
          !IsSupportedNonTFOp(use.getOwner());
 }
 
-TensorType CreateTensorType(llvm::Optional<llvm::ArrayRef<int64_t>> shape,
+TensorType CreateTensorType(std::optional<llvm::ArrayRef<int64_t>> shape,
                             Type element_type) {
   if (shape.has_value())
     return tensorflow::GetTypeFromTFTensorShape(shape.value(), element_type);
@@ -304,6 +306,15 @@ bool CanInferTensorListElementType(Value tensorlist,
   std::stack<Value> worklist;
   worklist.emplace(tensorlist);
 
+  // Track the set of values we've already visited to avoid exponential blowup.
+  absl::flat_hash_set<void*> visited;
+  auto add_to_worklist = [&worklist, &visited](Value v) {
+    if (visited.find(v.getAsOpaquePointer()) == visited.end()) {
+      worklist.emplace(v);
+      visited.emplace(v.getAsOpaquePointer());
+    }
+  };
+
   while (!worklist.empty()) {
     tensorlist = worklist.top();
     worklist.pop();
@@ -320,7 +331,7 @@ bool CanInferTensorListElementType(Value tensorlist,
             push.getTensor().getType().dyn_cast<RankedTensorType>();
         if (!verify_and_update_potential_element_type(element_type))
           return false;
-        worklist.emplace(push.getOutputHandle());
+        add_to_worklist(push.getOutputHandle());
         continue;
       }
       if (auto scatter = llvm::dyn_cast<TensorListScatterIntoExistingListOp>(
@@ -331,7 +342,7 @@ bool CanInferTensorListElementType(Value tensorlist,
             DropFirstDimension(scatter.getTensor().getType());
         if (!verify_and_update_potential_element_type(element_type))
           return false;
-        worklist.emplace(scatter.getOutputHandle());
+        add_to_worklist(scatter.getOutputHandle());
         continue;
       }
       if (auto set_item = llvm::dyn_cast<TensorListSetItemOp>(use.getOwner())) {
@@ -340,15 +351,15 @@ bool CanInferTensorListElementType(Value tensorlist,
         DCOMMENT("\tTensorListSetItemOp " << element_type);
         if (!verify_and_update_potential_element_type(element_type))
           return false;
-        worklist.emplace(set_item.getOutputHandle());
+        add_to_worklist(set_item.getOutputHandle());
         continue;
       }
       if (auto pop = llvm::dyn_cast<TensorListPopBackOp>(use.getOwner())) {
-        worklist.emplace(pop.getOutputHandle());
+        add_to_worklist(pop.getOutputHandle());
         continue;
       }
       if (auto resize = llvm::dyn_cast<TensorListResizeOp>(use.getOwner())) {
-        worklist.emplace(resize.getOutputHandle());
+        add_to_worklist(resize.getOutputHandle());
         continue;
       }
       // WhileRegionOp can explicitly capture TensorList value to be used inside
@@ -357,17 +368,17 @@ bool CanInferTensorListElementType(Value tensorlist,
       if (auto while_region = llvm::dyn_cast<WhileRegionOp>(use.getOwner())) {
         DCOMMENT("\tTL WhileRegion");
         for (auto branch : while_region.getRegions())
-          worklist.emplace(branch->getArgument(use.getOperandNumber()));
+          add_to_worklist(branch->getArgument(use.getOperandNumber()));
         continue;
       }
       if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
         Operation* parent = yield->getParentOp();
-        worklist.emplace(parent->getResult(use.getOperandNumber()));
+        add_to_worklist(parent->getResult(use.getOperandNumber()));
         continue;
       }
       // TODO(jpienaar): This can be generalized.
       if (isa<IdentityOp, IdentityNOp, StopGradientOp>(use.getOwner())) {
-        worklist.emplace(use.getOwner()->getResult(use.getOperandNumber()));
+        add_to_worklist(use.getOwner()->getResult(use.getOperandNumber()));
         continue;
       }
       // Refining the tensor list element type might change the output of
@@ -415,6 +426,35 @@ Type GetType(Attribute shape_attr, Attribute type_attr) {
                                                 type.getValue());
   else
     return UnrankedTensorType::get(type.getValue());
+}
+
+// Returns a new arg type based on the shape and element type. If there are
+// dynamic bounds attribute to the arg, update the bounds based on the shape
+// as well.
+Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
+                   Type element_type, mlir::MLIRContext* context) {
+  Type new_arg_type = tensorflow::GetTypeFromTFTensorShape(shape, element_type);
+
+  if (auto input_ty = old_arg_type.dyn_cast<RankedTensorType>()) {
+    ArrayRef<int64_t> bounds = hlo::encodingToBounds(input_ty.getEncoding());
+    // The input type has bounded dynamic dimension.
+    if (!bounds.empty()) {
+      SmallVector<int64_t> new_bounds(bounds.begin(), bounds.end());
+      SmallVector<int64_t> new_shape(shape.begin(), shape.end());
+      // If dimension of the input type is dynamic. Update the
+      // bounds of the dim with the new type if needed.
+      for (int i = 0; i < input_ty.getShape().size(); i++) {
+        if (hlo::isDynamicDimSize(input_ty.getShape()[i])) {
+          new_bounds[i] = new_shape[i];
+          new_shape[i] = ShapedType::kDynamic;
+        }
+      }
+      new_arg_type = tensorflow::GetTypeFromTFTensorShape(
+          new_shape, element_type,
+          mhlo::TypeExtensionsAttr::get(context, new_bounds));
+    }
+  }
+  return new_arg_type;
 }
 
 }  // namespace
@@ -865,6 +905,14 @@ class ShapeInference {
   // yields.
   bool InferShapeForIfRegion(IfRegionOp op);
 
+  // Infers the shape CaseOp outputs based on the shapes of branch function
+  // result types.
+  bool InferShapeForCase(CaseOp op);
+
+  // Infers the shape CaseRegion outputs based on the shapes of the branch
+  // yields.
+  bool InferShapeForCaseRegion(CaseRegionOp op);
+
   // Infers the shape of _XlaHostComputeMlir based on the host computation
   // module.  Returns true if a return type was changed.
   bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
@@ -1081,6 +1129,44 @@ bool ShapeInference::InferShapeForIfRegion(IfRegionOp op) {
     if (std::get<1>(result) != std::get<2>(result)) continue;
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCase(CaseOp op) {
+  DCOMMENT_OP(op.getOperation(), "Infer shape for case ");
+
+  llvm::SmallVector<TypeRange> branch_result_types;
+  for (int i = 0; i < op.num_branches(); ++i) {
+    branch_result_types.push_back(op.ResolveBranchFunction(&symbol_table_, i)
+                                      .getFunctionType()
+                                      .getResults());
+  }
+
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (const auto& branch_result_type : branch_result_types) {
+      types.insert(branch_result_type[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
+  bool changed = false;
+  for (const auto& result : op.getResults()) {
+    llvm::DenseSet<Type> types;
+    for (auto& branch : op.getBranches()) {
+      Operation* yield = branch.front().getTerminator();
+      types.insert(yield->getOperandTypes()[result.getResultNumber()]);
+    }
+    if (types.size() == 1) {
+      changed = RefineResultType(op, result, *types.begin()) || changed;
+    }
   }
   return changed;
 }
@@ -1433,8 +1519,8 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
 }
 
 // Helper function for creating a Window proto from user-supplied data.
-// Returns llvm::None if the user-supplied data was invalid.
-llvm::Optional<xla::Window> InferWindowFromDimensions(
+// Returns std::nullopt if the user-supplied data was invalid.
+std::optional<xla::Window> InferWindowFromDimensions(
     llvm::SmallVector<int64_t> window_dimensions,
     llvm::SmallVector<int64_t> window_strides,
     llvm::SmallVector<std::pair<int64_t, int64_t>> padding,
@@ -1458,7 +1544,7 @@ llvm::Optional<xla::Window> InferWindowFromDimensions(
         verify_size(padding.size(), "padding entries") &&
         verify_size(lhs_dilation.size(), "lhs dilation factors") &&
         verify_size(rhs_dilation.size(), "rhs dilation factors")))
-    return llvm::None;
+    return std::nullopt;
 
   xla::Window window;
   for (size_t i = 0; i < window_dimensions.size(); i++) {
@@ -1491,14 +1577,14 @@ llvm::Optional<xla::Window> InferWindowFromDimensions(
   return window;
 }
 
-llvm::Optional<RankedTensorType> InferWindowOutputShape(
+std::optional<RankedTensorType> InferWindowOutputShape(
     const ShapedType& base_shape, const xla::Window& window,
     Type element_type) {
   if (window.dimensions_size() != base_shape.getRank()) {
     llvm::errs() << "Window has dimension " << window.dimensions_size()
                  << " but base shape has dimension " << base_shape.getRank()
                  << "\n";
-    return llvm::None;
+    return std::nullopt;
   }
 
   std::vector<int64_t> output_dimensions(window.dimensions_size());
@@ -1508,22 +1594,22 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     if (dim.size() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive dimension.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.stride() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive stride.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.base_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive base area dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.window_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive window dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
 
     if (base_shape.isDynamicDim(i)) {
@@ -1699,7 +1785,7 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   return RefineResultType(op, op.getOutput(), *refined_type);
 }
 
-llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
+std::optional<RankedTensorType> InferXlaConvOutputShape(
     llvm::SmallVector<int64_t> input_tensor_dims,
     llvm::SmallVector<int64_t> kernel_tensor_dims,
     llvm::SmallVector<int64_t> window_strides,
@@ -2182,14 +2268,14 @@ bool ShapeInference::InferShapeForWhile(WhileOpTy op,
           GetElementTypeFromOperand(body_result_type, result_type);
       potential_refined_type = CreateTensorType(
           body_result_type.hasRank() ? body_result_type.getShape()
-                                     : llvm::Optional<ArrayRef<int64_t>>(),
+                                     : std::optional<ArrayRef<int64_t>>(),
           element_type);
     } else {
       TensorType operand_type = std::get<0>(entry).template cast<TensorType>();
       Type element_type = GetElementTypeFromOperand(operand_type, result_type);
       potential_refined_type = CreateTensorType(
           result_type.hasRank() ? result_type.getShape()
-                                : llvm::Optional<ArrayRef<int64_t>>(),
+                                : std::optional<ArrayRef<int64_t>>(),
           element_type);
     }
     changed |= RefineResultType(op, result, potential_refined_type);
@@ -2248,6 +2334,11 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // branches.
   if (auto if_region = dyn_cast<IfRegionOp>(op))
     return InferShapeForIfRegion(if_region);
+
+  if (auto case_op = dyn_cast<CaseOp>(op)) return InferShapeForCase(case_op);
+
+  if (auto case_region = dyn_cast<CaseRegionOp>(op))
+    return InferShapeForCaseRegion(case_region);
 
   if (auto while_op = dyn_cast<WhileOp>(op))
     return InferShapeForWhile(
@@ -2321,7 +2412,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   llvm::SmallVector<ShapedTypeComponents, 4> inferred_return_shapes;
   if (failed(InferReturnTypeComponentsForTFOp(
-          /*location=*/None, op, graph_version_, operand_as_constant_fn,
+          /*location=*/std::nullopt, op, graph_version_, operand_as_constant_fn,
           op_result_as_shape_fn, result_element_type_fn,
           inferred_return_shapes)))
     return false;
@@ -2539,7 +2630,7 @@ llvm::SmallVector<Type, 4> GetWhileCompatibleTypes(
           operand_type.cast<TensorType>(), region_argument_type);
       Type potential_refined_type = CreateTensorType(
           region_argument_type.hasRank() ? region_argument_type.getShape()
-                                         : llvm::Optional<ArrayRef<int64_t>>(),
+                                         : std::optional<ArrayRef<int64_t>>(),
           element_type);
       types.push_back(potential_refined_type);
     }
@@ -2891,8 +2982,9 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
       element_type = unranked_input_ty.getElementType();
     }
 
-    auto new_arg_type =
-        tensorflow::GetTypeFromTFTensorShape(shape, element_type);
+    auto new_arg_type = GetNewArgType(func_type.getInput(i), shape,
+                                      element_type, func.getContext());
+
     if (new_arg_type != func_type.getInput(i)) {
       // If the new type is more detailed, trigger shape inference.
       func.getArgument(i).setType(new_arg_type);

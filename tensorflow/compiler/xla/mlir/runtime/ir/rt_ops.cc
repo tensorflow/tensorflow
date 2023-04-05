@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"  // IWYU pragma: keep
 
 #include <iterator>
+#include <optional>
 
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
@@ -28,8 +28,6 @@ namespace xla {
 namespace runtime {
 
 using namespace mlir;  // NOLINT
-
-using llvm::Optional;
 
 //===----------------------------------------------------------------------===//
 // ExportOp
@@ -60,9 +58,9 @@ LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return success();
 }
 
-Optional<unsigned> ExportOp::ordinal() {
+std::optional<unsigned> ExportOp::ordinal() {
   if (auto ordinal = getOrdinal()) return ordinal->getLimitedValue();
-  return llvm::None;
+  return std::nullopt;
 }
 
 FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
@@ -74,7 +72,7 @@ FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
 // TraceOp
 //===----------------------------------------------------------------------===//
 
-void TraceOp::getSuccessorRegions(Optional<unsigned> index,
+void TraceOp::getSuccessorRegions(std::optional<unsigned> index,
                                   ArrayRef<Attribute> operands,
                                   SmallVectorImpl<RegionSuccessor> &regions) {
   // If the predecessor is the TraceOp, branch into the body.
@@ -122,7 +120,7 @@ void TraceOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    Optional<unsigned> index) {
+    std::optional<unsigned> index) {
   return getArgumentsMutable();
 }
 

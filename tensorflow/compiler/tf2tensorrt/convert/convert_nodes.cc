@@ -1132,7 +1132,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
       return errors::Create(
-          status.code(),
+          static_cast<absl::StatusCode>(status.code()),
           StrCat("Failed to add output for node: ", node_def.name(), ": ",
                  status.error_message()),
           errors::GetPayloads(status));
@@ -3653,6 +3653,24 @@ Status ConvertIdentity(const OpConverterParams* params) {
   return OkStatus();
 }
 
+// This converter is a debug-only feature designed to allow graph segmentation
+// experiments. Its use is being controled by
+// `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
+// See `op_converter_registry.cc` for further details.
+//
+// This converter is designed as followed:
+//   - always succeed at graph segmentation time.
+//   - always fail at TRT Engine build time.
+Status ConvertFake(const OpConverterParams* params) {
+  if (params->validation_only) return OkStatus();
+
+  return errors::Unimplemented(
+      "This converter is not valid after graph "
+      "segmentation. Building an engine using this "
+      "converter will trigger a native segment "
+      "fallback.");
+}
+
 Status ConvertSquare(const OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -5722,7 +5740,9 @@ Status ConvertAddN(const OpConverterParams* params) {
       tensor_inputs.push_back(input.tensor());
     } else {
       auto dims = input.weights().Shape();
-      TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      if (params->use_implicit_batch) {
+        TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      }
       tensor_inputs.push_back(params->converter->CreateConstantLayer(
           input.weights(), dims.AsTrtDims()));
     }
@@ -5799,6 +5819,15 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
                                    "StopGradient", "_CopyFromHostToGpu"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
+// Debug converter only accessible via `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFake, "FakeOp");
+
+static Status SetDeviceInfoInNodes(GraphDef* graph_def, const string& device) {
+  for (auto& node : *(graph_def->mutable_node())) {
+    *node.mutable_device() = device;
+  }
+  return OkStatus();
+}
 
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,
@@ -5809,7 +5838,8 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster) {
+    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster,
+    const string& device) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -5833,6 +5863,11 @@ Status ConvertGraphDefToEngine(
     if (apply_layout_optim) {
       tensorflow::grappler::GrapplerItem grappler_item;
       grappler_item.graph = gdef;
+
+      // Add device information to each node in the graphdef for successful
+      // execution of the layout optimizer
+      TF_RETURN_IF_ERROR(SetDeviceInfoInNodes(&grappler_item.graph, device));
+
       // TensorRT API requires the input for convolution to be in NCHW.
       tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
       TF_RETURN_IF_ERROR(
@@ -5887,6 +5922,15 @@ Status ConvertGraphDefToEngine(
       DataType tf_dtype = node_def.attr().at(type_key).type();
       if (tf_dtype == DT_RESOURCE) {
         VLOG(2) << "Adding engine input resource " << node_name;
+        if (ctx == nullptr) {
+          return errors::InvalidArgument(
+              "Variable resource type conversion requires a valid ctx");
+        }
+
+        if (ctx->input(slot_number).NumElements() == 0) {
+          return errors::InvalidArgument("Resource input ", node_name,
+                                         " is empty.");
+        }
         TF_RETURN_IF_ERROR(converter->AddInputResource(
             node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
       } else {

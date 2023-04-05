@@ -9,7 +9,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/xla/backends/profiler:__pkg__",
         "//tensorflow/core/profiler:internal",
-        "//third_party/car/onboard/gpu:__subpackages__",
     ],
     deps = [
         ":host_tracer_impl",
@@ -103,7 +102,9 @@ cc_library(
 cc_library(
     name = "metadata_utils",
     hdrs = ["metadata_utils.h"],
-    visibility = ["//tensorflow/core/profiler:internal"],
+    visibility = [
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/profiler/convert:xla_op_utils",

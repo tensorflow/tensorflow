@@ -680,6 +680,20 @@ on the quantized input.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_QuantizedMaxPool3D")
+    .Input("input: T")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Output("output: T")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: quantizedtype")
+    .SetShapeFn(shape_inference::Pool3DShape);
+
 REGISTER_OP("_MklQuantizedAvgPool")
     .Input("input:           T")
     .Input("min_input:       float")
@@ -1852,6 +1866,11 @@ REGISTER_OP("_MklFusedBatchMatMulV2")
     .Attr("adj_y: bool = false")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
+    // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::BatchMatMulV2Shape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
@@ -1877,6 +1896,21 @@ REGISTER_OP("_MklLayerNorm")
     .Attr("T: {float, bfloat16}")
     .Attr("epsilon: float = 0.001")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("_MklSoftmax")
+    .Input("logits: T")
+    .Output("softmax: T")
+    .Attr("T: {bfloat16, float} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    })
+    .Doc(R"doc(
+oneDNN version of Softmax operator. Uses oneDNN APIs to perform softmax
+operation.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
 
 }  // namespace tensorflow
 

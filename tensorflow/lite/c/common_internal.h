@@ -37,37 +37,44 @@ typedef struct TfLiteRegistrationExternal {
   int version;
 
   // Initializes the op from serialized data.
-  void* (*init)(void* data, TfLiteOpaqueContext* context, const char* buffer,
+  void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                 size_t length);
   // The pointer `buffer` is the data previously returned by an init invocation.
-  void (*free)(void* data, TfLiteOpaqueContext* context, void* buffer);
+  void (*free)(TfLiteOpaqueContext* context, void* buffer);
 
   // Called when the inputs that this node depends on have been resized.
-  TfLiteStatus (*prepare)(void* data, TfLiteOpaqueContext* context,
-                          TfLiteOpaqueNode* node);
+  TfLiteStatus (*prepare)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
   // Called when the node is executed. (should read node->inputs and output to
   // node->outputs).
-  TfLiteStatus (*invoke)(void* data, TfLiteOpaqueContext* context,
-                         TfLiteOpaqueNode* node);
+  TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
+
+  // Retrieves the async kernel. The functor is nullptr if the node / backend
+  // does not support asynchronous execution.
+  struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                            TfLiteOpaqueNode* node);
 
   // Builtin op code.
   // The values stored in this field should be enum constants from the
   // TfLiteBuiltinOperator enum.
   // For custom ops, this should be the value kTfLiteBuiltinCustom.
   int32_t builtin_code;
-  // Opaque data, meant to be supplied as the 'data' argument when 'init' is
-  // invoked.
-  void* init_data;
-  // Opaque data, meant to be supplied as the 'data' argument when 'free' is
-  // invoked.
-  void* free_data;
-  // Opaque data, meant to be supplied as the 'data' argument when 'prepare' is
-  // invoked.
-  void* prepare_data;
-  // Opaque data, meant to be supplied as the 'data' argument when 'invoke' is
-  // invoked.
-  void* invoke_data;
+
+  // The default value of this field is supposed to be '-1'.
+  // The default value indicates to the TF Lite runtime that this registration
+  // should be used through its callbacks, i.e. 'init', 'free' etc.
+  //
+  // This would be the case when a delegate implementation supplies an opaque
+  // delegate kernel to the runtime to claim the execution for a subset of
+  // nodes. This would also be the case when an application defines a custom OP.
+  //
+  // However, users might also iterate over the execution plan to visit the
+  // nodes and registrations associated with an opaque context.  In this
+  // scenario, due to ABI stability reasons, we provide them with a registration
+  // external object, that internally delegates execution to a corresponding
+  // regular TfLiteRegistration.  In such a case the 'node_index' field should
+  // store the index of that corresponding node (and registration).
+  int node_index;
 } TfLiteRegistrationExternal;
 
 // Returns true iff it's safe to dereference

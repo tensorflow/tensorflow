@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "pybind11/attr.h"
-#include "pybind11/cast.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl_bind.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl_bind.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -249,44 +250,46 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             return ShapeUtil::MakeTupleShape(shapes);
           },
           "Constructs a tuple shape.")
+      .def_static("array_shape",
+                  xla::ValueOrThrowWrapper(
+                      [](PrimitiveType type, py::object dims_seq,
+                         std::optional<py::object> layout_seq,
+                         std::optional<std::vector<bool>> dynamic_dimensions)
+                          -> StatusOr<Shape> {
+                        std::vector<int64_t> dims =
+                            SequenceToVector<int64_t>(dims_seq);
+                        if (layout_seq) {
+                          std::vector<int64_t> layout =
+                              SequenceToVector<int64_t>(*layout_seq);
+                          return MakeShapeWithDenseLayout(type, dims, layout,
+                                                          dynamic_dimensions);
+                        } else {
+                          return MakeShapeWithDenseLayout(
+                              type, dims, std::nullopt, dynamic_dimensions);
+                        }
+                      }),
+                  "Constructs an array shape.", py::arg("type"),
+                  py::arg("dims"), py::arg("layout") = std::nullopt,
+                  py::arg("dynamic_dimensions") = std::nullopt)
       .def_static(
           "array_shape",
-          [](PrimitiveType type, py::object dims_seq,
-             std::optional<py::object> layout_seq,
-             std::optional<std::vector<bool>> dynamic_dimensions)
-              -> StatusOr<Shape> {
-            std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
-            if (layout_seq) {
-              std::vector<int64_t> layout =
-                  SequenceToVector<int64_t>(*layout_seq);
-              return MakeShapeWithDenseLayout(type, dims, layout,
-                                              dynamic_dimensions);
-            } else {
-              return MakeShapeWithDenseLayout(type, dims, std::nullopt,
-                                              dynamic_dimensions);
-            }
-          },
-          "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = std::nullopt,
-          py::arg("dynamic_dimensions") = std::nullopt)
-      .def_static(
-          "array_shape",
-          [](py::dtype dtype, py::object dims_seq,
-             std::optional<py::object> layout_seq,
-             std::optional<std::vector<bool>> dynamic_dimensions)
-              -> StatusOr<Shape> {
-            PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
-            std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
-            if (layout_seq) {
-              std::vector<int64_t> layout =
-                  SequenceToVector<int64_t>(*layout_seq);
-              return MakeShapeWithDenseLayout(type, dims, layout,
-                                              dynamic_dimensions);
-            } else {
-              return MakeShapeWithDenseLayout(type, dims, std::nullopt,
-                                              dynamic_dimensions);
-            }
-          },
+          xla::ValueOrThrowWrapper(
+              [](py::dtype dtype, py::object dims_seq,
+                 std::optional<py::object> layout_seq,
+                 std::optional<std::vector<bool>> dynamic_dimensions)
+                  -> StatusOr<Shape> {
+                PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
+                std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
+                if (layout_seq) {
+                  std::vector<int64_t> layout =
+                      SequenceToVector<int64_t>(*layout_seq);
+                  return MakeShapeWithDenseLayout(type, dims, layout,
+                                                  dynamic_dimensions);
+                } else {
+                  return MakeShapeWithDenseLayout(type, dims, std::nullopt,
+                                                  dynamic_dimensions);
+                }
+              }),
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
           py::arg("layout") = std::nullopt,
           py::arg("dynamic_dimensions") = std::nullopt)
@@ -299,8 +302,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           "Constructs a scalar shape.", py::arg("type"))
       .def_static(
           "scalar_shape",
-          [](py::dtype dtype) -> StatusOr<Shape> {
-            PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
+          [](py::dtype dtype) -> Shape {
+            PrimitiveType type = xla::ValueOrThrow(DtypeToPrimitiveType(dtype));
             return ShapeUtil::MakeScalarShape(type);
           },
           "Constructs a scalar shape.", py::arg("type"))
@@ -313,14 +316,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("xla_element_type", &Shape::element_type)
       .def("element_type",
            [](const Shape& shape) {
-             return ValueOrThrow(PrimitiveTypeToDtype(shape.element_type()));
+             return xla::ValueOrThrow(
+                 PrimitiveTypeToDtype(shape.element_type()));
            })
       .def("numpy_dtype",
            [](const Shape& shape) {
              if (shape.IsTuple()) {
                return py::dtype("O");
              }
-             return ValueOrThrow(PrimitiveTypeToDtype(shape.element_type()));
+             return xla::ValueOrThrow(
+                 PrimitiveTypeToDtype(shape.element_type()));
            })
       .def("is_tuple", &Shape::IsTuple)
       .def("is_array", &Shape::IsArray)
@@ -405,15 +410,18 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         proto.ParseFromString(std::string(serialized_hlo_module_proto));
         return std::make_unique<XlaComputation>(proto);
       }))
-      .def("get_hlo_module", &GetHloModule)
-      .def("program_shape", &XlaComputation::GetProgramShape)
+      .def("get_hlo_module", xla::ValueOrThrowWrapper(GetHloModule))
+      .def("program_shape",
+           xla::ValueOrThrowWrapper(&XlaComputation::GetProgramShape))
       .def("name", &XlaComputation::name)
-      .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
-      .def("as_hlo_text", &GetComputationHloText,
+      .def("as_serialized_hlo_module_proto",
+           xla::ValueOrThrowWrapper(GetComputationSerializedProto))
+      .def("as_hlo_text", xla::ValueOrThrowWrapper(GetComputationHloText),
            py::arg("print_large_constants") = false)
-      .def("as_hlo_dot_graph", &GetComputationHloDotGraph)
-      .def("hash", &HashComputation)
-      .def("as_hlo_module", &GetHloModule);
+      .def("as_hlo_dot_graph",
+           xla::ValueOrThrowWrapper(GetComputationHloDotGraph))
+      .def("hash", xla::ValueOrThrowWrapper(HashComputation))
+      .def("as_hlo_module", xla::ValueOrThrowWrapper(GetHloModule));
 
   py::class_<HloPrintOptions> hlo_print_options_class(m, "HloPrintOptions");
   hlo_print_options_class.def(py::init<>())
@@ -474,8 +482,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
               &HloModule::ToString),
           py::arg("options") = HloPrintOptions())
-      .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto)
-      .def("from_serialized_hlo_module_proto", &HloModuleFromSerializedProto)
+      .def("as_serialized_hlo_module_proto",
+           xla::ValueOrThrowWrapper(GetHloModuleSerializedProto))
+      .def("from_serialized_hlo_module_proto",
+           xla::ValueOrThrowWrapper(HloModuleFromSerializedProto))
       .def_property_readonly(
           "spmd_output_sharding",
           [](const HloModule& m) -> std::optional<xla::OpSharding> {
@@ -524,29 +534,35 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            });
 
   m.def("hlo_module_to_dot_graph",
-        [](const HloModule& hlo_module) -> StatusOr<std::string> {
-          return RenderGraph(*hlo_module.entry_computation(), /*label=*/"",
-                             hlo_module.config().debug_options(),
-                             RenderedGraphFormat::kDot);
+        [](const HloModule& hlo_module) -> std::string {
+          return xla::ValueOrThrow(RenderGraph(
+              *hlo_module.entry_computation(), /*label=*/"",
+              hlo_module.config().debug_options(), RenderedGraphFormat::kDot));
         });
-  m.def(
-      "hlo_module_cost_analysis",
-      [](PyClient* client,
-         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
-        TF_ASSIGN_OR_RETURN(auto analysis,
-                            client->pjrt_client()->GetHloCostAnalysis());
-        TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
-        return analysis->properties();
-      });
+  m.def("hlo_module_cost_analysis",
+        xla::ValueOrThrowWrapper(
+            [](PyClient* client, const HloModule& module)
+                -> StatusOr<absl::flat_hash_map<std::string, float>> {
+              TF_ASSIGN_OR_RETURN(auto analysis,
+                                  client->pjrt_client()->GetHloCostAnalysis());
+              TF_RETURN_IF_ERROR(
+                  module.entry_computation()->Accept(analysis.get()));
+
+              // Convert from HloCostAnalysis::Properties to a standard map.
+              absl::flat_hash_map<std::string, float> ret;
+              analysis->properties().ForEach(
+                  [&](absl::string_view key, float val) { ret[key] = val; });
+              return ret;
+            }));
   m.def("hlo_module_from_text",
-        [](const std::string& hlo_module_text)
-            -> StatusOr<std::shared_ptr<HloModule>> {
+        xla::ValueOrThrowWrapper([](const std::string& hlo_module_text)
+                                     -> StatusOr<std::shared_ptr<HloModule>> {
           auto hlo_module =
               xla::ParseAndReturnUnverifiedModule(hlo_module_text);
           TF_RETURN_IF_ERROR(hlo_module.status());
           std::shared_ptr<HloModule> result(std::move(*hlo_module));
           return result;
-        });
+        }));
 
   py::class_<XlaOp> xla_op_class(m, "XlaOp");
 
@@ -555,23 +571,23 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         return std::make_unique<XlaBuilder>(UniquifyName(name));
       }))
       // TODO(phawkins): delete capitalized names after updating callers.
-      .def(
-          "Build",
-          [](XlaBuilder& builder, std::optional<XlaOp> root) {
-            return root ? builder.Build(*root) : builder.Build();
-          },
-          "Builds a computation from the contents of the builder.",
-          py::arg("root") = std::nullopt)
-      .def("GetShape", &XlaBuilder::GetShape)
-      .def(
-          "build",
-          [](XlaBuilder& builder, std::optional<XlaOp> root) {
-            return root ? builder.Build(*root) : builder.Build();
-          },
-          "Builds a computation from the contents of the builder.",
-          py::arg("root") = std::nullopt)
+      .def("Build",
+           xla::ValueOrThrowWrapper(
+               [](XlaBuilder& builder, std::optional<XlaOp> root) {
+                 return root ? builder.Build(*root) : builder.Build();
+               }),
+           "Builds a computation from the contents of the builder.",
+           py::arg("root") = std::nullopt)
+      .def("GetShape", xla::ValueOrThrowWrapper(&XlaBuilder::GetShape))
+      .def("build",
+           xla::ValueOrThrowWrapper(
+               [](XlaBuilder& builder, std::optional<XlaOp> root) {
+                 return root ? builder.Build(*root) : builder.Build();
+               }),
+           "Builds a computation from the contents of the builder.",
+           py::arg("root") = std::nullopt)
       .def("clear_op_metadata", &XlaBuilder::ClearOpMetadata)
-      .def("get_shape", &XlaBuilder::GetShape)
+      .def("get_shape", xla::ValueOrThrowWrapper(&XlaBuilder::GetShape))
       .def(
           "get_program_shape",
           [](const XlaBuilder& builder,
@@ -580,7 +596,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         : builder.GetProgramShape();
           },
           py::arg("root") = std::nullopt)
-      .def("is_constant", &XlaBuilder::IsConstant)
+      .def("is_constant", xla::ValueOrThrowWrapper(&XlaBuilder::IsConstant))
       .def("set_op_metadata", &XlaBuilder::SetOpMetadata)
       .def("set_sharding", &XlaBuilder::SetSharding)
       .def("clear_sharding", &XlaBuilder::ClearSharding)
@@ -597,34 +613,37 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   // Device assignments
   py::class_<DeviceAssignment>(m, "DeviceAssignment")
-      .def_static("create",
-                  [](py::array_t<int> array) -> StatusOr<DeviceAssignment> {
-                    if (array.ndim() != 2) {
-                      return InvalidArgument(
-                          "Argument to DeviceAssignment constructor must be a "
-                          "2D array, received an %dD array.",
-                          array.ndim());
-                    }
-                    DeviceAssignment result(array.shape(0), array.shape(1));
-                    for (int i = 0; i < array.shape(0); ++i) {
-                      for (int j = 0; j < array.shape(1); ++j) {
-                        result(i, j) = array.at(i, j);
-                      }
-                    }
-                    return result;
-                  })
+      .def_static(
+          "create",
+          xla::ValueOrThrowWrapper(
+              [](py::array_t<int> array) -> StatusOr<DeviceAssignment> {
+                if (array.ndim() != 2) {
+                  return InvalidArgument(
+                      "Argument to DeviceAssignment constructor must be a "
+                      "2D array, received an %dD array.",
+                      array.ndim());
+                }
+                DeviceAssignment result(array.shape(0), array.shape(1));
+                for (int i = 0; i < array.shape(0); ++i) {
+                  for (int j = 0; j < array.shape(1); ++j) {
+                    result(i, j) = array.at(i, j);
+                  }
+                }
+                return result;
+              }))
       .def("replica_count", &DeviceAssignment::replica_count)
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString)
-      .def("serialize", [](const DeviceAssignment& da) -> StatusOr<py::bytes> {
-        DeviceAssignmentProto proto;
-        TF_RETURN_IF_ERROR(da.Serialize(&proto));
-        std::string result;
-        if (!tsl::SerializeToStringDeterministic(proto, &result)) {
-          return Unknown("Failed to serialize the DeviceAssignmentProto.");
-        }
-        return py::bytes(result);
-      });
+      .def("serialize", xla::ValueOrThrowWrapper([](const DeviceAssignment& da)
+                                                     -> StatusOr<py::bytes> {
+             DeviceAssignmentProto proto;
+             TF_RETURN_IF_ERROR(da.Serialize(&proto));
+             std::string result;
+             if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+               return Unknown("Failed to serialize the DeviceAssignmentProto.");
+             }
+             return py::bytes(result);
+           }));
 
   py::class_<CompileOptions> compile_options(m, "CompileOptions");
   compile_options
@@ -647,6 +666,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             result.ParseFromString(t[0].cast<std::string>());
             return ValueOrThrow(CompileOptions::FromProto(result));
           }))
+      .def("SerializeAsString",
+           [](const CompileOptions& self) -> py::bytes {
+             return py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString());
+           })
+      .def_static("ParseFromString",
+                  [](py::bytes s) {
+                    CompileOptionsProto result;
+                    result.ParseFromString(s);
+                    return ValueOrThrow(CompileOptions::FromProto(result));
+                  })
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
@@ -654,6 +683,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                      &CompileOptions::compile_portable_executable)
       .def_readonly("executable_build_options",
                     &CompileOptions::executable_build_options)
+      .def_readwrite("env_option_overrides",
+                     &CompileOptions::env_option_overrides)
       // TODO(phawkins): the following fields exist for backward compatibility.
       // Remove them after JAX has been updated not to use them.
       .def_readwrite("tuple_arguments",
@@ -696,7 +727,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           });
 
   // Custom-call targets.
-  m.def("register_custom_call_target", &PyRegisterCustomCallTarget);
+  m.def("register_custom_call_target",
+        [](const std::string& fn_name, py::capsule capsule,
+           const std::string& platform) {
+          xla::ThrowIfError(PyRegisterCustomCallTarget(
+              fn_name, std::move(capsule), platform));
+        });
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
@@ -783,9 +819,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
-          &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
-          &ExecutableBuildOptions::
-              set_allow_spmd_sharding_propagation_to_output);
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_output().begin(),
+                options.allow_spmd_sharding_propagation_to_output().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_output(v);
+          });
 
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
@@ -814,6 +856,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
       .def("__repr__", &xla::OpSharding::DebugString)
+      .def("ParseFromString",
+           [](OpSharding& sharding, const std::string& s) {
+             sharding.ParseFromString(s);
+           })
       .def("SerializeToString",
            [](const OpSharding& sharding) {
              return py::bytes(sharding.SerializeAsString());
@@ -830,7 +876,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_last_tile_dims);
 
   py::class_<HloSharding> hlo_sharding(m, "HloSharding");
-  hlo_sharding.def_static("from_proto", &xla::HloSharding::FromProto)
+  hlo_sharding
+      .def_static("from_proto",
+                  xla::ValueOrThrowWrapper(xla::HloSharding::FromProto))
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
@@ -881,13 +929,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   hlo_pass_interface.def_property_readonly("name", &HloPassInterface::name)
       .def("is_pass_pipeline", &HloPassInterface::IsPassPipeline)
       .def("run",
-           [](HloPassInterface& pass, HloModule* module) -> StatusOr<bool> {
-             return pass.Run(module);
+           [](HloPassInterface& pass, HloModule* module) -> bool {
+             return xla::ValueOrThrow(pass.Run(module));
            })
       .def("run_on_module_group",
-           [](HloPassInterface& pass,
-              HloModuleGroup* module_group) -> StatusOr<bool> {
-             return pass.RunOnModuleGroup(module_group);
+           [](HloPassInterface& pass, HloModuleGroup* module_group) -> bool {
+             return xla::ValueOrThrow(pass.RunOnModuleGroup(module_group));
            });
 
   py::class_<HloDCE, HloPassInterface>(m, "HloDCE").def(py::init<>());

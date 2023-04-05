@@ -1,6 +1,7 @@
 # Automatic sharding annotation
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,13 +31,14 @@ cc_library(
         ":auto_sharding_util",
         ":cluster_environment",
         ":matrix",
+        ":metrics",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:heap_simulator",
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
         "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
@@ -118,7 +120,7 @@ cc_library(
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_sharding_util",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
@@ -126,6 +128,13 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = ["//tensorflow/tsl/lib/monitoring:counter"],
 )
 
 xla_cc_binary(
@@ -136,7 +145,15 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",
+    ],
+)
+
+build_test(
+    name = "auto_sharding_runner_build_test",
+    targets = [
+        ":auto_sharding_runner",
     ],
 )

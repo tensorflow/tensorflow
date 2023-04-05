@@ -791,7 +791,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id);
+          *r = worker_env_.rendezvous_mgr->Find(step_id).release();
           return OkStatus();
         }});
   }
@@ -1236,7 +1236,8 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, device_mgr_.get(), false, rendezvous);
+      /*async=*/false, device_mgr_.get(), false, rendezvous, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.

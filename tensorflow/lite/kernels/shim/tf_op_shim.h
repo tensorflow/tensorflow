@@ -113,7 +113,7 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   }
 
   // The operation name
-  static const char* OpName() { return ImplType::kOpName; }
+  static const char* OpName() { return ImplType::OpName(); }
 
  protected:
   std::unique_ptr<OpKernelShim<Impl, Runtime::kTf, Ts...>> impl_;
@@ -129,8 +129,8 @@ static_assert(::tensorflow::shape_inference::InferenceContext::kUnknownRank ==
 // Builds the OpDef to register the op with the TF runtime
 template <typename Kernel>
 ::tensorflow::register_op::OpDefBuilderWrapper CreateOpDefBuilderWrapper() {
-  auto ret =
-      ::tensorflow::register_op::OpDefBuilderWrapper(Kernel::ImplType::kOpName);
+  auto ret = ::tensorflow::register_op::OpDefBuilderWrapper(
+      Kernel::ImplType::OpName());
   for (const auto& input : Kernel::ImplType::Inputs()) ret = ret.Input(input);
   for (const auto& output : Kernel::ImplType::Outputs())
     ret = ret.Output(output);

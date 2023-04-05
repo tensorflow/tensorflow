@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
-#include <sstream>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -151,9 +155,10 @@ std::string OutfeedData::DebugString() const {
 
 class OutfeedReceiverImpl {
  public:
-  OutfeedReceiverImpl(OutfeedReceiver::Callback callback,
-                      absl::Span<PjRtClient* const> clients,
-                      ssize_t max_callback_queue_size_bytes);
+  OutfeedReceiverImpl(
+      OutfeedReceiver::Callback callback, absl::Span<PjRtClient* const> clients,
+      ssize_t max_callback_queue_size_bytes,
+      const std::optional<ExecutableBuildOptions>& executable_build_options);
 
   OutfeedReceiverImpl(const OutfeedReceiverImpl&) = delete;
   OutfeedReceiverImpl& operator=(const OutfeedReceiverImpl&) = delete;
@@ -166,7 +171,8 @@ class OutfeedReceiverImpl {
 
   StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
                                       uint32_t consumer_id,
-                                      std::vector<XlaOp> arrays);
+                                      std::vector<XlaOp> arrays,
+                                      uint32_t device_idx);
 
  private:
   bool CallbackQueueHasSpace() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -201,6 +207,7 @@ class OutfeedReceiverImpl {
   std::vector<PjRtDevice*> devices_;
   // Maximum bytes capacity of the ensemble of callback queues.
   uint64_t max_callback_queue_size_bytes_;
+  std::optional<ExecutableBuildOptions> executable_build_options_;
 
   absl::Mutex mu_;
   // Registered shapes by consumer id.
@@ -225,7 +232,9 @@ class OutfeedReceiverImpl {
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
     OutfeedReceiver::Callback callback, absl::Span<PjRtClient* const> clients,
-    ssize_t max_callback_queue_size_bytes) {
+    ssize_t max_callback_queue_size_bytes,
+    const std::optional<ExecutableBuildOptions>& executable_build_options)
+    : executable_build_options_(executable_build_options) {
   callback_ = callback;
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
@@ -398,12 +407,22 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
           << "] SendSpecialHeader cons=" << consumer_id;
   XlaBuilder builder(
       absl::StrFormat("special_outfeed_header_%d_%d", consumer_id, device_idx));
-  XlaOp send =
-      AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {})
+
+  // XLA Next doesn't support returning tokens from computations, so we use
+  // add-dependency to return a constant while ensuring the side-effect is still
+  // executed.
+  XlaOp cst_operand = xla::ConstantR0<int32_t>(&builder, 0);
+  XlaOp outfeed =
+      AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {}, 0)
           .value();
-  XlaComputation computation = builder.Build(send).value();
+  XlaOp add_dep = xla::internal::XlaBuilderFriend::BuildAddDependency(
+      &builder, cst_operand, outfeed, ShapeUtil::MakeScalarShape(S32));
+  XlaComputation computation = builder.Build(add_dep).value();
 
   CompileOptions compile_options;
+  if (executable_build_options_) {
+    compile_options.executable_build_options = *executable_build_options_;
+  }
   compile_options.executable_build_options.set_num_replicas(1);
   compile_options.executable_build_options.set_num_partitions(1);
   DeviceAssignment device_assignment(1, 1);
@@ -423,7 +442,7 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
 
 StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
-    std::vector<XlaOp> arrays) {
+    std::vector<XlaOp> arrays, uint32_t device_idx) {
   XlaOp data = Tuple(builder, std::move(arrays));
   Shape shape_with_layout = builder->GetShape(data).value();
   ShapeUtil::ForEachMutableSubshape(
@@ -452,9 +471,9 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 
   std::vector<uint32_t> header{kOutfeedHeaderStart, consumer_id};
   XlaOp header_op = ConstantR1<uint32_t>(builder, header);
-  // We assign the outfeed to the first device. This must match the sharding
-  // for the paired infeed.
-  builder->SetSharding(sharding_builder::AssignDevice(0));
+  // We assign the outfeed to the device specified by device_idx (first device
+  // by default). This must match the sharding for the paired infeed.
+  builder->SetSharding(sharding_builder::AssignDevice(device_idx));
   token = OutfeedWithToken(
       header_op, token, ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords}), "");
   if (consumer_id != kOutfeedCidShutdown) {
@@ -464,25 +483,30 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
   return token;
 }
 
-OutfeedReceiver::OutfeedReceiver(Callback callback,
-                                 absl::Span<PjRtClient* const> clients,
-                                 ssize_t max_callback_queue_size_bytes) {
-  p_impl_ = std::make_unique<OutfeedReceiverImpl>(
-      callback, clients, max_callback_queue_size_bytes);
+OutfeedReceiver::OutfeedReceiver(
+    Callback callback, absl::Span<PjRtClient* const> clients,
+    ssize_t max_callback_queue_size_bytes,
+    const std::optional<ExecutableBuildOptions>& executable_build_options) {
+  p_impl_ = std::make_unique<OutfeedReceiverImpl>(callback, clients,
+                                                  max_callback_queue_size_bytes,
+                                                  executable_build_options);
 }
 
 OutfeedReceiver::~OutfeedReceiver() {}
 
 void OutfeedReceiver::Start() { p_impl_->Start(); }
 
-StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(
-    XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
-    std::vector<XlaOp> arrays) {
+StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(XlaBuilder* builder,
+                                                     XlaOp token,
+                                                     uint32_t consumer_id,
+                                                     std::vector<XlaOp> arrays,
+                                                     uint32_t device_idx) {
   if (consumer_id == kOutfeedCidShutdown) {
     return InvalidArgument("Consumer ID cannot be a reserved value: %d",
                            consumer_id);
   }
-  return p_impl_->AddOutfeedToBuilder(builder, token, consumer_id, arrays);
+  return p_impl_->AddOutfeedToBuilder(builder, token, consumer_id, arrays,
+                                      device_idx);
 }
 
 }  // namespace xla

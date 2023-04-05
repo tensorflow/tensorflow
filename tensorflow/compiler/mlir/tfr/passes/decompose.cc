@@ -17,14 +17,13 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -99,7 +98,7 @@ class DecomposeTFOpsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeTFOpsPass)
 
-  explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
+  explicit DecomposeTFOpsPass(std::optional<ModuleOp> external_tfr_module)
       : external_tfr_module_(external_tfr_module) {}
 
   StringRef getArgument() const final { return "tfr-decompose"; }
@@ -122,7 +121,7 @@ class DecomposeTFOpsPass
   LogicalResult InlineTFRFuncCalls();
 
   // Optional external symbol table to look up the TFR function.
-  llvm::Optional<ModuleOp> external_tfr_module_;
+  std::optional<ModuleOp> external_tfr_module_;
 };
 
 #include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
@@ -354,7 +353,7 @@ void DecomposeTFOpsPass::runOnOperation() {
 
 // Creates an instance of the pass to decompose the TF ops.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeTFOpsPass(
-    llvm::Optional<ModuleOp> tfr_module) {
+    std::optional<ModuleOp> tfr_module) {
   return std::make_unique<DecomposeTFOpsPass>(tfr_module);
 }
 

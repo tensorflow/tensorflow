@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 namespace primitive_util {
@@ -66,6 +67,11 @@ inline PrimitiveType NativeToPrimitiveType<bool>() {
 
 // Unsigned integer
 template <>
+inline PrimitiveType NativeToPrimitiveType<u4>() {
+  return U4;
+}
+
+template <>
 inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
@@ -86,6 +92,11 @@ inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
 }
 
 // Signed integer
+template <>
+inline PrimitiveType NativeToPrimitiveType<s4>() {
+  return S4;
+}
+
 template <>
 inline PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
@@ -127,6 +138,16 @@ inline PrimitiveType NativeToPrimitiveType<bfloat16>() {
   return BF16;
 }
 
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
+  return F8E5M2;
+}
+
+template <>
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
+  return F8E4M3FN;
+}
+
 // Complex
 template <>
 inline PrimitiveType NativeToPrimitiveType<complex64>() {
@@ -148,6 +169,10 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 
 bool IsIntegralType(PrimitiveType type);
 
+inline bool IsF8Type(PrimitiveType type) {
+  return type == F8E5M2 || type == F8E4M3FN;
+}
+
 // Returns true if values of the given primitive type are held in array shapes.
 inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
   return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
@@ -159,6 +184,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
   switch (type) {
     case PRED:
       return 1;
+
+    case S4:
+    case U4:
+      return 4;
 
     case S8:
     case U8:
@@ -203,6 +232,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
     case PRED:
       return 1;
 
+    case S4:
+    case U4:
+      return 1;
+
     case S8:
     case U8:
     case F8E5M2:
@@ -228,6 +261,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
 
     case C128:
       return 16;
+
+    case TOKEN:
+      // Tokens require no space.
+      return 0;
 
     case TUPLE:
       LOG(FATAL) << "TUPLE is an invalid type for ByteWidth";
@@ -371,6 +408,11 @@ struct PrimitiveTypeToNative<PRED> {
 
 // Unsigned integer
 template <>
+struct PrimitiveTypeToNative<U4> {
+  using type = u4;
+};
+
+template <>
 struct PrimitiveTypeToNative<U8> {
   using type = uint8_t;
 };
@@ -391,6 +433,11 @@ struct PrimitiveTypeToNative<U64> {
 };
 
 // Signed integer
+template <>
+struct PrimitiveTypeToNative<S4> {
+  using type = s4;
+};
+
 template <>
 struct PrimitiveTypeToNative<S8> {
   using type = int8_t;
@@ -430,6 +477,16 @@ struct PrimitiveTypeToNative<BF16> {
   using type = bfloat16;
 };
 
+template <>
+struct PrimitiveTypeToNative<F8E5M2> {
+  using type = tsl::float8_e5m2;
+};
+
+template <>
+struct PrimitiveTypeToNative<F8E4M3FN> {
+  using type = tsl::float8_e4m3fn;
+};
+
 // Complex
 template <>
 struct PrimitiveTypeToNative<C64> {
@@ -455,8 +512,8 @@ bool IsPrimitiveTypeName(absl::string_view name);
 // For example,
 //  IsCanonicalRepresentation<float>(F32)          // true
 //  IsCanonicalRepresentation<xla::bfloat16>(BF16) // true
-//  IsCanonicalRepresentation<uint32_t>(S8)        // true, 8 <= 32
-//  IsCanonicalRepresentation<uint8_t>(S16)        // false, 16 > 8
+//  IsCanonicalRepresentation<int32_t>(S8)         // true, 8 <= 32
+//  IsCanonicalRepresentation<uint16_t>(S16)       // false, unsigned.
 template <typename T>
 bool IsCanonicalRepresentation(PrimitiveType type) {
   switch (type) {
@@ -464,9 +521,12 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case F32:
     case BF16:
     case F64:
+    case F8E5M2:
+    case F8E4M3FN:
     case C64:
     case C128:
       return NativeToPrimitiveType<T>() == type;
+    case S4:
     case S8:
     case S16:
     case S32:
@@ -474,6 +534,7 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
       return std::is_integral<T>::value && std::is_signed<T>::value &&
              ByteWidth(type) <= sizeof(T);
     case PRED:
+    case U4:
     case U8:
     case U16:
     case U32:
@@ -484,8 +545,6 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
     case OPAQUE_TYPE:
     case TOKEN:
     case PRIMITIVE_TYPE_INVALID:
-    case F8E5M2:
-    case F8E4M3FN:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
       return false;

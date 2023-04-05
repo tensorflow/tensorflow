@@ -18,7 +18,9 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -30,9 +32,8 @@ class ArrayOpTest(test.TestCase):
     # Create a tensor with an unknown dim 1.
     x = random_ops.random_normal([4, 10, 10])
     x = array_ops.gather(
-        x,
-        array_ops.reshape(array_ops.where_v2(x[0, :, 0] > 0.5), [-1]),
-        axis=1)
+        x, array_ops.reshape(array_ops.where_v2(x[0, :, 0] > 0.5), [-1]), axis=1
+    )
     x.shape.assert_is_compatible_with([4, None, 10])
 
     with backprop.GradientTape() as tape:
@@ -53,9 +54,8 @@ class ArrayOpTest(test.TestCase):
     # Create a tensor with an unknown dim 1.
     x = random_ops.random_normal([4, 10, 10])
     x = array_ops.gather(
-        x,
-        array_ops.reshape(array_ops.where_v2(x[0, :, 0] > 0.5), [-1]),
-        axis=1)
+        x, array_ops.reshape(array_ops.where_v2(x[0, :, 0] > 0.5), [-1]), axis=1
+    )
     x.shape.assert_is_compatible_with([4, None, 10])
     a = array_ops.reshape(x, array_ops.shape(x))
     a.shape.assert_is_compatible_with([4, None, 10])
@@ -67,14 +67,15 @@ class ArrayOpTest(test.TestCase):
     c = array_ops.reshape(
         x,
         math_ops.cast(
-            math_ops.cast(array_ops.shape(x), dtypes.float32), dtypes.int32))
+            math_ops.cast(array_ops.shape(x), dtypes.float32), dtypes.int32
+        ),
+    )
     c.shape.assert_is_compatible_with([None, None, None])
 
   def testEmptyMeshgrid(self):
     self.assertEqual(array_ops.meshgrid(), [])
 
   def testSlicedPartialShapeInference(self):
-
     @def_function.function(autograph=False)
     def g(x):
       return array_ops.zeros([array_ops.shape(x)[0]])
@@ -83,13 +84,63 @@ class ArrayOpTest(test.TestCase):
     self.assertAllEqual(conc.output_shapes.as_list(), [10])
 
   def testIdentityOnSlicedPartialShapeInference(self):
-
     @def_function.function(autograph=False)
     def g(x):
       return array_ops.zeros([array_ops.identity(array_ops.shape(x)[0])])
 
     conc = g.get_concrete_function(tensor_spec.TensorSpec([10, None]))
     self.assertAllEqual(conc.output_shapes.as_list(), [10])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testParallelConcatFailsWithRankZeroShape(self):
+    op = array_ops.ParallelConcat
+    para = {"shape": 0, "values": [1]}
+
+    def func():
+      y = op(**para)
+      return y
+
+    with self.assertRaisesRegex(
+        Exception, "(rank|dimension) of .* must be greater than .* 0"
+    ):
+      func()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUpperBoundValuesWrongRank(self):
+    # Used to cause a segfault, b/266336058
+    arg0 = array_ops.zeros([2, 3], dtype=dtypes.float32)
+    arg1 = array_ops.zeros([2, 1, 0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        Exception, "Shape must be rank 2 but is rank 3"
+    ):
+      gen_array_ops.upper_bound(arg0, arg1)
+
+  def testLowerBoundValuesWrongRank(self):
+    # Used to cause a segfault, b/266336058
+    arg0 = array_ops.zeros([2, 3], dtype=dtypes.float32)
+    arg1 = array_ops.zeros([2, 1, 0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        Exception, "Shape must be rank 2 but is rank 3"
+    ):
+      gen_array_ops.lower_bound(arg0, arg1)
+
+  def testUpperBoundInputsWrongRank(self):
+    # Used to cause a segfault, b/266336058
+    arg0 = array_ops.zeros([2, 1, 0], dtype=dtypes.float32)
+    arg1 = array_ops.zeros([2, 3], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        Exception, "Shape must be rank 2 but is rank 3"
+    ):
+      gen_array_ops.upper_bound(arg0, arg1)
+
+  def testLowerBoundInputsWrongRank(self):
+    # Used to cause a segfault, b/266336058
+    arg0 = array_ops.zeros([2, 1, 0], dtype=dtypes.float32)
+    arg1 = array_ops.zeros([2, 3], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        Exception, "Shape must be rank 2 but is rank 3"
+    ):
+      gen_array_ops.lower_bound(arg0, arg1)
 
 
 if __name__ == "__main__":

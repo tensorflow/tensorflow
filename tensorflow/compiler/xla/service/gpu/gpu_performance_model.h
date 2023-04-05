@@ -27,17 +27,6 @@ namespace xla {
 namespace gpu {
 
 class GpuPerformanceModel {
-  // Estimated values in the absence of easy ways to query them.
-  static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(1);
-  static constexpr float kL2CacheSpeedup = 2.5;
-  static constexpr float kL1CacheSpeedup = 8;
-  // A very conservative estimate. L1 size varies because it can be dynamically
-  // configured as shared memory; there is no easy way to query its actual size;
-  // also we do not count what occupies cache, but rather claim that what is
-  // much smaller than the cache size will likely stay in it.
-  // For reference, it can be up to 256 kB per SM on RTX A6000.
-  static constexpr float kL1CacheSizePerSM = 2 * 1024;
-
  public:
   struct RunTimes {
     absl::Duration time_unfused;

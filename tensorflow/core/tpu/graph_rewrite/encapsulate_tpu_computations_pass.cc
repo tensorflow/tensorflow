@@ -56,6 +56,7 @@ const char* const kTPUReplicatedInput = "TPUReplicatedInput";
 const char* const kTPUReplicatedOutput = "TPUReplicatedOutput";
 const char* const kPivotForClusterAttr = "_pivot_for_cluster";
 const char* const kTPUPartitionedInput = "TPUPartitionedInput";
+const char* const kTPUPartitionedInputV2 = "TPUPartitionedInputV2";
 
 // Finds the `index` of an _Arg or _Retval node.
 Status GetIndexAttr(const Node& n, int num_args, int* index) {
@@ -1550,7 +1551,8 @@ void RemoveUnusedTPUReplicatedInputs(Graph* graph) {
         std::vector<Node*> to_be_removed_src_nodes;
         for (const auto& e_in : n->in_edges()) {
           if (!e_in->IsControlEdge() &&
-              e_in->src()->type_string() == kTPUPartitionedInput)
+              (e_in->src()->type_string() == kTPUPartitionedInput ||
+               e_in->src()->type_string() == kTPUPartitionedInputV2))
             to_be_removed_src_nodes.push_back(e_in->src());
         }
         graph->RemoveNode(n);
@@ -1975,23 +1977,6 @@ Status CleanUpInEdges(const absl::flat_hash_map<int, int>& index_mapping,
   return OkStatus();
 }
 
-Status UpdateTypeAttribute(const absl::flat_hash_map<int, int>& index_mapping,
-                           const string& type_attr_name,
-                           const std::vector<DataType>& dtypes, Node* n) {
-  std::vector<DataType> new_dtypes;
-  new_dtypes.reserve(index_mapping.size());
-  for (int i = 0; i < dtypes.size(); ++i) {
-    if (index_mapping.contains(i)) {
-      new_dtypes.emplace_back(dtypes[i]);
-    }
-  }
-
-  n->ClearAttr(type_attr_name);
-  n->AddAttr(type_attr_name, new_dtypes);
-
-  return OkStatus();
-}
-
 // While V2 always creates Identity node for each While node output, which is
 // not necessary for XLA computation. Remove those Identity nodes.
 void RemoveOutputIdentityNodesForWhileV2(Graph* g, Node* while_node) {
@@ -2138,8 +2123,10 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
   TF_RETURN_IF_ERROR(CleanUpInEdges(
       index_mapping, /*arg_to_input_edge_offset=*/0, g, while_node));
 
-  TF_RETURN_IF_ERROR(
-      UpdateTypeAttribute(index_mapping, "T", dtypes, while_node));
+  // Changing T affects the node's outputs, so full type information (if
+  // present) must be updated.
+  TF_RETURN_IF_ERROR(while_node->ShrinkTypeInfo(index_mapping, "T",
+                                                /*update_full_type=*/true));
 
   *rewritten = true;
 
@@ -2208,8 +2195,10 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
   // If node.
   TF_RETURN_IF_ERROR(CleanUpInEdges(
       index_mapping, /*arg_to_input_edge_offset=*/1, g, if_node));
-  TF_RETURN_IF_ERROR(
-      UpdateTypeAttribute(index_mapping, "Tin", dtypes, if_node));
+  // Changing Tin does not affect the node's outputs, so full type information
+  // (if present) does not need to be updated.
+  TF_RETURN_IF_ERROR(if_node->ShrinkTypeInfo(index_mapping, "Tin",
+                                             /*update_full_type=*/false));
 
   *rewritten = true;
 

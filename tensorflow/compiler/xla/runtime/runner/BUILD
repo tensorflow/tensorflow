@@ -3,7 +3,6 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
@@ -68,8 +67,8 @@ py_library(
 #     srcs_version = "PY3",
 #     deps = [
 #         ":runner",
-#         "//third_party/py/numpy",
 #         "@absl_py//absl/testing:absltest",
+#         "//third_party/py/numpy",
 #     ],
 # )
 #

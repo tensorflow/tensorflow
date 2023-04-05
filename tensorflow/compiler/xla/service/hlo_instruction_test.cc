@@ -858,13 +858,15 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  HloSharding tuple_sharding =
+      HloSharding::SingleTuple(tuple->shape(), sharding);
+  tuple->set_sharding(tuple_sharding);
   // Compatible with original shape as tuple tree structure and leaf ranks are
   // identical
   auto clone_shape = ShapeUtil::MakeShape(F32, {3, 3});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});
   auto tuple_clone = tuple->CloneWithNewOperands(clone_shape, {});
-  EXPECT_EQ(tuple_clone->sharding(), sharding);
+  EXPECT_EQ(tuple_clone->sharding(), tuple_sharding);
 }
 
 TEST_F(HloInstructionTest,
@@ -878,7 +880,7 @@ TEST_F(HloInstructionTest,
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  tuple->set_sharding(HloSharding::SingleTuple(tuple->shape(), sharding));
   // Incompatible with original shape as tuple tree structure is different
   auto clone_shape = ShapeUtil::MakeShape(F32, {2, 2});
   clone_shape =
@@ -898,7 +900,7 @@ TEST_F(HloInstructionTest,
       })));
   auto* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
-  tuple->set_sharding(sharding);
+  tuple->set_sharding(HloSharding::SingleTuple(tuple->shape(), sharding));
   // Incompatible with original shape as tuple tree structure is different
   auto clone_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
   clone_shape = ShapeUtil::MakeTupleShape({clone_shape, clone_shape});

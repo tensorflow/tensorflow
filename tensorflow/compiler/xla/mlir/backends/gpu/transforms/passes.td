@@ -149,17 +149,17 @@ def AddHloTraceAnnotationsPass :
 }
 
 //===----------------------------------------------------------------------===//
-// Experimental passes for Xla Gpu <-> Cuda Graphs integration.
+// Xla Gpu <-> Cuda Graphs integration.
 //===----------------------------------------------------------------------===//
 
-def ConvertLaunchFuncToCudaGraphPass :
-    Pass<"xla-gpu-launch-func-to-cuda-graphs", "mlir::ModuleOp"> {
-  let summary = "Capture sequence of Gpu function launches as cuda graphs";
+def OutlineCudaGraphsPass :
+    Pass<"xla-gpu-outline-cuda-graphs", "mlir::ModuleOp"> {
+  let summary = "Outline sequences of Xla Gpu operations into CUDA Graphs";
 
   let description = [{
-    Converts sequences of two or more `gpu.launch_func` operations to Cuda
-    Graph building functions, and replaces the original sequences with calls to
-    the Xla Cuda Graph runtime API.
+    Converts sequences of supported Xla Gpu operations to Cuda Graph capture
+    functions, and replaces the original sequences with calls to the Xla Cuda
+    Graph runtime API.
 
     Example:
 
@@ -171,20 +171,20 @@ def ConvertLaunchFuncToCudaGraphPass :
     becomes:
 
     ```mlir
-    // Export cuda graph builder function to Xla runtime.
-    rt.export @builder ordinal 1
-    func.func @builder(@arg0: memref<?xf32>, %arg1: memref<?xf32>) {
+    // Export cuda graph capture function to Xla runtime.
+    rt.export @capture ordinal 1
+    func.func @capture(@arg0: memref<?xf32>, %arg1: memref<?xf32>) {
       ... capture a graph corresponding to a sequence of `gpu.launch_func` ops
     }
 
     // Replace a sequence of graph launch operations with a call to runtime API.
-    call @xla.gpu.cuda.graph.execute(%arg0: memref<?xf32>,
+    call @xla.gpu.cuda.graph.launch(%arg0: memref<?xf32>,
                                      %arg1: memref<?xf32>)
-      attributes { builder = @builder }
+      attributes { capture = @capture }
     ```
   }];
 
-  let constructor = "createConvertLaunchFuncToCudaGraphPass()";
+  let constructor = "createOutlineCudaGraphsPass()";
 }
 
 #endif  // XLA_GPU_PASSES

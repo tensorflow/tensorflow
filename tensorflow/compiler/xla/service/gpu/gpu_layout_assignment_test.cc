@@ -20,15 +20,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
@@ -41,7 +40,15 @@ namespace op = xla::testing::opcode_matchers;
 using ::testing::AllOf;
 using ::tsl::testing::IsOkAndHolds;
 
-using LayoutAssignmentTest = HloTestBase;
+class LayoutAssignmentTest : public HloTestBase {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
 
 TEST_F(LayoutAssignmentTest, Elementwise) {
   Shape ashape = ShapeUtil::MakeShape(F32, {42, 12});
@@ -167,7 +174,7 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::ShapeWithLayout("f32[2,3,5]{1,0,2}"),
+              op::Dot(op::ShapeWithLayout("f32[2,3,5]{0,1,2}"),
                       op::ShapeWithLayout("f32[3,4,5]{1,0,2}")));
 }
 
@@ -202,11 +209,11 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
   HloModule DotLayout
   ENTRY dot {
     p0 = f32[5,2,3] parameter(0)
-    p1 = f32[5,3,4] parameter(1)
-    dot = f32[5,2,4] dot(p0, p1),
+    p1 = f32[5,3,4,6] parameter(1)
+    dot = f32[5,2,4,6] dot(p0, p1),
       lhs_batch_dims={0}, lhs_contracting_dims={2},
       rhs_batch_dims={0}, rhs_contracting_dims={1}
-    ROOT out = f32[2,5,4] transpose(dot), dimensions={1,0,2}
+    ROOT out = f32[2,5,4,6] transpose(dot), dimensions={1,0,2,3}
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -220,11 +227,11 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Transpose(
-                        AllOf(op::Dot(op::ShapeWithLayout("f32[5,2,3]{2,1,0}"),
-                                      op::ShapeWithLayout("f32[5,3,4]{2,1,0}")),
-                              op::ShapeWithLayout("f32[5,2,4]{2,0,1}"))),
-                    op::ShapeWithLayout("f32[2,5,4]{2,1,0}")));
+              AllOf(op::Transpose(AllOf(
+                        op::Dot(op::ShapeWithLayout("f32[5,2,3]{2,1,0}"),
+                                op::ShapeWithLayout("f32[5,3,4,6]{3,2,1,0}")),
+                        op::ShapeWithLayout("f32[5,2,4,6]{3,2,0,1}"))),
+                    op::ShapeWithLayout("f32[2,5,4,6]{3,2,1,0}")));
 }
 
 TEST_F(LayoutAssignmentTest, DotLayoutS8) {
@@ -345,6 +352,57 @@ ENTRY entry {
   expect_layout(ShapeUtil::GetSubshape(call_0->shape(), {0}), {1, 2, 0});
   expect_layout(call_0->operand(0)->shape(), {1, 2, 0});
   expect_layout(call_0->operand(1)->shape(), {1, 2, 0});
+}
+
+TEST_F(LayoutAssignmentTest, ConvCuDNNBF16) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv with Bfloat16 uses NHWC layout for "
+                    "architectures with Tensor Cores.";
+  }
+
+  const char* hlo = R"(
+
+  HloModule jit_conv_general_dilated
+
+  ENTRY main.4 {
+    Arg_0.1 = bf16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
+    Arg_1.2 = bf16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
+    ROOT convolution.3 = bf16[1,64,64,32]{3,2,1,0} convolution(Arg_0.1, Arg_1.2), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, metadata={op_name="jit(conv_general_dilated)/jit(main)/conv_general_dilated[window_strides=(1, 1) padding=((1, 1), (1, 1)) lhs_dilation=(1, 1) rhs_dilation=(1, 1) dimension_numbers=ConvDimensionNumbers(lhs_spec=(0, 3, 1, 2), rhs_spec=(3, 2, 0, 1), out_spec=(0, 3, 1, 2)) feature_group_count=1 batch_group_count=1 lhs_shape=(1, 64, 64, 16) rhs_shape=(3, 3, 16, 32) precision=None preferred_element_type=None]" source_file="/usr/local/lib/python3.8/dist-packages/flax/linen/linear.py" source_line=438}
+  }
+)";
+
+  MatchOptimizedHlo(hlo, R"(
+  // CHECK: [[P0:%[^ ]+]] = bf16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
+  // CHECK: [[P1:%[^ ]+]] = bf16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
+  // CHECK-NEXT: [[P2:%[^ ]+]] = bf16[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
+  // CHECK-NEXT: %cudnn-conv.1 = (bf16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
+  )");
+}
+
+TEST_F(LayoutAssignmentTest, ConvCuDNNFP16) {
+  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Conv with FP16 uses NHWC layout for "
+                    "architectures with Tensor Cores.";
+  }
+
+  const char* hlo = R"(
+
+  HloModule jit_conv_general_dilated
+
+  ENTRY main.4 {
+    Arg_0.1 = f16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
+    Arg_1.2 = f16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
+    ROOT convolution.3 = f16[1,64,64,32]{3,2,1,0} convolution(Arg_0.1, Arg_1.2), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  }
+)";
+
+  MatchOptimizedHlo(hlo, R"(
+  // CHECK: [[P0:%[^ ]+]] = f16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
+  // CHECK: [[P1:%[^ ]+]] = f16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
+  // CHECK-NEXT: [[P2:%[^ ]+]] = f16[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
+  // CHECK-NEXT: %cudnn-conv.1 = (f16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
+  )");
 }
 
 }  // namespace

@@ -81,29 +81,33 @@ def fullargspec_to_signature(
   defaults = _make_default_values(fullargspec)
   parameters = []
 
-  arg_kind = (
-      inspect.Parameter.POSITIONAL_ONLY
-      if fullargspec.kwonlyargs else inspect.Parameter.POSITIONAL_OR_KEYWORD)
   for arg in fullargspec.args:
     parameters.append(
         inspect.Parameter(
-            arg, arg_kind, default=defaults.get(arg, inspect.Parameter.empty)))
+            arg,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            default=defaults.get(arg, inspect.Parameter.empty),
+        )
+    )
 
   if fullargspec.varargs is not None:
     parameters.append(
-        inspect.Parameter(fullargspec.varargs,
-                          inspect.Parameter.VAR_POSITIONAL))
+        inspect.Parameter(fullargspec.varargs, inspect.Parameter.VAR_POSITIONAL)
+    )
 
   for kwarg in fullargspec.kwonlyargs:
     parameters.append(
         inspect.Parameter(
             kwarg,
             inspect.Parameter.KEYWORD_ONLY,
-            default=defaults.get(kwarg, inspect.Parameter.empty)))
+            default=defaults.get(kwarg, inspect.Parameter.empty),
+        )
+    )
 
   if fullargspec.varkw is not None:
     parameters.append(
-        inspect.Parameter(fullargspec.varkw, inspect.Parameter.VAR_KEYWORD))
+        inspect.Parameter(fullargspec.varkw, inspect.Parameter.VAR_KEYWORD)
+    )
 
   return inspect.Signature(parameters)
 
@@ -154,7 +158,30 @@ def make_decorator(target,
   if decorator_argspec:
     decorator_func.__signature__ = fullargspec_to_signature(
         decorator_argspec)
+  elif callable(target):
+    try:
+      signature = inspect.signature(target)
+    except (TypeError, ValueError):
+      # Certain callables such as builtins can not be inspected for signature.
+      pass
+    else:
+      bound_instance = _get_bound_instance(target)
+      # Present the decorated func as a method as well
+      if bound_instance and 'self' in signature.parameters:
+        signature = inspect.Signature(list(signature.parameters.values())[1:])
+        decorator_func.__self__ = bound_instance
+
+      decorator_func.__signature__ = signature
+
   return decorator_func
+
+
+def _get_bound_instance(target):
+  """Returns the instance any of the targets is attached to."""
+  decorators, target = unwrap(target)
+  for decorator in decorators:
+    if inspect.ismethod(decorator.decorated_target):
+      return decorator.decorated_target.__self__
 
 
 def _has_tf_decorator_attr(obj):
@@ -297,6 +324,15 @@ class TFDecorator(object):
       self.__doc__ = target.__doc__
     else:
       self.__doc__ = ''
+
+    if decorator_argspec:
+      self.__signature__ = fullargspec_to_signature(decorator_argspec)
+    elif callable(target):
+      try:
+        self.__signature__ = inspect.signature(target)
+      except (TypeError, ValueError):
+        # Certain callables such as builtins can not be inspected for signature.
+        pass
 
   def __get__(self, instance, owner):
     return self._decorated_target.__get__(instance, owner)

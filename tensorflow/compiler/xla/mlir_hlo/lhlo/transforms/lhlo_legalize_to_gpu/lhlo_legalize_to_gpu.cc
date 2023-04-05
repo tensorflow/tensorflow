@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to GPU dialect.
 
 #include <cstdint>
+#include <optional>
 
 #include "lhlo/IR/lhlo_ops.h"
 #include "lhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -125,8 +126,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // inline the body.
       auto output = *reduceOp.getOut().begin();
       auto resType = MemRefType::get(
-          llvm::None, getElementTypeOrSelf(output.getType()),
-          makeStridedLinearLayoutMap(llvm::None, ShapedType::kDynamic,
+          std::nullopt, getElementTypeOrSelf(output.getType()),
+          makeStridedLinearLayoutMap(std::nullopt, ShapedType::kDynamic,
                                      rewriter.getContext()));
       OpFoldResult offset = launchOp.getThreadIds().x;
       auto oneAttr = rewriter.getI64IntegerAttr(1);
@@ -151,7 +152,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
-      BlockAndValueMapping mapping;
+      IRMapping mapping;
       mapping.map(reduceOp.getBody().getArgument(0), accumulator);
       mapping.map(reduceOp.getBody().getArgument(1), rhs);
       mapping.map(reduceOp.getBody().getArgument(2), accumulator);

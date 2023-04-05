@@ -15,11 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/core/async/c/task.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/async/c/types.h"
-#include "tensorflow/lite/core/async/common.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace {
 
@@ -45,26 +44,26 @@ TEST_F(TfLiteExecutionTaskTest, BasicTest) {
   auto* sync = TfLiteSynchronizationCreate();
 
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoInput, "x", 42));
+            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoTypeInput, "x", 42));
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoInput, "y", 43));
+            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoTypeInput, "y", 43));
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoOutput, "a", 44));
+            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoTypeOutput, "a", 44));
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetSync(task(), kTfLiteIoInput, "x", sync));
+            TfLiteExecutionTaskSetSync(task(), kTfLiteIoTypeInput, "x", sync));
 
-  EXPECT_EQ(42,
-            TfLiteExecutionTaskGetBufferByName(task(), kTfLiteIoInput, "x"));
-  EXPECT_EQ(43,
-            TfLiteExecutionTaskGetBufferByName(task(), kTfLiteIoInput, "y"));
-  EXPECT_EQ(44,
-            TfLiteExecutionTaskGetBufferByName(task(), kTfLiteIoOutput, "a"));
+  EXPECT_EQ(
+      42, TfLiteExecutionTaskGetBufferByName(task(), kTfLiteIoTypeInput, "x"));
+  EXPECT_EQ(
+      43, TfLiteExecutionTaskGetBufferByName(task(), kTfLiteIoTypeInput, "y"));
+  EXPECT_EQ(
+      44, TfLiteExecutionTaskGetBufferByName(task(), kTfLiteIoTypeOutput, "a"));
   EXPECT_EQ(sync,
-            TfLiteExecutionTaskGetSyncByName(task(), kTfLiteIoInput, "x"));
+            TfLiteExecutionTaskGetSyncByName(task(), kTfLiteIoTypeInput, "x"));
   EXPECT_EQ(nullptr,
-            TfLiteExecutionTaskGetSyncByName(task(), kTfLiteIoInput, "y"));
+            TfLiteExecutionTaskGetSyncByName(task(), kTfLiteIoTypeInput, "y"));
   EXPECT_EQ(nullptr,
-            TfLiteExecutionTaskGetSyncByName(task(), kTfLiteIoOutput, "a"));
+            TfLiteExecutionTaskGetSyncByName(task(), kTfLiteIoTypeOutput, "a"));
 
   TfLiteSynchronizationDelete(sync);
 }
@@ -73,13 +72,13 @@ TEST_F(TfLiteExecutionTaskTest, BasicTestByTensorIndex) {
   auto* sync = TfLiteSynchronizationCreate();
 
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoInput, "x", 42));
+            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoTypeInput, "x", 42));
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoInput, "y", 43));
+            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoTypeInput, "y", 43));
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoOutput, "a", 44));
+            TfLiteExecutionTaskSetBuffer(task(), kTfLiteIoTypeOutput, "a", 44));
   EXPECT_EQ(kTfLiteOk,
-            TfLiteExecutionTaskSetSync(task(), kTfLiteIoInput, "x", sync));
+            TfLiteExecutionTaskSetSync(task(), kTfLiteIoTypeInput, "x", sync));
 
   EXPECT_EQ(42, TfLiteExecutionTaskGetBufferByIndex(task(), 1));
   EXPECT_EQ(43, TfLiteExecutionTaskGetBufferByIndex(task(), 2));
@@ -93,16 +92,24 @@ TEST_F(TfLiteExecutionTaskTest, BasicTestByTensorIndex) {
 
 TEST_F(TfLiteExecutionTaskTest, NullTest) {
   EXPECT_EQ(kTfLiteError,
-            TfLiteExecutionTaskSetBuffer(nullptr, kTfLiteIoInput, "x", 42));
-  EXPECT_EQ(kTfLiteError,
-            TfLiteExecutionTaskSetSync(nullptr, kTfLiteIoInput, "x", nullptr));
-  EXPECT_EQ(kTfLiteNullBufferHandle,
-            TfLiteExecutionTaskGetBufferByName(nullptr, kTfLiteIoOutput, "a"));
+            TfLiteExecutionTaskSetBuffer(nullptr, kTfLiteIoTypeInput, "x", 42));
+  EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskSetSync(
+                              nullptr, kTfLiteIoTypeInput, "x", nullptr));
+  EXPECT_EQ(kTfLiteNullBufferHandle, TfLiteExecutionTaskGetBufferByName(
+                                         nullptr, kTfLiteIoTypeOutput, "a"));
   EXPECT_EQ(nullptr,
-            TfLiteExecutionTaskGetSyncByName(nullptr, kTfLiteIoInput, "x"));
+            TfLiteExecutionTaskGetSyncByName(nullptr, kTfLiteIoTypeInput, "x"));
   EXPECT_EQ(kTfLiteNullBufferHandle,
             TfLiteExecutionTaskGetBufferByIndex(nullptr, 3));
   EXPECT_EQ(nullptr, TfLiteExecutionTaskGetSyncByIndex(nullptr, 3));
+  EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskGetStatus(nullptr));
+  TfLiteExecutionTaskSetStatus(nullptr, kTfLiteOk);
+}
+
+TEST_F(TfLiteExecutionTaskTest, StatusTest) {
+  EXPECT_EQ(kTfLiteOk, TfLiteExecutionTaskGetStatus(task()));
+  TfLiteExecutionTaskSetStatus(task(), kTfLiteError);
+  EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskGetStatus(task()));
 }
 
 }  // namespace

@@ -51,6 +51,18 @@ bool IsNcclLaunchModeParallel() {
   return is_launch_mode_parallel;
 }
 
+#ifndef TENSORFLOW_USE_ROCM
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr) {
+  if (s == cudaSuccess) {
+    return OkStatus();
+  }
+  return tsl::errors::Internal(
+      absl::StrFormat("%s:%d: CUDA operation %s failed: %s", file, line, expr,
+                      cudaGetErrorString(s)));
+}
+#endif
+
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
@@ -235,8 +247,9 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
       << "If non-local devices are taking part of a collective API on "
          "GPU, the nccl_unique_id_callback must be provided by the client.";
 
-  static NcclUniqueIdCallback local_callback(LocalNcclUniqueIdCallback);
-  return &local_callback;
+  static auto* local_callback =
+      new NcclUniqueIdCallback(LocalNcclUniqueIdCallback);
+  return local_callback;
 }
 
 StatusOr<NcclComm::Lock> AcquireNcclComm(

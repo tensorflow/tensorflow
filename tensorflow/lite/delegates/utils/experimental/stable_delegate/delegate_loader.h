@@ -24,21 +24,23 @@ namespace delegates {
 namespace utils {
 
 const char kTfLiteStableDelegateSymbol[] = "TFL_TheStableDelegate";
-
-// Same as the other function but uses kTfLiteStableDelegateSymbol. This
-// function is preferred to be used because delegate developers are required to
-// use kTfLiteStableDelegateSymbol.
-const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
-    const std::string& delegate_path);
+const char kTfLiteLibraryPathEnvironmentVariable[] =
+    "TFLITE_STABLE_DELEGATE_LIBRARY_PATH";
 
 // Loads the TFLite delegate shared library and returns the pointer to
 // TfLiteStableDelegate (defined in
-// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h)
-// identified by delegate_symbol. The returned pointer could be null if the
-// delegate shared library cannot be opened or the delegate symbol cannot be
-// found.
+// tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h).
+// The returned pointer could be null if the delegate shared library cannot be
+// opened or the delegate symbol cannot be found.
 const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(
-    const std::string& delegate_path, const std::string& delegate_symbol);
+    const std::string& delegate_path);
+
+// Loads `delegate_symbol` from the delegate shared library and returns a
+// pointer to void. It is caller's responsibility to check and cast the pointer
+// to other types. The returned pointer could be null if the delegate shared
+// library cannot be opened or the delegate symbol cannot be found.
+void* LoadSymbolFromSharedLibrary(const std::string& delegate_path,
+                                  const std::string& delegate_symbol);
 
 // TODO(b/239825926): Add ABI version check when loading TfLiteStableDelegate.
 

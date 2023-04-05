@@ -51,7 +51,8 @@ StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,
   if (axis < 0) axis += input_rank;
 
   LayoutProto output_layout_proto;
-  *output_layout_proto.mutable_mesh_config() = input_layout.mesh().ToProto();
+  TF_ASSIGN_OR_RETURN(*output_layout_proto.mutable_mesh_config(),
+                      input_layout.mesh().ToProto());
 
   for (int i = 0; i < input_rank; ++i) {
     if (i != axis)
@@ -73,7 +74,7 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
     return errors::InvalidArgument(
         OpName(op), " is missing layouts during SPMD Expansion.");
 
-  auto input = argmax_op.getInput();
+  mlir::Value input = argmax_op.getInput();
   const auto input_rank = ValueRank(input);
 
   TF_ASSIGN_OR_RETURN(auto input_shape, GetShapeOfValue(input));
@@ -84,8 +85,8 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
   mlir::OpBuilder builder(op);
   {
     LayoutProto tgt_input_layout_proto;
-    *tgt_input_layout_proto.mutable_mesh_config() =
-        input_layout->mesh().ToProto();
+    TF_ASSIGN_OR_RETURN(*tgt_input_layout_proto.mutable_mesh_config(),
+                        input_layout->mesh().ToProto());
 
     for (int i = 0; i < input_shape.size(); ++i) {
       // const auto dim_name

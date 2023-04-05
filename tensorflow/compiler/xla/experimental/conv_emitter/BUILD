@@ -2,7 +2,7 @@
 #   MLIR-GPU-specific convolution in XLA service implementation.
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -64,12 +64,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "conv_emitter_test",
     srcs = ["conv_emitter_test.cc"],
     deps = [
         ":conv_emitter",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/tsl/platform:test",

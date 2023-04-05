@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ inline void Mul(const ArithmeticParams& params,
   const int flat_size =
       MatchingExtendedShapeFlatSize(input1_shape, input2_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
+    output_data[i] = ActivationFunctionWithMinMax<T>(
         input1_data[i] * input2_data[i], output_activation_min,
         output_activation_max);
   }
@@ -128,14 +128,18 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
   }
 }
 
-template <typename T>
-void BroadcastMul4DSlow(const ArithmeticParams& params,
-                        const RuntimeShape& unextended_input1_shape,
-                        const T* input1_data,
-                        const RuntimeShape& unextended_input2_shape,
-                        const T* input2_data,
-                        const RuntimeShape& unextended_output_shape,
-                        T* output_data) {
+template <typename T,
+          // For unquantized mul on small integers, explictly set to true.
+          bool enable_for_short_integers = false>
+inline typename std::enable_if<
+    !is_small_integer<T>::value || enable_for_short_integers, void>::type
+BroadcastMul4DSlow(const ArithmeticParams& params,
+                   const RuntimeShape& unextended_input1_shape,
+                   const T* input1_data,
+                   const RuntimeShape& unextended_input2_shape,
+                   const T* input2_data,
+                   const RuntimeShape& unextended_output_shape,
+                   T* output_data) {
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
@@ -167,7 +171,7 @@ void BroadcastMul4DSlow(const ArithmeticParams& params,
       for (int x = 0; x < output_shape.Dims(2); ++x) {
         for (int c = 0; c < output_shape.Dims(3); ++c) {
           output_data[Offset(output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
+              ActivationFunctionWithMinMax<T>(
                   input1_data[SubscriptToIndex(desc1, b, y, x, c)] *
                       input2_data[SubscriptToIndex(desc2, b, y, x, c)],
                   output_activation_min, output_activation_max);

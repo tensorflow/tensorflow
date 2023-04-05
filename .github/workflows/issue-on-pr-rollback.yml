@@ -27,9 +27,9 @@ jobs:
       startsWith(github.event.head_commit.message, 'Rollback of PR #')
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
       - name: Create a new Github Issue
-        uses: actions/github-script@v5
+        uses: actions/github-script@d556feaca394842dc55e4734bf3bb9f685482fa0 # v6.3.3
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |

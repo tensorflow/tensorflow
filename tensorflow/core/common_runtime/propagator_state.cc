@@ -614,6 +614,34 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
   return activated;
 }
 
+int PropagatorState::FrameState::ActivateNodesFastPathLocked(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesFastPathInternal<false>(item, is_dead, iter_state,
+                                              outputs, ready);
+}
+
+int PropagatorState::FrameState::ActivateNodesFastPathShared(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesFastPathInternal<true>(item, is_dead, iter_state, outputs,
+                                             ready);
+}
+
+int PropagatorState::FrameState::ActivateNodesSlowPathLocked(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesSlowPathInternal<false>(item, is_dead, iter_state,
+                                              outputs, ready);
+}
+
+int PropagatorState::FrameState::ActivateNodesSlowPathShared(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
+  return ActivateNodesSlowPathInternal<true>(item, is_dead, iter_state, outputs,
+                                             ready);
+}
+
 bool PropagatorState::FrameState::ActivateNodesAndAdjustOutstanding(
     const NodeItem* item, const bool is_dead, IterationState* iter_state,
     EntryVector* outputs, TaggedNodeSeq* ready, int decrement_activation) {

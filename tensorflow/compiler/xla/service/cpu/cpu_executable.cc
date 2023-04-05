@@ -81,14 +81,15 @@ CpuExecutable::CpuExecutable(
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
-  llvm::Expected<llvm::JITEvaluatedSymbol> sym =
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
       jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(*sym) << "Symbol " << entry_function_name << " not found.";
+  CHECK(sym->getAddress()) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
+  compute_function_ =
+      reinterpret_cast<ComputeFunctionType>(sym->getAddress().getValue());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
   jit_->DoneCompiling();
@@ -311,11 +312,18 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     return InternalError("Failed to load XLA Runtime executable: %s",
                          executable.status().message());
 
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
+
   // Move runtime::Executable ownership to the XlaRuntimeCpuExecutable.
   auto executable_ptr =
       std::make_unique<runtime::Executable>(std::move(executable.value()));
   auto xla_runtime_executable = std::make_unique<XlaRuntimeCpuExecutable>(
-      std::move(executable_ptr), xla_framework_mapping);
+      std::move(executable_ptr), xla_framework_mapping,
+      std::move(*ffi_modules_state));
 
   return std::unique_ptr<Executable>(new CpuExecutable(
       std::move(hlo_module), nullptr, nullptr, std::move(buffer_assignment),
@@ -546,11 +554,17 @@ Status XlaRuntimeCpuExecutable::Execute(
     return runtime::success();
   });
 
-  runtime::CustomCall::UserData user_data(run_options);
+  // Initialize state required for running functions exported from FFI modules.
+  absl::StatusOr<runtime::ffi::FfiStateVector> ffi_state =
+      ffi_modules_state_.state_vector();
+  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
+
+  runtime::CustomCall::UserData user_data(run_options, &ffi_state.value());
 
   runtime::Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
   opts.diagnostic_engine = &diagnostic_engine;
+  opts.custom_call_registry = &dynamic_custom_calls_;
 
   // We don't expect to see any async tasks in the XLA Runtime executable.
   opts.async_task_runner =
