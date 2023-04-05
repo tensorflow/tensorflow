@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -93,7 +94,7 @@ struct SnapshotWriterParams {
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - chunks
-//     - chunk_<stream_index>_<chunk_index>
+//     - chunk_<stream_index>_<chunk_index>_<num_elements>
 //   - streams
 //     - stream_0
 //       - LEASE
@@ -103,7 +104,7 @@ struct SnapshotWriterParams {
 //       - uncommitted chunks
 //         - chunk_<chunk_index>
 //       - checkpoints
-//         - checkpoint_<chunk_index>
+//         - checkpoint_<chunk_index>_<num_elements>
 //
 // This class is thread-safe.
 class SnapshotStreamWriter {
@@ -187,16 +188,19 @@ class SnapshotStreamWriter {
   // Restores from the last checkpoint.
   Status Restore();
 
-  // Returns the index of the last checkpointed chunk.
-  StatusOr<int64_t> LastCheckpointIndex() const;
+  // Returns the index of the last checkpointed chunk and its element count.
+  StatusOr<std::pair<int64_t, int64_t>> LastCheckpointInfo() const;
 
   // Synchronizes the checkpoint with the committed chunks. This is called when
   // the worker restores the snapshot in case the worker fails after writing the
   // checkpoint but before committing a chunk file.
-  Status SyncCheckpointWithChunks(int64_t checkpoint_index);
+  Status SyncCheckpointWithChunks(int64_t checkpoint_index,
+                                  int64_t checkpoint_num_elements);
 
-  // Returns the path of the checkpoint for `chunk_index`.
-  std::string CheckpointPath(int64_t chunk_index) const;
+  // Returns the path of the checkpoint for `chunk_index` with
+  // `chunk_num_elements`.
+  std::string CheckpointPath(int64_t chunk_index,
+                             int64_t chunk_num_elements) const;
 
   const SnapshotWriterParams params_;
 
@@ -207,6 +211,8 @@ class SnapshotStreamWriter {
   int64_t chunk_index_ = 0;
   // Size of the current chunk.
   int64_t chunk_size_bytes_ = 0;
+  // Number of elements in current chunk.
+  int64_t chunk_num_elements_ = 0;
 
   // True if the dataset is exhausted.
   bool end_of_sequence_ = false;

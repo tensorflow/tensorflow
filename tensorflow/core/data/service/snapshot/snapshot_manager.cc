@@ -225,7 +225,7 @@ Status SnapshotManager::ReadOnDiskSource(
   bool unused_end_of_splits;
   for (const auto& split_filename : split_filenames) {
     std::string split_path = io::JoinPath(source_path, split_filename);
-    TF_ASSIGN_OR_RETURN(auto split_indices, SplitIndices(split_filename));
+    TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_filename));
     auto [local_split_index, global_split_index] = split_indices;
     if (local_split_index > split_filenames.size() - 1) {
       return InvalidArgument(
