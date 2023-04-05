@@ -55,7 +55,7 @@ FailureOr<Operation *> fuse(PatternRewriter &rewriter,
 // Finds `tensor.extract_slice` ops in the block and fuses ops into them.
 // Verifies that fusion candidate doesn't have any uses except the one
 // `tensor.extract_slice` in the block to avoid exponential code growth.
-void fuseGreedily(PatternRewriter &rewriter, Block &block,
+void fuseGreedily(PatternRewriter &rewriter, ArrayRef<Block *> blocks,
                   llvm::function_ref<bool(Operation *)> filterFn = nullptr);
 
 // Tiles the op to gml_st.parallel and fuses greedily according to the filter.

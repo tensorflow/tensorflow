@@ -177,6 +177,8 @@ def TransformReduceForCpuPass :
     Pass<"xla-cpu-transform-reduce", "mlir::func::FuncOp"> {
   let summary = "Transform reduce ops for running on CPU";
   let options = [
+    Option<"enableHeuristic", "enable_heuristic", "bool", "false",
+           "Enable heuristic for tiling sizes. Currently only for 1D.">,
     Option<"tileSize1D", "reduction-1d-tile-size", "int64_t", "32",
            "Tile size for a 1D reduction.">,
     Option<"splitRatio1D", "reduction-1d-split-ratio", "int64_t", "8",

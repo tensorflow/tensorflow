@@ -67,7 +67,7 @@ struct TileScatterPattern : public OpRewritePattern<thlo::ScatterOp> {
     if (failed(ifOpOr)) return failure();
 
     // Fuse into `then` block.
-    fuseGreedily(rewriter, ifOpOr->getThenRegion().front(), fuseFilterFn);
+    fuseGreedily(rewriter, &ifOpOr->getThenRegion().front(), fuseFilterFn);
 
     // Remove tiling label to continue generating code inside the region.
     ifOpOr->walk([](Operation *op) { removeLabel(op, kTransformedLabel); });

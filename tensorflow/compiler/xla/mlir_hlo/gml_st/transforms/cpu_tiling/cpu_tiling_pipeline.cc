@@ -29,8 +29,9 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
                                                    int64_t statsDetailLevel) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
+  opts.reductionEnableHeuristic = false;
   opts.reduction1DSplitRatio = 8;
-  opts.reduction1DTileSize = 32;
+  opts.reduction1DTileSize = 8;
   opts.reduction2DParallelDimTileSize = 4;
   opts.reduction2DReductionDimTileSize = 4;
   opts.matmulTileSizes = {};
@@ -73,6 +74,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
 
   TransformReduceForCpuPassOptions reductionOpts;
+  reductionOpts.enableHeuristic = options.reductionEnableHeuristic;
   reductionOpts.tileSize1D = options.reduction1DTileSize;
   reductionOpts.splitRatio1D = options.reduction1DSplitRatio;
   reductionOpts.parallelDimTileSize2D = options.reduction2DParallelDimTileSize;

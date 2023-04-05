@@ -165,6 +165,11 @@ struct GmlStCPUTilingOptions
                              llvm::cl::desc("Vector size for a 1D reduction."),
                              llvm::cl::init(8)};
 
+  Option<bool> reductionEnableHeuristic{
+      *this, "reduction-enable-heuristic",
+      llvm::cl::desc("Enable tiling parameters heuristic for reductions."),
+      llvm::cl::init(false)};
+
   Option<int64_t> reduction1DTileSize{
       *this, "reduction-1d-tile-size",
       llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
