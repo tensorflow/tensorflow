@@ -634,11 +634,21 @@ def ConvertExpandDimsToReshape : Pat<
 class FloatValueEquals<string val> : Constraint<CPred<
   "FloatValueEquals($0, " # val # ")">>;
 
+// Here, the element type can be any integer or float type.
+class IsConstantValueOf<int value> : Constraint<CPred<
+  "TFL::IsConstantValueOf($0," # value # ")">>;
+
 // ReLU patterns
 def MatchReluPattern : Pat<
   (TFL_MaximumOp $input, (Arith_ConstantOp $Zero)),
   (TFL_ReluOp $input),
   [(FloatValueEquals<"0"> $Zero)]>;
+
+// Optimize Minimum of tf.Relu and constant six to tf.Relu6
+def MinimumOfReluAnd6ToRelu6 :
+  Pat<(TFL_MinimumOp (TFL_ReluOp $x), (Arith_ConstantOp $y)),
+      (TFL_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;
 
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (Arith_ConstantOp $NegOne)),
