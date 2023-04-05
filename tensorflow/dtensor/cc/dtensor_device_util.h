@@ -136,7 +136,7 @@ struct DTensorOperation {
   const FunctionDef* function_def;
   // Default mesh is used when Mesh Propagation does not identify a mesh
   // otherwise.
-  const Mesh& default_mesh;
+  const Mesh default_mesh;
   const StackTracesMap& stack_traces;
   inline bool is_func() const { return function_def != nullptr; }
 };

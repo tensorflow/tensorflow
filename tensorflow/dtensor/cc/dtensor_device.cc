@@ -143,9 +143,9 @@ class DTensorDevice {
     if (!mesh_to_device_map_.insert({mesh->mesh_config(), std::move(mesh)})
              .second)
       return;
-    if (!default_mesh_) {
+    if (!GetDefaultMesh().has_value()) {
       global_default_mesh_ = mesh_to_device_map_.begin()->first;
-      default_mesh_ = global_default_mesh_;
+      SetDefaultMesh(global_default_mesh_.value());
     }
   }
 
@@ -159,10 +159,43 @@ class DTensorDevice {
   void Execute(const TFE_Op* original_op, int* num_outputs,
                TFE_TensorHandle** outputs, TF_Status* status);
 
-  void SetDefaultLayout(Layout layout) { default_layout_.emplace(layout); }
-  void ClearDefaultLayout() { default_layout_.reset(); }
-  void SetDefaultMesh(Mesh mesh) { default_mesh_ = mesh; }
-  void ClearDefaultMesh() { default_mesh_ = global_default_mesh_; }
+  // Sets the output layout for the current device.
+  // This API only supports setting the layout of the first output.
+  // All eager operations launched this device will be affected.
+  //
+  // Example (pseudo-code):
+  // dtensor_device.set_default_layout(layout)
+  // run_some_eager_op()
+  //
+  // If the pattern is used by multiple threads, the caller shall
+  // ensure there is no racing between threads.
+  void SetDefaultLayout(Layout layout) {
+    mutex_lock lock(mu_default_layout_);
+    default_layout_.emplace(layout);
+  }
+  void ClearDefaultLayout() {
+    mutex_lock lock(mu_default_layout_);
+    default_layout_.reset();
+  }
+
+  // Similar to SetDefaultLayout, but sets the default mesh used for
+  // all Operations and operands whose mesh cannot be determined from
+  // inference.
+  //
+  // If the pattern is used by multiple threads, the caller shall
+  // ensure there is no racing between threads.
+  void SetDefaultMesh(Mesh mesh) {
+    mutex_lock lock(mu_default_mesh_);
+    default_mesh_ = mesh;
+  }
+  std::optional<Mesh> GetDefaultMesh() const {
+    mutex_lock lock(mu_default_mesh_);
+    return default_mesh_;
+  }
+  void ClearDefaultMesh() {
+    mutex_lock lock(mu_default_mesh_);
+    default_mesh_ = global_default_mesh_;
+  }
 
   Status SetTPUCoreIDs(const std::string& mesh_name,
                        const std::vector<int>& tpu_core_ids) {
@@ -503,6 +536,8 @@ class DTensorDevice {
   std::unique_ptr<EagerExecutor> eager_executor_;
 
   mutable mutex mu_;  // Mutex for dtensor_device->execute
+  mutable mutex mu_default_mesh_;    // Mutex for default mesh object
+  mutable mutex mu_default_layout_;  // Mutex for default layout object
 };
 
 int64_t FingerprintShape(const absl::Span<const int64_t> shape) {
@@ -614,7 +649,7 @@ std::optional<Mesh> DTensorDevice::ChooseBroadcastingMesh(
   // mesh to broadcast to. Otherwise we fallback to default mesh.
   if (input_meshes.size() == 1) return *input_meshes.begin();
 
-  return default_mesh_;
+  return GetDefaultMesh();
 }
 
 TFE_TensorHandle* DTensorDevice::MakeLayoutTensorHandle(
@@ -649,7 +684,9 @@ bool DTensorDevice::is_remote_mesh(const Mesh& mesh) const {
   // An empty mesh might be assigned to VarHandleOp during DTensor MLIR lowering
   // pass. Decide whether the empty mesh is remote based on the current default
   // mesh.
-  return mesh.is_remote() || (mesh.IsEmpty() && default_mesh_->is_remote());
+
+  return mesh.is_remote() ||
+         (mesh.IsEmpty() && GetDefaultMesh().value().is_remote());
 }
 
 std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
@@ -1470,14 +1507,19 @@ DTensorDevice::DTensorOperationToModule(
   // Output layouts must be inferred before cache
   // key computation, since they might depend on the current DTensorDevice
   // state.
-  TF_RETURN_IF_ERROR(InferOutputLayouts(doperation, eager_attributes,
-                                        default_layout_, result.graph.get(),
-                                        &result.output_layouts));
+  std::pair<tensorflow::Fprint128, const mlir::OwningOpRef<mlir::ModuleOp>*>
+      cached_key_and_module;
+  {
+    mutex_lock lock(mu_default_layout_);
+    TF_RETURN_IF_ERROR(InferOutputLayouts(doperation, eager_attributes,
+                                          default_layout_, result.graph.get(),
+                                          &result.output_layouts));
 
-  TF_ASSIGN_OR_RETURN(
-      auto cached_key_and_module,
-      module_manager_->GetCachedExecutable(doperation, eager_attributes, inputs,
-                                           result.output_layouts));
+    TF_ASSIGN_OR_RETURN(
+        cached_key_and_module,
+        module_manager_->GetCachedExecutable(doperation, eager_attributes,
+                                             inputs, result.output_layouts));
+  }
   auto [cache_key, cached_mlir_module] = cached_key_and_module;
   result.doperation_cache_key = cache_key;
 
@@ -1843,10 +1885,13 @@ void DTensorDevice::ExecuteRegularOperation(
                         .c_str());
     }
     const Mesh& mesh = *maybe_converted_mesh;
-    const MeshWithParallelDevice* parallel_device_mesh =
-        mesh_to_device_map_.contains(mesh)
-            ? mesh_to_device_map_[mesh].get()
-            : mesh_to_device_map_[*default_mesh_].get();
+    const MeshWithParallelDevice* parallel_device_mesh = nullptr;
+    {
+      parallel_device_mesh =
+          mesh_to_device_map_.contains(mesh)
+              ? mesh_to_device_map_[mesh].get()
+              : mesh_to_device_map_[GetDefaultMesh().value()].get();
+    }
     if (parallel_device_mesh == nullptr) {
       RETURN_STATUS(status, TF_INTERNAL,
                     "required mesh is not registered with DTensor device");
@@ -2146,7 +2191,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     inputs.push_back(input);
     dtypes.push_back(TFE_TensorHandleDataType(input));
   }
-  if (!default_mesh_) {
+  if (!GetDefaultMesh().has_value()) {
     RETURN_STATUS(status, TF_INVALID_ARGUMENT,
                   "No default mesh has been registered to DTensor. Use "
                   "dtensor.default_mesh to "
@@ -2165,7 +2210,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       /*name*/ operation_name,
       /*function_def*/
       tensorflow::unwrap(context)->FindFunctionDef(operation_name),
-      /*default_mesh*/ *default_mesh_,
+      /*default_mesh*/ GetDefaultMesh().value(),
       /*stack_traces*/
       stack_traces,
   };
