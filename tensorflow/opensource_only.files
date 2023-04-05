@@ -66,6 +66,9 @@ tensorflow/lite/c/c_api_experimental.h:
 tensorflow/lite/c/c_api_opaque.h:
 tensorflow/lite/c/c_api_types.h:
 tensorflow/lite/c/common.h:
+tensorflow/lite/c/jni/BUILD:
+tensorflow/lite/c/jni/jni_utils.cc:
+tensorflow/lite/c/jni/jni_utils.h:
 tensorflow/lite/c/test_util.cc:
 tensorflow/lite/c/test_util.h:
 tensorflow/lite/core/c/special_rules.bzl:
@@ -98,7 +101,6 @@ tensorflow/lite/core/shims/cc/shims_test_util.h:
 tensorflow/lite/core/shims/cc/tools/verifier.h:
 tensorflow/lite/core/shims/cc/tools/verifier_internal.h:
 tensorflow/lite/core/shims/cc_library_with_tflite.bzl:
-tensorflow/lite/core/shims/jni/jni_utils.cc:
 tensorflow/lite/core/shims/jni/jni_utils.h:
 tensorflow/lite/core/special_rules.bzl:
 tensorflow/lite/create_op_resolver.h:

@@ -12,9 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
-#define TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
+#ifndef TENSORFLOW_LITE_JNI_JNI_UTILS_H_
+#define TENSORFLOW_LITE_JNI_JNI_UTILS_H_
 
-#include "tensorflow/lite/c/jni/jni_utils.h"
+#include <jni.h>
+#include <stdbool.h>
 
-#endif  // TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+bool TfLiteCheckInitializedOrThrow(JNIEnv* env);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
+
+#endif  // TENSORFLOW_LITE_JNI_JNI_UTILS_H_

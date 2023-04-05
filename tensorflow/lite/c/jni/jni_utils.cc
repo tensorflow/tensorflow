@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/core/shims/jni/jni_utils.h"
+#include "tensorflow/lite/c/jni/jni_utils.h"
 
 bool TfLiteCheckInitializedOrThrow(JNIEnv* env) {
   // No additional initialization is required.
