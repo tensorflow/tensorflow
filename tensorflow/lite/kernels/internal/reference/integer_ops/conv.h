@@ -133,6 +133,7 @@ inline void ConvPerChannel(
   }
 }
 
+
 // Fixed-point per-channel-quantization convolution reference kernel.
 // 16-bit data and 8-bit filter
 template <typename AccumScalar>

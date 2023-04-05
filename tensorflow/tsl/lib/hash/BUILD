@@ -1,22 +1,27 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "if_linux_x86_64",
-    "tf_cc_test",
-    "tf_copts",
+    "tsl_copts",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
+load(
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
 package(
-    default_visibility = [
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = set_external_visibility([
         # tensorflow/tsl/lib/io/table_builder.cc uses crc functionality
         "//tensorflow/tsl/lib/io:__pkg__",
         # tensorflow/core/lib/hash aliases hash for now
         "//tensorflow/core/lib/hash:__pkg__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -28,7 +33,7 @@ cc_library(
     ],
     hdrs = ["crc32c.h"],
     # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
+    copts = tsl_copts() + if_linux_x86_64(["-msse4.2"]),
     deps = [
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:cord",
@@ -45,7 +50,7 @@ filegroup(
         "crc32c.h",
         "crc32c_accelerate.cc",
     ],
-    visibility = ["//tensorflow/core/lib/hash:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core/lib/hash:__pkg__"]),
 )
 
 filegroup(
@@ -53,18 +58,18 @@ filegroup(
     srcs = [
         "crc32c.h",
     ],
-    visibility = ["//tensorflow/core/lib/hash:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core/lib/hash:__pkg__"]),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "crc32c_test",
     size = "small",
     srcs = ["crc32c_test.cc"],
     deps = [
         ":crc32c",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

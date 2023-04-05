@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -36,6 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 llvm::StringRef ProcessIndexPath(mlir::ArrayAttr index_path) {
   if (index_path.size() == 1 && index_path[0].isa<mlir::StringAttr>()) {
@@ -86,7 +89,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
     llvm::SmallVector<mlir::Operation*, 4> bound_inputs;
     for (unsigned i = 0, e = func.getNumArguments(); i != e; ++i) {
       if (auto input_index_path = func.getArgAttrOfType<mlir::ArrayAttr>(
-              i, "tf_saved_model.index_path")) {
+              i, kTfSavedModelIndexPathAttr)) {
         input_names.push_back(ProcessIndexPath(input_index_path));
         auto statusor_spec =
             ProcessTensorSpec(func_type.getInput(i).cast<mlir::TensorType>());
@@ -114,7 +117,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
         output_specs;
     for (unsigned i = 0, e = func.getNumResults(); i != e; ++i) {
       if (auto output_index_path = func.getResultAttrOfType<mlir::ArrayAttr>(
-              i, "tf_saved_model.index_path")) {
+              i, kTfSavedModelIndexPathAttr)) {
         output_names.push_back(ProcessIndexPath(output_index_path));
         auto statusor_spec =
             ProcessTensorSpec(func_type.getResult(i).cast<mlir::TensorType>());

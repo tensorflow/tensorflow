@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -108,7 +109,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:matching_files",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -152,7 +152,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:snapshot",
         "//tensorflow/python/data/kernel_tests:test_base",

@@ -15,33 +15,182 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
-#include <chrono>  // NOLINT (required by TF interfaces)
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstdint>
 #include <cstdlib>
-#include <memory>
-#include <string>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
+#ifndef TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/all_reduce_kernel.h"
+#endif
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #endif
 
 namespace xla {
 namespace gpu {
 
+#if XLA_ENABLE_XCCL
+
+namespace {
+
+struct AllReduceBuffer {
+  const void* send_buffer;
+  void* recv_buffer;
+  ncclDataType_t dtype;
+  int64_t num_elements;
+};
+
+#ifndef TENSORFLOW_USE_ROCM
+
+// Singleton class for launching all reduce kernel.
+class AllReduceLauncher {
+ public:
+  explicit AllReduceLauncher(se::StreamExecutor* executor)
+      : cc_major_(
+            executor->GetDeviceDescription().cuda_compute_capability().major),
+        counter_(executor->AllocateOwnedArray<uint32_t>(1)),
+        max_blocks_per_grid_([&]() -> StatusOr<int> {
+          int blocks_per_sm = 0;
+          XLA_CUDA_RETURN_IF_ERROR(
+              cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+                  &blocks_per_sm,
+                  GetAllReduceKernel(ncclFloat, nullptr, cc_major_),
+                  kLaunchBounds, 0));
+          int device = 0;
+          XLA_CUDA_RETURN_IF_ERROR(cudaGetDevice(&device));
+          int sm_count = 0;
+          XLA_CUDA_RETURN_IF_ERROR(cudaDeviceGetAttribute(
+              &sm_count, cudaDevAttrMultiProcessorCount, device));
+          return blocks_per_sm * sm_count;
+        }()) {}
+
+  // Performs float sum reduction using a custom kernel that is expected to run
+  // faster than default NCCL for a small number of elements. Needs to be called
+  // `num_gpus` times before the kernel is launched.
+  Status Add(se::Stream& stream, int num_gpus,
+             const std::vector<AllReduceBuffer>& buffers) {
+    assert(num_gpus > 0 && num_gpus <= kMaxNumGpus);
+    assert(buffers.size() <= kMaxBuffers);
+
+    if (counter_.is_null()) {
+      return InternalError("Failed to allocate counter");
+    }
+    if (!max_blocks_per_grid_.ok()) {
+      return max_blocks_per_grid_.status();
+    }
+
+    int index = num_pending_++;
+    VLOG(3) << "xla::gpu::AllReduce::Add(stream=" << &stream
+            << ", device=" << index + 1 << "/" << num_gpus
+            << ", num_buffers=" << buffers.size() << ")";
+
+    streams_[index] = &stream;
+    for (size_t i = 0; i < buffers.size(); ++i) {
+      buffers_[i].send_buffers[index] = buffers[i].send_buffer;
+      buffers_[i].recv_buffers[index] = buffers[i].recv_buffer;
+      buffers_[i].dtype = buffers[i].dtype;
+      buffers_[i].num_elements = buffers[i].num_elements;
+    }
+
+    int num_complete = ++num_complete_;
+    if (num_complete < num_gpus) {
+      int blocks_per_grid = 1;
+      int threads_per_block = 1;
+      void* args[] = {&counter_};
+      XLA_CUDA_RETURN_IF_ERROR(cudaLaunchKernel(
+          GetSyncKernel(), blocks_per_grid, threads_per_block, args,
+          /*sharedMem=*/0, se::gpu::AsGpuStreamValue(&stream)));
+      return OkStatus();
+    }
+
+    num_complete_ = num_pending_ = 0;
+
+    se::StreamExecutor* executor = stream.parent();
+    if (executors_.emplace(executor).second) {
+      for (int i = 0; i < num_gpus; ++i) {
+        if (streams_[i] == &stream) continue;
+        TF_RETURN_IF_ERROR(executor->EnablePeerAccessTo(streams_[i]->parent()));
+      }
+    }
+
+    // Launch kernel for each buffer on launch stream.
+    SyncFlag sync_flag = SyncFlag::SYNC_START;
+    for (size_t i = 0; i < buffers.size(); ++i) {
+      Buffers& buffer = buffers_[i];
+      int64_t num_elements = buffer.num_elements;
+      const void* kernel =
+          GetAllReduceKernel(buffer.dtype, &num_elements, cc_major_);
+      if (kernel == nullptr) {
+        return InternalError("Unsupported ncclDataType_t: %i", buffer.dtype);
+      }
+      int threads_per_block = std::min<int>(kLaunchBounds, num_elements);
+      int blocks_per_grid = std::min<int>(
+          (num_elements + threads_per_block - 1) / threads_per_block,
+          *max_blocks_per_grid_);
+
+      void* counter = counter_.ptr()->opaque();
+      if (i == buffers.size() - 1) {
+        sync_flag = SyncFlag(sync_flag | SyncFlag::SYNC_END);
+      }
+      void* args[] = {&num_gpus,
+                      &buffer.send_buffers,
+                      &buffer.recv_buffers,
+                      &num_elements,
+                      &counter,
+                      &sync_flag};
+      XLA_CUDA_RETURN_IF_ERROR(cudaLaunchKernel(
+          kernel, blocks_per_grid, threads_per_block, args,
+          /*sharedMem=*/0, se::gpu::AsGpuStreamValue(&stream)));
+      sync_flag = SyncFlag::SYNC_NONE;
+    }
+    return OkStatus();
+  }
+
+ private:
+  struct Buffers {
+    std::array<const void*, kMaxNumGpus> send_buffers;
+    std::array<void*, kMaxNumGpus> recv_buffers;
+    ncclDataType_t dtype;
+    int64_t num_elements;
+  };
+
+  int cc_major_;
+  se::ScopedDeviceMemory<uint32_t> counter_;
+  StatusOr<int> max_blocks_per_grid_;
+  std::atomic<int> num_pending_ = 0;
+  std::atomic<int> num_complete_ = 0;
+  std::array<se::Stream*, kMaxNumGpus> streams_;
+  std::array<Buffers, kMaxBuffers> buffers_;
+  absl::flat_hash_set<se::StreamExecutor*> executors_;
+};
+
+#endif  // TENSORFLOW_USE_ROCM
+
+}  // namespace
+
+#endif  // XLA_ENABLE_XCCL
+
 Status RunAllReduce(ReductionKind reduction_kind,
                     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-                    ncclComm_t comm) {
+                    ncclComm_t comm, bool allow_all_reduce_kernel) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
@@ -50,28 +199,64 @@ Status RunAllReduce(ReductionKind reduction_kind,
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    DeviceBufferPair& buffer = buffers[i];
-    const void* send_buffer = buffer.source_buffer.opaque();
-    void* recv_buffer = buffer.destination_buffer.opaque();
-
+  // Transform vector of DeviceBufferPair to AllReduceBuffer.
+  std::vector<AllReduceBuffer> all_reduce_buffers;
+  all_reduce_buffers.reserve(buffers.size());
+  for (DeviceBufferPair& buffer : buffers) {
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                        ToNcclDataTypeAndCountMultiplier(
+                            buffer.element_type, Thunk::kNcclAllReduce));
     ncclDataType_t dtype = dtype_and_multiplier.first;
     int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-    VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
-        "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        gpu_stream);
-
-    XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
-                                           element_count, dtype, reduce_op,
-                                           comm, gpu_stream));
+    const void* send_buffer = buffer.source_buffer.opaque();
+    void* recv_buffer = buffer.destination_buffer.opaque();
+    all_reduce_buffers.push_back(
+        AllReduceBuffer{send_buffer, recv_buffer, dtype, element_count});
   }
-  return XLA_CUDA_STATUS(ncclGroupEnd());
+
+  // Move buffers supported by kernel to the front of all_reduce_buffers.
+  auto begin = all_reduce_buffers.begin();
+  if (allow_all_reduce_kernel && reduce_op == ncclSum) {
+    begin = std::stable_partition(
+        all_reduce_buffers.begin(), all_reduce_buffers.end(),
+        [](const AllReduceBuffer& buffer) {
+          return buffer.dtype == ncclFloat || buffer.dtype == ncclBfloat16 ||
+                 buffer.dtype == ncclInt32;
+        });
+  }
+
+  // Launch NCCL for buffers not supported by the kernel.
+  if (begin != all_reduce_buffers.end()) {
+    XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+    for (auto it = begin; it != all_reduce_buffers.end(); ++it) {
+      VLOG(3) << absl::StreamFormat(
+          "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
+          "comm=%p, stream=%p)",
+          it->send_buffer, it->recv_buffer, it->num_elements,
+          static_cast<const void*>(comm), gpu_stream);
+      XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(it->send_buffer, it->recv_buffer,
+                                             it->num_elements, it->dtype,
+                                             reduce_op, comm, gpu_stream));
+    }
+    XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
+  }
+  all_reduce_buffers.erase(begin, all_reduce_buffers.end());
+
+  // Launch kernels for the remaining buffers.
+  if (!all_reduce_buffers.empty()) {
+#ifndef TENSORFLOW_USE_ROCM
+    int num_gpus = 0;
+    XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_gpus));
+    static auto* small_all_reduce = new AllReduceLauncher(stream.parent());
+    TF_RETURN_IF_ERROR(
+        small_all_reduce->Add(stream, num_gpus, all_reduce_buffers));
+#else
+    return Unimplemented("AllReduce kernel not available on ROCm");
+#endif
+  }
+
+  return OkStatus();
+
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
@@ -81,14 +266,8 @@ Status RunAllReduce(ReductionKind reduction_kind,
 
 namespace {
 
-bool IsValidOperand(mlir::Value operand) {
-  Shape shape = TypeToShape(operand.getType());
-  return LayoutUtil::IsDenseArray(shape) &&
-         IsTypeSupportedByNccl(shape.element_type());
-}
-
 // Generally, the reduction op should be the only operation in the block, except
-// the terminator. However, if the type is bf16, the `BFloat16Normalization`
+// the terminator. However, if the type is bf16, the `FloatNormalization`
 // pass will have converted the op to float32 and added type conversions.
 // TODO(cjfj): Can we prevent the bf16 conversion for this computation?
 StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
@@ -138,16 +317,24 @@ StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
 namespace impl {
 
 template <typename OpT>
-bool CanImplement(OpT op) {
-  return absl::c_all_of(op.getInputs(), IsValidOperand) &&
-         NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
-             .has_value();
+Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  for (mlir::Value operand : op.getInputs()) {
+    TF_RETURN_IF_ERROR(IsValidOperand(operand, reduction_op));
+  }
+  if (!NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
+           op.getComputation())
+           .has_value()) {
+    return tsl::errors::Unimplemented("Unrecognized reduction computation");
+  }
+  return OkStatus();
 }
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
   std::optional<ReductionKind> reduction_kind =
-      NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation());
+      NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
+          op.getComputation());
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
@@ -170,7 +357,8 @@ CollectiveOpGroupMode GetGroupMode(OpT op) {
 
 }  // namespace impl
 
-std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
+std::optional<ReductionKind>
+NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
   StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
@@ -213,24 +401,40 @@ std::optional<ReductionKind> NcclAllReduceThunkBase::MatchAllReduceComputation(
   }
 }
 
-NcclAllReduceThunkBase::NcclAllReduceThunkBase(Thunk::Kind kind,
-                                               ThunkInfo thunk_info,
-                                               NcclAllReduceConfig config,
-                                               std::vector<Buffer> buffers)
+NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
+    Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
+    std::vector<Buffer> buffers)
     : NcclCollectiveThunk(kind, thunk_info),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
+Status NcclAllReduceThunkBase::RunAllReduce(const ExecuteParams& params,
+                                            se::Stream& stream,
+                                            ncclComm_t comm) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  return ::xla::gpu::RunAllReduce(config_.reduction_kind, device_buffers,
+                                  stream, comm,
+                                  /*allow_all_reduce_kernel=*/false);
+}
+
 NcclAllReduceThunk::NcclAllReduceThunk(ThunkInfo thunk_info,
                                        mlir::lmhlo::AllReduceOp op,
                                        std::vector<Buffer> buffers)
     : NcclAllReduceThunkBase(Thunk::kNcclAllReduce, thunk_info,
-                             impl::GetNcclAllReduceConfig(op), buffers) {}
+                             impl::GetNcclAllReduceConfig(op),
+                             std::move(buffers)) {}
 
-bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
-  return impl::CanImplement(op);
+Status NcclAllReduceThunk::CheckImplementable(mlir::lmhlo::AllReduceOp op,
+                                              int64_t replica_count,
+                                              int64_t partition_count) {
+  return AddOpDescription<NcclAllReduceThunk>(
+      impl::CheckImplementable(op, Thunk::kNcclAllReduce), op, replica_count,
+      partition_count);
 }
 
 bool NcclAllReduceThunk::IsDegenerate(mlir::lmhlo::AllReduceOp op,
@@ -246,28 +450,22 @@ CollectiveOpGroupMode NcclAllReduceThunk::GetGroupMode(
 
 Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
                                              ncclComm_t comm) {
-  se::Stream& stream = *params.stream;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
-                             config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(
-      RunAllReduce(config_.reduction_kind, device_buffers, stream, comm));
-
-  int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
-  return OkStatus();
+  return RunAllReduce(params, *params.stream, comm);
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     ThunkInfo thunk_info, mlir::lmhlo_gpu::AllReduceStartOp op,
     std::vector<Buffer> buffers)
     : NcclAllReduceThunkBase(Thunk::kNcclAllReduceStart, thunk_info,
-                             impl::GetNcclAllReduceConfig(op), buffers) {}
+                             impl::GetNcclAllReduceConfig(op),
+                             std::move(buffers)) {}
 
-bool NcclAllReduceStartThunk::CanImplement(
-    mlir::lmhlo_gpu::AllReduceStartOp op) {
-  return impl::CanImplement(op);
+Status NcclAllReduceStartThunk::CheckImplementable(
+    mlir::lmhlo_gpu::AllReduceStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclAllReduceStartThunk>(
+      impl::CheckImplementable(op, Thunk::kNcclAllReduceStart), op,
+      replica_count, partition_count);
 }
 
 bool NcclAllReduceStartThunk::IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
@@ -283,66 +481,37 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 
 Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
                                                   ncclComm_t comm) {
-  se::Stream& async_comms_stream = *params.async_comms_stream;
-  // Wait until compute inputs are ready.
-  async_comms_stream.ThenWaitFor(params.stream);
+  return async_.Execute(
+      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+        return RunAllReduce(params, stream, comm);
+      },
+      params, comm);
+}
 
+Status NcclReduceScatterThunkBase::RunReduceScatter(const ExecuteParams& params,
+                                                    se::Stream& stream,
+                                                    ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
-                                  async_comms_stream, comm));
-
-  // Create an event on the async stream for the completion of the all-reduce.
-  se::Event done_event(async_comms_stream.parent());
-  TF_RET_CHECK(done_event.Init());
-  async_comms_stream.ThenRecordEvent(&done_event);
-
-  int device_ordinal = async_comms_stream.parent()->device_ordinal();
-
-  {
-    absl::MutexLock lock(&mu_);
-    auto result = done_events_.emplace(device_ordinal, std::move(done_event));
-    TF_RET_CHECK(result.second) << "done event has not been consumed";
-  }
-
-  VLOG(3) << "Done performing all-reduce-start for ordinal: " << device_ordinal;
-  return OkStatus();
-}
-
-StatusOr<se::Event> NcclAllReduceStartThunk::TakeDoneEvent(int device_ordinal) {
-  absl::MutexLock lock(&mu_);
-  auto it = done_events_.find(device_ordinal);
-  TF_RET_CHECK(it != done_events_.end()) << "done event not found";
-  // Take ownership of the event.
-  se::Event done_event = std::move(it->second);
-  done_events_.erase(it);
-  return done_event;
-}
-
-NcclAllReduceDoneThunk::NcclAllReduceDoneThunk(
-    ThunkInfo thunk_info, NcclAllReduceStartThunk& start_thunk)
-    : Thunk(Thunk::kNcclAllReduceDone, thunk_info), start_thunk_(start_thunk) {}
-
-Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  TF_ASSIGN_OR_RETURN(se::Event done_event,
-                      start_thunk_.TakeDoneEvent(device_ordinal));
-  params.stream->ThenWaitFor(&done_event);
-  return OkStatus();
+  return ::xla::gpu::RunReduceScatter(config_.reduction_kind, device_buffers,
+                                      stream, comm);
 }
 
 NcclReduceScatterThunk::NcclReduceScatterThunk(
     ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : NcclAllReduceThunkBase(Thunk::kNcclReduceScatter, thunk_info,
-                             impl::GetNcclAllReduceConfig(op),
-                             std::move(buffers)) {}
+    : NcclReduceScatterThunkBase(Thunk::kNcclReduceScatter, thunk_info,
+                                 impl::GetNcclAllReduceConfig(op),
+                                 std::move(buffers)) {}
 
-/*static*/ bool NcclReduceScatterThunk::CanImplement(
-    mlir::lmhlo::ReduceScatterOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclReduceScatterThunk::CheckImplementable(
+    mlir::lmhlo::ReduceScatterOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclReduceScatterThunk>(
+      impl::CheckImplementable(op, Thunk::kNcclReduceScatter), op,
+      replica_count, partition_count);
 }
 
 /*static*/ bool NcclReduceScatterThunk::IsDegenerate(
@@ -358,12 +527,42 @@ NcclReduceScatterThunk::NcclReduceScatterThunk(
 
 Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
                                                  ncclComm_t comm) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
-                             config_.config.operand_element_type));
-  return RunReduceScatter(config_.reduction_kind, device_buffers,
-                          *params.stream, comm);
+  return RunReduceScatter(params, *params.stream, comm);
+}
+
+NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
+    ThunkInfo thunk_info, mlir::lmhlo_gpu::ReduceScatterStartOp op,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : NcclReduceScatterThunkBase(Thunk::kNcclReduceScatterStart, thunk_info,
+                                 impl::GetNcclAllReduceConfig(op),
+                                 std::move(buffers)) {}
+
+/*static*/ Status NcclReduceScatterStartThunk::CheckImplementable(
+    mlir::lmhlo_gpu::ReduceScatterStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclReduceScatterStartThunk>(
+      impl::CheckImplementable(op, Thunk::kNcclReduceScatterStart), op,
+      replica_count, partition_count);
+}
+
+/*static*/ bool NcclReduceScatterStartThunk::IsDegenerate(
+    mlir::lmhlo_gpu::ReduceScatterStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::IsDegenerate(op, replica_count, partition_count);
+}
+
+/*static*/ CollectiveOpGroupMode NcclReduceScatterStartThunk::GetGroupMode(
+    mlir::lmhlo_gpu::ReduceScatterStartOp op) {
+  return impl::GetGroupMode(op);
+}
+
+Status NcclReduceScatterStartThunk::RunNcclCollective(
+    const ExecuteParams& params, ncclComm_t comm) {
+  return async_.Execute(
+      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+        return RunReduceScatter(params, stream, comm);
+      },
+      params, comm);
 }
 
 Status RunReduceScatter(ReductionKind reduction_kind,
@@ -388,9 +587,10 @@ Status RunReduceScatter(ReductionKind reduction_kind,
     void* recv_buffer = buffer.destination_buffer.opaque();
 
     TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(buffer.element_type));
+                        ToNcclDataTypeAndCountMultiplier(
+                            buffer.element_type, Thunk::kNcclReduceScatter));
     ncclDataType_t dtype = dtype_and_multiplier.first;
-    int element_count = buffer.element_count * dtype_and_multiplier.second;
+    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
     // buffer.element_count is the source buffers element count. For
     // ncclReduceScatter, we need the destination buffers element count.

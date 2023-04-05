@@ -14,21 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/TopologicalSortUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
@@ -70,68 +76,6 @@ bool DependsOn(mlir::Operation* successor, mlir::Operation* predecessor) {
     }
   }
   return false;
-}
-
-// Moves all usages of `a` (direct and transitive) to right after `b` in
-// `cluster`, preserving the original order of moved ops.
-// `a` and `b` must be in `cluster`. `a` must appear before `b` originally.
-// `a` itself is not moved.
-//
-// For example, this program:
-//
-// tf_device.cluster() ({
-//   %a = tf.A()
-//   %1 = tf.C(%a)
-//   %2 = tf.D(%a)
-//   %3 = tf.E(%1, %2)
-//   %b = tf.B()
-//   %4 = tf.F(%3)
-//   %5 = tf.G(%b)
-//   tf_device.return()
-// })
-//
-// will become this:
-//
-// tf_device.cluster() ({
-//   %a = tf.A()
-//   %b = tf.B()
-//   %1 = tf.C(%a)
-//   %2 = tf.D(%a)
-//   %3 = tf.E(%1, %2)
-//   %4 = tf.F(%3)
-//   %5 = tf.G(%b)
-//   tf_device.return()
-// })
-void MoveUsagesAfter(mlir::tf_device::ClusterOp cluster, mlir::Operation* a,
-                     mlir::Operation* b) {
-  llvm::SmallVector<mlir::Operation*, 4> to_visit;
-  llvm::SmallPtrSet<mlir::Operation*, 4> visited;
-  to_visit.push_back(a);
-  while (!to_visit.empty()) {
-    mlir::Operation* producer = to_visit.pop_back_val();
-    if (visited.contains(producer)) continue;
-    visited.insert(producer);
-    for (mlir::Operation* user : producer->getUsers()) {
-      if (visited.contains(user)) continue;
-      to_visit.push_back(user);
-    }
-  }
-
-  llvm::SmallVector<mlir::Operation*, 4> to_move;
-  cluster.GetBody().walk([&](mlir::Operation* op) {
-    if (op != a && visited.contains(op) && op->isBeforeInBlock(b)) {
-      to_move.push_back(op);
-    }
-  });
-
-  mlir::Operation* last = b;
-  for (mlir::Operation* op : to_move) {
-    if (mlir::dyn_cast<mlir::TF::YieldOp>(op)) {
-      LOG(FATAL) << "Should never move YieldOp";  // Crash OK
-    }
-    op->moveAfter(last);
-    last = op;
-  }
 }
 
 // Merge all-reduces in the group into one all-reduce.
@@ -209,12 +153,12 @@ mlir::LogicalResult MergeAllReduceGroup(
 
     int num_elements = all_reduce_ranked_type.getNumElements();
     auto flattened = builder.create<mlir::TF::ReshapeOp>(
-        DT_LOC2(loc, "CombinedReduceFlatten"), all_reduce.input(),
+        DT_LOC2(loc, "CombinedReduceFlatten"), all_reduce.getInput(),
         ops_util::GetR1Const({num_elements}, builder, loc));
     flattened_types.push_back(flattened.getType());
     auto indices = ops_util::GetR1Const({offset_num_elements}, builder, loc);
 
-    if (all_reduce.device_type().contains("TPU")) {
+    if (all_reduce.getDeviceType().contains("TPU")) {
       updated = builder.create<mlir::TF::XlaDynamicUpdateSliceOp>(
           DT_LOC2(loc, "CombinedReduceUpdateSlice"), merged.getType(),
           /*input=*/i == 0 ? merged.getResult() : updated,
@@ -235,8 +179,8 @@ mlir::LogicalResult MergeAllReduceGroup(
   // All-reduce the updated merged tensor.
   auto merged_all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
       all_reduce_group[0].getLoc(), updated.getType(), updated,
-      all_reduce_group[0].group_assignment(), all_reduce_group[0].reduce_op(),
-      all_reduce_group[0].device_type());
+      all_reduce_group[0].getGroupAssignment(),
+      all_reduce_group[0].getReduceOp(), all_reduce_group[0].getDeviceType());
   SetSingleLayoutOnOp(
       merged_all_reduce,
       ExtractSingleLayoutFromOp(all_reduce_group[0]).value().value());
@@ -366,14 +310,14 @@ std::string DrawAllReduceDependencies(
 // }) : () -> tensor<4x4xf32>
 // NOLINTEND
 // clang-format on
-mlir::LogicalResult CombineAllReduceOpsOfSameTypeAndGroupAssignment(
+mlir::LogicalResult CombineAllReduceOps(
     mlir::tf_device::ClusterOp cluster,
     const std::vector<mlir::TF::DTensorAllReduceOp>& all_reduces) {
   // Drop within-slice all-reduces.
   std::vector<mlir::TF::DTensorAllReduceOp> cross_slice_all_reduces;
   for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduces) {
     mlir::DenseIntElementsAttr group_assignment_attr;
-    if (!matchPattern(all_reduce.group_assignment(),
+    if (!matchPattern(all_reduce.getGroupAssignment(),
                       m_Constant(&group_assignment_attr))) {
       return all_reduce.emitOpError("group_assignment should be a constant");
     }
@@ -389,7 +333,7 @@ mlir::LogicalResult CombineAllReduceOpsOfSameTypeAndGroupAssignment(
         group_assignment_attr,
         GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
             num_slices, slice_size));
-    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.inc)
+    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.cc)
     if (!group_assignment.ok()) {
       return all_reduce.emitOpError(
           llvm::formatv("Failed to create a GroupAssignment due to {0}",
@@ -406,96 +350,17 @@ mlir::LogicalResult CombineAllReduceOpsOfSameTypeAndGroupAssignment(
   int num_all_reduces = cross_slice_all_reduces.size();
   if (num_all_reduces <= 1) return mlir::success();
 
-  // Export the all reduces as a DOT graph.
-  VLOG(4) << "Visualizing AllReduce dependencies:\n"
-          << DrawAllReduceDependencies(cross_slice_all_reduces);
-
-  // Build a reverse adjacency matrix from dependents to requirements.
-  std::vector<std::vector<int>> requirements(num_all_reduces,
-                                             std::vector<int>());
-  for (int i = 0; i < num_all_reduces - 1; ++i) {
-    mlir::TF::DTensorAllReduceOp requirement = cross_slice_all_reduces[i];
-    for (int j = i + 1; j < num_all_reduces; ++j) {
-      mlir::TF::DTensorAllReduceOp dependent = cross_slice_all_reduces[j];
-      DCHECK(
-          !DependsOn(requirement, dependent));  // guaranteed by program order
-      // In this example, all three DTensorAllReduce ops are independent from
-      // each other according to MLIR value use-def chains considered by
-      // DependsOn. However, moving all three to after the WhileRegion and
-      // combine them would break the program.
-      //
-      // %3 = tf.DTensorAllReduce(%1, %2)
-      // %4 = tf.WhileRegion(%1) ({
-      // ^bb0(%arg):
-      //   %5 = tf.TooBool(%arg)
-      //   tf.Yield(%5)
-      // }, {
-      //   %6 = tf.DTensorAllReduce(%1, %2)
-      //   tf.Yield(%5)
-      // })
-      // %7 = tf.DTensorAllReduce(%1, %2)
-      //
-      // Therefore, in addition to DependsOn, we also check if two
-      // DTensorAllReduceOps belong to different blocks. If they do, since they
-      // exist in the same ClusterOp, one or both of them must be inside a
-      // control flow region block. We treat them as if there is a dependency
-      // between them.
-      //
-      // In the example above, the second DTensorAllReduceOp would "depend on"
-      // the first one, and the third on the second. This effectively prevents
-      // any two DTensorAllReduce from merging together.
-      if (requirement->getBlock() != dependent->getBlock() ||
-          DependsOn(dependent, requirement)) {
-        requirements[j].push_back(i);
-      }
-    }
-  }
-
-  // Traverse the adjacency matrix layer by layer to find combination groups.
-  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups;
-  std::set<int> fulfilled;
-  while (fulfilled.size() < cross_slice_all_reduces.size()) {
-    std::vector<int> fulfilled_this_layer;
-    for (int j = 0; j < requirements.size(); ++j) {
-      if (fulfilled.count(j) > 0) continue;
-      bool requirements_met = true;
-      for (int i : requirements[j]) {
-        if (fulfilled.count(i) == 0) {
-          requirements_met = false;
-          break;
-        }
-      }
-      if (requirements_met) {
-        fulfilled_this_layer.push_back(j);
-      }
-    }
-    VLOG(4) << "Fulfilled: " << str_util::Join(fulfilled_this_layer, ", ");
-    all_reduce_groups.push_back({});
-    for (int i : fulfilled_this_layer) {
-      fulfilled.insert(i);
-      all_reduce_groups.back().push_back(cross_slice_all_reduces[i]);
-    }
-  }
-  VLOG(2) << num_all_reduces << " all-reduce ops in "
-          << all_reduce_groups.size() << " groups";
-
   // Move all-reduces in the same group together and combine them.
-  for (auto& all_reduce_group : all_reduce_groups) {
-    int num_all_reduces = all_reduce_group.size();
-    if (num_all_reduces <= 1) continue;
-    mlir::TF::DTensorAllReduceOp final_all_reduce =
-        all_reduce_group[num_all_reduces - 1];
-    for (int i = num_all_reduces - 2; i >= 0; --i) {
-      mlir::TF::DTensorAllReduceOp all_reduce = all_reduce_group[i];
-      MoveUsagesAfter(cluster, all_reduce, final_all_reduce);
-    }
-    for (int i = 0; i < num_all_reduces - 1; ++i) {
-      mlir::TF::DTensorAllReduceOp all_reduce = all_reduce_group[i];
-      all_reduce->moveBefore(final_all_reduce);
-    }
-    auto merge_result = MergeAllReduceGroup(all_reduce_group);
-    if (merge_result.failed()) return merge_result;
+  auto& all_reduce_group = cross_slice_all_reduces;
+  mlir::TF::DTensorAllReduceOp final_all_reduce =
+      all_reduce_group[num_all_reduces - 1];
+
+  for (int i = num_all_reduces - 2; i >= 0; --i) {
+    mlir::TF::DTensorAllReduceOp all_reduce = all_reduce_group[i];
+    all_reduce->moveBefore(final_all_reduce);
   }
+  auto merge_result = MergeAllReduceGroup(all_reduce_group);
+  if (merge_result.failed()) return merge_result;
 
   return mlir::success();
 }
@@ -517,44 +382,164 @@ bool same_group_assignments(mlir::Value group_assignment_a,
   if (attr_a.getType().getShape() != attr_b.getType().getShape()) {
     return false;
   }
+  // Group assignment should not be empty.
+  DCHECK(!attr_a.empty() && !attr_b.empty());
+
   return std::equal(attr_a.begin(), attr_a.end(), attr_b.begin(), attr_b.end());
 }
 
-// Combines DTensorAllReduce ops of the same element type into as few groups as
-// possible. Only ops with the same group assignment can be combined together.
-mlir::LogicalResult CombineAllReduceOpsOfSameType(
-    mlir::tf_device::ClusterOp cluster,
-    const std::vector<mlir::TF::DTensorAllReduceOp>& all_reduces) {
-  // Maintain a list of seen group assignments, sorted by first appearance.
-  // Also find and store all-reduces by group assignment. Use the first
-  // mlir::Value that contains a certain group assignment to represent all the
-  // same group assignments.
-  std::vector<mlir::Value> group_assignments;
-  llvm::DenseMap<mlir::Value, std::vector<mlir::TF::DTensorAllReduceOp>>
-      all_reduces_by_group_assignment;
-  for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduces) {
-    mlir::Value group_assignment = all_reduce.group_assignment();
-    bool seen = false;
-    for (mlir::Value seen_group_assignment : group_assignments) {
-      if (same_group_assignments(group_assignment, seen_group_assignment)) {
-        group_assignment = seen_group_assignment;
-        seen = true;
-        break;
+std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>
+createIndependentReduceOpsGroups(
+    const std::vector<mlir::TF::DTensorAllReduceOp>& ordered_all_reduces) {
+  // Build a reverse adjacency matrix from node to its dependents.
+  std::vector<std::vector<int>> dependents(ordered_all_reduces.size(),
+                                           std::vector<int>());
+  auto num_all_reduces = ordered_all_reduces.size();
+  for (int i = 0; i < num_all_reduces - 1; ++i) {
+    mlir::TF::DTensorAllReduceOp requirement = ordered_all_reduces[i];
+    for (int j = i + 1; j < num_all_reduces; ++j) {
+      mlir::TF::DTensorAllReduceOp dependent = ordered_all_reduces[j];
+      DCHECK(!DependsOn(requirement,
+                        dependent));  // guaranteed by program order
+      // In this example, all three DTensorAllReduce ops are independent
+      // from each other according to MLIR value use-def chains considered
+      // by DependsOn. However, moving all three to after the WhileRegion
+      // and combine them would break the program.
+      //
+      // %3 = tf.DTensorAllReduce(%1, %2)
+      // %4 = tf.WhileRegion(%1) ({
+      // ^bb0(%arg):
+      //   %5 = tf.TooBool(%arg)
+      //   tf.Yield(%5)
+      // }, {
+      //   %6 = tf.DTensorAllReduce(%1, %2)
+      //   tf.Yield(%5)
+      // })
+      // %7 = tf.DTensorAllReduce(%1, %2)
+      //
+      // Therefore, in addition to DependsOn, we also check if two
+      // DTensorAllReduceOps belong to different blocks. If they do, since
+      // they exist in the same ClusterOp, one or both of them must be
+      // inside a control flow region block. We treat them as if there is
+      // a dependency between them.
+      //
+      // In the example above, the second DTensorAllReduceOp would "depend
+      // on" the first one, and the third on the second. This effectively
+      // prevents any two DTensorAllReduce from merging together.
+      if (requirement->getBlock() != dependent->getBlock() ||
+          DependsOn(dependent, requirement)) {
+        dependents[i].push_back(j);
       }
     }
-    if (!seen) group_assignments.push_back(group_assignment);
-    all_reduces_by_group_assignment[group_assignment].push_back(all_reduce);
   }
 
-  // Combine all-reduces of the same group assignment in first-appearance order.
-  for (mlir::Value group_assignment : group_assignments) {
-    mlir::LogicalResult result =
-        CombineAllReduceOpsOfSameTypeAndGroupAssignment(
-            cluster, all_reduces_by_group_assignment[group_assignment]);
-    if (mlir::failed(result)) return result;
+  // Traverse the adjacency matrix layer by layer from last op to find
+  // combination groups.
+  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups;
+  std::set<int> fulfilled;
+  while (fulfilled.size() < ordered_all_reduces.size()) {
+    std::vector<mlir::TF::DTensorAllReduceOp> group;
+    std::vector<int64_t> group_ids;
+    for (int i = dependents.size() - 1; i >= 0; i--) {
+      if (fulfilled.count(i) > 0) continue;  // Already added op
+      bool all_deps_added = true;
+      for (int j = dependents[i].size() - 1; j >= 0; j--) {
+        if (fulfilled.count(dependents[i][j]) == 0) {
+          all_deps_added = false;
+          break;
+        }
+      }
+      if (all_deps_added) {
+        // Node with no dependents/already captured dependents degrees.
+        group_ids.push_back(i);
+      }
+    }
+
+    std::sort(group_ids.begin(), group_ids.end(),
+              [](const int64_t lhs, const int64_t rhs) { return lhs < rhs; });
+
+    for (auto x : group_ids) {
+      group.push_back(ordered_all_reduces[x]);
+      fulfilled.insert(x);
+    }
+    all_reduce_groups.push_back(group);
   }
 
-  return mlir::success();
+  // Export the all reduces as a DOT graph.
+  VLOG(4) << "Visualizing AllReduce dependencies:\n"
+          << DrawAllReduceDependencies(ordered_all_reduces);
+  return all_reduce_groups;
+}
+
+std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>
+createSubgroupsByElemType(
+    std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups) {
+  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_new_groups;
+  // Combine all-reduces of the same element type.
+  for (const auto& all_reduce_group : all_reduce_groups) {
+    llvm::DenseMap<mlir::Type, std::vector<mlir::TF::DTensorAllReduceOp>>
+        all_reduces_by_elem_type;
+    for (auto all_reduce : all_reduce_group) {
+      mlir::Type elem_type = all_reduce.getType().getElementType();
+      all_reduces_by_elem_type[elem_type].push_back(all_reduce);
+    }
+
+    for (const auto& elem_type_pair : all_reduces_by_elem_type) {
+      all_reduce_new_groups.push_back(elem_type_pair.second);
+    }
+  }
+  return all_reduce_new_groups;
+}
+
+std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>
+createSubgroupsByReductionAttr(
+    std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups) {
+  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_new_groups;
+  // Combine all-reduces of the same element type.
+  for (const auto& all_reduce_group : all_reduce_groups) {
+    llvm::DenseMap<llvm::StringRef, std::vector<mlir::TF::DTensorAllReduceOp>>
+        all_reduces_by_attr_reduce_op;
+    for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduce_group) {
+      llvm::StringRef attr_reduce_op = all_reduce.getReduceOp();
+      all_reduces_by_attr_reduce_op[attr_reduce_op].push_back(all_reduce);
+    }
+    for (const auto& all_reduces_for_reduce_op_attr :
+         all_reduces_by_attr_reduce_op) {
+      all_reduce_new_groups.push_back(all_reduces_for_reduce_op_attr.second);
+    }
+  }
+  return all_reduce_new_groups;
+}
+
+std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>
+createSubgroupsByGroupAssignment(
+    std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups) {
+  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_new_groups;
+  // Combine all-reduces of the same element type.
+  for (const auto& all_reduce_group : all_reduce_groups) {
+    // Combine all-reduces of the same group assignment.
+    std::vector<mlir::Value> group_assignments;
+    llvm::DenseMap<mlir::Value, std::vector<mlir::TF::DTensorAllReduceOp>>
+        all_reduces_by_group_assignment;
+    for (mlir::TF::DTensorAllReduceOp all_reduce : all_reduce_group) {
+      mlir::Value group_assignment = all_reduce.getGroupAssignment();
+      bool seen = false;
+      for (mlir::Value seen_group_assignment : group_assignments) {
+        if (same_group_assignments(group_assignment, seen_group_assignment)) {
+          group_assignment = seen_group_assignment;
+          seen = true;
+          break;
+        }
+      }
+      if (!seen) group_assignments.push_back(group_assignment);
+      all_reduces_by_group_assignment[group_assignment].push_back(all_reduce);
+    }
+    for (const auto& all_reduce_group_to_merge :
+         all_reduces_by_group_assignment) {
+      all_reduce_new_groups.push_back(all_reduce_group_to_merge.second);
+    }
+  }
+  return all_reduce_new_groups;
 }
 
 struct DTensorAllReduceCombineOptimization
@@ -563,38 +548,62 @@ struct DTensorAllReduceCombineOptimization
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();
     function.walk([&](mlir::tf_device::ClusterOp cluster) {
-      // Maintain a list of seen element types, sorted by first appearance.
-      // Also find and store all-reduces by element type.
-      std::vector<mlir::Type> elem_types;
-      llvm::DenseMap<mlir::Type, std::vector<mlir::TF::DTensorAllReduceOp>>
-          all_reduces_by_elem_type;
+      std::vector<mlir::TF::DTensorAllReduceOp> ordered_all_reduces;
+      std::vector<mlir::Block*> ordered_blocks;
+      llvm::DenseSet<mlir::Block*> blocks;
+
       cluster.GetBody().walk([&](mlir::TF::DTensorAllReduceOp all_reduce) {
-        mlir::Type elem_type = all_reduce.getType().getElementType();
-        if (std::find(elem_types.begin(), elem_types.end(), elem_type) ==
-            elem_types.end()) {
-          elem_types.push_back(elem_type);
+        if (!all_reduce.getDeviceType().contains("TPU")) {
+          // Only combine all reduces for GPU and CPU
+          auto all_reduce_ranked_type =
+              all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
+
+          if (all_reduce_ranked_type &&
+              all_reduce_ranked_type.hasStaticShape()) {
+            // Static known shape is required to merge all reduces. If shape is
+            // not known skip merging.
+            ordered_all_reduces.push_back(all_reduce);
+
+            blocks.insert(all_reduce->getBlock());
+          }
         }
-        all_reduces_by_elem_type[elem_type].push_back(all_reduce);
       });
 
-      // Combine all-reduces of the same element type in first-appearance order.
-      for (mlir::Type elem_type : elem_types) {
-        // Combine all-reduces for the same attribute reduce_op for the element
-        // type.
-        auto& all_reduces_for_elem_type = all_reduces_by_elem_type[elem_type];
-        llvm::DenseMap<llvm::StringRef,
-                       std::vector<mlir::TF::DTensorAllReduceOp>>
-            all_reduces_by_attr_reduce_op;
-        for (mlir::TF::DTensorAllReduceOp all_reduce :
-             all_reduces_for_elem_type) {
-          llvm::StringRef attr_reduce_op = all_reduce.reduce_op();
-          all_reduces_by_attr_reduce_op[attr_reduce_op].push_back(all_reduce);
-        }
-        for (auto& all_reduces_to_merge : all_reduces_by_attr_reduce_op) {
-          if (mlir::failed(CombineAllReduceOpsOfSameType(
-                  cluster, all_reduces_to_merge.second))) {
+      if (ordered_all_reduces.size() > 1) {
+        // Create dependency graph for all all_reduce operations, so that that
+        // independent ops can be merged
+        auto all_reduce_groups =
+            createIndependentReduceOpsGroups(ordered_all_reduces);
+
+        VLOG(2) << ordered_all_reduces.size() << " all-reduce ops in "
+                << all_reduce_groups.size() << " groups";
+
+        all_reduce_groups = createSubgroupsByElemType(all_reduce_groups);
+        all_reduce_groups = createSubgroupsByReductionAttr(all_reduce_groups);
+        all_reduce_groups = createSubgroupsByGroupAssignment(all_reduce_groups);
+
+        std::sort(all_reduce_groups.begin(), all_reduce_groups.end(),
+                  [](std::vector<mlir::TF::DTensorAllReduceOp> lhs,
+                     std::vector<mlir::TF::DTensorAllReduceOp> rhs) {
+                    if (lhs[0]->getBlock() == rhs[0]->getBlock())
+                      return lhs[0]->isBeforeInBlock(rhs[0]);
+                    return true;
+                  });
+        for (const auto& reduce_group : all_reduce_groups) {
+          if (reduce_group.size() > 1) {
+            VLOG(4) << "Combining following reduce ops into one: ------------";
+            for (auto reduce_op : reduce_group) {
+              VLOG(4) << mlir::GetNameFromLoc(reduce_op.getLoc());
+            }
+            VLOG(4) << "-----------------------------------------------------";
+          }
+          if (mlir::failed(CombineAllReduceOps(cluster, reduce_group))) {
             return signalPassFailure();
           }
+        }
+
+        for (auto* b : blocks) {
+          mlir::sortTopologically(b);
         }
       }
     });

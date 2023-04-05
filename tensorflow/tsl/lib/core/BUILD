@@ -4,10 +4,16 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -18,22 +24,24 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "bitmap.h",
+        "bits.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
     name = "legacy_lib_core_all_headers",
     srcs = [
         "bitmap.h",
+        "bits.h",
         "status_test_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/core:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -42,16 +50,17 @@ filegroup(
         "bitmap_test.cc",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
     name = "legacy_lib_core_headers",
     srcs = [
         "bitmap.h",
+        "bits.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -60,10 +69,10 @@ filegroup(
         "status_test_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/core:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -84,5 +93,14 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "bits",
+    hdrs = ["bits.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
     ],
 )

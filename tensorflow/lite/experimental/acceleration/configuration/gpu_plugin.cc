@@ -47,6 +47,35 @@ TfLiteGpuInferencePriority ConvertInferencePriority(
   }
 }
 
+std::string GetCacheDirImpl(const TFLiteSettings& tflite_settings) {
+  if (tflite_settings.compilation_caching_settings() &&
+      tflite_settings.compilation_caching_settings()->cache_dir() &&
+      tflite_settings.compilation_caching_settings()->cache_dir()->size() > 0) {
+    return tflite_settings.compilation_caching_settings()->cache_dir()->str();
+  } else if (tflite_settings.gpu_settings() &&
+             tflite_settings.gpu_settings()->cache_directory() &&
+             tflite_settings.gpu_settings()->cache_directory()->size() > 0) {
+    return tflite_settings.gpu_settings()->cache_directory()->str();
+  } else {
+    return "";
+  }
+}
+
+std::string GetModelTokenImpl(const TFLiteSettings& tflite_settings) {
+  if (tflite_settings.compilation_caching_settings() &&
+      tflite_settings.compilation_caching_settings()->model_token() &&
+      tflite_settings.compilation_caching_settings()->model_token()->size() >
+          0) {
+    return tflite_settings.compilation_caching_settings()->model_token()->str();
+  } else if (tflite_settings.gpu_settings() &&
+             tflite_settings.gpu_settings()->model_token() &&
+             tflite_settings.gpu_settings()->model_token()->size()) {
+    return tflite_settings.gpu_settings()->model_token()->str();
+  } else {
+    return "";
+  }
+}
+
 }  // namespace
 
 TfLiteDelegatePtr GpuPlugin::Create() {
@@ -89,11 +118,12 @@ GpuPlugin::GpuPlugin(const TFLiteSettings& tflite_settings)
   } else if (gpu_settings->force_backend() == GPUBackend_OPENGL) {
     options_.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
   }
-  if (gpu_settings->cache_directory() &&
-      gpu_settings->cache_directory()->size() > 0 &&
-      gpu_settings->model_token() && gpu_settings->model_token()->size()) {
-    cache_dir_ = gpu_settings->cache_directory()->str();
-    model_token_ = gpu_settings->model_token()->str();
+
+  const std::string cache_dir = GetCacheDirImpl(tflite_settings);
+  const std::string model_token = GetModelTokenImpl(tflite_settings);
+  if (!cache_dir.empty() && !model_token.empty()) {
+    cache_dir_ = cache_dir;
+    model_token_ = model_token;
     options_.serialization_dir = cache_dir_.c_str();
     options_.model_token = model_token_.c_str();
     options_.experimental_flags |=

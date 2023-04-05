@@ -1,19 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
 )
 
 # Important: this is a leaf library. It may not have any new dependencies inside TF proper.
@@ -23,6 +12,7 @@ pytype_strict_library(
     srcs = [
         "__init__.py",
         "core.py",
+        "data.py",
         "distribute.py",
         "internal.py",
         "trace.py",
@@ -30,7 +20,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
-        "//tensorflow:types_whitelist",
+        "//tensorflow:types_allowlist",
     ],
     deps = [
         ":doc_typealias",

@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {

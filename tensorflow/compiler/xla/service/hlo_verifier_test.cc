@@ -16,20 +16,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_replace.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -1625,7 +1628,7 @@ StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}, 2));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
@@ -1688,6 +1691,24 @@ TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("HLO all-to-all has operands with different shapes"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_OperandCountMismatchWithReplicaGroupSize) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128,4] parameter(0)
+    p1 = f32[128,4] parameter(1)
+    ROOT a2a = (f32[128,4], f32[128,4], f32[128,4]) all-to-all(p0, p1, p1),
+      replica_groups={{0,1}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("hlo->operand_count() == split_count"));
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTwice) {
@@ -2537,6 +2558,143 @@ ENTRY entry (parameter.0: bf16[1,8,1,8,320], parameter.1: bf16[1,8,6,8,320]) -> 
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, InvalidShardingRank) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={devices=[1,2,2,1]0,1,2,3}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("tile assignment dimensions (excluding subgroups) is "
+                        "different than the input rank."));
+}
+
+TEST_F(HloVerifierTest, InvalidShardingDevices) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={devices=[2,2]0,1,2,3}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  HloModuleConfig config;
+  config.set_num_partitions(2);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_TRUE(module->config().use_spmd_partitioning());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("device 2 > num_devices (2) in tile assignment"));
+}
+
+TEST_F(HloVerifierTest, InconsistentWhileSharding) {
+  const char* const hlo = R"(
+    HloModule While
+
+    %body.v3 (prev.1: s32[]) -> s32[] {
+       %prev.1 = s32[] parameter(0), sharding={replicated}
+      %constant = s32[] constant(1)
+      ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+    }
+
+    %condition.v3 (prev.2: s32[]) -> pred[] {
+      %prev.2 = s32[] parameter(0), sharding={maximal device=0}
+      %constant.1 = s32[] constant(5)
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
+    }
+
+    ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+      %constant.2 = s32[] constant(0)
+      ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Inconsistent while sharding among instructions"));
+}
+
+TEST_F(HloVerifierTest, InconsistentConditionSharding) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  true_branch {
+    tparam = (s32[], f32[4]) parameter(0)
+    ROOT tgte1 = f32[4] get-tuple-element(tparam), index=1
+  }
+
+  false_branch {
+    fparam = (s32[], f32[4]) parameter(0)
+    ROOT fgte1 = f32[4] get-tuple-element(fparam), index=1, sharding={replicated}
+  }
+
+  ENTRY entry {
+    p0 = (s32[], f32[4]) parameter(0)
+    constant = pred[] constant(true)
+    ROOT conditional = f32[4] conditional(constant, p0, p0),
+      true_computation=true_branch, false_computation=false_branch,
+      sharding={maximal device=0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("Inconsistent conditional sharding among instructions"));
+}
+
+TEST_F(HloVerifierTest, InvalidS4Usage) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = s32[] parameter(0)
+    x = s4[] convert(param0)
+    ROOT add = s4[] add(x, x)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
+}
+
+TEST_F(HloVerifierTest, InvalidU4Usage) {
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY entry {
+    param0 = u32[] parameter(0)
+    x = u4[] convert(param0)
+    ROOT add = u4[] add(x, x)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("S4/U4 is currently only supported in matmul and convolution"));
 }
 
 }  // namespace

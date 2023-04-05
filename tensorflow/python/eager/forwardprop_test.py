@@ -15,6 +15,7 @@
 
 import functools
 import gc
+import sys
 import weakref
 
 from absl.testing import parameterized
@@ -34,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import map_fn
@@ -83,7 +85,7 @@ def _jacfwd(f, primals):
               functools.partial(array_ops.reshape, shape=[-1]),
               _jvp(f, primals, nest.pack_sequence_as(primals,
                                                      tangent_mask))[1]))
-    jac_flat.append(array_ops.stack(jac_columns, axis=1))
+    jac_flat.append(array_ops_stack.stack(jac_columns, axis=1))
     tangent_mask[primal_index] = array_ops.zeros_like(primal)
   return nest.pack_sequence_as(primals, jac_flat)
 
@@ -720,11 +722,11 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       with backprop.GradientTape() as gg:
         gg.watch(primals)
         out = fun(primals)
-      grad = array_ops.unstack(gg.gradient(out, primals))
+      grad = array_ops_stack.unstack(gg.gradient(out, primals))
     hessian = []
     for i in range(3):
       hessian.append(g.gradient(grad[i], primals))
-    hessian = array_ops.stack(hessian, axis=0)
+    hessian = array_ops_stack.stack(hessian, axis=0)
     backback_hvp = math_ops.tensordot(hessian, tangents, axes=1)
 
     self.assertAllClose(backback_hvp, forwardback_hvp_eager)
@@ -781,6 +783,10 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testOpWithNoTrainableOutputs(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest("Not working in Python 3.11")
+
     v = variables.Variable(1.)
     with forwardprop.ForwardAccumulator(v, 11.):
       v.assign_sub(0.5)
@@ -878,6 +884,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testVariableWatched(self):
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+      # TODO(b/264947738)
+      self.skipTest("Not working in Python 3.11")
     v = variables.Variable([1., 2., 3.])
     with forwardprop.ForwardAccumulator(v, constant_op.constant([.1, -.2,
                                                                  .3])) as acc:

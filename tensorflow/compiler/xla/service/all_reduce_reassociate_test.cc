@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -40,9 +40,7 @@ class AllReduceSimplifierTest : public HloTestBase {
 
   size_t AllReduceCount(std::unique_ptr<HloModule>& module) {
     return absl::c_count_if(module->entry_computation()->instructions(),
-                            [](const HloInstruction* inst) {
-                              return inst->opcode() == HloOpcode::kAllReduce;
-                            });
+                            HloPredicateIsOp<HloOpcode::kAllReduce>);
   }
 };
 

@@ -24,13 +24,14 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -93,9 +94,9 @@ Status IrEmitterNested::CodegenNestedComputation() {
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
       ir_emitter_context_->name_uniquer()->GetUniqueName(
-          llvm_ir::SanitizeFunctionName(
-              nested_computation_.name())),  // The name of the function.
-      ir_emitter_context_->llvm_module());   // The parent LLVM module.
+          llvm_ir::SanitizeFunctionName(std::string(
+              nested_computation_.name()))),  // The name of the function.
+      ir_emitter_context_->llvm_module());    // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
        ++arg_no) {
     int64_t arg_size = argument_dereferenceable_bytes[arg_no];
@@ -199,17 +200,6 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
       continue;
     }
     Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
-    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
-    llvm::ArrayType* global_type =
-        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
-    llvm::Constant* initializer =
-        should_emit_initializer
-            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
-            : llvm::ConstantAggregateZero::get(global_type);
-    if (should_emit_initializer) {
-      VLOG(3) << "Emitted initializer for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-    }
 
     // These globals will be looked up by name by GpuExecutable so we need to
     // give them an external linkage.  Not all of their uses are visible in
@@ -221,25 +211,14 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     // keeping around too many globals because of their linkage.
     std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
 
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        global_type, /*isConstant=*/should_emit_initializer,
-        llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/initializer, global_name,
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/0,
-        /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
-        global_for_const);
+    auto base = static_cast<const uint8_t*>(literal.untyped_data());
+    ir_emitter_context_->emit_constant(
+        literal.element_count(),
+        ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
 
-    GpuExecutable::ConstantInfo info;
-    info.symbol_name = global_name;
-
-    if (!should_emit_initializer) {
-      auto base = static_cast<const uint8_t*>(literal.untyped_data());
-      info.content.assign(base, base + literal.size_bytes());
-    }
-    ir_emitter_context_->constants().push_back(std::move(info));
+        global_name,
+        /*allocation_idx=*/-1,
+        llvm::ArrayRef<uint8_t>(base, base + literal.size_bytes()), &b_);
   }
   return OkStatus();
 }

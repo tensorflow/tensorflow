@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -564,7 +564,7 @@ TEST_F(CallGraphTest, VisitWithError) {
       [](const CallGraphNode&) { return InternalError("Visitation failed"); });
 
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
+  ASSERT_EQ(status.code(), tsl::error::INTERNAL);
   ASSERT_THAT(status.error_message(),
               ::testing::HasSubstr("Visitation failed"));
 }

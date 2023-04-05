@@ -22,7 +22,11 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -103,8 +107,11 @@ class Arguments {
     return *(new (&storage_.back()) T(std::forward<Args>(args)...));
   }
 
-  const Argument& operator[](size_t index) const {
-    return *reinterpret_cast<const Argument*>(storage_[index].data);
+  const auto& operator[](size_t index) const {
+    using T = std::conditional_t<sizeof...(Ts) == 1,
+                                 std::tuple_element_t<0, std::tuple<Ts...>>,
+                                 Argument>;
+    return *reinterpret_cast<const T*>(storage_[index].data);
   }
 
   size_t size() const { return storage_.size(); }
@@ -172,7 +179,7 @@ class ArgumentsRef {
       : ArgumentsRef(llvm::ArrayRef<T>(arr)) {}
 
   template <typename T, std::enable_if_t<is_argument<T>>* = nullptr>
-  ArgumentsRef(std::initializer_list<T> list)  // NOLINT
+  ArgumentsRef(const std::initializer_list<T>& list)  // NOLINT
       : ArgumentsRef(llvm::ArrayRef<T>(list)) {}
 
   const Argument& operator[](size_t index) const {
@@ -218,6 +225,43 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
 
  private:
   void* ptr_;
+};
+
+template <typename T>
+using EnableIfScalarType = typename std::enable_if_t<
+    std::disjunction_v<std::is_same<T, float>, std::is_same<T, int32_t>,
+                       std::is_same<T, int64_t>>>;
+
+//===----------------------------------------------------------------------===//
+// ScalarArg for passing integer or float scalar arguments.
+//===----------------------------------------------------------------------===//
+
+class ScalarArg final : public llvm::RTTIExtends<ScalarArg, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  template <typename T, EnableIfScalarType<T>* = nullptr>
+  explicit ScalarArg(T value)
+      : type_(primitive_util::NativeToPrimitiveType<T>()), value_(value) {}
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
+
+ private:
+  // We store value in a union instead of an `std::variant` so that we can pack
+  // a pointer to this union as an executable argument.
+  union Value {
+    explicit Value(int32_t i32) : i32(i32) {}
+    explicit Value(int64_t i64) : i64(i64) {}
+    explicit Value(float f32) : f32(f32) {}
+    int32_t i32;
+    int64_t i64;
+    float f32;
+  };
+
+  PrimitiveType type_;
+  Value value_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -313,27 +357,76 @@ absl::Status VerifyMemrefArgument(unsigned index, const Type& type,
                                   const MemrefDesc& arg);
 
 //===----------------------------------------------------------------------===//
-// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+// AsyncTokenArg for passing async token arguments
 //===----------------------------------------------------------------------===//
 
-class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
+class AsyncTokenArg final : public llvm::RTTIExtends<AsyncTokenArg, Argument> {
  public:
   static constexpr char ID = 0;  // NOLINT
 
-  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
-
-  void* data() const { return data_; }
-  size_t size() const { return size_; }
+  explicit AsyncTokenArg(tsl::AsyncValueRef<tsl::Chain> value)
+      : storage_(AsyncRuntime::AsToken(value)) {}
 
   absl::Status Verify(const Type& type) const final;
   void Pack(absl::Span<void*> args) const final;
   std::string ToString() const final;
 
  private:
-  void* data_;
-  size_t size_;
+  // In the runtime execution, we unpack args with pointer to pointer
+  // dereferening. We declare storage_ as a member variable (instead of a local
+  // inside the Pack function) to keep its address valid when unpacking.
+  AsyncRuntime::Token* storage_;
 };
 
+//===----------------------------------------------------------------------===//
+// AsyncScalarArg for passing async scalar arguments
+//===----------------------------------------------------------------------===//
+
+class AsyncScalarArg final
+    : public llvm::RTTIExtends<AsyncScalarArg, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  template <typename T, EnableIfScalarType<T>* = nullptr>
+  explicit AsyncScalarArg(tsl::AsyncValueRef<T> value)
+      : type_(primitive_util::NativeToPrimitiveType<T>()) {
+    auto write = [](const T* v, std::byte* store) {
+      T* store_t = reinterpret_cast<T*>(store);
+      *store_t = *v;
+    };
+
+    storage_ = AsyncRuntime::AsValue<T>(value, sizeof(T),
+                                        alignof(std::max_align_t), write);
+  }
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+
+  std::string ToString() const final;
+
+ private:
+  PrimitiveType type_;
+  AsyncRuntime::Value* storage_;
+};
+
+//===----------------------------------------------------------------------===//
+// AsyncMemrefArg for passing async memref arguments
+//===----------------------------------------------------------------------===//
+class AsyncMemrefArg final
+    : public llvm::RTTIExtends<AsyncMemrefArg, Argument> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit AsyncMemrefArg(tsl::AsyncValueRef<MemrefDesc> value);
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
+
+ private:
+  tsl::AsyncValueRef<MemrefDesc> value_;
+  AsyncRuntime::Value* storage_;
+};
 }  // namespace runtime
 }  // namespace xla
 

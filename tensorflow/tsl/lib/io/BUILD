@@ -1,19 +1,24 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
 package(
-    default_visibility = [
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = set_external_visibility([
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//tensorflow/tsl/lib/io/snappy:__pkg__",
+        "//tensorflow/compiler/xla:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core/util:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
-    ],
+        "//tensorflow/tsl/profiler:__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -239,6 +244,18 @@ cc_library(
 )
 
 cc_library(
+    name = "buffered_file",
+    hdrs = ["buffered_file.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/lib/hash:crc32c",
+        "//tensorflow/tsl/platform:cord",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
     name = "zlib_compression_options",
     srcs = ["zlib_compression_options.cc"],
     hdrs = ["zlib_compression_options.h"],
@@ -292,6 +309,7 @@ filegroup(
         "block.h",
         "block_builder.cc",
         "block_builder.h",
+        "buffered_file.h",
         "buffered_inputstream.cc",
         "buffered_inputstream.h",
         "cache.cc",
@@ -354,7 +372,7 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -372,7 +390,7 @@ filegroup(
         "table_builder.h",
         "table_options.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -388,7 +406,7 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -398,10 +416,10 @@ filegroup(
         "block_builder.h",
         "format.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "buffered_inputstream_test",
     size = "small",
     srcs = ["buffered_inputstream_test.cc"],
@@ -417,7 +435,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.cc"],
@@ -430,7 +448,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "inputbuffer_test",
     size = "small",
     srcs = ["inputbuffer_test.cc"],
@@ -450,7 +468,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "inputstream_interface_test",
     size = "small",
     srcs = ["inputstream_interface_test.cc"],
@@ -463,7 +481,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "random_inputstream_test",
     size = "small",
     srcs = ["random_inputstream_test.cc"],
@@ -477,7 +495,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "record_reader_writer_test",
     size = "small",
     srcs = ["record_reader_writer_test.cc"],
@@ -497,7 +515,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "recordio_test",
     size = "small",
     srcs = ["recordio_test.cc"],
@@ -517,7 +535,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "table_test",
     size = "small",
     srcs = ["table_test.cc"],
@@ -536,7 +554,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "zlib_buffers_test",
     size = "small",
     srcs = ["zlib_buffers_test.cc"],

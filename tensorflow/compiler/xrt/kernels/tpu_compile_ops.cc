@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
@@ -127,7 +127,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (tpu::OpsApiFn()
+        if (stream_executor::tpu::OpsApiFn()
                 ->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }

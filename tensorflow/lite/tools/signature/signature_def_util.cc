@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/signature/signature_def_util.h"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {

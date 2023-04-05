@@ -20,13 +20,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_
 
-#include "rocm/include/rocblas.h"
+#include "rocm/include/rocblas/rocblas.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
@@ -263,13 +263,14 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_ztrsm_batched)                \
   __macro(rocblas_create_handle)                \
   __macro(rocblas_destroy_handle)               \
-  __macro(rocblas_set_stream)
+  __macro(rocblas_set_stream)                   \
+  __macro(rocblas_set_atomics_mode)
 
 // clang-format on
 
 FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_

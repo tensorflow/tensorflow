@@ -1,8 +1,10 @@
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 tf_py_test(
     name = "filter_fusion_test",
@@ -30,8 +32,8 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
@@ -78,7 +80,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_fusion_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_fusion_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -137,8 +139,8 @@ tf_py_test(
     srcs = ["make_deterministic_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -174,8 +176,6 @@ tf_py_test(
     size = "small",
     srcs = ["optimization_test.py"],
     shard_count = 2,
-    # TODO(b/200273447): Re-enable.
-    tags = ["notsan"],  # Seems flaky in TSAN.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt %s --pass-pipeline='tfg-functional-to-region,tfg-region-to-functional,tfg-functional-to-region,tfg-region-to-functional,tfg-functional-to-region,tfg-region-to-functional' \
+// RUN: tfg-transforms-opt %s --pass-pipeline='builtin.module(tfg-functional-to-region,tfg-region-to-functional,tfg-functional-to-region,tfg-region-to-functional,tfg-functional-to-region,tfg-region-to-functional)' \
 // RUN: | FileCheck %s
 
 // Check that functions are renamed at most once when passed through the region

@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -68,12 +68,29 @@ class SimpleMemoryArena {
         arena_alignment_(arena_alignment),
         high_water_mark_(0),
         underlying_buffer_size_(0),
-        ordered_allocs_(),
-        allocs_erased_(false) {}
+        active_allocs_() {}
 
-  // Erases all allocs which have been marked for deletion. This must be called
-  // after Deallocate.
-  void ResolveDeallocations();
+  // Delete all allocs. This should be called when allocating the first node of
+  // a subgraph.
+  void ResetAllocs();
+
+  // Delete all allocs which are deallocated before `node`. This should be
+  // called before allocating tensors associated with a series of nodes. It
+  // deletes allocs which are no longer required for allocating the next batch
+  // of tensors. Not calling it will have no impact on the result but it may be
+  // much slower.
+  void PurgeActiveAllocs(int32_t node);
+
+  // Delete all allocs which are allocated after `node`. This should be
+  // called when resetting allocs after `node`. It  deletes allocs which are no
+  // longer required for allocating the next batch of tensors. Not calling it
+  // will have no impact on the result but it may be much slower.
+  void PurgeAfter(int32_t node);
+
+  // Calculate the active allocs at `node`. Call this if the active allocs at
+  // `node` are unknown.
+  void CalculateActiveAllocs(
+      const std::vector<ArenaAllocWithUsageInterval>& allocs, int32_t node);
 
   // Schedule memory allocation for a tensor with a given size, assuming that it
   // needs to be allocated before the execution of first_node, and deallocated
@@ -81,18 +98,6 @@ class SimpleMemoryArena {
   TfLiteStatus Allocate(TfLiteContext* context, size_t alignment, size_t size,
                         int32_t tensor, int32_t first_node, int32_t last_node,
                         ArenaAllocWithUsageInterval* new_alloc);
-
-  // Marks `alloc` for deletion by setting tensor to -1. After one or
-  // more calls to this function, `ResolveDeallocations` must be called to
-  // delete all allocs which have been marked, otherwise the arena memory cannot
-  // be re-used, increasing overall memory usage.
-  TfLiteStatus Deallocate(TfLiteContext* context,
-                          ArenaAllocWithUsageInterval& alloc);
-
-  // Deletes all allocs which are allocated by nodes after `node`.
-  // This is equivalent, but much more efficient than calling Deallocate for
-  // each alloc individually.
-  void DeallocateAfter(int32_t node);
 
   inline size_t RequiredBufferSize() {
     // Add in a small amount of padding to reduce the chance of resize events
@@ -150,8 +155,7 @@ class SimpleMemoryArena {
   std::unique_ptr<char[]> underlying_buffer_;
   size_t underlying_buffer_size_;
   char* underlying_buffer_aligned_ptr_;
-  std::vector<ArenaAllocWithUsageInterval> ordered_allocs_;
-  bool allocs_erased_;
+  std::vector<ArenaAllocWithUsageInterval> active_allocs_;
 };
 
 }  // namespace tflite

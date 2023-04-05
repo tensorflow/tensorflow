@@ -30,6 +30,7 @@ using tsl::iovec;
 namespace tensorflow {
 namespace port {
 using tsl::port::Snappy_Compress;
+using tsl::port::Snappy_CompressFromIOVec;
 using tsl::port::Snappy_GetUncompressedLength;
 using tsl::port::Snappy_Uncompress;
 using tsl::port::Snappy_UncompressToIOVec;

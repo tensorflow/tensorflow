@@ -22,22 +22,27 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_REMOVEUNUSEDARGUMENTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Removes unused arguments from functions and their callers.
 struct RemoveUnusedArgumentsPass
-    : public RemoveUnusedArgumentsPassBase<RemoveUnusedArgumentsPass> {
+    : public impl::RemoveUnusedArgumentsPassBase<RemoveUnusedArgumentsPass> {
   void runOnOperation() override;
 };
 
@@ -105,7 +110,7 @@ void EraseResults(Operation* op, llvm::BitVector erase) {
   Operation* new_op = builder.create(state);
   for (const auto& indexed_regions : llvm::enumerate(op->getRegions())) {
     Region& region = op->getRegion(indexed_regions.index());
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     indexed_regions.value().cloneInto(&region, mapping);
   }
   int new_position = 0;
@@ -218,7 +223,14 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
       op.getOperation()->getResult(from).replaceAllUsesWith(
           op.getOperation()->getOperand(to));
     }
-    op->eraseOperands(args_to_erase.lookup(func));
+    BitVector operands_to_erase(op->getNumOperands());
+    int args_start = op->getNumOperands()
+                         ? op.getArgOperands().getBase()->getOperandNumber()
+                         : 0;
+    operands_to_erase |= args_to_erase.lookup(func);
+    operands_to_erase <<= args_start;
+    op->eraseOperands(operands_to_erase);
+
     EraseResults(op, results_to_erase.lookup(func));
   });
 }

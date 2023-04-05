@@ -48,7 +48,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA
@@ -183,7 +183,7 @@ StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
   } else if (fusion == FusedComputationType::kBiasAddWithRelu) {
     return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
   } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
-    return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
+    return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
   } else {
     return errors::Internal("Unsupported fusion for BlasLt Matmul");
   }
@@ -471,21 +471,20 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 
     // The Gelu exact fusion is supported by the cuDNN.
     if (use_cudnn) {
-      int device_id = stream->parent()->device_ordinal();
-      DataType ab_dtype = a.dtype();
-      DataType c_dtype = output->dtype();
-      MatmulParameters cudnn_matmul_params = {/*ab_type=*/ab_dtype,
-                                              /*c_type=*/c_dtype,
-                                              trans_a,
-                                              trans_b,
-                                              static_cast<uint64_t>(m),
-                                              static_cast<uint64_t>(n),
-                                              static_cast<uint64_t>(k),
-                                              a.dim_size(1),
-                                              b.dim_size(1),
-                                              output->dim_size(1),
-                                              matmul_activation_mode,
-                                              device_id};
+      MatmulParameters cudnn_matmul_params = {
+          stream->parent(),
+          /*ab_type=*/a.dtype(),
+          /*c_type=*/output->dtype(),
+          trans_a,
+          trans_b,
+          static_cast<uint64_t>(m),
+          static_cast<uint64_t>(n),
+          static_cast<uint64_t>(k),
+          a.dim_size(1),
+          b.dim_size(1),
+          output->dim_size(1),
+          matmul_activation_mode,
+      };
 
       auto entry_or = AutotuneFusedMatmul<T>(
           use_autotune, FusedMatmulAutotuneMap::GetInstance(),

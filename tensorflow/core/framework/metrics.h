@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
+
+#include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -27,6 +28,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace metrics {
+// Records when a data-fetching tf.data operation is executed.
+//
+// The `name` argument identifies the operation type (e.g. "ToSingleElementOp").
+void RecordTFDataFetchOp(const string& name);
 
 // Records that a tf.data.Dataset executed by the program used autotuning.
 //
@@ -114,20 +119,40 @@ void RecordTFDataServiceWorkerCreated();
 
 // Records that a tf.data service job has been created.
 void RecordTFDataServiceJobsCreated(
-    const tensorflow::data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read);
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
 // Records tf.data service iterators created by clients.
 void RecordTFDataServiceClientIterators(
-    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
-    const tensorflow::data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read);
+    int64_t worker_uid, data::DeploymentMode deployment_mode,
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
+
+// Records that a tf.data service worker client has been created that will use
+// `data_transfer_protocol` to get data from the worker server.
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol);
+
+// Records that a tf.data service worker client fell back to gRPC rather than
+// use `data_transfer_protocol` because of an error of type `code` with message
+// `error_message`.
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
+// Records that a tf.data service worker client got an error of non-retriable
+// type `code` with message `error_message` when trying to transfer data over
+// `data_transfer_protocol`.
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
 
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
+
+// Records distributed tf.data snapshot bytes committed.
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -224,6 +249,13 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& use_spmd_for_xla_partitioning,
     const std::string& unsupported_reason, bool has_unsupported_features);
 
+// Records whether a graph contains any of the TF1 features
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps);
+
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
 class ScopedCounter final {
@@ -254,17 +286,17 @@ class ScopedCounter final {
 
   // Returns duration of the current interval in case the timer has started.
   // Returns nullopt otherwise.
-  absl::optional<uint64> DurationMicroSec() const {
-    return started_ ? absl::optional<uint64>(
-                          accumulated_time_ +
-                          tensorflow::Env::Default()->NowMicros() - start_time_)
-                    : absl::nullopt;
+  std::optional<uint64> DurationMicroSec() const {
+    return started_ ? std::optional<uint64>(accumulated_time_ +
+                                            Env::Default()->NowMicros() -
+                                            start_time_)
+                    : std::nullopt;
   }
 
   // Temporarily stop the timer, but keep accumulated time.
   void AccumulateAndStop() {
     if (started_) {
-      accumulated_time_ = tensorflow::Env::Default()->NowMicros() - start_time_;
+      accumulated_time_ = Env::Default()->NowMicros() - start_time_;
       started_ = false;
     }
   }
@@ -274,7 +306,7 @@ class ScopedCounter final {
     if (started_) return;
 
     // Keep previously accumulated time if any.
-    start_time_ = tensorflow::Env::Default()->NowMicros();
+    start_time_ = Env::Default()->NowMicros();
     started_ = true;
   }
 
@@ -283,8 +315,7 @@ class ScopedCounter final {
  private:
   template <std::size_t... S>
   void ReportInternal(std::index_sequence<S...>) {
-    uint64 time_interval =
-        tensorflow::Env::Default()->NowMicros() - start_time_;
+    uint64 time_interval = Env::Default()->NowMicros() - start_time_;
     time_interval += accumulated_time_;
     if (time_interval > 0) {
       counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
@@ -292,7 +323,7 @@ class ScopedCounter final {
   }
 
   void Init() {
-    start_time_ = tensorflow::Env::Default()->NowMicros();
+    start_time_ = Env::Default()->NowMicros();
     started_ = true;
     accumulated_time_ = 0;
   }
@@ -313,9 +344,6 @@ void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
-
-// Updates the metrics stored about time BFC allocator spents during delay.
-void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
 
 // Increments (by 1) a simple integer counter that is exposed for testing.
 void IncrementTestCounter(const string& name, const string& label);

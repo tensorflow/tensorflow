@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_cluster_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -34,8 +33,11 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
+#define GEN_PASS_DEF_HOSTLAUNCHTOOUTSIDECOMPILEDPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct HostLaunchToOutsideCompiledPass
-    : public HostLaunchToOutsideCompiledPassBase<
+    : public impl::HostLaunchToOutsideCompiledPassBase<
           HostLaunchToOutsideCompiledPass> {
   void runOnOperation() override;
 };

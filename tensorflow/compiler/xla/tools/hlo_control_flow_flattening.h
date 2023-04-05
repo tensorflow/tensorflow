@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -70,8 +70,8 @@ class HloControlFlowFlattening : public HloModulePass {
   // Flattens the while loop. Precondition: while_hlo is a while instruction.
   Status FlattenWhileLoop(HloInstruction* while_hlo,
                           const CallGraph& call_graph) const;
-  // Replaces a partition-id or replica-id with a zero constant.
-  Status RemovePartitionOrReplicaId(HloInstruction* hlo) const;
+  // Replaces an id with a zero constant.
+  Status RemoveId(HloInstruction* hlo) const;
   // Removes send and send-done with a custom call.
   Status RemoveSendDone(
       HloInstruction* send_done,

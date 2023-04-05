@@ -115,26 +115,26 @@ TEST_F(ReaderTest, ReadSavedModelDebugInfoIfPresent) {
 
 TEST_F(ReaderTest, MetricsNotUpdatedFailedRead) {
   MetaGraphDef meta_graph_def;
-  const int read_count_v1 = metrics::SavedModelRead("1").value();
-  const int read_count_v2 = metrics::SavedModelRead("2").value();
+  const int read_count_v1 = metrics::SavedModelReadCount("1").value();
+  const int read_count_v2 = metrics::SavedModelReadCount("2").value();
 
   const string export_dir = GetDataDependencyFilepath("missing-path");
   Status st =
       ReadMetaGraphDefFromSavedModel(export_dir, {"serve"}, &meta_graph_def);
 
   EXPECT_FALSE(st.ok());
-  EXPECT_EQ(metrics::SavedModelRead("1").value(), read_count_v1);
-  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count_v2);
+  EXPECT_EQ(metrics::SavedModelReadCount("1").value(), read_count_v1);
+  EXPECT_EQ(metrics::SavedModelReadCount("2").value(), read_count_v2);
 }
 
 TEST_F(ReaderTest, MetricsUpdatedSuccessfulRead) {
   MetaGraphDef meta_graph_def;
-  const int read_count_v1 = metrics::SavedModelRead("1").value();
+  const int read_count_v1 = metrics::SavedModelReadCount("1").value();
 
   const string export_dir = GetDataDependencyFilepath(TestDataSharded());
   Status st =
       ReadMetaGraphDefFromSavedModel(export_dir, {"serve"}, &meta_graph_def);
-  EXPECT_EQ(metrics::SavedModelRead("1").value(), read_count_v1 + 1);
+  EXPECT_EQ(metrics::SavedModelReadCount("1").value(), read_count_v1 + 1);
 }
 
 }  // namespace

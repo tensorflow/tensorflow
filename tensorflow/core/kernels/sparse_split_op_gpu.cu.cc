@@ -266,7 +266,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
       Tensor sorted_slice_indexes;
       OP_REQUIRES_OK_ASYNC(
           context,
-          context->allocate_temp(DT_INT32, TensorShape({num_split}),
+          context->allocate_temp(DT_INT32, TensorShape({input_nnz}),
                                  &sorted_slice_indexes),
           done);
       int* sorted_slice_indexes_ptr = sorted_slice_indexes.vec<int>().data();

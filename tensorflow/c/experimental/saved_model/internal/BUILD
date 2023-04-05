@@ -21,10 +21,7 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//tensorflow/cc/experimental/libtf:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__subpackages__",
-    ],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -139,11 +136,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/public:saved_model_api.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        "//tensorflow/c/experimental/saved_model/public:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__subpackages__",
-    ],
+    visibility = ["//tensorflow/c/experimental/saved_model/public:__pkg__"],
     deps = [
         ":concrete_function",
         ":concrete_function_list",
@@ -170,8 +163,7 @@ cc_library(
         "saved_model_api_type.h",
     ],
     visibility = [
-        "//tensorflow/cc/experimental/libtf:__pkg__",
-        "//tensorflow/cc/experimental/libtf:__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/c:conversion_macros",

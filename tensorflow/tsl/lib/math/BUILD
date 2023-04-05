@@ -1,7 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -12,13 +16,18 @@ cc_library(
     name = "math_util",
     hdrs = ["math_util.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//platforms/performance/tf_sim/utils:__subpackages__",
+        "//platforms/xla/service:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "math_util_test",
     size = "small",
     srcs = [

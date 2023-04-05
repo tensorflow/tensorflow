@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+#include <optional>
+
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 #endif
 
@@ -99,15 +101,16 @@ extern "C" void _mlir_ciface_tf_dealloc(void* op_kernel_ctx, void* ptr) {
 
 extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
                                              int32_t error_code, char* msg) {
-  Optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
+  std::optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
   if (!symbol.has_value()) {
     LOG(ERROR) << "No valid conversion from integer value = " << error_code
                << "to ErrorCode attribute";
     return;
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
-  ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
+  ctx->CtxFailureWithWarning(tensorflow::Status{
+      static_cast<absl::StatusCode>(ConvertAttrToEnumValue(symbol.value())),
+      msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
@@ -128,8 +131,8 @@ std::string GetFileCachePath(const std::string cache_dir,
 llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
   auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
   // Register TF framework symbols.
@@ -182,7 +185,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank, /*embed_memref_prints=*/false,
+            max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit,
             /*jit_compile=*/false,

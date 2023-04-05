@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/parallel_batch_dataset_op.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -128,8 +129,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -200,6 +201,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
@@ -219,8 +222,14 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
-      return dataset()->input_->MakeIterator(IteratorContext(params), this,
-                                             prefix(), &input_impl_);
+      IteratorContext iter_ctx(std::move(params));
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          &iter_ctx, this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx.checkpoint());
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -229,7 +238,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       std::shared_ptr<BatchResult> result;
       {
         mutex_lock l(*mu_);
-        EnsureRunnerThreadStarted(ctx);
+        EnsureThreadsStarted(ctx);
         while (ShouldWait(&result)) {
           RecordStop(ctx);
           cond_var_->wait(l);
@@ -252,6 +261,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferDequeue(ctx, result->output);
       }
+      ctx->MergeCheckpoint(&result->checkpoint);
       TF_RETURN_IF_ERROR(
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
@@ -271,6 +281,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
+      if (ctx->symbolic_checkpoint()) {
+        return writer->WriteScalar(full_name(kBatchResultsSize), 0);
+      }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
       while (num_calls_ > 0) {
@@ -289,6 +302,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
+      DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t batch_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
@@ -296,6 +310,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
+      }
+      if (ctx->warm_start()) {
+        EnsureThreadsStarted(ctx);
       }
       return OkStatus();
     }
@@ -324,13 +341,14 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
     // BatchResult encapsulates the output batch.
     struct BatchResult {
-      explicit BatchResult()
+      explicit BatchResult(IteratorContext* ctx)
           : end_of_input(false),
             num_elements(0),
             status(OkStatus()),
             call_finished(false),
             output_allocated(false),
-            uid(tensorflow::EnvTime::NowNanos()) {}
+            uid(tensorflow::EnvTime::NowNanos()),
+            checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       mutex mu;
       bool end_of_input TF_GUARDED_BY(mu);
@@ -340,6 +358,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       bool call_finished TF_GUARDED_BY(&Iterator::mu_);
       bool output_allocated TF_GUARDED_BY(mu);
       const int64_t uid = -1;
+      MemoryCheckpoint checkpoint;
     };
 
     void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
@@ -382,6 +401,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(result->mu);
           result->end_of_input = result->end_of_input || end_of_input;
           result->status.Update(status);
+          result->checkpoint.Merge(ctx->checkpoint());
           if (result->end_of_input || !result->status.ok()) break;
         }
         if (!end_of_input) {
@@ -432,13 +452,13 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void EnsureRunnerThreadStarted(IteratorContext* ctx)
+    void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
-        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ = ctx->StartThread(
-            kTFDataParallelBatch,
-            std::bind(&Iterator::RunnerThread, this, ctx_copy));
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+        runner_thread_ =
+            ctx->StartThread(kTFDataParallelBatch,
+                             std::bind(&Iterator::RunnerThread, this, new_ctx));
       }
     }
 
@@ -471,7 +491,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           }
 
           while (!busy()) {
-            batch_results_.push_back(std::make_shared<BatchResult>());
+            batch_results_.push_back(std::make_shared<BatchResult>(ctx.get()));
             new_calls.emplace_back(batch_results_.back());
             num_calls_++;
           }
@@ -524,7 +544,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
     Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
                            size_t index) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      batch_results_.push_back(std::make_shared<BatchResult>());
+      batch_results_.push_back(std::make_shared<BatchResult>(ctx));
       std::shared_ptr<BatchResult> result = batch_results_.back();
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);

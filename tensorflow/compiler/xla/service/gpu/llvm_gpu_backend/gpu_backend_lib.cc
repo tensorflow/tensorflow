@@ -40,6 +40,8 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/PassRegistry.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
@@ -50,9 +52,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_command_line_options.h"
@@ -60,12 +60,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -92,8 +93,8 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {86, 80, 75, 72, 70, 62, 61, 60,
-                              53, 52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {90, 89, 87, 86, 80, 75, 72, 70, 62,
+                              61, 60, 53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -127,13 +128,11 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeCore(*pass_registry);
   llvm::initializeCodeGen(*pass_registry);
   llvm::initializeScalarOpts(*pass_registry);
-  llvm::initializeObjCARCOpts(*pass_registry);
   llvm::initializeVectorization(*pass_registry);
   llvm::initializeIPO(*pass_registry);
   llvm::initializeAnalysis(*pass_registry);
   llvm::initializeTransformUtils(*pass_registry);
   llvm::initializeInstCombine(*pass_registry);
-  llvm::initializeInstrumentation(*pass_registry);
   llvm::initializeTarget(*pass_registry);
   llvm::initializeCodeGenPreparePass(*pass_registry);
 }
@@ -180,71 +179,19 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 
-// Adds the standard LLVM optimization passes, based on the speed optimization
-// level (opt_level) and size optimization level (size_level). Both module
-// and function-level passes are added, so two pass managers are passed in and
-// modified by this function.
-void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
-                           llvm::TargetMachine* target_machine,
-                           llvm::legacy::PassManagerBase* module_passes,
-                           llvm::legacy::FunctionPassManager* function_passes,
-                           int inline_threshold) {
-  llvm::PassManagerBuilder builder;
-  builder.OptLevel = opt_level;
-  builder.SizeLevel = size_level;
-
-  if (opt_level > 1) {
-    builder.Inliner = llvm::createFunctionInliningPass(inline_threshold);
-  } else {
-    // Only inline functions marked with "alwaysinline".
-    builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
-  }
-
-  builder.DisableUnrollLoops = opt_level == 0;
-  builder.LoopVectorize = opt_level > 0;
-  builder.SLPVectorize = opt_level > 1 && size_level < 2;
-
-  // NVPTX's early-as-possible passes include NVVM reflect.
-  target_machine->adjustPassManager(builder);
-
-  builder.populateFunctionPassManager(*function_passes);
-  builder.populateModulePassManager(*module_passes);
-}
-
-// Emits the given module to a bit code file.
-void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
-  std::error_code error_code;
-  llvm::ToolOutputFile outfile(std::string(filename).c_str(), error_code,
-                               llvm::sys::fs::OF_None);
-  if (error_code) {
-    LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
-  }
-
-  llvm::WriteBitcodeToFile(module, outfile.os());
-  outfile.keep();
-}
-
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
 std::string EmitModuleToPTX(llvm::Module* module,
                             llvm::TargetMachine* target_machine) {
   std::string ptx;
-  {
-    llvm::raw_string_ostream stream(ptx);
-    llvm::buffer_ostream pstream(stream);
-    // The extension is stripped by IrDumpingPassManager, so we need to
-    // get creative to add a suffix.
-    IrDumpingPassManager codegen_passes(
-        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
-        "", false);
-    codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
-        llvm::Triple(module->getTargetTriple())));
-
-    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::CGFT_AssemblyFile);
-    codegen_passes.run(*module);
-  }
-
+  llvm::raw_string_ostream stream(ptx);
+  llvm::buffer_ostream pstream(stream);
+  llvm::legacy::PassManager pm;
+  pm.add(new llvm::TargetLibraryInfoWrapperPass(
+      llvm::Triple(module->getTargetTriple())));
+  target_machine->addPassesToEmitFile(pm, pstream, nullptr,
+                                      llvm::CGFT_AssemblyFile);
+  pm.run(*module);
   return ptx;
 }
 
@@ -358,14 +305,74 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const HloModuleConfig& hlo_module_config) {
+  // TODO(b/266678775): Make it always PTX 7.1 as soon as TF driver requirements
+  // are updated.
+  const std::string ptx_ver =
+      hlo_module_config.debug_options().xla_gpu_enable_triton_gemm() ? "+ptx71"
+                                                                     : "+ptx60";
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          hlo_module_config, "+ptx60");
+                          hlo_module_config, ptx_ver);
 }
 
 using TargetModuleLinker = std::function<Status(
     llvm::Module*, GpuVersion, const HloModuleConfig&, const std::string&)>;
+
+void DumpModule(const std::string output_filename, const llvm::Module* module) {
+  std::error_code ec;
+  auto out = std::make_unique<llvm::raw_fd_ostream>(
+      llvm::StringRef(output_filename), ec, llvm::sys::fs::OF_None);
+  if (ec) {
+    LOG(FATAL) << "Unable to open " << output_filename
+               << " to dump LLVM IR: " << ec.message();
+    return;
+  }
+  module->print(*out, /*AAW=*/nullptr);
+  out->close();
+}
+
+const llvm::Module* GetModule(llvm::Any IR) {
+  if (llvm::any_isa<const llvm::Module*>(IR))
+    return llvm::any_cast<const llvm::Module*>(IR);
+
+  if (llvm::any_isa<const llvm::Function*>(IR)) {
+    const llvm::Function* F = llvm::any_cast<const llvm::Function*>(IR);
+    return F->getParent();
+  }
+
+  if (llvm::any_isa<const llvm::LazyCallGraph::SCC*>(IR)) {
+    const llvm::LazyCallGraph::SCC* C =
+        llvm::any_cast<const llvm::LazyCallGraph::SCC*>(IR);
+    return C->begin()->getFunction().getParent();
+  }
+
+  if (llvm::any_isa<const llvm::Loop*>(IR)) {
+    const llvm::Loop* L = llvm::any_cast<const llvm::Loop*>(IR);
+    const llvm::Function* F = L->getHeader()->getParent();
+    return F->getParent();
+  }
+
+  return nullptr;
+}
+
+auto DumpCallbackForModule(std::string module_identifier) {
+  int i = 0;
+  return [module_identifier, i](llvm::StringRef pass, llvm::Any ir) mutable {
+    const llvm::Module* module = GetModule(ir);
+    if (!module) {
+      return;
+    }
+
+    const std::string basename = ReplaceFilenameExtension(
+        absl::string_view(tsl::io::Basename(module_identifier)),
+        absl::StrFormat("pass-%02d.before.%s.ll", i++,
+                        absl::string_view(pass.str())));
+    std::string outputs_dir;
+    tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
+    DumpModule(tsl::io::JoinPath(outputs_dir, basename), module);
+  };
+}
 
 Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
                              const HloModuleConfig& hlo_module_config,
@@ -377,37 +384,33 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
                                    device_bitcode_dir_path));
 
-  bool dump_ir = hlo_module_config.debug_options().xla_gpu_dump_llvmir();
-  std::string outputs_dir;
-  tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
-  IrDumpingPassManager module_passes(module->getModuleIdentifier(), outputs_dir,
-                                     dump_ir);
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
 
-  // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  llvm::TargetLibraryInfoWrapperPass* tliwp =
-      new llvm::TargetLibraryInfoWrapperPass(
-          llvm::Triple(module->getTargetTriple()));
-  module_passes.add(tliwp);
+  fam.registerPass([&] { return target_machine->getTargetIRAnalysis(); });
 
-  // Try to fetch the target triple from the module. If not present, set a
-  // default target triple.
-  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  if (target_triple.getArch() == llvm::Triple::UnknownArch) {
-    LOG(WARNING) << "target triple not found in the module";
-    target_triple = default_target_triple;
+  llvm::PipelineTuningOptions pto;
+  pto.SLPVectorization = true;
+  pto.InlinerThreshold = inline_threshold;
+
+  llvm::PassInstrumentationCallbacks pic;
+
+  llvm::StandardInstrumentations si(module->getContext(), false);
+  si.registerCallbacks(pic, &mam);
+
+  llvm::PassBuilder pb(target_machine, pto, std::nullopt, &pic);
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+  if (hlo_module_config.debug_options().xla_gpu_dump_llvmir()) {
+    pic.registerBeforeNonSkippedPassCallback(
+        DumpCallbackForModule(module->getModuleIdentifier()));
   }
-
-  module_passes.add(llvm::createTargetTransformInfoWrapperPass(
-      target_machine->getTargetIRAnalysis()));
-
-  // The LLVM IR verifier performs sanity checking on the IR. This helps
-  // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions because of unfulfilled invariants.
-  module_passes.add(llvm::createVerifierPass());
-
-  // Create the function-level pass manager. It needs data layout information
-  // too.
-  llvm::legacy::FunctionPassManager function_passes(module);
 
   int32_t opt_level =
       hlo_module_config.debug_options().xla_backend_optimization_level();
@@ -422,36 +425,32 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
                   "--xla_backend_optimization_level >= 2.)";
     LOG(ERROR) << std::string(80, '*');
   }
-
-  // Add optimization passes, and set inliner threshold.
-  AddOptimizationPasses(opt_level,
-                        /*size_level=*/0, target_machine, &module_passes,
-                        &function_passes, inline_threshold);
-
-  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
-  // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunities such
-  // as more precise alias analysis and more function inlining (SROA may change
-  // the inlining cost of a function). For now, running SROA already emits good
-  // enough code for the evaluated benchmarks. We may want to run more
-  // optimizations later.
-  if (opt_level > 0) {
-    // LLVM's optimizer turns on SROA when the optimization level is greater
-    // than 0. We mimic this behavior here.
-    module_passes.add(llvm::createSROAPass());
+  llvm::OptimizationLevel ol;
+  switch (opt_level) {
+    case 0:
+      ol = llvm::OptimizationLevel::O0;
+      break;
+    case 1:
+      ol = llvm::OptimizationLevel::O1;
+      break;
+    case 2:
+      ol = llvm::OptimizationLevel::O2;
+      break;
+    case 3:
+      ol = llvm::OptimizationLevel::O3;
+      break;
   }
 
-  // Verify that the module is well formed after optimizations ran.
-  module_passes.add(llvm::createVerifierPass());
-
-  // Done populating the pass managers. Now run them.
-
-  function_passes.doInitialization();
-  for (auto func = module->begin(); func != module->end(); ++func) {
-    function_passes.run(*func);
+  llvm::ModulePassManager mpm;
+  mpm.addPass(llvm::VerifierPass());
+  if (ol == llvm::OptimizationLevel::O0) {
+    mpm.addPass(pb.buildO0DefaultPipeline(ol));
+  } else {
+    mpm.addPass(pb.buildPerModuleDefaultPipeline(ol));
   }
-  function_passes.doFinalization();
-  module_passes.run(*module);
+  mpm.addPass(llvm::VerifierPass());
+
+  mpm.run(*module, mam);
 
   return OkStatus();
 }
@@ -476,13 +475,6 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
   FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
-  // Increase limit when scanning memory dependencies.  This helps to reduce
-  // more redundant load instructions.
-  //
-  // The specific value is currently large enough for s3d in shoc benchmark,
-  // which contains a lot of load instructions and many arithmetic instructions
-  // between those loads.
-  FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
   // Use div.full -- it matters for some float-division heavy benchmarks.
   // Using div.approx produces incorrect result for float32(max)/float32(max).
@@ -517,20 +509,69 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
 
 namespace nvptx {
 
+std::string CantFindCudaMessage(absl::string_view msg,
+                                absl::string_view xla_gpu_cuda_data_dir) {
+  return absl::StrCat(
+      msg, "\nSearched for CUDA in the following directories:\n  ",
+      absl::StrJoin(tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir}),
+                    "\n  "),
+      "\nYou can choose the search directory by setting xla_gpu_cuda_data_dir "
+      "in HloModule's DebugOptions.  For most apps, setting the environment "
+      "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.");
+}
+
+static std::string GetLibdeviceDir(absl::string_view xla_gpu_cuda_data_dir) {
+  for (const std::string& cuda_root :
+       tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir})) {
+    std::string libdevice_dir =
+        tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
+    if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      VLOG(2) << "Found libdevice dir " << libdevice_dir;
+      return libdevice_dir;
+    }
+  }
+  LOG(WARNING) << CantFindCudaMessage(
+      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
+      "result in compilation or runtime failures, if the program we try to run "
+      "uses routines from libdevice.",
+      xla_gpu_cuda_data_dir);
+
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
+  // return it anyway.  Better than returning the empty string.
+  return ".";
+}
+
 StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config,
-    const std::string& libdevice_dir_path,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
   absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
 
+  absl::string_view xla_gpu_cuda_data_dir =
+      hlo_module_config.debug_options().xla_gpu_cuda_data_dir();
+
+  static absl::Mutex libdevice_cache_mu(absl::kConstInit);
+  static auto& libdevice_dir_path_cache ABSL_GUARDED_BY(libdevice_cache_mu) =
+      *new absl::flat_hash_map<std::string, std::string>();
+  std::string libdevice_dir_path = [&] {
+    absl::MutexLock l(&libdevice_cache_mu);
+    auto it = libdevice_dir_path_cache.find(xla_gpu_cuda_data_dir);
+    if (it != libdevice_dir_path_cache.end()) {
+      return it->second;
+    }
+    auto [it2, inserted] = libdevice_dir_path_cache.emplace(
+        xla_gpu_cuda_data_dir, GetLibdeviceDir(xla_gpu_cuda_data_dir));
+    return it2->second;
+  }();
+
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
   {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     // If the module has no functions or globals, there's nothing to compile.
@@ -683,9 +724,8 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
   bool keep_tempfiles = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
-                                             /*default_val=*/false,
-                                             &keep_tempfiles));
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
+                                      /*default_val=*/false, &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
   std::string random_number = std::to_string(tsl::random::New64());
@@ -714,23 +754,17 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   ir_fs->flush();
 
   // Emit GCN ISA binary.
-  // The extension is stripped by IrDumpingPassManager, so we need to
-  // get creative to add a suffix.
-  std::string module_id = module->getModuleIdentifier();
-  IrDumpingPassManager codegen_passes(
-      ReplaceFilenameExtension(tsl::io::Basename(module_id),
-                               random_number + "-amdgpu.dummy"),
-      "", false);
-  codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+  llvm::legacy::PassManager pm;
+  pm.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
   llvm::SmallVector<char, 0> stream;
   llvm::raw_svector_ostream pstream(stream);
   std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(
       new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::OF_Text));
   module->setDataLayout(target_machine->createDataLayout());
-  target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
+  target_machine->addPassesToEmitFile(pm, *isabin_fs, nullptr,
                                       llvm::CGFT_ObjectFile);
-  codegen_passes.run(*module);
+  pm.run(*module);
   isabin_fs->flush();
 
   if (keep_tempfiles) {
@@ -758,7 +792,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string error_message;
   int lld_result =
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
-                                llvm::None, {}, 0, 0, &error_message);
+                                std::nullopt, {}, 0, 0, &error_message);
   if (lld_result) {
     return xla::InternalError("ld.lld execute fail: %s, error code %d",
                               error_message, lld_result);
@@ -921,9 +955,9 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
   }
   str += hlo_module_config.compilation_cache_key();
   {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     auto compute_capability =

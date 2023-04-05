@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -78,14 +82,6 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
-    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
-      return n;
-    }
-    return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
@@ -134,6 +130,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), next_index_(0) {}
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       if (dataset()->num_shards_ == kShardHint) {
@@ -215,15 +213,16 @@ class ShardDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args), dataset()->num_shards_);
+      return model::MakeKnownRatioNode(
+          std::move(args), 1.0 / static_cast<double>(dataset()->num_shards_));
     }
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
-      } else {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kNextIndex), next_index_));
@@ -234,7 +233,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (!reader->Contains(full_name(kInputImplEmpty))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+      if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kNextIndex), &next_index_));

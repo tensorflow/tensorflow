@@ -22,6 +22,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -35,9 +36,9 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "@com_google_protobuf//:protobuf",
-        "//tensorflow/tsl/platform:protobuf_compiler",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/tsl/platform:protobuf_compiler",
+        "@com_google_protobuf//:protobuf",
     ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 

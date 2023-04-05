@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_binary.h"
-#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace tflite {
 namespace acceleration {
@@ -64,20 +63,11 @@ std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
 std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
     const AndroidInfo& android_info,
     const ::tflite::gpu::GpuInfo& gpu_info) const {
-  std::map<std::string, std::string> variables;
+  std::map<std::string, std::string> variables =
+      InfosToMap(android_info, gpu_info);
 
-  variables[kAndroidSdkVersion] = android_info.android_sdk_version;
-  variables[kDeviceModel] = android_info.model;
-  variables[kDeviceName] = android_info.device;
-  variables[kManufacturer] = android_info.manufacturer;
-  const auto& gl_info = gpu_info.opengl_info;
-  variables[kGPUModel] = gl_info.renderer_name;
-  char buffer[128];
-  int len = snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
-                     gl_info.minor_version);
-  buffer[len] = '\0';
-  variables[kOpenGLESVersion] = std::string(buffer);
   CanonicalizeValues(&variables);
+
   if (!database_) return variables;
   UpdateVariablesFromDatabase(&variables, *database_);
   return variables;
@@ -88,6 +78,29 @@ bool GPUCompatibilityList::Includes(
     const ::tflite::gpu::GpuInfo& gpu_info) const {
   auto variables = CalculateVariables(android_info, gpu_info);
   return variables[gpu::kStatus] == std::string(gpu::kStatusSupported);
+}
+
+gpu::CompatibilityStatus GPUCompatibilityList::GetStatus(
+    const AndroidInfo& android_info,
+    const ::tflite::gpu::GpuInfo& gpu_info) const {
+  std::map<std::string, std::string> variables =
+      InfosToMap(android_info, gpu_info);
+  return GetStatus(variables);
+}
+
+gpu::CompatibilityStatus GPUCompatibilityList::GetStatus(
+    std::map<std::string, std::string>& variables) const {
+  CanonicalizeValues(&variables);
+  if (!database_) return gpu::CompatibilityStatus::kUnknown;
+  UpdateVariablesFromDatabase(&variables, *database_);
+  const std::string& status = variables[gpu::kStatus];
+  if (status == gpu::kStatusSupported) {
+    return gpu::CompatibilityStatus::kSupported;
+  } else if (status == gpu::kStatusUnsupported) {
+    return gpu::CompatibilityStatus::kUnsupported;
+  } else {
+    return gpu::CompatibilityStatus::kUnknown;
+  }
 }
 
 TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
@@ -105,6 +118,24 @@ bool GPUCompatibilityList::IsValidFlatbuffer(const unsigned char* data,
   // Verify opensource db.
   flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t*>(data), len);
   return tflite::acceleration::VerifyDeviceDatabaseBuffer(verifier);
+}
+
+std::map<std::string, std::string> GPUCompatibilityList::InfosToMap(
+    const AndroidInfo& android_info,
+    const ::tflite::gpu::GpuInfo& gpu_info) const {
+  std::map<std::string, std::string> variables;
+  variables[kAndroidSdkVersion] = android_info.android_sdk_version;
+  variables[kDeviceModel] = android_info.model;
+  variables[kDeviceName] = android_info.device;
+  variables[kManufacturer] = android_info.manufacturer;
+  const auto& gl_info = gpu_info.opengl_info;
+  variables[kGPUModel] = gl_info.renderer_name;
+  char buffer[128];
+  int len = snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
+                     gl_info.minor_version);
+  buffer[len] = '\0';
+  variables[kOpenGLESVersion] = std::string(buffer);
+  return variables;
 }
 
 }  // namespace acceleration

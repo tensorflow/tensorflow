@@ -17,15 +17,6 @@
 import contextlib
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-# There is a circular dependency between this, ops.py, and
-# distribution_strategy_context.
-# TODO(b/117329403): Remove this circular dependency.
-distribution_strategy_context = LazyLoader(
-    "distribution_strategy_context", globals(),
-    "tensorflow.python.distribute."
-    "distribution_strategy_context")
 
 
 class Tape(object):
@@ -88,14 +79,30 @@ class VariableWatcher(object):
         self._variable_watcher)
 
 
+def default_get_variables(variable):
+  return [variable]
+
+# Gets a list of changed variables. Can be overriden using
+# register_variables_override. An example of overriding is for getting the
+# varibles within a distributed context.
+_variables_override = default_get_variables
+
+
+def register_watched_variable_resolver(resolver):
+  """Registers the resolver to be used to get the list of variables to watch.
+
+  Args:
+    resolver: callable, takes a Variable and returns a list of Variables that
+      shall be watched.
+  """
+  global _variables_override
+  assert _variables_override is default_get_variables
+  _variables_override = resolver
+
+
 def watch_variable(tape, variable):
   """Marks this variable to be watched by the given tape."""
-  strategy, context = (
-      distribution_strategy_context.get_strategy_and_replica_context())
-  if context:
-    variables = [strategy.extended.value_container(variable)]
-  else:
-    variables = strategy.experimental_local_results(variable)
+  variables = _variables_override(variable)
   for var in variables:
     pywrap_tfe.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
     pywrap_tfe.TFE_Py_VariableWatcherVariableAccessed(var)
@@ -107,12 +114,7 @@ def variable_accessed(variable):
   Args:
     variable: variable to be watched.
   """
-  strategy, context = (
-      distribution_strategy_context.get_strategy_and_replica_context())
-  if context:
-    variables = [strategy.extended.value_container(variable)]
-  else:
-    variables = strategy.experimental_local_results(variable)
+  variables = _variables_override(variable)
   for var in variables:
     pywrap_tfe.TFE_Py_TapeVariableAccessed(var)
     pywrap_tfe.TFE_Py_VariableWatcherVariableAccessed(var)
@@ -126,16 +128,10 @@ def variables_accessed(variables):
   Args:
     variables: iterable of variables to mark as accessed.
   """
-  strategy, context = (
-      distribution_strategy_context.get_strategy_and_replica_context())
   accessed = []
-  if context:
-    accessed = [strategy.extended.value_container(variable)
-                for variable in variables if variable.trainable]
-  else:
-    for variable in variables:
-      if variable.trainable:
-        accessed.extend(strategy.experimental_local_results(variable))
+  for variable in variables:
+    if variable.trainable:
+      accessed.extend(_variables_override(variable))
 
   for var in accessed:
     pywrap_tfe.TFE_Py_TapeVariableAccessed(var)

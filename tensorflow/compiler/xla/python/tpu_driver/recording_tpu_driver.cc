@@ -342,12 +342,14 @@ class RecordingTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
     auto thread_id = GetCurrentThreadId();
     auto recording_handle = std::make_unique<RecordingCompiledProgramHandle>(
-        driver_->CompileProgram(source, num_replicas, unwrapped_wait_for));
+        driver_->CompileProgram(source, num_replicas, unwrapped_wait_for,
+                                debug_options));
     auto handle_id = recording_handle->id_;
 
     {

@@ -43,23 +43,23 @@ namespace runtime {
 // executing.
 class ExecutionEngine {
  public:
-  // Pointer to a compiled XLA entrypoint function.
+  // Pointer to a function exported to the Xla executable.
   //
-  // XLA entrypoint function expects all arguments to be passed as an array of
+  // Xla exported function expects all arguments to be passed as an array of
   // opaque pointers to the actual values. In C++ it would look like this:
   //
-  //   void entrypoint(int32_t arg0, float arg1, ...);
+  //   void compute(int32_t arg0, float arg1, ...);
   //
-  //   void __xla_entrypoint(void** args) {
+  //   void __xla_compute(void** args) {
   //      int32_t arg0 = *reinterpret_cast<int32_t*>(args[0]);
   //      float arg1 = *reinterpret_cast<float*>(args[1]);
   //      ...
-  //      entrypoint(arg0, arg1, ...);
+  //      compute(arg0, arg1, ...);
   //   }
   //
   // This is required to avoid dealing with ABI of the compiled function. See
-  // `SetUpEntrypointFunction` for implementation details.
-  using EntrypointFunctionPtr = void (*)(void **);
+  // `SetUpExportedFunction` for implementation details.
+  using ExportedFunctionPtr = void (*)(void **);
 
   // Callback to register symbols with the execution engine (e.g. to register
   // custom runtime intrinsics for Gpu integration).
@@ -70,9 +70,8 @@ class ExecutionEngine {
   using OptimizingTransformer = std::function<llvm::Error(llvm::Module *)>;
 
   // Callback to construct an optimizing transformer for the given options.
-  using MakeOptimizingTransformer = std::function<OptimizingTransformer(
-      unsigned opt_level, unsigned size_level,
-      llvm::TargetMachine *targetMachine)>;
+  using MakeOptimizingTransformer =
+      std::function<OptimizingTransformer(llvm::TargetMachine *targetMachine)>;
 
   // Compose multiple symbol bindings into a single symbol binding function.
   static SymbolsBinding BindAll(std::vector<SymbolsBinding> bindings);
@@ -108,11 +107,11 @@ class ExecutionEngine {
   };
 
   // Creates a new execution engine by compiling the provided LLVM module to
-  // a native function using LLVM ORC stack.
+  // a native executable using LLVM ORC stack.
   static absl::StatusOr<std::unique_ptr<ExecutionEngine>> CreateFromModule(
       std::unique_ptr<llvm::LLVMContext> ctx,
-      std::unique_ptr<llvm::Module> module, std::string_view entrypoint,
-      JitOptions options);
+      std::unique_ptr<llvm::Module> module, JitOptions options,
+      absl::Span<const std::string_view> exported);
 
   //------------------------------------------------------------------------- //
   // Options for creating execution engine from an AOT compiled object file.
@@ -135,13 +134,17 @@ class ExecutionEngine {
   // Creates a new execution engine by loading AOT compiled XLA executable
   // object file.
   static absl::StatusOr<std::unique_ptr<ExecutionEngine>> CreateFromObjFile(
-      std::unique_ptr<llvm::MemoryBuffer>, std::string_view entrypoint,
-      AotOptions options);
+      std::unique_ptr<llvm::MemoryBuffer>, AotOptions options,
+      absl::Span<const std::string_view> exported);
 
   //------------------------------------------------------------------------- //
 
-  // Returns a pointer to the XLA entrypoint function.
-  EntrypointFunctionPtr entrypoint() const { return entrypoint_ptr_; }
+  // Returns a pointer to the exported function.
+  absl::Span<const ExportedFunctionPtr> exported() const { return exported_; }
+
+  ExportedFunctionPtr exported(unsigned ordinal) const {
+    return exported_[ordinal];
+  }
 
   // Return a memory buffer with a object file behind this execution engine. Can
   // be null if execution engine didn't save the compiled object file.
@@ -154,10 +157,10 @@ class ExecutionEngine {
   // compiled/loaded object files and does the linking at run time.
   std::unique_ptr<llvm::orc::LLJIT> jit_;
 
-  // Pointer to a resolved entrypoint function.
-  EntrypointFunctionPtr entrypoint_ptr_ = nullptr;
+  // Pointers to resolved exported functions. Indexed by function ordinal.
+  std::vector<ExportedFunctionPtr> exported_;
 
-  // Object file that has the compiled entrypoint function. Can be null.
+  // Object file behind the compiled executable. Can be null.
   std::unique_ptr<llvm::MemoryBuffer> obj_file_;
 
   llvm::JITEventListener *gdb_listener_ = nullptr;

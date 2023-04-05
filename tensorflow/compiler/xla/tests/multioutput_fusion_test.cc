@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
@@ -62,9 +62,9 @@ class MultiOutputFusionTest : public HloTestBase {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewVerifiedModule();
 
-    const Shape elem_shape0 = ShapeUtil::MakeShapeWithLayout(F32, {}, {});
+    const Shape elem_shape0 = ShapeUtil::MakeShapeWithDenseLayout(F32, {}, {});
     const Shape elem_shape2 =
-        ShapeUtil::MakeShapeWithLayout(F32, {size, size}, {1, 0});
+        ShapeUtil::MakeShapeWithDenseLayout(F32, {size, size}, {1, 0});
 
     auto const0 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(8.0f)));

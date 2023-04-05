@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_tensor_proxy.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -44,7 +43,7 @@ namespace tensorflow {
 namespace tensorrt {
 
 namespace convert {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 struct EngineConnection {
   // Constructs a non-control edge.
@@ -162,7 +161,8 @@ Status ConvertGraphDefToEngine(
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
     bool use_explicit_precision,
-    tensorflow::grappler::Cluster* cluster = nullptr);
+    tensorflow::grappler::Cluster* cluster = nullptr,
+    const string& device = "");
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -556,6 +556,11 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);
 
+Status ApplyBroadcast(std::unique_ptr<TRT_TensorOrWeights>& operand,
+                      const DimsAdapter& broadcasted_dims,
+                      const OpConverterParams* params,
+                      std::optional<int> op_instance);
+
 std::string convert_range_error_msg(float start, float limit, float delta);
 std::string convert_range_expected_msg(const NodeDef& node_def);
 std::string bool_weight_error_msg(const NodeDef& node_def);
@@ -565,6 +570,10 @@ std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
 std::string then_else_dtypes_error_msg(nvinfer1::DataType type_then,
                                        nvinfer1::DataType type_else,
                                        const NodeDef& node_def);
+std::string input_shapes_error_msg(const nvinfer1::Dims& shape1,
+                                   const nvinfer1::Dims& shape2,
+                                   const NodeDef& node,
+                                   bool then_vs_else = false);
 std::string batch_size_error(const string& name, const string& comment);
 
 inline bool find_name(const string& name, const std::vector<string> names) {

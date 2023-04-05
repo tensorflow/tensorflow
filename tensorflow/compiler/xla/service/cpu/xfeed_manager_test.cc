@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/test.h"

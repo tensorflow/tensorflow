@@ -159,6 +159,36 @@ absl::Status TestLinkingComplex0(TestExecutionEnvironment* env);
 //             output
 absl::Status TestLinkingConvElem2InputAddElemsOp(TestExecutionEnvironment* env);
 
+//     input1
+//       |
+//     slice
+//       |
+//      cast
+//       |
+//     output
+absl::Status TestLinkingSliceCastOp(TestExecutionEnvironment* env);
+
+//       input
+//         |
+//      Reshape
+//       /   \
+//     Add   Add (Optional)
+//       \   /
+//        Mul
+//         |
+//       output
+absl::Status TestLinkingAddAddMulOp(TestExecutionEnvironment* env,
+                                    bool use_second_input_add);
+
+//    input
+//      |
+//   concat
+//      |
+//   cosinus
+//      |
+//   output
+absl::Status TestLinkingConcatAndCosOp(TestExecutionEnvironment* env);
+
 }  // namespace gpu
 }  // namespace tflite
 

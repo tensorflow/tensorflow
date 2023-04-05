@@ -43,12 +43,10 @@ limitations under the License.
 #include "tensorflow/core/util/proto/decode.h"
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::MakeUnique;
 using ::tensorflow::protobuf::Descriptor;
 using ::tensorflow::protobuf::DescriptorPool;
 using ::tensorflow::protobuf::DynamicMessageFactory;
@@ -699,8 +697,8 @@ class DecodeProtoOp : public OpKernel {
       DefaultValue default_value;
       OP_REQUIRES_OK(context, InitDefaultValueFromFieldDescriptor(
                                   dtype, field_descriptor, &default_value));
-      fields_.push_back(
-          MakeUnique<FieldInfo>(field_descriptor, output_index, default_value));
+      fields_.push_back(std::make_unique<FieldInfo>(
+          field_descriptor, output_index, default_value));
     }
 
     message_prototype_ = message_factory_.GetPrototype(message_desc);
@@ -735,7 +733,7 @@ class DecodeProtoOp : public OpKernel {
     const TensorShape& shape_prefix = buf_tensor.shape();
 
     TensorShape sizes_shape = shape_prefix;
-    sizes_shape.AddDim(field_count);
+    OP_REQUIRES_OK(ctx, sizes_shape.AddDimWithStatus(field_count));
     Tensor* sizes_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, sizes_shape, &sizes_tensor));
 
@@ -792,7 +790,7 @@ class DecodeProtoOp : public OpKernel {
       TensorShape flat_shape = {static_cast<int64_t>(message_count),
                                 max_sizes[fi]};
       TensorShape out_shape = shape_prefix;
-      out_shape.AddDim(max_sizes[fi]);
+      OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(max_sizes[fi]));
 
       // Surprisingly we don't specify the types from the output_types
       // attribute: that is done for us based on the Op declaration:

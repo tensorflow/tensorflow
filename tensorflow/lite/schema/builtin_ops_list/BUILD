@@ -8,6 +8,7 @@
 # both the builtin_ops.h header and the builtin_ops_list.inc file?
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -44,7 +45,7 @@ cc_test(
     name = "consistency_test",
     srcs = ["consistency_test.cc"],
     data = [
-        "//tensorflow/lite/core/shims:builtin_ops_list.inc",
+        "//tensorflow/lite/kernels:builtin_ops_list.inc",
     ],
     deps = [
         ":generator",

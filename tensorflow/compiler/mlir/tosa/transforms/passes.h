@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 
@@ -51,12 +52,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass();
 // `enabledPatterns` is a set of labels used to filter out input patterns that
 //  do not have one of the labels in this set.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
-    ArrayRef<std::string> disabled_patterns = llvm::None,
-    ArrayRef<std::string> enabled_patterns = llvm::None);
+    ArrayRef<std::string> disabled_patterns = std::nullopt,
+    ArrayRef<std::string> enabled_patterns = std::nullopt);
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexTypesPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
 
 #define GEN_PASS_REGISTRATION
@@ -66,6 +68,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
 #define GEN_PASS_DECL_TOSAFUSEBIASTFPASS
 #define GEN_PASS_DECL_TOSACONVERTTFLUINT8PASS
 #define GEN_PASS_DECL_TOSASTRIPQUANTTYPESPASS
+#define GEN_PASS_DECL_TOSALOWERCOMPLEXTYPESPASS
 #define GEN_PASS_DECL_TOSADEQUANTIZETFLSOFTMAXPASS
 
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"

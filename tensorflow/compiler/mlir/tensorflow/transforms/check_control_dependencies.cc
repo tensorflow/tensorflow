@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
 // This pass is used for checking control dependencies. It is under "transforms"
@@ -41,8 +40,11 @@ namespace tf_executor {
 
 namespace {
 
+#define GEN_PASS_DEF_EXECUTORCHECKCONTROLDEPENDENCIESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TFExecutorCheckControlDependencies
-    : public TF::ExecutorCheckControlDependenciesPassBase<
+    : public impl::ExecutorCheckControlDependenciesPassBase<
           TFExecutorCheckControlDependencies> {
  public:
   void runOnOperation() override;

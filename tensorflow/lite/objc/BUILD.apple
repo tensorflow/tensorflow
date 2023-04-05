@@ -5,6 +5,7 @@ load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZE
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -63,11 +64,29 @@ objc_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_allowlist(),
     deps = [
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+    alwayslink = 1,
+)
+
+objc_library(
+    name = "TensorFlowLite_without_op_resolver",
+    srcs = SOURCES,
+    hdrs = API_HEADERS,
+    copts = RELEASE_COPTS,
+    tags = TFL_DEFAULT_TAGS,
+    visibility = ios_visibility_allowlist(),
+    deps = [
+        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite/core/c:c_api_without_op_resolver",
+        "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//third_party/apple_frameworks:Foundation",
     ],
     alwayslink = 1,
 )
@@ -137,8 +156,8 @@ objc_library(
     ],
     module_name = "TestApp",
     tags = TFL_DEFAULT_TAGS + [
-        "manual",
         "builder_default_ios_x86_64",
+        "manual",
     ],
     deps = [
         ":TensorFlowLite",

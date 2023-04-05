@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
 
@@ -88,12 +90,13 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 
 class PjRtClient;
 
-using PjRtDeviceAttribute =
-    std::variant<std::string, int64_t, std::vector<int64_t>>;
+using PjRtValueType =
+    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
+using PjRtDeviceAttribute = PjRtValueType;
 
 class PjRtDevice {
  public:
-  virtual ~PjRtDevice() {}
+  virtual ~PjRtDevice() = default;
 
   // Return the client that owns this device.
   virtual PjRtClient* client() const = 0;
@@ -151,6 +154,13 @@ class PjRtDevice {
   // reference will remain valid for the lifetime of the PjRtDevice.
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const = 0;
+
+  // Returns allocator stats for the device. Only some PjRtDevice
+  // implementations support allocator_stats, and those that do not will return
+  // an Unimplemented error.
+  virtual StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
+    return Unimplemented("GetAllocatorStats is not supported");
+  }
 };
 
 // Forward declaration.
@@ -238,6 +248,16 @@ class PjRtChunk {
   uint8_t* data() { return data_; }
   const uint8_t* data() const { return data_; }
   int64_t size() const { return size_; }
+  std::function<void(void*)> deleter() const { return deleter_; }
+
+  // Release the ownership of the data. Note that this does not free the data;
+  // the caller should copy `data()` and `deleter()` to manage the ownership
+  // before calling `release()`. This PjRtChunk is invalidated after calling.
+  void release() {
+    data_ = nullptr;
+    size_ = 0;
+    deleter_ = nullptr;
+  }
 
  private:
   // The ownership of the bytes pointed to by `data_` is controlled by the
@@ -253,16 +273,19 @@ class PjRtChunk {
 // This class is thread-safe.
 class CopyToDeviceStream {
  public:
-  explicit CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
+  CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
       : total_bytes_(total_bytes), granule_bytes_(granule_bytes) {}
+
+  virtual ~CopyToDeviceStream();
 
   // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
   // if the Chunk's size causes the amount of transferred data to exceed
-  // total_bytes() or if the stream is already complete.
+  // total_bytes(), if the stream is already complete, or if the chunk is not a
+  // multiple of granule_size_in_bytes().
   //
-  // The size of the chunk must be a multiple of granule_bytes().
-  // TODO(jmolloy): Enforce the granule size.
-  Status AddChunk(PjRtChunk chunk);
+  // The transfer is started immediately, and the returned future is fulfilled
+  // when the transfer completes or fails.
+  virtual PjRtFuture<Status> AddChunk(PjRtChunk chunk) = 0;
 
   // Returns the total amount of data the stream expects to be transferred.
   int64_t total_bytes() const { return total_bytes_; }
@@ -273,31 +296,29 @@ class CopyToDeviceStream {
 
   // Returns the amount of data the stream currently has either transferred or
   // has buffered to transfer.
-  int64_t current_bytes() const {
+  int64_t current_bytes() const ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(&mu_);
     return current_bytes_;
   }
 
   // Returns true if the stream is complete; all expected bytes have been
   // transferred or are buffered to transfer.
-  bool IsComplete() const {
+  bool IsComplete() const ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(&mu_);
-    return current_bytes_ == total_bytes_;
+    return IsCompleteLocked();
   }
 
   // Returns true if the stream is empty; no data has been queued.
   bool empty() const { return current_bytes() == 0; }
 
-  // Consumes the next chunk. If no chunks remain, returns nullopt. Blocks
-  // until a chunk is available.
-  std::optional<PjRtChunk> ConsumeNextChunk();
-
-  // Members are protected to allow subclassing for mocking in tests.
  protected:
+  bool IsCompleteLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return current_bytes_ == total_bytes_;
+  }
+
   int64_t total_bytes_;
   int64_t granule_bytes_;
   int64_t current_bytes_ ABSL_GUARDED_BY(mu_) = 0;
-  std::deque<PjRtChunk> buffered_chunks_ ABSL_GUARDED_BY(mu_);
   mutable absl::Mutex mu_;
 };
 
@@ -319,6 +340,16 @@ class PjRtHostMemoryForDeviceManager {
   virtual Status ToHostLayout(const void* src_data, size_t src_size,
                               const Shape& src_shape, void* dst_data,
                               size_t dst_size, const Shape& dst_shape) = 0;
+};
+
+struct LoadOptions {
+  // Origin of the subslice of the target topology to run computation on.
+  struct ComputationOrigin {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  std::optional<ComputationOrigin> computation_origin;
 };
 
 class PjRtLoadedExecutable;
@@ -441,7 +472,8 @@ class PjRtClient {
   }
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
+  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -455,26 +487,23 @@ class PjRtClient {
   virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtLoadedExecutable& executable) const = 0;
 
-  // Returns a platform-specific serialization of `executable`. The
-  // serialization is not guaranteed to be stable over time. `executable` must
-  // have been produced by this client.
-  virtual StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const = 0;
-
   // Deserializes a serialized executable as produced by
-  // SerializeExecutable(). `serialized` must have been produced by a client of
-  // the same platform and version as this one.
+  // PjRtExecutable::SerializeExecutable(). `serialized` must have been
+  // produced by a compiler of the same platform and version as this one.
+  //
+  // Pending completion of b/237720161, `options` is a mandatory argument in
+  // most implementations of this interface. They _are_ optional for
+  // implementations related to the PJRT C API.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) = 0;
+      absl::string_view serialized, std::optional<CompileOptions> options) = 0;
 
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
-  // LoadSerializedExecutable will materialize CompileOptions from within the
-  // serialized executable unlike 'DeserializeExecutable' above that accepts
-  // CompileOptions.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(absl::string_view serialized) const {
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) {
     return Unimplemented("Loading serialized executable not supported.");
   }
 
@@ -485,7 +514,8 @@ class PjRtClient {
   // generate the executable. Load will use the CompileOptions from within the
   // executable.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable) {
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) {
     return Unimplemented("Loading executable not supported.");
   }
 
@@ -493,30 +523,36 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;
 
+  // Creates buffer that carries an error future without allocating memory.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) {
+    return Unimplemented("CreateErrorBuffer not supported.");
+  }
+
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
-  // This is supported using CreateBuffersForAsyncTransfer, which returns an
-  // AsyncBufferTransferManager helper object.
+  // This is supported using CreateBuffersForAsyncHostToDevice, which returns an
+  // AsyncHostToDeviceTransferManager helper object.
   //
-  // The PjRtBuffers can be retrieved from the AsyncBufferTransferManager and
-  // safely passed immediately to downstream PjRt method calls. Subsequently the
-  // client can call methods on the AsyncBufferTransferManager object to copy
-  // data into the buffers, and once the data copies are complete, the buffers'
-  // definition events will automatically become ready, unblocking downstream
-  // consumers of the buffers.
+  // The PjRtBuffers can be retrieved from the AsyncHostToDeviceTransferManager
+  // and safely passed immediately to downstream PjRt method calls. Subsequently
+  // the client can call methods on the AsyncHostToDeviceTransferManager object
+  // to copy data into the buffers, and once the data copies are complete, the
+  // buffers' definition events will automatically become ready, unblocking
+  // downstream consumers of the buffers.
   //
-  // A single call to CreateBuffersForAsyncTransfer creates a "batch" of buffers
-  // that share a single definition event, which may amortize some performance
-  // overheads, but means that none of the buffers are available to downstream
-  // consumers until all the transfers have completed. Multiple calls to
-  // CreateBuffersForAsyncTransfer should be made if it is desirable for buffers
-  // to become available as soon as transfers into them complete.
+  // A single call to CreateBuffersForAsyncHostToDevice creates a "batch" of
+  // buffers that share a single definition event, which may amortize some
+  // performance overheads, but means that none of the buffers are available to
+  // downstream consumers until all the transfers have completed. Multiple calls
+  // to CreateBuffersForAsyncHostToDevice should be made if it is desirable for
+  // buffers to become available as soon as transfers into them complete.
 
   // Helper class to all clients to asynchronously transfer data into buffers
   // that are created uninitialized, see comments immediately above.
-  class AsyncBufferTransferManager {
+  class AsyncHostToDeviceTransferManager {
    public:
-    virtual ~AsyncBufferTransferManager() = default;
+    virtual ~AsyncHostToDeviceTransferManager() = default;
 
     // Returns the number of buffers managed by this object.
     virtual size_t buffer_count() const = 0;
@@ -538,22 +574,22 @@ class PjRtClient {
     // transfer is complete but before the buffers are made available to
     // their consumers. 'literal' must remain in scope until on_done is
     // called.
-    virtual Status TransferLiteralToBuffer(int buffer_index,
-                                           const LiteralSlice& literal,
-                                           std::function<void()> on_done) = 0;
+    virtual Status TransferLiteralToBuffer(
+        int buffer_index, const LiteralSlice& literal,
+        absl::AnyInvocable<void() &&> on_done) = 0;
 
     // Returns the on-device size in bytes of buffer buffer_index.
     virtual size_t buffer_size(int buffer_index) const = 0;
 
     // Transfers 'data' into buffer_index. 'data' must be already laid out in
     // the correct on-device format, for example returned by a call to
-    // buffer->CopyRawToHost. No transfer calls into buffer_index can be made
-    // after this call. on_done is called when the transfer is complete but
-    // before the buffers are made available to their consumers. 'data' must
-    // remain in scope until on_done is called.
-    virtual Status TransferRawDataToBuffer(int buffer_index,
-                                           absl::string_view data,
-                                           std::function<void()> on_done) = 0;
+    // buffer->CopyRawToHost. No transfer calls (or SetBufferError calls) into
+    // buffer_index can be made after this call. on_done is called when the
+    // transfer is complete but before the buffers are made available to their
+    // consumers. 'data' must remain in scope until on_done is called.
+    virtual Status TransferRawDataToBuffer(
+        int buffer_index, absl::string_view data,
+        absl::AnyInvocable<void() &&> on_done) = 0;
 
     // Transfers 'data' into a sub-buffer of buffer_index starting at offset, of
     // length transfer_size. 'data' must be already laid out in the correct
@@ -561,23 +597,19 @@ class PjRtClient {
     // buffer->CopyRawToHost. If is_last_transfer is false then the buffer
     // remains unavailable to consumers after the transfer completes. If
     // is_last_transfer is true then the buffer becomes available to consumers
-    // after the transfer completes, and no transfer calls into buffer_index can
-    // be made after this call. on_done is called when the transfer is complete
-    // but before the buffers are made available to their consumers. 'data' must
-    // remain in scope until on_done is called.
+    // after the transfer completes, and no transfer calls (or SetBufferError
+    // calls) into buffer_index can be made after this call. on_done is called
+    // when the transfer is complete but before the buffers are made available
+    // to their consumers. 'data' must remain in scope until on_done is called.
     virtual Status TransferRawDataToSubBuffer(
         int buffer_index, const void* data, int64_t offset,
         int64_t transfer_size, bool is_last_transfer,
-        std::function<void()> on_done) = 0;
+        absl::AnyInvocable<void() &&> on_done) = 0;
 
-    // Indicates that a client error occurred and the transfers will never
-    // complete. Puts all buffers in an error state. For the stream executor
-    // client, since error states are not well supported, this triggers a fatal
-    // error.
-    //
-    // SetTransferError may be called at most once, and may not be called unless
-    // at least one buffer has not yet had its final transfer initiated.
-    virtual void SetTransferError(Status error) = 0;
+    // Indicates that a specific buffer should result in an error status. No
+    // transfer calls (or further SetBufferError calls) into buffer_index can
+    // be made after this call.
+    virtual void SetBufferError(int buffer_index, Status error) = 0;
 
     // Adds the specified key/value metadata for the transfer operation.
     // This is typically used for debugging purposes, such as adding a handle
@@ -588,9 +620,9 @@ class PjRtClient {
 
   // Returns a manager for async transfers into a set of buffers with on-host
   // shapes 'shapes'.
-  virtual StatusOr<std::unique_ptr<AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) = 0;
+  virtual StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) = 0;
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
@@ -634,6 +666,22 @@ class PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
+
+  // Variant of BufferFromHostBuffer that takes an optional device layout. It is
+  // used when non-compact layout is preferred.
+  // TODO(b/275645543): remove BufferFromHostBuffer without optional device
+  // layout after all the inherited classes and call sites are updated.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostBuffer with an optional device layout is not "
+        "implemented on platform: ",
+        platform_name());
+  }
 
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
@@ -723,9 +771,15 @@ class PjRtClient {
   // Defragment device memory.
   virtual Status Defragment() = 0;
 
+  // If false, this client does not support send/recv host callbacks, and
+  // callers should not set the `send_callbacks` and `recv_callbacks` arguments
+  // in ExecuteOptions.
+  virtual bool SupportsSendRecvCallbacks() const { return false; }
+
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
-  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+  virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
+      const {
     return host_memory_for_device_manager_.get();
   }
 
@@ -808,8 +862,12 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+    Shape device_shape = on_device_shape();
+    if (device_shape.is_dynamic()) {
+      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    }
     auto literal = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(on_device_shape()));
+        ShapeUtil::DeviceShapeToHostShape(device_shape));
     TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }
@@ -821,8 +879,23 @@ class PjRtBuffer {
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
   // returned future transitions to ready on error, or after the transfer has
   // completed.
+  //
+  // Note that the underlying driver may have requirements
+  // on the alignment of `dst` and `offset` as well. Look at implementations of
+  // this method for specific alignment requirements.
   virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                            int64_t transfer_size) = 0;
+
+  // As above, but the transfer will not happen until `dst` is fulfilled with a
+  // valid pointer. If `dst` is fulfilled with a non-Ok status, then the
+  // transfer will be cancelled.
+  //
+  // In error cases it is possible for the returned Future to become ready
+  // before `dst` is fulfilled.
+  //
+  // Note that the default implementation will block until `dst` is fulfilled.
+  virtual PjRtFuture<Status> CopyRawToHostFuture(
+      PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size);
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -867,31 +940,40 @@ class PjRtBuffer {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) = 0;
 
-  // Copies the buffer to the remote device encoded in serialized_descriptor.
-  // This call must be preceded by a call to MakeCrossHostReceiveBuffers on the
-  // remote host's destination device. MakeCrossHostReceiveBuffers takes an
-  // array of shapes to construct the destination buffers, and a callback
-  // supplies an array containing both the destination buffers, and a serialized
-  // descriptor for each buffer. For each destination buffer there should be a
-  // matching call to src->CopyToRemoteDevice on a remote host for a src buffer
-  // of the corresponding shape. serialized_descriptor is the string returned by
-  // the callback along with the corresponding destination buffer.
+  // Prepares to send a copy of the buffer to a remote device. The destination
+  // device is encoded in `serialized_descriptor`, which must be fulfilled by
+  // the result of call to MakeCrossHostReceiveBuffers on the remote host's
+  // destination device. MakeCrossHostReceiveBuffers takes an array of shapes to
+  // construct the destination buffers, and a callback supplies an array
+  // containing both the destination buffers, and a serialized descriptor for
+  // each buffer. For each destination buffer there should be a matching call to
+  // src->CopyToRemoteDevice on a remote host for a src buffer of the
+  // corresponding shape. If `serialized_descriptor` is fulfilled with a non-Ok
+  // status, then the transfer is canceled, otherwise it must be the string
+  // returned by the MakeCrossHostReceiveBuffers callback corresponding to the
+  // destination buffer.
   //
-  // When the send either completes or fails, on_done will be called. If
-  // status is Ok then it is guaranteed that sends_were_enqueued==true.
+  // When the send either completes or fails, `on_done` will be called. If
+  // `status` is Ok then it is guaranteed that sends_were_enqueued==true.
   // Otherwise, if sends_were_enqueued==false then the sender should contact
   // the receiver out of band to request cancellation of the transfer. If
   // !status.ok() and sends_were_enqueued==true then it is not possible to
   // determine whether the transfer succeeded and the system is in an
   // undefined state. This undefined state almost certainly indicates an
-  // unrecoverable hardware error.
+  // unrecoverable hardware error. Note that in some error cases, `on_done` may
+  // be called before `serialized_descriptor` is fulfilled.
+  //
+  // Some implementations of this method may immediately block on the
+  // `serialized_descriptor` future (and not return until that future has been
+  // fulfilled).
   //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
   using RemoteSendCallback =
       std::function<void(Status status, bool sends_were_enqueued)>;
-  virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                                  RemoteSendCallback on_done) = 0;
+  virtual void CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
+      RemoteSendCallback on_done) = 0;
   struct ScatterDetails {
     // The dimensions of the corresponding buffer that the scatter slices
     // across. These dimensions must be the major dimensions in the on-device
@@ -909,10 +991,73 @@ class PjRtBuffer {
     // The start and end indices of the slices.
     std::vector<std::pair<int64_t, int64_t>> slices;
   };
+  // Each entry in `callbacks` will be called exactly once. As above, in error
+  // situations, this may happen before the corresponding entry in
+  // `serialaized_descriptors` is fulfilled. This method requires that both
+  // `calbacks.size()` and (if Ok) `serialized_descriptors.size()` match the
+  // product of the major dimensions specified in `scatter_details`.
   virtual void CopyToRemoteDeviceScattered(
-      absl::Span<const std::pair<std::string, RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
+      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) = 0;
+
+  // Donates 'this' and returns a new buffer that is ready only when both 'this'
+  // and 'dependency' are ready.
+  //
+  // Once ready, the new buffer's contents will be exactly the contents of
+  // 'this'.
+  //
+  // If either 'this' or 'dependency' transitions to error, then the returned
+  // buffer will transition to error.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<Status> dependency) {
+    return Unimplemented("DonateWithControlDependency is not supported.");
+  }
+
+  // Helper to allow a caller to indicate that it is going to do some "sends"
+  // of the buffer a later date, where a send is a transfer out of a device
+  // buffer, either copying to host, or to a remote device.
+  //
+  // An AsyncSendPlaceholder is associated with a particular buffer, and acts as
+  // a way for the caller to inform the system of a partial ordering on actions.
+  // If the caller writes:
+  //   1) auto placeholder = buffer->CreateAsyncSendPlaceholder();
+  //   2) auto results = client->ExecuteSharded(...);
+  //   3) [..] other client work
+  //   4) auto s = placeholder->ToLiteral(...);
+  // then that means that the ToLiteral in (4) is earlier than the work in
+  // (2+3) in the partial order. For example, the work in (2+3) may depend
+  // on the D2H in (4), for example via a cross-host dependency that is
+  // otherwise not visible to the PjRtClient.
+  //
+  // The AsyncSendPlaceholder may not outlive the buffer it was created by,
+  // and it should be destroyed as soon as possible after its last use.
+  class AsyncSendPlaceholder {
+   public:
+    virtual ~AsyncSendPlaceholder() = default;
+
+    // Equivalent to PjRtBuffer::ToLiteral on the underlying buffer;
+    virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+
+    // Equivalent to PjRtBuffer::CopyRawToHost on the underlying buffer;
+    virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                             int64_t transfer_size) = 0;
+
+    // Equivalent to PjRtBuffer::CopyToRemoteDevice on the underlying buffer;
+    virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                                    RemoteSendCallback on_done) = 0;
+
+    // Equivalent to PjRtBuffer::CopyToRemoteDeviceScattered on the underlying
+    // buffer;
+    virtual void CopyToRemoteDeviceScattered(
+        std::vector<std::string> serialized_descriptors,
+        std::vector<PjRtBuffer::RemoteSendCallback> callbacks,
+        const ScatterDetails& scatter_details) = 0;
+  };
+  virtual StatusOr<std::unique_ptr<AsyncSendPlaceholder>>
+  CreateAsyncSendPlaceholder() {
+    return Unimplemented("AsyncSendPlaceholder is not supported.");
+  }
 
   // Returns a future that can be used to discover when the data in the
   // PjRtBuffer has been computed, or an error has occurred.
@@ -968,6 +1113,9 @@ class ExecuteContext {
 };
 
 struct PjRtTransferMetadata {
+  // May be invalid if
+  // ExecuteOptions::use_major_to_minor_data_layout_for_callbacks is true for
+  // this execution.
   Shape device_shape;
 };
 
@@ -1001,7 +1149,7 @@ struct RecvCallback {
   // guarantee that the callback here will be invoked in the same order as their
   // corresponding HLO Recv ops.
   std::function<void(const PjRtTransferMetadata& metadata,
-                     CopyToDeviceStream& stream)>
+                     std::unique_ptr<CopyToDeviceStream> stream)>
       callback;
 };
 
@@ -1039,20 +1187,21 @@ struct ExecuteOptions {
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
 
+  // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
+  // recv functions should pass major-to-minor chunks to
+  // CopyToDeviceStream::AddChunk.
+  //
+  // If false, send callbacks are passed PjRtChunks in the on-device layout
+  // specified in the PjRtTransferMetadata, and recv functions should similarly
+  // pass device-layout chunks to CopyToDeviceStream::AddChunk.
+  bool use_major_to_minor_data_layout_for_callbacks = false;
+
   // The `execution_mode` decides whether the execution will be invoked in the
   // caller thread or launched to a separate thread. By default, the
   // implementation may choose either strategy or use a heuristic to decide.
   // Currently it is only applied to CPU implementations
   enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
   ExecutionMode execution_mode = ExecutionMode::kDefault;
-
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -1061,11 +1210,17 @@ struct ExecuteOptions {
 // when passed to the execution.
 class PjRtLoadedExecutable : public PjRtExecutable {
  public:
-  virtual ~PjRtLoadedExecutable() = default;
+  ~PjRtLoadedExecutable() override = default;
 
   virtual PjRtClient* client() const = 0;
 
   virtual const DeviceAssignment& device_assignment() const = 0;
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different platforms.
+  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

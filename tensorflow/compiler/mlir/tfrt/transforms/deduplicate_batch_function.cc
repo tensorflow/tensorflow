@@ -131,10 +131,10 @@ mlir::LogicalResult DeduplicateFunctionsInovkedByBatchFunction::Run() {
           // User is not a BatchFunctionOp
           if (!op) return false;
           if (shared_name.empty()) {
-            shared_name = op.shared_name();
+            shared_name = op.getSharedName();
             return true;
           }
-          return shared_name == op.shared_name();
+          return shared_name == op.getSharedName();
         })) {
       shared_name_to_func_ops[shared_name].push_back(func);
     }

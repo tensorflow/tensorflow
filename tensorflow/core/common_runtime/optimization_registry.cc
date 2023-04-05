@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
+#include <string>
+
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -34,28 +37,25 @@ void OptimizationPassRegistry::Register(
 
 Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
-  auto dump_graph = [&](std::string& prefix) {
+  auto dump_graph = [&](std::string func_name, const std::string& tag,
+                        bool bypass_filter) {
+    if (func_name.empty()) func_name = "unknown_graph";
+
     if (options.graph) {
-      DumpGraphToFile(
-          strings::StrCat(prefix, "_",
-                          reinterpret_cast<uintptr_t>((*options.graph).get())),
-          **options.graph, options.flib_def);
+      DUMP_GRAPH(func_name, tag, options.graph->get(), options.flib_def,
+                 bypass_filter);
     }
     if (options.partition_graphs) {
       for (auto& part : *options.partition_graphs) {
-        DumpGraphToFile(
-            strings::StrCat(prefix, "_partition_", part.first, "_",
-                            reinterpret_cast<uintptr_t>(part.second.get())),
-            *part.second, options.flib_def);
+        DUMP_GRAPH(func_name + "_partition_" + part.first, tag,
+                   part.second.get(), options.flib_def, bypass_filter);
       }
     }
   };
 
-  VLOG(1) << "Starting optimization of a group " << grouping;
-  if (VLOG_IS_ON(3)) {
-    std::string prefix = strings::StrCat("before_grouping_", grouping);
-    dump_graph(prefix);
-  }
+  dump_graph(options.debug_filename_prefix,
+             strings::StrCat("before_grouping_", grouping), VLOG_IS_ON(3));
+
   auto group = groups_.find(grouping);
   if (group != groups_.end()) {
     static const char* kGraphOptimizationCategory = "GraphOptimizationPass";
@@ -66,7 +66,10 @@ Status OptimizationPassRegistry::RunGrouping(
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
         VLOG(1) << "Running optimization pass: " << pass->name();
-
+        if (options.graph) {
+          VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes()
+                  << " #edges " << (*options.graph)->num_edges();
+        }
         tensorflow::metrics::ScopedCounter<2> pass_timings(
             tensorflow::metrics::GetGraphOptimizationCounter(),
             {kGraphOptimizationCategory, pass->name()});
@@ -74,22 +77,27 @@ Status OptimizationPassRegistry::RunGrouping(
 
         if (!s.ok()) return s;
         pass_timings.ReportAndStop();
-        if (VLOG_IS_ON(5)) {
-          std::string prefix =
-              strings::StrCat("after_group_", grouping, "_phase_", phase.first,
-                              "_", pass->name());
-          dump_graph(prefix);
-        }
+
+        dump_graph(options.debug_filename_prefix,
+                   strings::StrCat("after_group_", grouping, "_phase_",
+                                   phase.first, "_", pass->name()),
+                   VLOG_IS_ON(5));
       }
     }
     group_timings.ReportAndStop();
   }
+
   VLOG(1) << "Finished optimization of a group " << grouping;
-  if (VLOG_IS_ON(3) ||
-      (VLOG_IS_ON(2) && grouping == Grouping::POST_REWRITE_FOR_EXEC)) {
-    std::string prefix = strings::StrCat("after_grouping_", grouping);
-    dump_graph(prefix);
+  if (options.graph && group != groups_.end()) {
+    VLOG(1) << "Graph #nodes " << (*options.graph)->num_nodes() << " #edges "
+            << (*options.graph)->num_edges();
   }
+
+  dump_graph(options.debug_filename_prefix,
+             strings::StrCat("after_grouping_", grouping),
+             VLOG_IS_ON(3) || (VLOG_IS_ON(2) &&
+                               grouping == Grouping::POST_REWRITE_FOR_EXEC));
+
   return OkStatus();
 }
 

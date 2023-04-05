@@ -15,11 +15,13 @@
 """API for specifying `tf.data` options."""
 
 import enum
+import platform
 
 from absl import logging
 
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import model_pb2
+from tensorflow.python.data.ops import test_mode
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -340,7 +342,7 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring=
       "Whether to inject prefetch transformation as the last transformation "
       "when the last transformation is a synchronous transformation. If None, "
-      "defaults to False.")
+      "defaults to True.")
 
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
@@ -387,6 +389,20 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
+  warm_start = options_lib.create_option(
+      name="warm_start",
+      ty=bool,
+      docstring=(
+          "Whether to start background threads of asynchronous transformations"
+          " upon iterator creation (as opposed to upon first call to"
+          " `GetNext`). If None, defaults to False.  It should be noted that"
+          " this possibly improves the latency of the initial 'GetNext' call at"
+          " the expense of requiring more memory to hold prefetched elements"
+          " between the time of iterator construction and usage."
+      ),
+      default_factory=lambda: True if test_mode.TEST_MODE else False,
+  )
+
   def _to_proto(self):
     pb = dataset_options_pb2.OptimizationOptions()
     if self.apply_default_optimizations is not None:
@@ -411,6 +427,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.parallel_batch = self.parallel_batch
     if self.shuffle_and_repeat_fusion is not None:
       pb.shuffle_and_repeat_fusion = self.shuffle_and_repeat_fusion
+    if self.warm_start is not None:
+      pb.warm_start = self.warm_start
     return pb
 
   def _from_proto(self, pb):
@@ -436,6 +454,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.parallel_batch = pb.parallel_batch
     if pb.WhichOneof("optional_shuffle_and_repeat_fusion") is not None:
       self.shuffle_and_repeat_fusion = pb.shuffle_and_repeat_fusion
+    if pb.WhichOneof("optional_warm_start") is not None:
+      self.warm_start = pb.warm_start
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -571,6 +591,17 @@ class Options(options_lib.OptionsBase):
       "frequency is determined by the number of devices attached to this "
       "input pipeline. If None, defaults to False.")
 
+  experimental_symbolic_checkpoint = options_lib.create_option(
+      name="experimental_symbolic_checkpoint",
+      ty=bool,
+      docstring="Whether to checkpoint internal input pipeline state "
+      "maintaining cursors into data sources that identify last "
+      "element(s) produced as output to the tf.data consumer. This "
+      "is alternative to the default 'explicit' checkpointing which "
+      "stores the internal input pipeline state in the checkpoint. "
+      "Note that symbolic checkpointing is not supported for "
+      "transformations that can reorder elements.")
+
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=ThreadingOptions,
@@ -607,6 +638,11 @@ class Options(options_lib.OptionsBase):
       #                 "Use options.deterministic instead.")
       super(Options, self).__setattr__("deterministic", value)
       return
+    if name == "experimental_symbolic_checkpoint":
+      # TODO(b/276269493): Add support for MacOS.
+      if platform.system() == "Darwin":
+        logging.warning("Symbolic checkpointing is not supported on MacOS.")
+        return
     super(Options, self).__setattr__(name, value)
 
   def _to_proto(self):
@@ -622,6 +658,8 @@ class Options(options_lib.OptionsBase):
     pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
     if self.experimental_slack is not None:
       pb.slack = self.experimental_slack
+    if self.experimental_symbolic_checkpoint is not None:
+      pb.symbolic_checkpoint = self.experimental_symbolic_checkpoint
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -637,6 +675,8 @@ class Options(options_lib.OptionsBase):
     self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
+    if pb.WhichOneof("optional_symbolic_checkpoint") is not None:
+      self.experimental_symbolic_checkpoint = pb.symbolic_checkpoint
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

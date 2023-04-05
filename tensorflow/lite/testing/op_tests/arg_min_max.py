@@ -15,7 +15,7 @@
 """Test configs for arg_min_max."""
 import random
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -65,10 +65,10 @@ def make_arg_min_max_tests(options):
       axis = -1
     if parameters["is_arg_max"]:
       out = tf.math.argmax(
-          input_value, axis, output_type=parameters["output_type"])
+          input=input_value, axis=axis, output_type=parameters["output_type"])
     else:
       out = tf.math.argmin(
-          input_value, axis, output_type=parameters["output_type"])
+          input=input_value, axis=axis, output_type=parameters["output_type"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

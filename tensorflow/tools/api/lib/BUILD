@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/tools/api:__subpackages__",
         "//third_party/py/keras/api:__subpackages__",
@@ -25,7 +26,8 @@ py_library(
     deps = [
         ":api_objects_proto_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )

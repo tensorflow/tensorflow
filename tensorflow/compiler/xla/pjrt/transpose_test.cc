@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 
@@ -120,7 +120,7 @@ TEST(TransposeTest, InvalidTilings) {
       TransposePlan::Create(sizeof(float), {3, 4, 5}, {0, 1, 2},
                             /*input_layout=*/TransposePlan::Tiling{{8, 128}},
                             /*output_tiling=*/TransposePlan::Tiling{{4}});
-  EXPECT_EQ(plan.status().code(), tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
   EXPECT_THAT(
       plan.status().error_message(),
       testing::HasSubstr(

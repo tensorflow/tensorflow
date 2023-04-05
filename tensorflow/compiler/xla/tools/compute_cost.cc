@@ -40,13 +40,13 @@ Usage:
 
 int main(int argc, char** argv) {
   std::string input, format;
-  std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("input", &input, "input file"),
-      tensorflow::Flag("format", &format, "hlo|pb|pbtxt")};
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("input", &input, "input file"),
+      tsl::Flag("format", &format, "hlo|pb|pbtxt")};
   xla::AppendDebugOptionsFlags(&flag_list);
-  const std::string kUsageString = absl::StrCat(
-      kUsage, "\n\n", tensorflow::Flags::Usage(argv[0], flag_list));
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  const std::string kUsageString =
+      absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
     LOG(QFATAL) << kUsageString;

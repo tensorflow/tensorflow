@@ -193,8 +193,8 @@ func.func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_34:.*]] = mhlo.sqrt %[[TMP_33]]
   // CHECK: %[[TMP_35:.*]] = mhlo.add %[[TMP_28]], %[[TMP_34]]
   // CHECK: %[[TMP_36:.*]] = mhlo.log %[[TMP_35]]
-  // CHECK: %[[TMP_37:.*]] = "mhlo.select"(%[[TMP_12]], %[[TMP_27]], %[[TMP_36]])
-  // CHECK: %[[TMP_38:.*]] = "mhlo.select"(%[[TMP_4]], %[[TMP_9]], %[[TMP_37]])
+  // CHECK: %[[TMP_37:.*]] = mhlo.select %[[TMP_12]], %[[TMP_27]], %[[TMP_36]]
+  // CHECK: %[[TMP_38:.*]] = mhlo.select %[[TMP_4]], %[[TMP_9]], %[[TMP_37]]
   // CHECK: %[[RES:.*]] = mhlo.multiply %[[TMP_0]], %[[TMP_38]]
   // CHECK: return %[[RES]]
   %result = "chlo.asinh"(%arg) : (tensor<f64>) -> tensor<f64>
@@ -249,10 +249,10 @@ func.func @constant_like_dynamic_shape(%arg : tensor<?x?xi64>) -> tensor<?x?xf32
 // CHECK-LABEL: func @conj
 func.func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
   // CHECK-SAME: ([[INPUT:%.*]]: tensor
-  // CHECK-NEXT: [[R1:%.*]] = mhlo.real([[INPUT]])
-  // CHECK-NEXT: [[R2:%.*]] = mhlo.imag([[INPUT]])
+  // CHECK-NEXT: [[R1:%.*]] = mhlo.real [[INPUT]]
+  // CHECK-NEXT: [[R2:%.*]] = mhlo.imag [[INPUT]]
   // CHECK-NEXT: [[R3:%.*]] = mhlo.negate [[R2]]
-  // CHECK-NEXT: [[R4:%.*]] = mhlo.complex([[R1]], [[R3]])
+  // CHECK-NEXT: [[R4:%.*]] = mhlo.complex [[R1]], [[R3]]
   %1 = "chlo.conj"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
   func.return %1 : tensor<3xcomplex<f32>>
 }
@@ -263,11 +263,8 @@ func.func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
 func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_0:.*]] = mhlo.multiply %[[ARG]], %[[ARG]]
-  // CHECK: %[[TMP_1:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_2:.*]] = mhlo.multiply %[[TMP_1]], %[[TMP_0]]
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<9.6049737398705161>
-  // CHECK: %[[TMP_4:.*]] = mhlo.add %[[TMP_2]], %[[TMP_3]]
-  // CHECK: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_0]]
+  // CHECK: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_3]], %[[TMP_0]]
   // CHECK: %[[TMP_6:.*]] = mhlo.constant dense<90.026019720384269>
   // CHECK: %[[TMP_7:.*]] = mhlo.add %[[TMP_5]], %[[TMP_6]]
   // CHECK: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_7]], %[[TMP_0]]
@@ -280,11 +277,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_15:.*]] = mhlo.constant dense<55592.301301039493>
   // CHECK: %[[TMP_16:.*]] = mhlo.add %[[TMP_14]], %[[TMP_15]]
   // CHECK: %[[TMP_17:.*]] = mhlo.multiply %[[ARG]], %[[TMP_16]]
-  // CHECK: %[[TMP_18:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_19:.*]] = mhlo.multiply %[[TMP_18]], %[[TMP_0]]
   // CHECK: %[[TMP_20:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_21:.*]] = mhlo.add %[[TMP_19]], %[[TMP_20]]
-  // CHECK: %[[TMP_22:.*]] = mhlo.multiply %[[TMP_21]], %[[TMP_0]]
+  // CHECK: %[[TMP_22:.*]] = mhlo.multiply %[[TMP_20]], %[[TMP_0]]
   // CHECK: %[[TMP_23:.*]] = mhlo.constant dense<33.561714164750313>
   // CHECK: %[[TMP_24:.*]] = mhlo.add %[[TMP_22]], %[[TMP_23]]
   // CHECK: %[[TMP_25:.*]] = mhlo.multiply %[[TMP_24]], %[[TMP_0]]
@@ -305,11 +299,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_40:.*]] = mhlo.negate %[[TMP_39]]
   // CHECK: %[[TMP_41:.*]] = mhlo.exponential %[[TMP_40]]
   // CHECK: %[[TMP_42:.*]] = mhlo.abs %[[ARG]]
-  // CHECK: %[[TMP_43:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_44:.*]] = mhlo.multiply %[[TMP_43]], %[[TMP_42]]
   // CHECK: %[[TMP_45:.*]] = mhlo.constant dense<2.4619698147353052E-10>
-  // CHECK: %[[TMP_46:.*]] = mhlo.add %[[TMP_44]], %[[TMP_45]]
-  // CHECK: %[[TMP_47:.*]] = mhlo.multiply %[[TMP_46]], %[[TMP_42]]
+  // CHECK: %[[TMP_47:.*]] = mhlo.multiply %[[TMP_45]], %[[TMP_42]]
   // CHECK: %[[TMP_48:.*]] = mhlo.constant dense<0.56418956483106886>
   // CHECK: %[[TMP_49:.*]] = mhlo.add %[[TMP_47]], %[[TMP_48]]
   // CHECK: %[[TMP_50:.*]] = mhlo.multiply %[[TMP_49]], %[[TMP_42]]
@@ -334,11 +325,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_69:.*]] = mhlo.constant dense<557.53533536939938>
   // CHECK: %[[TMP_70:.*]] = mhlo.add %[[TMP_68]], %[[TMP_69]]
   // CHECK: %[[TMP_71:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_70]]
-  // CHECK: %[[TMP_72:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_73:.*]] = mhlo.multiply %[[TMP_72]], %[[TMP_42]]
   // CHECK: %[[TMP_74:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_75:.*]] = mhlo.add %[[TMP_73]], %[[TMP_74]]
-  // CHECK: %[[TMP_76:.*]] = mhlo.multiply %[[TMP_75]], %[[TMP_42]]
+  // CHECK: %[[TMP_76:.*]] = mhlo.multiply %[[TMP_74]], %[[TMP_42]]
   // CHECK: %[[TMP_77:.*]] = mhlo.constant dense<13.228195115474499>
   // CHECK: %[[TMP_78:.*]] = mhlo.add %[[TMP_76]], %[[TMP_77]]
   // CHECK: %[[TMP_79:.*]] = mhlo.multiply %[[TMP_78]], %[[TMP_42]]
@@ -363,11 +351,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_98:.*]] = mhlo.constant dense<557.53534081772773>
   // CHECK: %[[TMP_99:.*]] = mhlo.add %[[TMP_97]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.divide %[[TMP_71]], %[[TMP_99]]
-  // CHECK: %[[TMP_101:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_102:.*]] = mhlo.multiply %[[TMP_101]], %[[TMP_42]]
   // CHECK: %[[TMP_103:.*]] = mhlo.constant dense<0.56418958354775506>
-  // CHECK: %[[TMP_104:.*]] = mhlo.add %[[TMP_102]], %[[TMP_103]]
-  // CHECK: %[[TMP_105:.*]] = mhlo.multiply %[[TMP_104]], %[[TMP_42]]
+  // CHECK: %[[TMP_105:.*]] = mhlo.multiply %[[TMP_103]], %[[TMP_42]]
   // CHECK: %[[TMP_106:.*]] = mhlo.constant dense<1.275366707599781>
   // CHECK: %[[TMP_107:.*]] = mhlo.add %[[TMP_105]], %[[TMP_106]]
   // CHECK: %[[TMP_108:.*]] = mhlo.multiply %[[TMP_107]], %[[TMP_42]]
@@ -383,11 +368,8 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_118:.*]] = mhlo.constant dense<2.9788666537210022>
   // CHECK: %[[TMP_119:.*]] = mhlo.add %[[TMP_117]], %[[TMP_118]]
   // CHECK: %[[TMP_120:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_119]]
-  // CHECK: %[[TMP_121:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_122:.*]] = mhlo.multiply %[[TMP_121]], %[[TMP_42]]
   // CHECK: %[[TMP_123:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK: %[[TMP_124:.*]] = mhlo.add %[[TMP_122]], %[[TMP_123]]
-  // CHECK: %[[TMP_125:.*]] = mhlo.multiply %[[TMP_124]], %[[TMP_42]]
+  // CHECK: %[[TMP_125:.*]] = mhlo.multiply %[[TMP_123]], %[[TMP_42]]
   // CHECK: %[[TMP_126:.*]] = mhlo.constant dense<2.2605286322011726>
   // CHECK: %[[TMP_127:.*]] = mhlo.add %[[TMP_125]], %[[TMP_126]]
   // CHECK: %[[TMP_128:.*]] = mhlo.multiply %[[TMP_127]], %[[TMP_42]]
@@ -408,19 +390,19 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_143:.*]] = mhlo.divide %[[TMP_120]], %[[TMP_142]]
   // CHECK: %[[TMP_144:.*]] = mhlo.constant dense<8.000000e+00>
   // CHECK: %[[TMP_145:.*]] = mhlo.compare LT, %[[TMP_42]], %[[TMP_144]], NOTYPE
-  // CHECK: %[[TMP_146:.*]] = "mhlo.select"(%[[TMP_145]], %[[TMP_100]], %[[TMP_143]])
+  // CHECK: %[[TMP_146:.*]] = mhlo.select %[[TMP_145]], %[[TMP_100]], %[[TMP_143]]
   // CHECK: %[[TMP_147:.*]] = mhlo.constant dense<-709.78271289338397>
   // CHECK: %[[TMP_148:.*]] = mhlo.compare LT, %[[TMP_40]], %[[TMP_147]], NOTYPE
   // CHECK: %[[TMP_149:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_150:.*]] = "mhlo.select"(%[[TMP_148]], %[[TMP_149]], %[[TMP_146]])
+  // CHECK: %[[TMP_150:.*]] = mhlo.select %[[TMP_148]], %[[TMP_149]], %[[TMP_146]]
   // CHECK: %[[TMP_152:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_149]], NOTYPE
   // CHECK: %[[TMP_153:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[TMP_154:.*]] = mhlo.subtract %[[TMP_153]], %[[TMP_150]]
-  // CHECK: %[[TMP_155:.*]] = "mhlo.select"(%[[TMP_152]], %[[TMP_154]], %[[TMP_150]])
+  // CHECK: %[[TMP_155:.*]] = mhlo.select %[[TMP_152]], %[[TMP_154]], %[[TMP_150]]
   // CHECK: %[[TMP_156:.*]] = mhlo.subtract %[[TMP_38]], %[[TMP_155]]
   // CHECK: %[[TMP_157:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_159:.*]] = mhlo.compare LT, %[[TMP_157]], %[[TMP_38]], NOTYPE
-  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_159]], %[[TMP_37]], %[[TMP_156]])
+  // CHECK: %[[RESULT:.*]] = mhlo.select %[[TMP_159]], %[[TMP_37]], %[[TMP_156]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f64>) -> tensor<f64>
   func.return %1 : tensor<f64>
@@ -435,11 +417,8 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-DAG: %[[TMP_1:.*]] = mhlo.constant dense<4.000000e+00>
   // CHECK: %[[TMP_2:.*]] = mhlo.clamp %[[TMP_0]], %[[ARG]], %[[TMP_1]]
   // CHECK: %[[TMP_3:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_2]]
-  // CHECK: %[[TMP_4:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_3]]
   // CHECK: %[[TMP_6:.*]] = mhlo.constant dense<-2.72614237E-10>
-  // CHECK: %[[TMP_7:.*]] = mhlo.add %[[TMP_5]], %[[TMP_6]]
-  // CHECK: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_7]], %[[TMP_3]]
+  // CHECK: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_6]], %[[TMP_3]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<2.77068146E-8>
   // CHECK: %[[TMP_10:.*]] = mhlo.add %[[TMP_8]], %[[TMP_9]]
   // CHECK: %[[TMP_11:.*]] = mhlo.multiply %[[TMP_10]], %[[TMP_3]]
@@ -457,11 +436,8 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_23:.*]] = mhlo.multiply %[[TMP_22]], %[[TMP_3]]
   // CHECK: %[[TMP_24:.*]] = mhlo.constant dense<-0.0160960332>
   // CHECK: %[[TMP_25:.*]] = mhlo.add %[[TMP_23]], %[[TMP_24]]
-  // CHECK: %[[TMP_26:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_27:.*]] = mhlo.multiply %[[TMP_26]], %[[TMP_3]]
   // CHECK: %[[TMP_28:.*]] = mhlo.constant dense<-1.45660715E-5>
-  // CHECK: %[[TMP_29:.*]] = mhlo.add %[[TMP_27]], %[[TMP_28]]
-  // CHECK: %[[TMP_30:.*]] = mhlo.multiply %[[TMP_29]], %[[TMP_3]]
+  // CHECK: %[[TMP_30:.*]] = mhlo.multiply %[[TMP_28]], %[[TMP_3]]
   // CHECK: %[[TMP_31:.*]] = mhlo.constant dense<-2.13374049E-4>
   // CHECK: %[[TMP_32:.*]] = mhlo.add %[[TMP_30]], %[[TMP_31]]
   // CHECK: %[[TMP_33:.*]] = mhlo.multiply %[[TMP_32]], %[[TMP_3]]
@@ -474,7 +450,10 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_40:.*]] = mhlo.constant dense<-0.0142647391>
   // CHECK: %[[TMP_41:.*]] = mhlo.add %[[TMP_39]], %[[TMP_40]]
   // CHECK: %[[TMP_42:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_25]]
-  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[TMP_42]], %[[TMP_41]]
+  // CHECK: %[[TMP_43:.*]] = mhlo.divide %[[TMP_42]], %[[TMP_41]]
+  // CHECK-DAG: %[[TMP_44:.*]] = mhlo.constant dense<-1.000000e+00>
+  // CHECK-DAG: %[[TMP_45:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK: %[[RESULT:.*]] = mhlo.clamp %[[TMP_44]], %[[TMP_43]], %[[TMP_45]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %1 : tensor<f32>
@@ -485,8 +464,8 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @erf_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -497,8 +476,8 @@ func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @erf_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
-  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<bf16>) -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<bf16>
+  // CHECK: mhlo.convert %[[ARG]] : (tensor<bf16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<bf16>
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<bf16>) -> tensor<bf16>
   func.return %1 : tensor<bf16>
@@ -527,8 +506,8 @@ func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[SQRT:.*]] = mhlo.sqrt %[[MUL]]
   // CHECK: %[[APSQRT:.*]] = mhlo.add %[[ARG]], %[[SQRT]]
   // CHECK: %[[LOGAPMUL:.*]] = mhlo.log %[[APSQRT]]
-  // CHECK: %[[SEL1:.*]] = "mhlo.select"(%[[OVERFLOW]], %[[OFLRES]], %[[LOGAPMUL]])
-  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[CMP]], %[[NAN]], %[[SEL1]])
+  // CHECK: %[[SEL1:.*]] = mhlo.select %[[OVERFLOW]], %[[OFLRES]], %[[LOGAPMUL]]
+  // CHECK: %[[RESULT:.*]] = mhlo.select %[[CMP]], %[[NAN]], %[[SEL1]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -561,11 +540,8 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_1:.*]] = mhlo.negate %[[TMP_0]]
   // CHECK-NEXT: %[[TMP_2:.*]] = mhlo.exponential %[[TMP_1]]
   // CHECK-NEXT: %[[TMP_3:.*]] = mhlo.abs %[[ARG]]
-  // CHECK-NEXT: %[[TMP_4:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_6:.*]] = mhlo.constant dense<2.4619698147353052E-10>
-  // CHECK-NEXT: %[[TMP_7:.*]] = mhlo.add %[[TMP_5]], %[[TMP_6]]
-  // CHECK-NEXT: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_7]], %[[TMP_3]]
+  // CHECK-NEXT: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_6]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_9:.*]] = mhlo.constant dense<0.56418956483106886>
   // CHECK-NEXT: %[[TMP_10:.*]] = mhlo.add %[[TMP_8]], %[[TMP_9]]
   // CHECK-NEXT: %[[TMP_11:.*]] = mhlo.multiply %[[TMP_10]], %[[TMP_3]]
@@ -590,11 +566,8 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_30:.*]] = mhlo.constant dense<557.53533536939938>
   // CHECK-NEXT: %[[TMP_31:.*]] = mhlo.add %[[TMP_29]], %[[TMP_30]]
   // CHECK-NEXT: %[[TMP_32:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_31]]
-  // CHECK-NEXT: %[[TMP_33:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_34:.*]] = mhlo.multiply %[[TMP_33]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_35:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-NEXT: %[[TMP_36:.*]] = mhlo.add %[[TMP_34]], %[[TMP_35]]
-  // CHECK-NEXT: %[[TMP_37:.*]] = mhlo.multiply %[[TMP_36]], %[[TMP_3]]
+  // CHECK-NEXT: %[[TMP_37:.*]] = mhlo.multiply %[[TMP_35]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_38:.*]] = mhlo.constant dense<13.228195115474499>
   // CHECK-NEXT: %[[TMP_39:.*]] = mhlo.add %[[TMP_37]], %[[TMP_38]]
   // CHECK-NEXT: %[[TMP_40:.*]] = mhlo.multiply %[[TMP_39]], %[[TMP_3]]
@@ -619,11 +592,8 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_59:.*]] = mhlo.constant dense<557.53534081772773>
   // CHECK-NEXT: %[[TMP_60:.*]] = mhlo.add %[[TMP_58]], %[[TMP_59]]
   // CHECK-NEXT: %[[TMP_61:.*]] = mhlo.divide %[[TMP_32]], %[[TMP_60]]
-  // CHECK-NEXT: %[[TMP_62:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_63:.*]] = mhlo.multiply %[[TMP_62]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_64:.*]] = mhlo.constant dense<0.56418958354775506>
-  // CHECK-NEXT: %[[TMP_65:.*]] = mhlo.add %[[TMP_63]], %[[TMP_64]]
-  // CHECK-NEXT: %[[TMP_66:.*]] = mhlo.multiply %[[TMP_65]], %[[TMP_3]]
+  // CHECK-NEXT: %[[TMP_66:.*]] = mhlo.multiply %[[TMP_64]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_67:.*]] = mhlo.constant dense<1.275366707599781>
   // CHECK-NEXT: %[[TMP_68:.*]] = mhlo.add %[[TMP_66]], %[[TMP_67]]
   // CHECK-NEXT: %[[TMP_69:.*]] = mhlo.multiply %[[TMP_68]], %[[TMP_3]]
@@ -639,11 +609,8 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_79:.*]] = mhlo.constant dense<2.9788666537210022>
   // CHECK-NEXT: %[[TMP_80:.*]] = mhlo.add %[[TMP_78]], %[[TMP_79]]
   // CHECK-NEXT: %[[TMP_81:.*]] = mhlo.multiply %[[TMP_2]], %[[TMP_80]]
-  // CHECK-NEXT: %[[TMP_82:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_83:.*]] = mhlo.multiply %[[TMP_82]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_84:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-NEXT: %[[TMP_85:.*]] = mhlo.add %[[TMP_83]], %[[TMP_84]]
-  // CHECK-NEXT: %[[TMP_86:.*]] = mhlo.multiply %[[TMP_85]], %[[TMP_3]]
+  // CHECK-NEXT: %[[TMP_86:.*]] = mhlo.multiply %[[TMP_84]], %[[TMP_3]]
   // CHECK-NEXT: %[[TMP_87:.*]] = mhlo.constant dense<2.2605286322011726>
   // CHECK-NEXT: %[[TMP_88:.*]] = mhlo.add %[[TMP_86]], %[[TMP_87]]
   // CHECK-NEXT: %[[TMP_89:.*]] = mhlo.multiply %[[TMP_88]], %[[TMP_3]]
@@ -664,22 +631,19 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_104:.*]] = mhlo.divide %[[TMP_81]], %[[TMP_103]]
   // CHECK-NEXT: %[[TMP_105:.*]] = mhlo.constant dense<8.000000e+00>
   // CHECK-NEXT: %[[TMP_106:.*]] = mhlo.compare LT, %[[TMP_3]], %[[TMP_105]], NOTYPE
-  // CHECK-NEXT: %[[TMP_107:.*]] = "mhlo.select"(%[[TMP_106]], %[[TMP_61]], %[[TMP_104]])
+  // CHECK-NEXT: %[[TMP_107:.*]] = mhlo.select %[[TMP_106]], %[[TMP_61]], %[[TMP_104]]
   // CHECK-NEXT: %[[TMP_108:.*]] = mhlo.constant dense<-709.78271289338397>
   // CHECK-NEXT: %[[TMP_109:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_108]], NOTYPE
   // CHECK-NEXT: %[[TMP_110:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_111:.*]] = "mhlo.select"(%[[TMP_109]], %[[TMP_110]], %[[TMP_107]])
+  // CHECK-NEXT: %[[TMP_111:.*]] = mhlo.select %[[TMP_109]], %[[TMP_110]], %[[TMP_107]]
   // CHECK-NEXT: %[[TMP_113:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_110]], NOTYPE
   // CHECK-NEXT: %[[TMP_114:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK-NEXT: %[[TMP_115:.*]] = mhlo.subtract %[[TMP_114]], %[[TMP_111]]
-  // CHECK-NEXT: %[[TMP_116:.*]] = "mhlo.select"(%[[TMP_113]], %[[TMP_115]], %[[TMP_111]])
+  // CHECK-NEXT: %[[TMP_116:.*]] = mhlo.select %[[TMP_113]], %[[TMP_115]], %[[TMP_111]]
   // CHECK-NEXT: %[[TMP_117:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK-NEXT: %[[TMP_118:.*]] = mhlo.multiply %[[ARG]], %[[ARG]]
-  // CHECK-NEXT: %[[TMP_119:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_120:.*]] = mhlo.multiply %[[TMP_119]], %[[TMP_118]]
   // CHECK-NEXT: %[[TMP_121:.*]] = mhlo.constant dense<9.6049737398705161>
-  // CHECK-NEXT: %[[TMP_122:.*]] = mhlo.add %[[TMP_120]], %[[TMP_121]]
-  // CHECK-NEXT: %[[TMP_123:.*]] = mhlo.multiply %[[TMP_122]], %[[TMP_118]]
+  // CHECK-NEXT: %[[TMP_123:.*]] = mhlo.multiply %[[TMP_121]], %[[TMP_118]]
   // CHECK-NEXT: %[[TMP_124:.*]] = mhlo.constant dense<90.026019720384269>
   // CHECK-NEXT: %[[TMP_125:.*]] = mhlo.add %[[TMP_123]], %[[TMP_124]]
   // CHECK-NEXT: %[[TMP_126:.*]] = mhlo.multiply %[[TMP_125]], %[[TMP_118]]
@@ -692,11 +656,8 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_133:.*]] = mhlo.constant dense<55592.301301039493>
   // CHECK-NEXT: %[[TMP_134:.*]] = mhlo.add %[[TMP_132]], %[[TMP_133]]
   // CHECK-NEXT: %[[TMP_135:.*]] = mhlo.multiply %[[ARG]], %[[TMP_134]]
-  // CHECK-NEXT: %[[TMP_136:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK-NEXT: %[[TMP_137:.*]] = mhlo.multiply %[[TMP_136]], %[[TMP_118]]
   // CHECK-NEXT: %[[TMP_138:.*]] = mhlo.constant dense<1.000000e+00>
-  // CHECK-NEXT: %[[TMP_139:.*]] = mhlo.add %[[TMP_137]], %[[TMP_138]]
-  // CHECK-NEXT: %[[TMP_140:.*]] = mhlo.multiply %[[TMP_139]], %[[TMP_118]]
+  // CHECK-NEXT: %[[TMP_140:.*]] = mhlo.multiply %[[TMP_138]], %[[TMP_118]]
   // CHECK-NEXT: %[[TMP_141:.*]] = mhlo.constant dense<33.561714164750313>
   // CHECK-NEXT: %[[TMP_142:.*]] = mhlo.add %[[TMP_140]], %[[TMP_141]]
   // CHECK-NEXT: %[[TMP_143:.*]] = mhlo.multiply %[[TMP_142]], %[[TMP_118]]
@@ -715,7 +676,7 @@ func.func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[TMP_156:.*]] = mhlo.subtract %[[TMP_117]], %[[TMP_155]]
   // CHECK-NEXT: %[[TMP_157:.*]] = mhlo.abs %[[ARG]]
   // CHECK-NEXT: %[[TMP_159:.*]] = mhlo.compare LT, %[[TMP_157]], %[[TMP_117]], NOTYPE
-  // CHECK-NEXT: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_159]], %[[TMP_156]], %[[TMP_116]])
+  // CHECK-NEXT: %[[RESULT:.*]] = mhlo.select %[[TMP_159]], %[[TMP_156]], %[[TMP_116]]
   // CHECK-NEXT: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f64>) -> tensor<f64>
   func.return %1 : tensor<f64>
@@ -736,11 +697,8 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_8:.*]] = mhlo.multiply %[[TMP_5]], %[[TMP_7]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<2.000000e+00>
   // CHECK: %[[TMP_10:.*]] = mhlo.compare LT, %[[TMP_2]], %[[TMP_9]], NOTYPE
-  // CHECK: %[[TMP_11:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_12:.*]] = mhlo.multiply %[[TMP_11]], %[[TMP_4]]
   // CHECK: %[[TMP_13:.*]] = mhlo.constant dense<2.326820e-02>
-  // CHECK: %[[TMP_14:.*]] = mhlo.add %[[TMP_12]], %[[TMP_13]]
-  // CHECK: %[[TMP_15:.*]] = mhlo.multiply %[[TMP_14]], %[[TMP_4]]
+  // CHECK: %[[TMP_15:.*]] = mhlo.multiply %[[TMP_13]], %[[TMP_4]]
   // CHECK: %[[TMP_16:.*]] = mhlo.constant dense<-0.138703942>
   // CHECK: %[[TMP_17:.*]] = mhlo.add %[[TMP_15]], %[[TMP_16]]
   // CHECK: %[[TMP_18:.*]] = mhlo.multiply %[[TMP_17]], %[[TMP_4]]
@@ -764,11 +722,8 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_36:.*]] = mhlo.multiply %[[TMP_35]], %[[TMP_4]]
   // CHECK: %[[TMP_37:.*]] = mhlo.constant dense<0.563825965>
   // CHECK: %[[TMP_38:.*]] = mhlo.add %[[TMP_36]], %[[TMP_37]]
-  // CHECK: %[[TMP_39:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_40:.*]] = mhlo.multiply %[[TMP_39]], %[[TMP_4]]
   // CHECK: %[[TMP_41:.*]] = mhlo.constant dense<-10.477664>
-  // CHECK: %[[TMP_42:.*]] = mhlo.add %[[TMP_40]], %[[TMP_41]]
-  // CHECK: %[[TMP_43:.*]] = mhlo.multiply %[[TMP_42]], %[[TMP_4]]
+  // CHECK: %[[TMP_43:.*]] = mhlo.multiply %[[TMP_41]], %[[TMP_4]]
   // CHECK: %[[TMP_44:.*]] = mhlo.constant dense<1.297720e+01>
   // CHECK: %[[TMP_45:.*]] = mhlo.add %[[TMP_43]], %[[TMP_44]]
   // CHECK: %[[TMP_46:.*]] = mhlo.multiply %[[TMP_45]], %[[TMP_4]]
@@ -789,22 +744,19 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_61:.*]] = mhlo.multiply %[[TMP_60]], %[[TMP_4]]
   // CHECK: %[[TMP_62:.*]] = mhlo.constant dense<0.564189494>
   // CHECK: %[[TMP_63:.*]] = mhlo.add %[[TMP_61]], %[[TMP_62]]
-  // CHECK: %[[TMP_64:.*]] = "mhlo.select"(%[[TMP_10]], %[[TMP_38]], %[[TMP_63]])
+  // CHECK: %[[TMP_64:.*]] = mhlo.select %[[TMP_10]], %[[TMP_38]], %[[TMP_63]]
   // CHECK: %[[TMP_65:.*]] = mhlo.multiply %[[TMP_8]], %[[TMP_64]]
   // CHECK: %[[TMP_66:.*]] = mhlo.constant dense<-88.7228394>
   // CHECK: %[[TMP_67:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_66]], NOTYPE
   // CHECK: %[[TMP_68:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_69:.*]] = "mhlo.select"(%[[TMP_67]], %[[TMP_68]], %[[TMP_65]])
+  // CHECK: %[[TMP_69:.*]] = mhlo.select %[[TMP_67]], %[[TMP_68]], %[[TMP_65]]
   // CHECK: %[[TMP_71:.*]] = mhlo.compare LT, %[[ARG]], %[[TMP_68]], NOTYPE
   // CHECK: %[[TMP_73:.*]] = mhlo.subtract %[[TMP_9]], %[[TMP_69]]
-  // CHECK: %[[TMP_74:.*]] = "mhlo.select"(%[[TMP_71]], %[[TMP_73]], %[[TMP_69]])
+  // CHECK: %[[TMP_74:.*]] = mhlo.select %[[TMP_71]], %[[TMP_73]], %[[TMP_69]]
   // CHECK: %[[TMP_75:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_76:.*]] = mhlo.multiply %[[ARG]], %[[ARG]]
-  // CHECK: %[[TMP_77:.*]] = mhlo.constant dense<0.000000e+00>
-  // CHECK: %[[TMP_78:.*]] = mhlo.multiply %[[TMP_77]], %[[TMP_76]]
   // CHECK: %[[TMP_79:.*]] = mhlo.constant dense<7.85386146E-5>
-  // CHECK: %[[TMP_80:.*]] = mhlo.add %[[TMP_78]], %[[TMP_79]]
-  // CHECK: %[[TMP_81:.*]] = mhlo.multiply %[[TMP_80]], %[[TMP_76]]
+  // CHECK: %[[TMP_81:.*]] = mhlo.multiply %[[TMP_79]], %[[TMP_76]]
   // CHECK: %[[TMP_82:.*]] = mhlo.constant dense<-8.0101937E-4>
   // CHECK: %[[TMP_83:.*]] = mhlo.add %[[TMP_81]], %[[TMP_82]]
   // CHECK: %[[TMP_84:.*]] = mhlo.multiply %[[TMP_83]], %[[TMP_76]]
@@ -826,7 +778,7 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_100:.*]] = mhlo.subtract %[[TMP_75]], %[[TMP_99]]
   // CHECK: %[[TMP_101:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_103:.*]] = mhlo.compare LT, %[[TMP_101]], %[[TMP_75]], NOTYPE
-  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_103]], %[[TMP_100]], %[[TMP_74]])
+  // CHECK: %[[RESULT:.*]] = mhlo.select %[[TMP_103]], %[[TMP_100]], %[[TMP_74]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %1 : tensor<f32>
@@ -837,8 +789,8 @@ func.func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @erfc_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -849,8 +801,8 @@ func.func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @erfc_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @erfc_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
-  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<bf16>) -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<bf16>
+  // CHECK: mhlo.convert %[[ARG]] : (tensor<bf16>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<bf16>
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<bf16>) -> tensor<bf16>
   func.return %1 : tensor<bf16>
@@ -903,7 +855,7 @@ func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_10:.*]] = mhlo.negate %[[ARG]]
   // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_11:.*]] = mhlo.subtract %[[ARG]], %[[TMP_2]]
-  // CHECK: %[[TMP_12:.*]] = "mhlo.select"(%[[TMP_9]], %[[TMP_10]], %[[TMP_11]])
+  // CHECK: %[[TMP_12:.*]] = mhlo.select %[[TMP_9]], %[[TMP_10]], %[[TMP_11]]
   // CHECK-DAG: %[[TMP_8:.*]] = mhlo.constant dense<0.99999999999980993>
   // CHECK-DAG: %[[TMP_13:.*]] = mhlo.constant dense<676.5203681218851>
   // CHECK-DAG: %[[TMP_14:.*]] = mhlo.constant dense<1.000000e+00>
@@ -964,7 +916,7 @@ func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_66:.*]] = mhlo.subtract %[[TMP_64]], %[[TMP_65]]
   // CHECK: %[[TMP_67:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_66]], NOTYPE
   // CHECK: %[[TMP_68:.*]] = mhlo.subtract %[[TMP_2]], %[[TMP_66]]
-  // CHECK: %[[TMP_69:.*]] = "mhlo.select"(%[[TMP_67]], %[[TMP_68]], %[[TMP_66]])
+  // CHECK: %[[TMP_69:.*]] = mhlo.select %[[TMP_67]], %[[TMP_68]], %[[TMP_66]]
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<3.1415926535897931>
   // CHECK: %[[TMP_70:.*]] = mhlo.multiply %[[TMP_3]], %[[TMP_69]]
   // CHECK: %[[TMP_71:.*]] = mhlo.sine %[[TMP_70]]
@@ -972,15 +924,15 @@ func.func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_4:.*]] = mhlo.constant dense<1.1447298858494002>
   // CHECK: %[[TMP_75:.*]] = mhlo.subtract %[[TMP_4]], %[[TMP_72]]
   // CHECK: %[[TMP_76:.*]] = mhlo.subtract %[[TMP_75]], %[[TMP_63]]
-  // CHECK: %[[TMP_73:.*]] = mhlo.is_finite(%[[TMP_72]])
+  // CHECK: %[[TMP_73:.*]] = mhlo.is_finite %[[TMP_72]]
   // CHECK: %[[TMP_74:.*]] = mhlo.negate %[[TMP_72]]
-  // CHECK: %[[TMP_77:.*]] = "mhlo.select"(%[[TMP_73]], %[[TMP_76]], %[[TMP_74]])
-  // CHECK: %[[TMP_78:.*]] = "mhlo.select"(%[[TMP_9]], %[[TMP_77]], %[[TMP_63]])
+  // CHECK: %[[TMP_77:.*]] = mhlo.select %[[TMP_73]], %[[TMP_76]], %[[TMP_74]]
+  // CHECK: %[[TMP_78:.*]] = mhlo.select %[[TMP_9]], %[[TMP_77]], %[[TMP_63]]
   // CHECK: %[[TMP_79:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_80:.*]] = mhlo.constant dense<0x7FF0000000000000>
   // CHECK: %[[TMP_81:.*]] = mhlo.compare EQ, %[[TMP_79]], %[[TMP_80]]
   // CHECK: %[[TMP_0:.*]] = mhlo.constant dense<0x7FF0000000000000>
-  // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_81]], %[[TMP_0]], %[[TMP_78]])
+  // CHECK: %[[TMP_82:.*]] = mhlo.select %[[TMP_81]], %[[TMP_0]], %[[TMP_78]]
   // CHECK: return %[[TMP_82]]
   %1 = chlo.lgamma %arg : tensor<f64> -> tensor<f64>
   func.return %1 : tensor<f64>
@@ -996,7 +948,7 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_10:.*]] = mhlo.negate %[[ARG]]
   // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_11:.*]] = mhlo.subtract %[[ARG]], %[[TMP_2]]
-  // CHECK: %[[TMP_12:.*]] = "mhlo.select"(%[[TMP_9]], %[[TMP_10]], %[[TMP_11]])
+  // CHECK: %[[TMP_12:.*]] = mhlo.select %[[TMP_9]], %[[TMP_10]], %[[TMP_11]]
   // CHECK-DAG: %[[TMP_8:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK-DAG: %[[TMP_13:.*]] = mhlo.constant dense<676.520386>
   // CHECK-DAG: %[[TMP_14:.*]] = mhlo.constant dense<1.000000e+00>
@@ -1057,7 +1009,7 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_66:.*]] = mhlo.subtract %[[TMP_64]], %[[TMP_65]]
   // CHECK: %[[TMP_67:.*]] = mhlo.compare LT, %[[TMP_1]], %[[TMP_66]], NOTYPE
   // CHECK: %[[TMP_68:.*]] = mhlo.subtract %[[TMP_2]], %[[TMP_66]]
-  // CHECK: %[[TMP_69:.*]] = "mhlo.select"(%[[TMP_67]], %[[TMP_68]], %[[TMP_66]])
+  // CHECK: %[[TMP_69:.*]] = mhlo.select %[[TMP_67]], %[[TMP_68]], %[[TMP_66]]
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<3.14159274>
   // CHECK: %[[TMP_70:.*]] = mhlo.multiply %[[TMP_3]], %[[TMP_69]]
   // CHECK: %[[TMP_71:.*]] = mhlo.sine %[[TMP_70]]
@@ -1065,15 +1017,15 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_4:.*]] = mhlo.constant dense<1.14472985>
   // CHECK: %[[TMP_75:.*]] = mhlo.subtract %[[TMP_4]], %[[TMP_72]]
   // CHECK: %[[TMP_76:.*]] = mhlo.subtract %[[TMP_75]], %[[TMP_63]]
-  // CHECK: %[[TMP_73:.*]] = mhlo.is_finite(%[[TMP_72]])
+  // CHECK: %[[TMP_73:.*]] = mhlo.is_finite %[[TMP_72]]
   // CHECK: %[[TMP_74:.*]] = mhlo.negate %[[TMP_72]]
-  // CHECK: %[[TMP_77:.*]] = "mhlo.select"(%[[TMP_73]], %[[TMP_76]], %[[TMP_74]])
-  // CHECK: %[[TMP_78:.*]] = "mhlo.select"(%[[TMP_9]], %[[TMP_77]], %[[TMP_63]])
+  // CHECK: %[[TMP_77:.*]] = mhlo.select %[[TMP_73]], %[[TMP_76]], %[[TMP_74]]
+  // CHECK: %[[TMP_78:.*]] = mhlo.select %[[TMP_9]], %[[TMP_77]], %[[TMP_63]]
   // CHECK: %[[TMP_79:.*]] = mhlo.abs %[[ARG]]
   // CHECK: %[[TMP_80:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_81:.*]] = mhlo.compare EQ, %[[TMP_79]], %[[TMP_80]]
   // CHECK: %[[TMP_0:.*]] = mhlo.constant dense<0x7F800000>
-  // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_81]], %[[TMP_0]], %[[TMP_78]])
+  // CHECK: %[[TMP_82:.*]] = mhlo.select %[[TMP_81]], %[[TMP_0]], %[[TMP_78]]
   // CHECK: return %[[TMP_82]]
   %1 = chlo.lgamma %arg : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
@@ -1084,8 +1036,8 @@ func.func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @lgamma_f16
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
 func.func @lgamma_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RES:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.lgamma %arg : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -1101,7 +1053,7 @@ func.func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_2:.*]] = mhlo.negate %arg0
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_4:.*]] = mhlo.subtract %arg0, %[[TMP_3]]
-  // CHECK: %[[TMP_5:.*]] = "mhlo.select"(%[[TMP_1]], %[[TMP_2]], %[[TMP_4]])
+  // CHECK: %[[TMP_5:.*]] = mhlo.select %[[TMP_1]], %[[TMP_2]], %[[TMP_4]]
   // CHECK-DAG: %[[TMP_6:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK-DAG: %[[TMP_7:.*]] = mhlo.constant dense<0.99999999999980993>
   // CHECK-DAG: %[[TMP_8:.*]] = mhlo.constant dense<676.5203681218851>
@@ -1191,13 +1143,13 @@ func.func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_91:.*]] = mhlo.multiply %[[TMP_88]], %[[TMP_90]]
   // CHECK: %[[TMP_93:.*]] = mhlo.divide %[[TMP_91]], %[[TMP_92]]
   // CHECK: %[[TMP_94:.*]] = mhlo.subtract %[[TMP_82]], %[[TMP_93]]
-  // CHECK: %[[TMP_95:.*]] = "mhlo.select"(%[[TMP_1]], %[[TMP_94]], %[[TMP_82]])
+  // CHECK: %[[TMP_95:.*]] = mhlo.select %[[TMP_1]], %[[TMP_94]], %[[TMP_82]]
   // CHECK: %[[TMP_96:.*]] = mhlo.compare LE, %arg0, %[[TMP_6]], NOTYPE
   // CHECK: %[[TMP_97:.*]] = mhlo.floor %arg0
   // CHECK: %[[TMP_98:.*]] = mhlo.compare EQ, %arg0, %[[TMP_97]], NOTYPE
   // CHECK: %[[TMP_99:.*]] = mhlo.and %[[TMP_96]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[RES:.*]] = "mhlo.select"(%[[TMP_99]], %[[TMP_100]], %[[TMP_95]])
+  // CHECK: %[[RES:.*]] = mhlo.select %[[TMP_99]], %[[TMP_100]], %[[TMP_95]]
   // CHECK: return %[[RES]]
   %1 = chlo.digamma %arg : tensor<f64> -> tensor<f64>
   func.return %1 : tensor<f64>
@@ -1213,7 +1165,7 @@ func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_2:.*]] = mhlo.negate %arg0
   // CHECK: %[[TMP_3:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_4:.*]] = mhlo.subtract %arg0, %[[TMP_3]]
-  // CHECK: %[[TMP_5:.*]] = "mhlo.select"(%[[TMP_1]], %[[TMP_2]], %[[TMP_4]])
+  // CHECK: %[[TMP_5:.*]] = mhlo.select %[[TMP_1]], %[[TMP_2]], %[[TMP_4]]
   // CHECK-DAG: %[[TMP_6:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK-DAG: %[[TMP_7:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK-DAG: %[[TMP_8:.*]] = mhlo.constant dense<676.520386>
@@ -1303,13 +1255,13 @@ func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_91:.*]] = mhlo.multiply %[[TMP_88]], %[[TMP_90]]
   // CHECK: %[[TMP_93:.*]] = mhlo.divide %[[TMP_91]], %[[TMP_92]]
   // CHECK: %[[TMP_94:.*]] = mhlo.subtract %[[TMP_82]], %[[TMP_93]]
-  // CHECK: %[[TMP_95:.*]] = "mhlo.select"(%[[TMP_1]], %[[TMP_94]], %[[TMP_82]])
+  // CHECK: %[[TMP_95:.*]] = mhlo.select %[[TMP_1]], %[[TMP_94]], %[[TMP_82]]
   // CHECK: %[[TMP_96:.*]] = mhlo.compare LE, %arg0, %[[TMP_6]], NOTYPE
   // CHECK: %[[TMP_97:.*]] = mhlo.floor %arg0
   // CHECK: %[[TMP_98:.*]] = mhlo.compare EQ, %arg0, %[[TMP_97]], NOTYPE
   // CHECK: %[[TMP_99:.*]] = mhlo.and %[[TMP_96]], %[[TMP_98]]
   // CHECK: %[[TMP_100:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[RES:.*]] = "mhlo.select"(%[[TMP_99]], %[[TMP_100]], %[[TMP_95]])
+  // CHECK: %[[RES:.*]] = mhlo.select %[[TMP_99]], %[[TMP_100]], %[[TMP_95]]
   // CHECK: return %[[RES]]
   %1 = chlo.digamma %arg : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
@@ -1320,8 +1272,8 @@ func.func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @digamma_f16
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
 func.func @digamma_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RES:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.digamma %arg : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -1332,8 +1284,8 @@ func.func @digamma_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @zeta_f16
 // CHECK-SAME:  (%[[X:.*]]: tensor<f16>, %[[Q:.*]]: tensor<f16>) -> tensor<f16>
 func.func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
-  // CHECK: %[[TMP_0:.*]] = mhlo.convert(%[[X]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[TMP_1:.*]] = mhlo.convert(%[[Q]]) : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[TMP_0:.*]] = mhlo.convert %[[X]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[TMP_1:.*]] = mhlo.convert %[[Q]] : (tensor<f16>) -> tensor<f32>
   // CHECK: %[[TMP_2:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_3:.*]] = mhlo.negate %[[TMP_0]]
   // CHECK: %[[TMP_4:.*]] = mhlo.power %[[TMP_1]], %[[TMP_3]]
@@ -1486,15 +1438,15 @@ func.func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[TMP_151:.*]] = mhlo.constant dense<1.401300e-45>
   // CHECK: %[[TMP_152:.*]] = mhlo.multiply %[[TMP_150]], %[[TMP_151]]
   // CHECK: %[[TMP_153:.*]] = mhlo.compare LT, %[[TMP_149]], %[[TMP_152]], NOTYPE
-  // CHECK: %[[TMP_154:.*]] = "mhlo.select"(%[[TMP_153]], %[[TMP_32]], %[[TMP_148]])
+  // CHECK: %[[TMP_154:.*]] = mhlo.select %[[TMP_153]], %[[TMP_32]], %[[TMP_148]]
   // CHECK: %[[TMP_155:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[TMP_156:.*]] = mhlo.compare LT, %[[TMP_0]], %[[TMP_35]], NOTYPE
-  // CHECK: %[[TMP_157:.*]] = "mhlo.select"(%[[TMP_156]], %[[TMP_155]], %[[TMP_154]])
+  // CHECK: %[[TMP_157:.*]] = mhlo.select %[[TMP_156]], %[[TMP_155]], %[[TMP_154]]
   // CHECK: %[[TMP_158:.*]] = mhlo.compare LE, %[[TMP_1]], %[[TMP_2]], NOTYPE
   // CHECK: %[[TMP_159:.*]] = mhlo.floor %[[TMP_0]]
   // CHECK: %[[TMP_160:.*]] = mhlo.compare NE, %[[TMP_0]], %[[TMP_159]], NOTYPE
   // CHECK: %[[TMP_161:.*]] = mhlo.and %[[TMP_158]], %[[TMP_160]] : tensor<i1>
-  // CHECK: %[[TMP_162:.*]] = "mhlo.select"(%[[TMP_161]], %[[TMP_155]], %[[TMP_157]])
+  // CHECK: %[[TMP_162:.*]] = mhlo.select %[[TMP_161]], %[[TMP_155]], %[[TMP_157]]
   // CHECK: %[[TMP_163:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_164:.*]] = mhlo.floor %[[TMP_1]]
   // CHECK: %[[TMP_165:.*]] = mhlo.compare EQ, %[[TMP_1]], %[[TMP_164]], NOTYPE
@@ -1505,11 +1457,11 @@ func.func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[TMP_170:.*]] = mhlo.remainder %[[TMP_0]], %[[TMP_167]]
   // CHECK: %[[TMP_171:.*]] = mhlo.compare EQ, %[[TMP_170]], %[[TMP_2]], NOTYPE
   // CHECK: %[[TMP_172:.*]] = mhlo.and %[[TMP_169]], %[[TMP_171]] : tensor<i1>
-  // CHECK: %[[TMP_173:.*]] = "mhlo.select"(%[[TMP_172]], %[[TMP_163]], %[[TMP_155]])
-  // CHECK: %[[TMP_174:.*]] = "mhlo.select"(%[[TMP_166]], %[[TMP_173]], %[[TMP_162]])
+  // CHECK: %[[TMP_173:.*]] = mhlo.select %[[TMP_172]], %[[TMP_163]], %[[TMP_155]]
+  // CHECK: %[[TMP_174:.*]] = mhlo.select %[[TMP_166]], %[[TMP_173]], %[[TMP_162]]
   // CHECK: %[[TMP_175:.*]] = mhlo.compare EQ, %[[TMP_0]], %[[TMP_5]], NOTYPE
-  // CHECK: %[[TMP_176:.*]] = "mhlo.select"(%[[TMP_175]], %[[TMP_163]], %[[TMP_174]])
-  // CHECK: %[[TMP_177:.*]] = mhlo.convert(%[[TMP_176]]) : (tensor<f32>) -> tensor<f16>
+  // CHECK: %[[TMP_176:.*]] = mhlo.select %[[TMP_175]], %[[TMP_163]], %[[TMP_174]]
+  // CHECK: %[[TMP_177:.*]] = mhlo.convert %[[TMP_176]] : (tensor<f32>) -> tensor<f16>
   %0 = chlo.zeta %arg0, %arg1 : tensor<f16>, tensor<f16> -> tensor<f16>
   func.return %0 : tensor<f16>
 }
@@ -1530,7 +1482,7 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_8:.*]] = mhlo.negate %[[TMP_5]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_10:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_9]]
-  // CHECK: %[[TMP_11:.*]] = "mhlo.select"(%[[TMP_7]], %[[TMP_8]], %[[TMP_10]])
+  // CHECK: %[[TMP_11:.*]] = mhlo.select %[[TMP_7]], %[[TMP_8]], %[[TMP_10]]
   // CHECK-DAG: %[[TMP_12:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK-DAG: %[[TMP_13:.*]] = mhlo.constant dense<676.520386>
   // CHECK-DAG: %[[TMP_14:.*]] = mhlo.constant dense<1.000000e+00>
@@ -1591,7 +1543,7 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_69:.*]] = mhlo.subtract %[[TMP_67]], %[[TMP_68]]
   // CHECK: %[[TMP_70:.*]] = mhlo.compare LT, %[[TMP_6]], %[[TMP_69]], NOTYPE
   // CHECK: %[[TMP_71:.*]] = mhlo.subtract %[[TMP_9]], %[[TMP_69]]
-  // CHECK: %[[TMP_72:.*]] = "mhlo.select"(%[[TMP_70]], %[[TMP_71]], %[[TMP_69]])
+  // CHECK: %[[TMP_72:.*]] = mhlo.select %[[TMP_70]], %[[TMP_71]], %[[TMP_69]]
   // CHECK: %[[TMP_73:.*]] = mhlo.constant dense<3.14159274>
   // CHECK: %[[TMP_74:.*]] = mhlo.multiply %[[TMP_73]], %[[TMP_72]]
   // CHECK: %[[TMP_75:.*]] = mhlo.sine %[[TMP_74]]
@@ -1599,15 +1551,15 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_77:.*]] = mhlo.constant dense<1.14472985>
   // CHECK: %[[TMP_78:.*]] = mhlo.subtract %[[TMP_77]], %[[TMP_76]]
   // CHECK: %[[TMP_79:.*]] = mhlo.subtract %[[TMP_78]], %[[TMP_66]]
-  // CHECK: %[[TMP_80:.*]] = mhlo.is_finite(%[[TMP_76]])
+  // CHECK: %[[TMP_80:.*]] = mhlo.is_finite %[[TMP_76]]
   // CHECK: %[[TMP_81:.*]] = mhlo.negate %[[TMP_76]]
-  // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_80]], %[[TMP_79]], %[[TMP_81]])
-  // CHECK: %[[TMP_83:.*]] = "mhlo.select"(%[[TMP_7]], %[[TMP_82]], %[[TMP_66]])
+  // CHECK: %[[TMP_82:.*]] = mhlo.select %[[TMP_80]], %[[TMP_79]], %[[TMP_81]]
+  // CHECK: %[[TMP_83:.*]] = mhlo.select %[[TMP_7]], %[[TMP_82]], %[[TMP_66]]
   // CHECK: %[[TMP_84:.*]] = mhlo.abs %[[TMP_5]]
   // CHECK: %[[TMP_85:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_86:.*]] = mhlo.compare EQ, %[[TMP_84]], %[[TMP_85]]
   // CHECK: %[[TMP_87:.*]] = mhlo.constant dense<0x7F800000>
-  // CHECK: %[[TMP_88:.*]] = "mhlo.select"(%[[TMP_86]], %[[TMP_87]], %[[TMP_83]])
+  // CHECK: %[[TMP_88:.*]] = mhlo.select %[[TMP_86]], %[[TMP_87]], %[[TMP_83]]
   // CHECK: %[[TMP_89:.*]] = mhlo.exponential %[[TMP_88]]
   // CHECK: %[[TMP_90:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_91:.*]] = mhlo.negate %[[TMP_5]]
@@ -1761,15 +1713,15 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_239:.*]] = mhlo.constant dense<1.401300e-45>
   // CHECK: %[[TMP_240:.*]] = mhlo.multiply %[[TMP_238]], %[[TMP_239]]
   // CHECK: %[[TMP_241:.*]] = mhlo.compare LT, %[[TMP_237]], %[[TMP_240]], NOTYPE
-  // CHECK: %[[TMP_242:.*]] = "mhlo.select"(%[[TMP_241]], %[[TMP_120]], %[[TMP_236]])
+  // CHECK: %[[TMP_242:.*]] = mhlo.select %[[TMP_241]], %[[TMP_120]], %[[TMP_236]]
   // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[TMP_244:.*]] = mhlo.compare LT, %[[TMP_5]], %[[TMP_123]], NOTYPE
-  // CHECK: %[[TMP_245:.*]] = "mhlo.select"(%[[TMP_244]], %[[TMP_243]], %[[TMP_242]])
+  // CHECK: %[[TMP_245:.*]] = mhlo.select %[[TMP_244]], %[[TMP_243]], %[[TMP_242]]
   // CHECK: %[[TMP_246:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_247:.*]] = mhlo.floor %[[TMP_5]]
   // CHECK: %[[TMP_248:.*]] = mhlo.compare NE, %[[TMP_5]], %[[TMP_247]], NOTYPE
   // CHECK: %[[TMP_249:.*]] = mhlo.and %[[TMP_246]], %[[TMP_248]]
-  // CHECK: %[[TMP_250:.*]] = "mhlo.select"(%[[TMP_249]], %[[TMP_243]], %[[TMP_245]])
+  // CHECK: %[[TMP_250:.*]] = mhlo.select %[[TMP_249]], %[[TMP_243]], %[[TMP_245]]
   // CHECK: %[[TMP_251:.*]] = mhlo.constant dense<0x7F800000>
   // CHECK: %[[TMP_252:.*]] = mhlo.floor %[[ARG1]]
   // CHECK: %[[TMP_253:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_252]], NOTYPE
@@ -1780,10 +1732,10 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_258:.*]] = mhlo.remainder %[[TMP_5]], %[[TMP_255]]
   // CHECK: %[[TMP_259:.*]] = mhlo.compare EQ, %[[TMP_258]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_260:.*]] = mhlo.and %[[TMP_257]], %[[TMP_259]]
-  // CHECK: %[[TMP_261:.*]] = "mhlo.select"(%[[TMP_260]], %[[TMP_251]], %[[TMP_243]])
-  // CHECK: %[[TMP_262:.*]] = "mhlo.select"(%[[TMP_254]], %[[TMP_261]], %[[TMP_250]])
+  // CHECK: %[[TMP_261:.*]] = mhlo.select %[[TMP_260]], %[[TMP_251]], %[[TMP_243]]
+  // CHECK: %[[TMP_262:.*]] = mhlo.select %[[TMP_254]], %[[TMP_261]], %[[TMP_250]]
   // CHECK: %[[TMP_263:.*]] = mhlo.compare EQ, %[[TMP_5]], %[[TMP_93]], NOTYPE
-  // CHECK: %[[TMP_264:.*]] = "mhlo.select"(%[[TMP_263]], %[[TMP_251]], %[[TMP_262]])
+  // CHECK: %[[TMP_264:.*]] = mhlo.select %[[TMP_263]], %[[TMP_251]], %[[TMP_262]]
   // CHECK: %[[TMP_265:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
   // CHECK: %[[TMP_266:.*]] = mhlo.multiply %[[TMP_265]], %[[TMP_264]]
   // CHECK: %[[TMP_267:.*]] = mhlo.constant dense<0.000000e+00>
@@ -1793,7 +1745,7 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_271:.*]] = mhlo.negate %[[ARG1]]
   // CHECK: %[[TMP_272:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_273:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_272]]
-  // CHECK: %[[TMP_274:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_271]], %[[TMP_273]])
+  // CHECK: %[[TMP_274:.*]] = mhlo.select %[[TMP_270]], %[[TMP_271]], %[[TMP_273]]
   // CHECK-DAG: %[[TMP_275:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK-DAG: %[[TMP_276:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK-DAG: %[[TMP_277:.*]] = mhlo.constant dense<676.520386>
@@ -1883,20 +1835,20 @@ func.func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> 
   // CHECK: %[[TMP_361:.*]] = mhlo.multiply %[[TMP_357]], %[[TMP_359]]
   // CHECK: %[[TMP_362:.*]] = mhlo.divide %[[TMP_361]], %[[TMP_360]]
   // CHECK: %[[TMP_363:.*]] = mhlo.subtract %[[TMP_351]], %[[TMP_362]]
-  // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_363]], %[[TMP_351]])
+  // CHECK: %[[TMP_364:.*]] = mhlo.select %[[TMP_270]], %[[TMP_363]], %[[TMP_351]]
   // CHECK: %[[TMP_365:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_275]], NOTYPE
   // CHECK: %[[TMP_366:.*]] = mhlo.floor %[[ARG1]]
   // CHECK: %[[TMP_367:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_366]], NOTYPE
   // CHECK: %[[TMP_368:.*]] = mhlo.and %[[TMP_365]], %[[TMP_367]]
   // CHECK: %[[TMP_369:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_370:.*]] = "mhlo.select"(%[[TMP_368]], %[[TMP_369]], %[[TMP_364]])
-  // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_268]], %[[TMP_370]], %[[TMP_266]])
+  // CHECK: %[[TMP_370:.*]] = mhlo.select %[[TMP_368]], %[[TMP_369]], %[[TMP_364]]
+  // CHECK: %[[TMP_371:.*]] = mhlo.select %[[TMP_268]], %[[TMP_370]], %[[TMP_266]]
   // CHECK: %[[TMP_372:.*]] = mhlo.floor %[[ARG0]]
   // CHECK: %[[TMP_373:.*]] = mhlo.compare NE, %[[ARG0]], %[[TMP_372]], NOTYPE
   // CHECK: %[[TMP_374:.*]] = mhlo.compare LT, %[[ARG0]], %[[TMP_267]], NOTYPE
   // CHECK: %[[TMP_375:.*]] = mhlo.or %[[TMP_373]], %[[TMP_374]]
   // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FC00000>
-  // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
+  // CHECK: %[[TMP_377:.*]] = mhlo.select %[[TMP_375]], %[[TMP_376]], %[[TMP_371]]
   %1 = chlo.polygamma %lhs, %rhs : tensor<f32>, tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
 }
@@ -1917,7 +1869,7 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_8:.*]] = mhlo.negate %[[TMP_5]]
   // CHECK: %[[TMP_9:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_10:.*]] = mhlo.subtract %[[TMP_5]], %[[TMP_9]]
-  // CHECK: %[[TMP_11:.*]] = "mhlo.select"(%[[TMP_7]], %[[TMP_8]], %[[TMP_10]])
+  // CHECK: %[[TMP_11:.*]] = mhlo.select %[[TMP_7]], %[[TMP_8]], %[[TMP_10]]
   // CHECK-DAG: %[[TMP_12:.*]] = mhlo.constant dense<0.99999999999980993>
   // CHECK-DAG: %[[TMP_13:.*]] = mhlo.constant dense<676.5203681218851>
   // CHECK-DAG: %[[TMP_14:.*]] = mhlo.constant dense<1.000000e+00>
@@ -1978,7 +1930,7 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_69:.*]] = mhlo.subtract %[[TMP_67]], %[[TMP_68]]
   // CHECK: %[[TMP_70:.*]] = mhlo.compare LT, %[[TMP_6]], %[[TMP_69]], NOTYPE
   // CHECK: %[[TMP_71:.*]] = mhlo.subtract %[[TMP_9]], %[[TMP_69]]
-  // CHECK: %[[TMP_72:.*]] = "mhlo.select"(%[[TMP_70]], %[[TMP_71]], %[[TMP_69]])
+  // CHECK: %[[TMP_72:.*]] = mhlo.select %[[TMP_70]], %[[TMP_71]], %[[TMP_69]]
   // CHECK: %[[TMP_73:.*]] = mhlo.constant dense<3.1415926535897931>
   // CHECK: %[[TMP_74:.*]] = mhlo.multiply %[[TMP_73]], %[[TMP_72]]
   // CHECK: %[[TMP_75:.*]] = mhlo.sine %[[TMP_74]]
@@ -1986,15 +1938,15 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_77:.*]] = mhlo.constant dense<1.1447298858494002>
   // CHECK: %[[TMP_78:.*]] = mhlo.subtract %[[TMP_77]], %[[TMP_76]]
   // CHECK: %[[TMP_79:.*]] = mhlo.subtract %[[TMP_78]], %[[TMP_66]]
-  // CHECK: %[[TMP_80:.*]] = mhlo.is_finite(%[[TMP_76]])
+  // CHECK: %[[TMP_80:.*]] = mhlo.is_finite %[[TMP_76]]
   // CHECK: %[[TMP_81:.*]] = mhlo.negate %[[TMP_76]]
-  // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_80]], %[[TMP_79]], %[[TMP_81]])
-  // CHECK: %[[TMP_83:.*]] = "mhlo.select"(%[[TMP_7]], %[[TMP_82]], %[[TMP_66]])
+  // CHECK: %[[TMP_82:.*]] = mhlo.select %[[TMP_80]], %[[TMP_79]], %[[TMP_81]]
+  // CHECK: %[[TMP_83:.*]] = mhlo.select %[[TMP_7]], %[[TMP_82]], %[[TMP_66]]
   // CHECK: %[[TMP_84:.*]] = mhlo.abs %[[TMP_5]]
   // CHECK: %[[TMP_85:.*]] = mhlo.constant dense<0x7FF0000000000000>
   // CHECK: %[[TMP_86:.*]] = mhlo.compare EQ, %[[TMP_84]], %[[TMP_85]]
   // CHECK: %[[TMP_87:.*]] = mhlo.constant dense<0x7FF0000000000000>
-  // CHECK: %[[TMP_88:.*]] = "mhlo.select"(%[[TMP_86]], %[[TMP_87]], %[[TMP_83]])
+  // CHECK: %[[TMP_88:.*]] = mhlo.select %[[TMP_86]], %[[TMP_87]], %[[TMP_83]]
   // CHECK: %[[TMP_89:.*]] = mhlo.exponential %[[TMP_88]]
   // CHECK: %[[TMP_90:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[TMP_91:.*]] = mhlo.negate %[[TMP_5]]
@@ -2148,15 +2100,15 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_239:.*]] = mhlo.constant dense<4.940660e-324>
   // CHECK: %[[TMP_240:.*]] = mhlo.multiply %[[TMP_238]], %[[TMP_239]]
   // CHECK: %[[TMP_241:.*]] = mhlo.compare LT, %[[TMP_237]], %[[TMP_240]], NOTYPE
-  // CHECK: %[[TMP_242:.*]] = "mhlo.select"(%[[TMP_241]], %[[TMP_120]], %[[TMP_236]])
+  // CHECK: %[[TMP_242:.*]] = mhlo.select %[[TMP_241]], %[[TMP_120]], %[[TMP_236]]
   // CHECK: %[[TMP_243:.*]] = mhlo.constant dense<0x7FF8000000000000>
   // CHECK: %[[TMP_244:.*]] = mhlo.compare LT, %[[TMP_5]], %[[TMP_123]], NOTYPE
-  // CHECK: %[[TMP_245:.*]] = "mhlo.select"(%[[TMP_244]], %[[TMP_243]], %[[TMP_242]])
+  // CHECK: %[[TMP_245:.*]] = mhlo.select %[[TMP_244]], %[[TMP_243]], %[[TMP_242]]
   // CHECK: %[[TMP_246:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_247:.*]] = mhlo.floor %[[TMP_5]]
   // CHECK: %[[TMP_248:.*]] = mhlo.compare NE, %[[TMP_5]], %[[TMP_247]], NOTYPE
   // CHECK: %[[TMP_249:.*]] = mhlo.and %[[TMP_246]], %[[TMP_248]]
-  // CHECK: %[[TMP_250:.*]] = "mhlo.select"(%[[TMP_249]], %[[TMP_243]], %[[TMP_245]])
+  // CHECK: %[[TMP_250:.*]] = mhlo.select %[[TMP_249]], %[[TMP_243]], %[[TMP_245]]
   // CHECK: %[[TMP_251:.*]] = mhlo.constant dense<0x7FF0000000000000>
   // CHECK: %[[TMP_252:.*]] = mhlo.floor %[[ARG1]]
   // CHECK: %[[TMP_253:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_252]], NOTYPE
@@ -2167,10 +2119,10 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_258:.*]] = mhlo.remainder %[[TMP_5]], %[[TMP_255]]
   // CHECK: %[[TMP_259:.*]] = mhlo.compare EQ, %[[TMP_258]], %[[TMP_90]], NOTYPE
   // CHECK: %[[TMP_260:.*]] = mhlo.and %[[TMP_257]], %[[TMP_259]]
-  // CHECK: %[[TMP_261:.*]] = "mhlo.select"(%[[TMP_260]], %[[TMP_251]], %[[TMP_243]])
-  // CHECK: %[[TMP_262:.*]] = "mhlo.select"(%[[TMP_254]], %[[TMP_261]], %[[TMP_250]])
+  // CHECK: %[[TMP_261:.*]] = mhlo.select %[[TMP_260]], %[[TMP_251]], %[[TMP_243]]
+  // CHECK: %[[TMP_262:.*]] = mhlo.select %[[TMP_254]], %[[TMP_261]], %[[TMP_250]]
   // CHECK: %[[TMP_263:.*]] = mhlo.compare EQ, %[[TMP_5]], %[[TMP_93]], NOTYPE
-  // CHECK: %[[TMP_264:.*]] = "mhlo.select"(%[[TMP_263]], %[[TMP_251]], %[[TMP_262]])
+  // CHECK: %[[TMP_264:.*]] = mhlo.select %[[TMP_263]], %[[TMP_251]], %[[TMP_262]]
   // CHECK: %[[TMP_265:.*]] = mhlo.multiply %[[TMP_4]], %[[TMP_89]]
   // CHECK: %[[TMP_266:.*]] = mhlo.multiply %[[TMP_265]], %[[TMP_264]]
   // CHECK: %[[TMP_267:.*]] = mhlo.constant dense<0.000000e+00>
@@ -2180,7 +2132,7 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_271:.*]] = mhlo.negate %[[ARG1]]
   // CHECK: %[[TMP_272:.*]] = mhlo.constant dense<1.000000e+00>
   // CHECK: %[[TMP_273:.*]] = mhlo.subtract %[[ARG1]], %[[TMP_272]]
-  // CHECK: %[[TMP_274:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_271]], %[[TMP_273]])
+  // CHECK: %[[TMP_274:.*]] = mhlo.select %[[TMP_270]], %[[TMP_271]], %[[TMP_273]]
   // CHECK-DAG: %[[TMP_275:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK-DAG: %[[TMP_276:.*]] = mhlo.constant dense<0.99999999999980993>
   // CHECK-DAG: %[[TMP_277:.*]] = mhlo.constant dense<676.5203681218851>
@@ -2270,20 +2222,20 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
   // CHECK: %[[TMP_361:.*]] = mhlo.multiply %[[TMP_357]], %[[TMP_359]]
   // CHECK: %[[TMP_362:.*]] = mhlo.divide %[[TMP_361]], %[[TMP_360]]
   // CHECK: %[[TMP_363:.*]] = mhlo.subtract %[[TMP_351]], %[[TMP_362]]
-  // CHECK: %[[TMP_364:.*]] = "mhlo.select"(%[[TMP_270]], %[[TMP_363]], %[[TMP_351]])
+  // CHECK: %[[TMP_364:.*]] = mhlo.select %[[TMP_270]], %[[TMP_363]], %[[TMP_351]]
   // CHECK: %[[TMP_365:.*]] = mhlo.compare LE, %[[ARG1]], %[[TMP_275]], NOTYPE
   // CHECK: %[[TMP_366:.*]] = mhlo.floor %[[ARG1]]
   // CHECK: %[[TMP_367:.*]] = mhlo.compare EQ, %[[ARG1]], %[[TMP_366]], NOTYPE
   // CHECK: %[[TMP_368:.*]] = mhlo.and %[[TMP_365]], %[[TMP_367]]
   // CHECK: %[[TMP_369:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[TMP_370:.*]] = "mhlo.select"(%[[TMP_368]], %[[TMP_369]], %[[TMP_364]])
-  // CHECK: %[[TMP_371:.*]] = "mhlo.select"(%[[TMP_268]], %[[TMP_370]], %[[TMP_266]])
+  // CHECK: %[[TMP_370:.*]] = mhlo.select %[[TMP_368]], %[[TMP_369]], %[[TMP_364]]
+  // CHECK: %[[TMP_371:.*]] = mhlo.select %[[TMP_268]], %[[TMP_370]], %[[TMP_266]]
   // CHECK: %[[TMP_372:.*]] = mhlo.floor %[[ARG0]]
   // CHECK: %[[TMP_373:.*]] = mhlo.compare NE, %[[ARG0]], %[[TMP_372]], NOTYPE
   // CHECK: %[[TMP_374:.*]] = mhlo.compare LT, %[[ARG0]], %[[TMP_267]], NOTYPE
   // CHECK: %[[TMP_375:.*]] = mhlo.or %[[TMP_373]], %[[TMP_374]]
   // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FF8000000000000>
-  // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
+  // CHECK: %[[TMP_377:.*]] = mhlo.select %[[TMP_375]], %[[TMP_376]], %[[TMP_371]]
   %1 = chlo.polygamma %lhs, %rhs : tensor<f64>, tensor<f64> -> tensor<f64>
   func.return %1 : tensor<f64>
 }
@@ -2293,9 +2245,9 @@ func.func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> 
 // CHECK-LABEL: @polygamma_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>, %[[ARG1:.*]]: tensor<f16>)
 func.func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG0]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: mhlo.convert(%[[ARG1]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RES:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: mhlo.convert %[[ARG1]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.polygamma %lhs, %rhs : tensor<f16>, tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -2323,7 +2275,7 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[SMALL_SINH_RESULT:.*]] = mhlo.multiply %[[HALF]], %[[SUM]] : tensor<f32>
   // CHECK: %[[ABS_X:.*]] = mhlo.abs %[[X]] : tensor<f32>
   // CHECK: %[[ABS_X_LT_ONE:.*]] = mhlo.compare LT, %[[ABS_X]], %[[ONE]], NOTYPE : (tensor<f32>, tensor<f32>) -> tensor<i1>
-  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[ABS_X_LT_ONE]], %[[SMALL_SINH_RESULT]], %[[LARGE_SINH_RESULT]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.select %[[ABS_X_LT_ONE]], %[[SMALL_SINH_RESULT]], %[[LARGE_SINH_RESULT]] : tensor<i1>, tensor<f32>
   // CHECK: return %[[RESULT]] : tensor<f32>
   %1 = chlo.sinh %x : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
@@ -2334,8 +2286,8 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @sinh_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
 func.func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG0]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RES:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.sinh %x : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -2380,8 +2332,8 @@ func.func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @cosh_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f16>)
 func.func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
-  // CHECK: mhlo.convert(%[[ARG0]]) : (tensor<f16>) -> tensor<f32>
-  // CHECK: %[[RES:.*]] = mhlo.convert(%{{.*}}) : (tensor<f32>) -> tensor<f16>
+  // CHECK: mhlo.convert %[[ARG0]] : (tensor<f16>) -> tensor<f32>
+  // CHECK: %[[RES:.*]] = mhlo.convert %{{.*}} : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.cosh %x : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -2419,7 +2371,7 @@ func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[TMP_7:.*]] = mhlo.subtract %[[TMP_4]], %[[TMP_6]]
   // CHECK-NEXT: %[[TMP_8:.*]] = mhlo.constant dense<5.000000e-01>
   // CHECK-NEXT: %[[TMP_9:.*]] = mhlo.multiply %[[TMP_7]], %[[TMP_8]]
-  // CHECK-NEXT: %[[TMP_10:.*]] = "mhlo.select"(%[[TMP_2]], %[[TMP_3]], %[[TMP_9]])
+  // CHECK-NEXT: %[[TMP_10:.*]] = mhlo.select %[[TMP_2]], %[[TMP_3]], %[[TMP_9]]
   // CHECK-NEXT: return %[[TMP_10]]
   %result = "chlo.atanh"(%arg) : (tensor<f32>) -> tensor<f32>
   func.return %result : tensor<f32>
@@ -2469,12 +2421,12 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[X_MAGNITUDE_LARGER_THAN_Y:.*]] = mhlo.compare GT, %[[X_ABS]], %[[Y_ABS]], NOTYPE : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   // CHECK: %[[RESULT_HAS_SMALLER_MAGNITUDE:.*]] = mhlo.or %[[X_MAGNITUDE_LARGER_THAN_Y]], %[[SIGNS_DISAGREE]] : tensor<2xi1>
   // CHECK: %[[MINUS_ONE:.*]] = mhlo.constant dense<-1> : tensor<2xi32>
-  // CHECK: %[[MAGNITUDE_ADJUSTMENT:.*]] = "mhlo.select"(%[[RESULT_HAS_SMALLER_MAGNITUDE]], %[[MINUS_ONE]], %[[ONE]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[MAGNITUDE_ADJUSTMENT:.*]] = mhlo.select %[[RESULT_HAS_SMALLER_MAGNITUDE]], %[[MINUS_ONE]], %[[ONE]] : tensor<2xi1>, tensor<2xi32>
   // CHECK: %[[RESULT0:.*]] = mhlo.add %[[X_AS_INT]], %[[MAGNITUDE_ADJUSTMENT]] : tensor<2xi32>
-  // CHECK: %[[RESULT1:.*]] = "mhlo.select"(%[[Y_ABS_IS_ZERO]], %[[Y_AS_INT]], %[[RESULT_FOR_X_ZERO_Y_NON_ZERO]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  // CHECK: %[[RESULT2:.*]] = "mhlo.select"(%[[X_ABS_IS_ZERO]], %[[RESULT1]], %[[RESULT0]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  // CHECK: %[[RESULT3:.*]] = "mhlo.select"(%[[X_AND_Y_ARE_EQUAL]], %[[Y_AS_INT]], %[[RESULT2]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  // CHECK: %[[RESULT4:.*]] = "mhlo.select"(%[[INPUT_IS_NAN]], %[[NAN_AS_INT]], %[[RESULT3]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[RESULT1:.*]] = mhlo.select %[[Y_ABS_IS_ZERO]], %[[Y_AS_INT]], %[[RESULT_FOR_X_ZERO_Y_NON_ZERO]] : tensor<2xi1>, tensor<2xi32>
+  // CHECK: %[[RESULT2:.*]] = mhlo.select %[[X_ABS_IS_ZERO]], %[[RESULT1]], %[[RESULT0]] : tensor<2xi1>, tensor<2xi32>
+  // CHECK: %[[RESULT3:.*]] = mhlo.select %[[X_AND_Y_ARE_EQUAL]], %[[Y_AS_INT]], %[[RESULT2]] : tensor<2xi1>, tensor<2xi32>
+  // CHECK: %[[RESULT4:.*]] = mhlo.select %[[INPUT_IS_NAN]], %[[NAN_AS_INT]], %[[RESULT3]] : tensor<2xi1>, tensor<2xi32>
   // CHECK: %[[FINAL_RESULT:.*]] = mhlo.bitcast_convert %[[RESULT4]] : (tensor<2xi32>) -> tensor<2xf32>
   // CHECK: return %[[FINAL_RESULT]]
   %1 = chlo.broadcast_next_after %x, %y : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
@@ -2486,11 +2438,11 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
 // CHECK-LABEL: @tan_f16
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
 func.func @tan_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // %[[TMP_0:.*]] = mhlo.convert([[ARG]]) : (tensor<f16>) -> tensor<f32>
+  // %[[TMP_0:.*]] = mhlo.convert [[ARG]] : (tensor<f16>) -> tensor<f32>
   // %[[TMP_1:.*]] = mhlo.sine %[[TMP_0]]
   // %[[TMP_2:.*]] = mhlo.cosine %[[TMP_0]]
   // %[[TMP_3:.*]] = mhlo.divide %[[TMP_1]], %[[TMP_2]]
-  // %[[TMP_4:.*]] = mhlo.convert(%[[TMP_3]]) : (tensor<f32>) -> tensor<f16>
+  // %[[TMP_4:.*]] = mhlo.convert %[[TMP_3]] : (tensor<f32>) -> tensor<f16>
   // return %[[TMP_4]] : tensor<f16>
   %1 = chlo.tan %arg : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
@@ -2529,13 +2481,45 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 
 // -----
 
+// CHECK-LABEL:   @dyn_top_k
+// CHECK-SAME: ([[ARG_0:%.*]]: tensor<i64>, [[ARG_1:%.*]]: tensor<?x5x3xi1>
+// CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
+// CHECK-DAG:     [[VAL_0:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 0 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
+// CHECK-DAG:     [[VAL_1:%.*]] = mhlo.reshape [[VAL_0]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_2:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 1 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
+// CHECK-DAG:     [[VAL_3:%.*]] = mhlo.reshape [[VAL_2]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_4:%.*]] = "mhlo.get_dimension_size"([[ARG_1]]) {dimension = 2 : i64} : (tensor<?x5x3xi1>) -> tensor<i32>
+// CHECK-DAG:     [[VAL_5:%.*]] = mhlo.reshape [[VAL_4]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:     [[VAL_6:%.*]] = "mhlo.concatenate"([[VAL_1]], [[VAL_3]], [[VAL_5]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK-DAG:     [[VAL_7:%.*]] = "mhlo.dynamic_iota"([[VAL_6]]) {iota_dimension = 2 : i64} : (tensor<3xi32>) -> tensor<?x5x3xi32>
+// CHECK-DAG:     [[VAL_8:%.*]]:2 = "mhlo.sort"([[ARG_1]], [[VAL_7]]) ({
+// CHECK-DAG:     ^bb0([[ARG_2:%.*]]: tensor<i1>, [[ARG_3:%.*]]: tensor<i1>, [[ARG_4:%.*]]: tensor<i32>, [[ARG_5:%.*]]: tensor<i32>):
+// CHECK-DAG:       [[VAL_14:%.*]] = mhlo.compare  GT, [[ARG_2]], [[ARG_3]],  NOTYPE : (tensor<i1>, tensor<i1>) -> tensor<i1>
+// CHECK-DAG:       mhlo.return [[VAL_14]] : tensor<i1>
+// CHECK-DAG:     }) {dimension = 2 : i64, is_stable = true} : (tensor<?x5x3xi1>, tensor<?x5x3xi32>) -> (tensor<?x5x3xi1>, tensor<?x5x3xi32>)
+// CHECK-DAG:     [[VAL_9:%.*]] = mhlo.constant dense<0> : tensor<3xi64>
+// CHECK-DAG:     [[VAL_10:%.*]] = mhlo.convert [[VAL_6]] : (tensor<3xi32>) -> tensor<3xi64>
+// CHECK-DAG:     [[VAL_11:%.*]] = mhlo.constant dense<1> : tensor<3xi64>
+// CHECK-DAG:     [[VAL_12:%.*]] = mhlo.real_dynamic_slice [[VAL_8]]#0, [[VAL_9]], [[VAL_10]], [[VAL_11]] : (tensor<?x5x3xi1>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi1>
+// CHECK-DAG:     [[VAL_13:%.*]] = mhlo.real_dynamic_slice [[VAL_8]]#1, [[VAL_9]], [[VAL_10]], [[VAL_11]] : (tensor<?x5x3xi32>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi32>
+// CHECK-DAG:     return [[VAL_12]], [[VAL_13]] : tensor<?x5x2xi1>, tensor<?x5x2xi32>
+// CHECK-DAG:   }
+// CHECK-DAG: }
+
+func.func @dyn_top_k(%arg0: tensor<i64>, %arg1: tensor<?x5x3xi1> {mhlo.sharding = ""}) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
+  %values, %indices = chlo.top_k(%arg1, k = 2) : tensor<?x5x3xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
+  return %values, %indices : tensor<?x5x2xi1>, tensor<?x5x2xi32>
+}
+
+// -----
+
 // Verify bessel_i1e operator for f16, f32, f64 separately as they use
 // different coefficients.
 
 // CHECK-LABEL: @bessel_i1e_f16
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<16x16xf16>)
 func.func @bessel_i1e_f16(%arg: tensor<16x16xf16>) -> tensor<16x16xf16> {
-  // CHECK-NEXT:  %[[TMP_0:.*]] = mhlo.convert(%[[ARG0]]) : (tensor<16x16xf16>) -> tensor<16x16xf32>
+  // CHECK-NEXT:  %[[TMP_0:.*]] = mhlo.convert %[[ARG0]] : (tensor<16x16xf16>) -> tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_1:.*]] = mhlo.abs %[[TMP_0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_2:.*]] = mhlo.constant dense<5.000000e-01> : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_3:.*]] = mhlo.constant dense<2.000000e+00> : tensor<16x16xf32>
@@ -2657,10 +2641,10 @@ func.func @bessel_i1e_f16(%arg: tensor<16x16xf16>) -> tensor<16x16xf16> {
   // CHECK-NEXT:  %[[TMP_119:.*]] = mhlo.sqrt %[[TMP_1]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_120:.*]] = mhlo.divide %[[TMP_118]], %[[TMP_119]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_121:.*]] = mhlo.compare LE, %[[TMP_1]], %[[TMP_5]], NOTYPE : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
-  // CHECK-NEXT:  %[[TMP_122:.*]] = "mhlo.select"(%[[TMP_121]], %[[TMP_82]], %[[TMP_120]]) : (tensor<16x16xi1>, tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK-NEXT:  %[[TMP_122:.*]] = mhlo.select %[[TMP_121]], %[[TMP_82]], %[[TMP_120]] : tensor<16x16xi1>, tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_123:.*]] = mhlo.sign %[[TMP_0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_124:.*]] = mhlo.multiply %[[TMP_123]], %[[TMP_122]] : tensor<16x16xf32>
-  // CHECK-NEXT:  %[[TMP_125:.*]] = mhlo.convert(%[[TMP_124]]) : (tensor<16x16xf32>) -> tensor<16x16xf16>
+  // CHECK-NEXT:  %[[TMP_125:.*]] = mhlo.convert %[[TMP_124]] : (tensor<16x16xf32>) -> tensor<16x16xf16>
   // CHECK-NEXT:  return %[[TMP_125]] : tensor<16x16xf16>
   %0 = chlo.bessel_i1e %arg : tensor<16x16xf16> -> tensor<16x16xf16>
   func.return %0 : tensor<16x16xf16>
@@ -2792,7 +2776,7 @@ func.func @bessel_i1e_f32(%arg : tensor<16x16xf32>) -> tensor<16x16xf32> {
   // CHECK-NEXT:  %[[TMP_118:.*]] = mhlo.sqrt %[[TMP_0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_119:.*]] = mhlo.divide %[[TMP_117]], %[[TMP_118]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_120:.*]] = mhlo.compare LE, %[[TMP_0]], %[[TMP_4]], NOTYPE : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
-  // CHECK-NEXT:  %[[TMP_121:.*]] = "mhlo.select"(%[[TMP_120]], %[[TMP_81]], %[[TMP_119]]) : (tensor<16x16xi1>, tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK-NEXT:  %[[TMP_121:.*]] = mhlo.select %[[TMP_120]], %[[TMP_81]], %[[TMP_119]] : tensor<16x16xi1>, tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_122:.*]] = mhlo.sign %[[ARG0]] : tensor<16x16xf32>
   // CHECK-NEXT:  %[[TMP_123:.*]] = mhlo.multiply %[[TMP_122]], %[[TMP_121]] : tensor<16x16xf32>
   // CHECK-NEXT:  return %[[TMP_123]] : tensor<16x16xf32>
@@ -3046,10 +3030,252 @@ func.func @bessel_i1e_f64(%arg : tensor<16x16xf64>) -> tensor<16x16xf64> {
   // CHECK-NEXT: %[[TMP_238:.*]] = mhlo.sqrt %[[TMP_0]] : tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_239:.*]] = mhlo.divide %[[TMP_237]], %[[TMP_238]] : tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_240:.*]] = mhlo.compare LE, %[[TMP_0]], %[[TMP_4]], NOTYPE : (tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xi1>
-  // CHECK-NEXT: %[[TMP_241:.*]] = "mhlo.select"(%[[TMP_240]], %[[TMP_129]], %[[TMP_239]]) : (tensor<16x16xi1>, tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xf64>
+  // CHECK-NEXT: %[[TMP_241:.*]] = mhlo.select %[[TMP_240]], %[[TMP_129]], %[[TMP_239]] : tensor<16x16xi1>, tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_242:.*]] = mhlo.sign %[[ARG0]] : tensor<16x16xf64>
   // CHECK-NEXT: %[[TMP_243:.*]] = mhlo.multiply %[[TMP_242]], %[[TMP_241]] : tensor<16x16xf64>
   // CHECK-NEXT: return %[[TMP_243]] : tensor<16x16xf64>
   %0 = chlo.bessel_i1e %arg : tensor<16x16xf64> -> tensor<16x16xf64>
   func.return %0 : tensor<16x16xf64>
+}
+
+// CHECK:  func.func @erf_inv([[ARG_0:%.*]]: tensor<16x16xf32>) {
+// CHECK-DAG:     [[VAL_0:%.*]] = mhlo.negate [[ARG_0]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_1:%.*]] = mhlo.multiply [[ARG_0]], [[VAL_0]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_2:%.*]] = mhlo.log_plus_one [[VAL_1]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_3:%.*]] = mhlo.negate [[VAL_2]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_4:%.*]] = mhlo.constant dense<5.000000e+00> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_5:%.*]] = mhlo.compare  LT, [[VAL_3]], [[VAL_4]],  NOTYPE : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
+// CHECK-DAG:     [[VAL_6:%.*]] = mhlo.constant dense<2.500000e+00> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_7:%.*]] = mhlo.subtract [[VAL_3]], [[VAL_6]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_8:%.*]] = mhlo.sqrt [[VAL_3]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_9:%.*]] = mhlo.constant dense<3.000000e+00> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_10:%.*]] = mhlo.subtract [[VAL_8]], [[VAL_9]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_11:%.*]] = mhlo.select [[VAL_5]], [[VAL_7]], [[VAL_10]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_12:%.*]] = mhlo.constant dense<2.81022636E-8> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_13:%.*]] = mhlo.constant dense<-2.00214257E-4> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_14:%.*]] = mhlo.select [[VAL_5]], [[VAL_12]], [[VAL_13]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_15:%.*]] = mhlo.constant dense<3.43273939E-7> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_16:%.*]] = mhlo.constant dense<1.00950558E-4> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_17:%.*]] = mhlo.select [[VAL_5]], [[VAL_15]], [[VAL_16]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_18:%.*]] = mhlo.multiply [[VAL_14]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_19:%.*]] = mhlo.add [[VAL_17]], [[VAL_18]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_20:%.*]] = mhlo.constant dense<-3.5233877E-6> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_21:%.*]] = mhlo.constant dense<0.00134934322> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_22:%.*]] = mhlo.select [[VAL_5]], [[VAL_20]], [[VAL_21]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_23:%.*]] = mhlo.multiply [[VAL_19]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_24:%.*]] = mhlo.add [[VAL_22]], [[VAL_23]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_25:%.*]] = mhlo.constant dense<-4.39150654E-6> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_26:%.*]] = mhlo.constant dense<-0.00367342844> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_27:%.*]] = mhlo.select [[VAL_5]], [[VAL_25]], [[VAL_26]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_28:%.*]] = mhlo.multiply [[VAL_24]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_29:%.*]] = mhlo.add [[VAL_27]], [[VAL_28]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_30:%.*]] = mhlo.constant dense<2.1858087E-4> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_31:%.*]] = mhlo.constant dense<0.00573950773> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_32:%.*]] = mhlo.select [[VAL_5]], [[VAL_30]], [[VAL_31]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_33:%.*]] = mhlo.multiply [[VAL_29]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_34:%.*]] = mhlo.add [[VAL_32]], [[VAL_33]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_35:%.*]] = mhlo.constant dense<-0.00125372503> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_36:%.*]] = mhlo.constant dense<-0.0076224613> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_37:%.*]] = mhlo.select [[VAL_5]], [[VAL_35]], [[VAL_36]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_38:%.*]] = mhlo.multiply [[VAL_34]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_39:%.*]] = mhlo.add [[VAL_37]], [[VAL_38]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_40:%.*]] = mhlo.constant dense<-0.00417768164> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_41:%.*]] = mhlo.constant dense<0.00943887047> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_42:%.*]] = mhlo.select [[VAL_5]], [[VAL_40]], [[VAL_41]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_43:%.*]] = mhlo.multiply [[VAL_39]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_44:%.*]] = mhlo.add [[VAL_42]], [[VAL_43]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_45:%.*]] = mhlo.constant dense<0.246640727> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_46:%.*]] = mhlo.constant dense<1.00167406> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_47:%.*]] = mhlo.select [[VAL_5]], [[VAL_45]], [[VAL_46]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_48:%.*]] = mhlo.multiply [[VAL_44]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_49:%.*]] = mhlo.add [[VAL_47]], [[VAL_48]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_50:%.*]] = mhlo.constant dense<1.50140941> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_51:%.*]] = mhlo.constant dense<2.83297682> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_52:%.*]] = mhlo.select [[VAL_5]], [[VAL_50]], [[VAL_51]] : tensor<16x16xi1>, tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_53:%.*]] = mhlo.multiply [[VAL_49]], [[VAL_11]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_54:%.*]] = mhlo.add [[VAL_52]], [[VAL_53]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_55:%.*]] = mhlo.multiply [[VAL_54]], [[ARG_0]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_56:%.*]] = mhlo.abs [[ARG_0]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_57:%.*]] = mhlo.constant dense<1.000000e+00> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_58:%.*]] = mhlo.compare  EQ, [[VAL_56]], [[VAL_57]],  NOTYPE : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xi1>
+// CHECK-DAG:     [[VAL_59:%.*]] = mhlo.constant dense<0x7F800000> : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_60:%.*]] = mhlo.multiply [[ARG_0]], [[VAL_59]] : tensor<16x16xf32>
+// CHECK-DAG:     [[VAL_61:%.*]] = mhlo.select [[VAL_58]], [[VAL_60]], [[VAL_55]] : tensor<16x16xi1>, tensor<16x16xf32>
+func.func @erf_inv(%arg0 : tensor<16x16xf32>) {
+  %0 = chlo.erf_inv %arg0 : tensor<16x16xf32> -> tensor<16x16xf32>
+  return
+}
+
+// CHECK:  func.func @erf_inv_wide([[ARG_0:%.*]]: tensor<16x16xf64>) {
+// CHECK-DAG:     [[VAL_0:%.*]] = mhlo.negate [[ARG_0]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_1:%.*]] = mhlo.multiply [[ARG_0]], [[VAL_0]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_2:%.*]] = mhlo.log_plus_one [[VAL_1]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_3:%.*]] = mhlo.negate [[VAL_2]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_4:%.*]] = mhlo.constant dense<6.250000e+00> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_5:%.*]] = mhlo.compare  LT, [[VAL_3]], [[VAL_4]],  NOTYPE : (tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xi1>
+// CHECK-DAG:     [[VAL_6:%.*]] = mhlo.constant dense<1.600000e+01> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_7:%.*]] = mhlo.compare  LT, [[VAL_3]], [[VAL_6]],  NOTYPE : (tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xi1>
+// CHECK-DAG:     [[VAL_8:%.*]] = mhlo.sqrt [[VAL_3]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_9:%.*]] = mhlo.constant dense<3.125000e+00> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_10:%.*]] = mhlo.subtract [[VAL_3]], [[VAL_9]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_11:%.*]] = mhlo.constant dense<3.250000e+00> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_12:%.*]] = mhlo.constant dense<5.000000e+00> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_13:%.*]] = mhlo.select [[VAL_7]], [[VAL_11]], [[VAL_12]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_14:%.*]] = mhlo.subtract [[VAL_8]], [[VAL_13]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_15:%.*]] = mhlo.select [[VAL_5]], [[VAL_10]], [[VAL_14]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_16:%.*]] = mhlo.constant dense<-3.6444120640178197E-21> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_17:%.*]] = mhlo.constant dense<2.2137376921775787E-9> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_18:%.*]] = mhlo.select [[VAL_5]], [[VAL_16]], [[VAL_17]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_19:%.*]] = mhlo.constant dense<-2.7109920616438573E-11> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_20:%.*]] = mhlo.select [[VAL_7]], [[VAL_18]], [[VAL_19]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_21:%.*]] = mhlo.constant dense<-1.6850591381820166E-19> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_22:%.*]] = mhlo.constant dense<9.075656193888539E-8> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_23:%.*]] = mhlo.select [[VAL_5]], [[VAL_21]], [[VAL_22]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_24:%.*]] = mhlo.constant dense<-2.5556418169965252E-10> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_25:%.*]] = mhlo.select [[VAL_7]], [[VAL_23]], [[VAL_24]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_26:%.*]] = mhlo.multiply [[VAL_20]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_27:%.*]] = mhlo.add [[VAL_25]], [[VAL_26]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_28:%.*]] = mhlo.constant dense<1.28584807152564E-18> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_29:%.*]] = mhlo.constant dense<-2.7517406297064545E-7> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_30:%.*]] = mhlo.select [[VAL_5]], [[VAL_28]], [[VAL_29]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_31:%.*]] = mhlo.constant dense<1.5076572693500548E-9> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_32:%.*]] = mhlo.select [[VAL_7]], [[VAL_30]], [[VAL_31]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_33:%.*]] = mhlo.multiply [[VAL_27]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_34:%.*]] = mhlo.add [[VAL_32]], [[VAL_33]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_35:%.*]] = mhlo.constant dense<1.1157877678025181E-17> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_36:%.*]] = mhlo.constant dense<1.8239629214389228E-8> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_37:%.*]] = mhlo.select [[VAL_5]], [[VAL_35]], [[VAL_36]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_38:%.*]] = mhlo.constant dense<-3.789465440126737E-9> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_39:%.*]] = mhlo.select [[VAL_7]], [[VAL_37]], [[VAL_38]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_40:%.*]] = mhlo.multiply [[VAL_34]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_41:%.*]] = mhlo.add [[VAL_39]], [[VAL_40]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_42:%.*]] = mhlo.constant dense<-1.3331716628546209E-16> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_43:%.*]] = mhlo.constant dense<1.5027403968909828E-6> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_44:%.*]] = mhlo.select [[VAL_5]], [[VAL_42]], [[VAL_43]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_45:%.*]] = mhlo.constant dense<7.6157012080783394E-9> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_46:%.*]] = mhlo.select [[VAL_7]], [[VAL_44]], [[VAL_45]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_47:%.*]] = mhlo.multiply [[VAL_41]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_48:%.*]] = mhlo.add [[VAL_46]], [[VAL_47]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_49:%.*]] = mhlo.constant dense<2.0972767875968562E-17> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_50:%.*]] = mhlo.constant dense<-4.013867526981546E-6> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_51:%.*]] = mhlo.select [[VAL_5]], [[VAL_49]], [[VAL_50]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_52:%.*]] = mhlo.constant dense<-1.496002662714924E-8> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_53:%.*]] = mhlo.select [[VAL_7]], [[VAL_51]], [[VAL_52]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_54:%.*]] = mhlo.multiply [[VAL_48]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_55:%.*]] = mhlo.add [[VAL_53]], [[VAL_54]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_56:%.*]] = mhlo.constant dense<6.6376381343583238E-15> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_57:%.*]] = mhlo.constant dense<2.9234449089955446E-6> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_58:%.*]] = mhlo.select [[VAL_5]], [[VAL_56]], [[VAL_57]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_59:%.*]] = mhlo.constant dense<2.9147953450901081E-8> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_60:%.*]] = mhlo.select [[VAL_7]], [[VAL_58]], [[VAL_59]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_61:%.*]] = mhlo.multiply [[VAL_55]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_62:%.*]] = mhlo.add [[VAL_60]], [[VAL_61]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_63:%.*]] = mhlo.constant dense<-4.0545662729752069E-14> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_64:%.*]] = mhlo.constant dense<1.2475304481671779E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_65:%.*]] = mhlo.select [[VAL_5]], [[VAL_63]], [[VAL_64]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_66:%.*]] = mhlo.constant dense<-6.7711997758452339E-8> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_67:%.*]] = mhlo.select [[VAL_7]], [[VAL_65]], [[VAL_66]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_68:%.*]] = mhlo.multiply [[VAL_62]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_69:%.*]] = mhlo.add [[VAL_67]], [[VAL_68]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_70:%.*]] = mhlo.constant dense<-8.1519341976054721E-14> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_71:%.*]] = mhlo.constant dense<-4.7318229009055734E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_72:%.*]] = mhlo.select [[VAL_5]], [[VAL_70]], [[VAL_71]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_73:%.*]] = mhlo.constant dense<2.2900482228026655E-7> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_74:%.*]] = mhlo.select [[VAL_7]], [[VAL_72]], [[VAL_73]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_75:%.*]] = mhlo.multiply [[VAL_69]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_76:%.*]] = mhlo.add [[VAL_74]], [[VAL_75]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_77:%.*]] = mhlo.constant dense<2.6335093153082323E-12> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_78:%.*]] = mhlo.constant dense<6.8284851459573175E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_79:%.*]] = mhlo.select [[VAL_5]], [[VAL_77]], [[VAL_78]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_80:%.*]] = mhlo.constant dense<-9.9298272942317003E-7> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_81:%.*]] = mhlo.select [[VAL_7]], [[VAL_79]], [[VAL_80]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_82:%.*]] = mhlo.multiply [[VAL_76]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_83:%.*]] = mhlo.add [[VAL_81]], [[VAL_82]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_84:%.*]] = mhlo.constant dense<-1.2975133253453532E-11> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_85:%.*]] = mhlo.constant dense<2.4031110387097894E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_86:%.*]] = mhlo.select [[VAL_5]], [[VAL_84]], [[VAL_85]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_87:%.*]] = mhlo.constant dense<4.5260625972231537E-6> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_88:%.*]] = mhlo.select [[VAL_7]], [[VAL_86]], [[VAL_87]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_89:%.*]] = mhlo.multiply [[VAL_83]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_90:%.*]] = mhlo.add [[VAL_88]], [[VAL_89]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_91:%.*]] = mhlo.constant dense<-5.4154120542946279E-11> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_92:%.*]] = mhlo.constant dense<-3.5503752036284748E-4> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_93:%.*]] = mhlo.select [[VAL_5]], [[VAL_91]], [[VAL_92]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_94:%.*]] = mhlo.constant dense<-1.9681778105531671E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_95:%.*]] = mhlo.select [[VAL_7]], [[VAL_93]], [[VAL_94]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_96:%.*]] = mhlo.multiply [[VAL_90]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_97:%.*]] = mhlo.add [[VAL_95]], [[VAL_96]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_98:%.*]] = mhlo.constant dense<1.0512122733215323E-9> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_99:%.*]] = mhlo.constant dense<9.5328937973738049E-4> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_100:%.*]] = mhlo.select [[VAL_5]], [[VAL_98]], [[VAL_99]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_101:%.*]] = mhlo.constant dense<7.5995277030017761E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_102:%.*]] = mhlo.select [[VAL_7]], [[VAL_100]], [[VAL_101]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_103:%.*]] = mhlo.multiply [[VAL_97]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_104:%.*]] = mhlo.add [[VAL_102]], [[VAL_103]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_105:%.*]] = mhlo.constant dense<-4.1126339803469837E-9> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_106:%.*]] = mhlo.constant dense<-0.0016882755560235047> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_107:%.*]] = mhlo.select [[VAL_5]], [[VAL_105]], [[VAL_106]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_108:%.*]] = mhlo.constant dense<-2.1503011930044477E-4> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_109:%.*]] = mhlo.select [[VAL_7]], [[VAL_107]], [[VAL_108]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_110:%.*]] = mhlo.multiply [[VAL_104]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_111:%.*]] = mhlo.add [[VAL_109]], [[VAL_110]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_112:%.*]] = mhlo.constant dense<-2.9070369957882005E-8> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_113:%.*]] = mhlo.constant dense<0.0024914420961078508> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_114:%.*]] = mhlo.select [[VAL_5]], [[VAL_112]], [[VAL_113]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_115:%.*]] = mhlo.constant dense<-1.3871931833623122E-4> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_116:%.*]] = mhlo.select [[VAL_7]], [[VAL_114]], [[VAL_115]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_117:%.*]] = mhlo.multiply [[VAL_111]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_118:%.*]] = mhlo.add [[VAL_116]], [[VAL_117]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_119:%.*]] = mhlo.constant dense<4.2347877827932404E-7> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_120:%.*]] = mhlo.constant dense<-0.0037512085075692412> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_121:%.*]] = mhlo.select [[VAL_5]], [[VAL_119]], [[VAL_120]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_122:%.*]] = mhlo.constant dense<1.0103004648645344> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_123:%.*]] = mhlo.select [[VAL_7]], [[VAL_121]], [[VAL_122]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_124:%.*]] = mhlo.multiply [[VAL_118]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_125:%.*]] = mhlo.add [[VAL_123]], [[VAL_124]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_126:%.*]] = mhlo.constant dense<-1.3654692000834679E-6> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_127:%.*]] = mhlo.constant dense<0.0053709145535900636> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_128:%.*]] = mhlo.select [[VAL_5]], [[VAL_126]], [[VAL_127]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_129:%.*]] = mhlo.constant dense<4.8499064014085844> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_130:%.*]] = mhlo.select [[VAL_7]], [[VAL_128]], [[VAL_129]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_131:%.*]] = mhlo.multiply [[VAL_125]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_132:%.*]] = mhlo.add [[VAL_130]], [[VAL_131]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_133:%.*]] = mhlo.constant dense<-1.3882523362786469E-5> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_134:%.*]] = mhlo.constant dense<1.0052589676941592> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_135:%.*]] = mhlo.select [[VAL_5]], [[VAL_133]], [[VAL_134]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_136:%.*]] = mhlo.multiply [[VAL_132]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_137:%.*]] = mhlo.add [[VAL_135]], [[VAL_136]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_138:%.*]] = mhlo.select [[VAL_7]], [[VAL_137]], [[VAL_132]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_139:%.*]] = mhlo.constant dense<1.8673420803405714E-4> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_140:%.*]] = mhlo.constant dense<3.0838856104922208> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_141:%.*]] = mhlo.select [[VAL_5]], [[VAL_139]], [[VAL_140]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_142:%.*]] = mhlo.multiply [[VAL_138]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_143:%.*]] = mhlo.add [[VAL_141]], [[VAL_142]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_144:%.*]] = mhlo.select [[VAL_7]], [[VAL_143]], [[VAL_138]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_145:%.*]] = mhlo.constant dense<-7.4070253416626698E-4> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_146:%.*]] = mhlo.multiply [[VAL_144]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_147:%.*]] = mhlo.add [[VAL_145]], [[VAL_146]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_148:%.*]] = mhlo.select [[VAL_5]], [[VAL_147]], [[VAL_144]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_149:%.*]] = mhlo.constant dense<-0.0060336708714301491> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_150:%.*]] = mhlo.multiply [[VAL_148]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_151:%.*]] = mhlo.add [[VAL_149]], [[VAL_150]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_152:%.*]] = mhlo.select [[VAL_5]], [[VAL_151]], [[VAL_148]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_153:%.*]] = mhlo.constant dense<0.24015818242558962> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_154:%.*]] = mhlo.multiply [[VAL_152]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_155:%.*]] = mhlo.add [[VAL_153]], [[VAL_154]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_156:%.*]] = mhlo.select [[VAL_5]], [[VAL_155]], [[VAL_152]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_157:%.*]] = mhlo.constant dense<1.6536545626831027> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_158:%.*]] = mhlo.multiply [[VAL_156]], [[VAL_15]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_159:%.*]] = mhlo.add [[VAL_157]], [[VAL_158]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_160:%.*]] = mhlo.select [[VAL_5]], [[VAL_159]], [[VAL_156]] : tensor<16x16xi1>, tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_161:%.*]] = mhlo.multiply [[VAL_160]], [[ARG_0]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_162:%.*]] = mhlo.abs [[ARG_0]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_163:%.*]] = mhlo.constant dense<1.000000e+00> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_164:%.*]] = mhlo.compare  EQ, [[VAL_162]], [[VAL_163]],  NOTYPE : (tensor<16x16xf64>, tensor<16x16xf64>) -> tensor<16x16xi1>
+// CHECK-DAG:     [[VAL_165:%.*]] = mhlo.constant dense<0x7FF0000000000000> : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_166:%.*]] = mhlo.multiply [[ARG_0]], [[VAL_165]] : tensor<16x16xf64>
+// CHECK-DAG:     [[VAL_167:%.*]] = mhlo.select [[VAL_164]], [[VAL_166]], [[VAL_161]] : tensor<16x16xi1>, tensor<16x16xf64>
+func.func @erf_inv_wide(%arg0 : tensor<16x16xf64>) {
+  %0 = chlo.erf_inv %arg0 : tensor<16x16xf64> -> tensor<16x16xf64>
+  return
 }

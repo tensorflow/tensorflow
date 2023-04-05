@@ -7,21 +7,17 @@ COPY setup.packages.sh setup.packages.sh
 COPY builder.packages.txt builder.packages.txt
 RUN /setup.packages.sh /builder.packages.txt
 
-# Install devtoolset-7 in /dt7 with glibc 2.12 and libstdc++ 4.4, for building
-# manylinux2010-compatible packages. Scripts expect to be in the root directory.
+# Install devtoolset-9 in /dt9 with glibc 2.17 and libstdc++ 4.8, for building
+# manylinux2014-compatible packages.
 COPY builder.devtoolset/fixlinks.sh /fixlinks.sh
 COPY builder.devtoolset/rpm-patch.sh /rpm-patch.sh
 COPY builder.devtoolset/build_devtoolset.sh /build_devtoolset.sh
-RUN /build_devtoolset.sh devtoolset-7 /dt7 
-
-# Install devtoolset-9 in /dt9 with glibc 2.17 and libstdc++ 4.8, for building
-# manylinux2014-compatible packages.
-RUN /build_devtoolset.sh devtoolset-9 /dt9 
+COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
+RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:11.2.2-base-ubuntu20.04 as devel
+FROM nvidia/cuda:11.8.0-base-ubuntu20.04 as devel
 ################################################################################
-COPY --from=builder /dt7 /dt7
 COPY --from=builder /dt9 /dt9
 
 # Install required development packages but delete unneeded CUDA bloat
@@ -60,3 +56,7 @@ RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt
 # Setup build and environment
 COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
+
+# Don't use the bazel cache when a new docker image is created.
+RUN echo build --action_env=DOCKER_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc
+RUN echo build --host_action_env=DOCKER_HOST_CACHEBUSTER=$(date +%s%N)$RANDOM >> /etc/bazel.bazelrc

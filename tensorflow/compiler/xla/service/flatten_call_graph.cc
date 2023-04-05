@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -66,12 +66,11 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       computation->RemoveAsyncInstruction(instruction);
       instruction->ReplaceCalledComputations(
           [&](HloComputation*) { return new_computation; });
-      new_computation->AddAsyncInstruction(instruction);
+      new_computation->AddAsyncInstruction(*instruction);
       break;
     }
     default:
-      LOG(FATAL) << "unexpected opcode: "
-                 << HloOpcodeString(instruction->opcode());
+      LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
   }
 }
 

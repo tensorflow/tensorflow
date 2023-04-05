@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -99,7 +100,7 @@ StatusOr<mlir::Value> EmitAllGather(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_gather);
 
-  return all_gather.output();
+  return all_gather.getOutput();
 }
 
 StatusOr<const mlir::Value> EmitAllScatter(
@@ -110,7 +111,11 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   // Have an early return if desired layout is not more sharded then the
   // original_layout.
-  assert(original_layout.rank() == desired_layout.rank());
+  if (original_layout.rank() != desired_layout.rank()) {
+    return errors::InvalidArgument(absl::StrCat(
+        "Rank mismatch for original layout (", original_layout.ToString(),
+        ") and desired layout (", desired_layout.ToString(), ")"));
+  }
   for (int i = 0; i < original_layout.rank(); ++i) {
     if (original_layout.sharding_spec(i) != desired_layout.sharding_spec(i) &&
         Layout::IsShardedDimension(original_layout.sharding_spec(i))) {
@@ -143,7 +148,7 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_scatter);
 
-  return all_scatter.output();
+  return all_scatter.getOutput();
 }
 
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
@@ -174,15 +179,15 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
-  auto zero_scalar = CreateZeroScalarConst(
-      builder, input.getLoc(),
-      input.getType().cast<mlir::TensorType>().getElementType());
-  if (!zero_scalar.has_value())
-    return errors::Internal("Failure in creating a zero scalar const");
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, input.getLoc(),
+          input.getType().cast<mlir::TensorType>().getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
-      mlir::ValueRange({indices, shape, values, zero_scalar.value()}));
+      mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
     for (auto new_op : {dense.getOperation(), shape.getOperation(),
@@ -222,7 +227,11 @@ StatusOr<mlir::Value> EmitRelayout(
         "have a rank");
 
   if (src_layout.mesh() != tgt_layout.mesh()) {
-    return errors::Internal("Attempted to relayout to a different mesh.");
+    return errors::Internal(
+        absl::StrCat("Attempted to relayout to a different "
+                     " mesh. Source Mesh = (",
+                     src_layout.mesh().ToString(),
+                     "). Target Mesh = ", tgt_layout.mesh().ToString(), ")."));
   }
   if (src_layout.rank() != tgt_layout.rank()) {
     return errors::Internal(
@@ -279,6 +288,20 @@ StatusOr<mlir::Value> EmitRelayout(
   if (!all_scatter.ok()) return all_scatter;
   return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
+}
+
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value) {
+  absl::flat_hash_set<std::string> reduce_dims;
+  for (const MeshDimension& mesh_dim : mesh.dims()) {
+    reduce_dims.insert(mesh_dim.name);
+  }
+  return EmitAllReduce(
+      builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
+      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      kReduceOpAdd);
 }
 
 StatusOr<mlir::Operation*> EmitAllReduce(
@@ -444,7 +467,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
     return errors::InvalidArgument(
         "Requested halo exchange on unknown mesh dim");
 
-  // TODO(hongjunchoi): Add support fof halo exchange for GPU/CPU.
+  // TODO(b/261485237): Add support for halo exchange for GPU/CPU.
   if (!mesh.is_tpu_mesh())
     return errors::InvalidArgument("Halo exchange is only supported on TPU.");
 

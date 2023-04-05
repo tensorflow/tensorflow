@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
@@ -40,13 +39,16 @@ namespace {
 constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 
+#define GEN_PASS_DEF_TPUBRIDGEEXECUTORISLANDOUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Extract the islands containing a TPU cluster computation into an outlined
 // function in a nested module. This will allow to run the usual bridge on this
 // nested module which exhibit a more friendly "V2-like" structure.
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public TF::TPUBridgeExecutorIslandOutliningPassBase<
+    : public impl::TPUBridgeExecutorIslandOutliningPassBase<
           TPUBridgeExecutorIslandOutlining> {
   void runOnOperation() override;
 };

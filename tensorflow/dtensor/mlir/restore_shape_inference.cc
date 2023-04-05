@@ -91,26 +91,26 @@ mlir::LogicalResult BackwardShapeInferenceToRestoreOp(mlir::ModuleOp module,
   } else if (auto identity_op =
                  llvm::dyn_cast_or_null<mlir::TF::IdentityOp>(op)) {
     auto new_identity_op = builder->create<mlir::TF::IdentityOp>(
-        identity_op.getLoc(), type, identity_op.input());
-    identity_op.output().replaceAllUsesWith(new_identity_op.output());
+        identity_op.getLoc(), type, identity_op.getInput());
+    identity_op.getOutput().replaceAllUsesWith(new_identity_op.getOutput());
     identity_op.erase();
 
     // Recursively shape inference to the input of the identity op.
     return BackwardShapeInferenceToRestoreOp(module, builder,
-                                             new_identity_op.input(), type);
+                                             new_identity_op.getInput(), type);
   } else if (auto recv_op = llvm::dyn_cast_or_null<mlir::TF::DTensorRecv>(op)) {
     // If we have a DTensorRecv, then there is cross mesh action and the
     // RestoreV2Op we want to fix is on the mesh of the corresponding
     // DTensorSend. Set shape of this DTensorRecv first and go to the
     // corresponding DTensorSend.
     auto new_recv_op = builder->create<mlir::TF::DTensorRecv>(
-        recv_op.getLoc(), type, builder->getStringAttr(recv_op.key()),
+        recv_op.getLoc(), type, builder->getStringAttr(recv_op.getKey()),
         mlir::TF::ShapeAttr::get(builder->getContext(),
                                  type.dyn_cast<mlir::TensorType>()),
         mlir::dtensor::LayoutAttr::get(builder->getContext(),
-                                       recv_op.layout()));
+                                       recv_op.getLayout()));
 
-    recv_op.replaceAllUsesWith(new_recv_op.output());
+    recv_op.replaceAllUsesWith(new_recv_op.getOutput());
     recv_op.erase();
 
     auto send_op = GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorRecv>(
@@ -139,9 +139,9 @@ mlir::LogicalResult PropagateShapeInformationFromAssignVariableOp(
     mlir::ModuleOp module) {
   module.walk([&](mlir::TF::AssignVariableOp assign_op) {
     // Check that the `value` has an unknown shape.
-    if (ValueRank(assign_op.value()) == -1) {
+    if (ValueRank(assign_op.getValue()) == -1) {
       StatusOr<llvm::ArrayRef<int64_t>> shape =
-          GetShapeOfValue(assign_op.resource());
+          GetShapeOfValue(assign_op.getResource());
       if (!shape.ok()) {
         assign_op->emitOpError(
             "Resource tensor was expected to have shape information but was "
@@ -151,9 +151,9 @@ mlir::LogicalResult PropagateShapeInformationFromAssignVariableOp(
       // Propagete shape backwards to all the ops that use or produce
       // the value with missing shape.
       mlir::OpBuilder builder(assign_op);
-      mlir::Type known_type = GetSubtypeOrSelf(assign_op.resource());
+      mlir::Type known_type = GetSubtypeOrSelf(assign_op.getResource());
       if (mlir::failed(BackwardShapeInferenceToRestoreOp(
-              module, &builder, assign_op.value(), known_type))) {
+              module, &builder, assign_op.getValue(), known_type))) {
         assign_op->emitOpError(
             "Error doing Backward shape inference from AssignVariableOp during "
             "CheckpointShapeInference.");

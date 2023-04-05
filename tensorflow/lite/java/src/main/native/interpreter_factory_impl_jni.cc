@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/lite/core/shims/c/c_api.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
-#include "tensorflow/lite/version.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,10 +34,8 @@ Java_org_tensorflow_lite_InterpreterFactoryImpl_nativeRuntimeVersion(
 JNIEXPORT jstring JNICALL
 Java_org_tensorflow_lite_InterpreterFactoryImpl_nativeSchemaVersion(
     JNIEnv* env, jclass /*clazz*/) {
-  // TODO(b/214292391): use a new C API function rather than the
-  // TFLITE_SCHEMA_VERSION constant here.
   char buf[64];
-  snprintf(buf, sizeof(buf), "%d", TFLITE_SCHEMA_VERSION);
+  snprintf(buf, sizeof(buf), "%d", TfLiteSchemaVersion());
   return env->NewStringUTF(buf);
 }
 

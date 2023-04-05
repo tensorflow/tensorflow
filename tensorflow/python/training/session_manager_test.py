@@ -23,9 +23,10 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
@@ -42,7 +43,7 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceeds(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session(
@@ -52,7 +53,7 @@ class SessionManagerTest(test.TestCase):
   def testPrepareSessionSucceedsWithInitFeedDict(self):
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.float32, shape=(3,))
-      v = variables.VariableV1(p, name="v")
+      v = variable_v1.VariableV1(p, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session(
@@ -63,7 +64,7 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceedsWithInitFn(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1([125], name="v")
+      v = variable_v1.VariableV1([125], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session(
@@ -73,8 +74,8 @@ class SessionManagerTest(test.TestCase):
   def testPrepareSessionSucceedsWithLocalInitFeedDict(self):
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.float32, shape=(3,))
-      v = variables.VariableV1(p, name="v",
-                               collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      v = variable_v1.VariableV1(
+          p, name="v", collections=[ops.GraphKeys.LOCAL_VARIABLES])
       sm = session_manager.SessionManager(
           local_init_op=v.initializer,
           local_init_feed_dict={p: [1.0, 2.0, 3.0]},
@@ -93,7 +94,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -111,9 +112,9 @@ class SessionManagerTest(test.TestCase):
       # Renames the checkpoint directory.
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
-      v = variables.VariableV1([6.0, 7.0, 8.0], name="v")
+      v = variable_v1.VariableV1([6.0, 7.0, 8.0], name="v")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
       session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -140,7 +141,7 @@ class SessionManagerTest(test.TestCase):
           max_wait_secs=2)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
   def _test_recovered_variable(self,
@@ -148,9 +149,9 @@ class SessionManagerTest(test.TestCase):
                                checkpoint_filename_with_path=None):
     # Create a new Graph and SessionManager and recover from a checkpoint.
     with ops.Graph().as_default():
-      v = variables.VariableV1(2, name="v")
+      v = variable_v1.VariableV1(2, name="v")
       with session_lib.Session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -162,7 +163,7 @@ class SessionManagerTest(test.TestCase):
       self.assertTrue(initialized)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(1, sess.run(v))
 
@@ -176,7 +177,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
+      v = variable_v1.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -200,7 +201,7 @@ class SessionManagerTest(test.TestCase):
 
   def testWaitForSessionReturnsNoneAfterTimeout(self):
     with ops.Graph().as_default():
-      variables.VariableV1(1, name="v")
+      variable_v1.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           recovery_wait_secs=1)
@@ -231,7 +232,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
+      v = variable_v1.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -244,15 +245,15 @@ class SessionManagerTest(test.TestCase):
                                     "recover_session_checkpoint"))
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.VariableV1(2, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(2, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=variables.report_uninitialized_variables(
@@ -264,11 +265,11 @@ class SessionManagerTest(test.TestCase):
       self.assertTrue(initialized)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(1, sess.run(v))
       self.assertEqual(1, sess.run(w))
@@ -289,7 +290,7 @@ class SessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
+      v = variable_v1.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       saver = saver_lib.Saver({"v": v})
@@ -302,15 +303,15 @@ class SessionManagerTest(test.TestCase):
                                     "recover_session_checkpoint"))
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.VariableV1(2, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(2, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=variables.report_uninitialized_variables(),
@@ -321,11 +322,11 @@ class SessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(
           False,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(1, sess.run(v))
 
@@ -335,13 +336,13 @@ class SessionManagerTest(test.TestCase):
     # local_init_op exactly once, regardless of whether the session was
     # successfully recovered.
     with ops.Graph().as_default():
-      w = variables.VariableV1(
+      w = variable_v1.VariableV1(
           1,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=None,
@@ -353,7 +354,7 @@ class SessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(1, sess.run(w))
 
@@ -370,15 +371,15 @@ class SessionManagerTest(test.TestCase):
 
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.VariableV1(2, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(2, name="v")
+      w = variable_v1.VariableV1(
           1,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=None,
@@ -392,19 +393,19 @@ class SessionManagerTest(test.TestCase):
       self.assertFalse(initialized)
       self.assertEqual(
           False,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(1, sess.run(w))
 
   def testWaitForSessionLocalInit(self):
     server = server_lib.Server.create_local_server()
     with ops.Graph().as_default() as graph:
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -423,19 +424,19 @@ class SessionManagerTest(test.TestCase):
       sess = sm.wait_for_session(server.target, max_wait_secs=3)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(1, sess.run(v))
       self.assertEqual(1, sess.run(w))
 
   def testWaitForSessionWithReadyForLocalInitOpFailsToReadyLocal(self):
     with ops.Graph().as_default() as graph:
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -454,8 +455,8 @@ class SessionManagerTest(test.TestCase):
   @test_util.run_v1_only("Requires TF V1 variable behavior.")
   def testWaitForSessionInsufficientReadyForLocalInitCheck(self):
     with ops.Graph().as_default() as graph:
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -471,21 +472,21 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionWithReadyForLocalInitOp(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      x = variables.VariableV1(
+      x = variable_v1.VariableV1(
           3 * v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
-        self.assertEqual(False, variables.is_variable_initialized(x).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(x).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=variables.report_uninitialized_variables(
@@ -494,15 +495,15 @@ class SessionManagerTest(test.TestCase):
       sess = sm2.prepare_session("", init_op=v.initializer)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("x:0")).eval(session=sess))
       self.assertEqual(1, sess.run(v))
       self.assertEqual(1, sess.run(w))
@@ -511,66 +512,69 @@ class SessionManagerTest(test.TestCase):
   @test_util.run_v1_only("Requires TF V1 variable behavior.")
   def testPrepareSessionWithPartialInitOp(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      x = variables.VariableV1(
+      x = variable_v1.VariableV1(
           3 * v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x")
       # TODO(b/70206927): Use ResourceVariables once they are handled properly.
-      v_res = variables.VariableV1(1, name="v_res")
-      w_res = variables.VariableV1(
+      v_res = variable_v1.VariableV1(1, name="v_res")
+      w_res = variable_v1.VariableV1(
           v_res,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w_res")
-      x_res = variables.VariableV1(
+      x_res = variable_v1.VariableV1(
           3 * v_res,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x_res")
 
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
-        self.assertEqual(False, variables.is_variable_initialized(x).eval())
-        self.assertEqual(False, variables.is_variable_initialized(v_res).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w_res).eval())
-        self.assertEqual(False, variables.is_variable_initialized(x_res).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(x).eval())
+        self.assertEqual(False,
+                         variable_v1.is_variable_initialized(v_res).eval())
+        self.assertEqual(False,
+                         variable_v1.is_variable_initialized(w_res).eval())
+        self.assertEqual(False,
+                         variable_v1.is_variable_initialized(x_res).eval())
       sm2 = session_manager.SessionManager(local_init_op=[
           w.initializer, x.initializer, w_res.initializer, x_res.initializer
       ])
       sess = sm2.prepare_session("", init_op=None)
       self.assertEqual(
           False,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("x:0")).eval(session=sess))
       self.assertEqual(1, sess.run(w))
       self.assertEqual(3, sess.run(x))
       self.assertEqual(
           False,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v_res:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("w_res:0")).eval(session=sess))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("x_res:0")).eval(session=sess))
       self.assertEqual(1, sess.run(w_res))
       self.assertEqual(3, sess.run(x_res))
@@ -580,30 +584,30 @@ class SessionManagerTest(test.TestCase):
     # into an infinite recursion when the variable's initial_value involved
     # cyclic dependencies.
     with ops.Graph().as_default():
-      i = control_flow_ops.while_loop(lambda i: i < 1, lambda i: i + 1, [0])
-      v = variables.VariableV1(array_ops.identity(i), name="v")
+      i = while_loop.while_loop(lambda i: i < 1, lambda i: i + 1, [0])
+      v = variable_v1.VariableV1(array_ops.identity(i), name="v")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       sess = sm.prepare_session("", init_op=v.initializer)
       self.assertEqual(1, sess.run(v))
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
   def testPrepareSessionDidNotInitLocalVariable(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       with self.assertRaisesRegex(RuntimeError,
@@ -612,15 +616,15 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionDidNotInitLocalVariableList(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
       with self.assertRaisesRegex(RuntimeError,
@@ -629,15 +633,15 @@ class SessionManagerTest(test.TestCase):
 
   def testPrepareSessionWithReadyNotReadyForLocal(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=variables.report_uninitialized_variables(
@@ -651,15 +655,15 @@ class SessionManagerTest(test.TestCase):
   @test_util.run_v1_only("Requires TF V1 variable behavior.")
   def testPrepareSessionWithInsufficientReadyForLocalInitCheck(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
-      w = variables.VariableV1(
+      v = variable_v1.VariableV1(1, name="v")
+      w = variable_v1.VariableV1(
           v,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
-        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
           ready_for_local_init_op=None,
@@ -678,7 +682,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceeds(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       sess = sm.prepare_session(
@@ -688,7 +692,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
   def testPrepareSessionSucceedsWithInitFeedDict(self):
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.float32, shape=(3,))
-      v = variables.VariableV1(p, name="v")
+      v = variable_v1.VariableV1(p, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       sess = sm.prepare_session(
@@ -699,7 +703,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
 
   def testPrepareSessionSucceedsWithInitFn(self):
     with ops.Graph().as_default():
-      v = variables.VariableV1([125], name="v")
+      v = variable_v1.VariableV1([125], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       sess = sm.prepare_session(
@@ -717,7 +721,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       saver = saver_lib.Saver({"v": v})
@@ -735,9 +739,9 @@ class ObsoleteSessionManagerTest(test.TestCase):
       # Renames the checkpoint directory.
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
-      v = variables.VariableV1([6.0, 7.0, 8.0], name="v")
+      v = variable_v1.VariableV1([6.0, 7.0, 8.0], name="v")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
       session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       saver = saver_lib.Saver({"v": v})
@@ -764,7 +768,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
           max_wait_secs=2)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
   def testRecoverSession(self):
@@ -777,7 +781,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
     gfile.MakeDirs(checkpoint_dir)
 
     with ops.Graph().as_default():
-      v = variables.VariableV1(1, name="v")
+      v = variable_v1.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       saver = saver_lib.Saver({"v": v})
@@ -790,9 +794,9 @@ class ObsoleteSessionManagerTest(test.TestCase):
                                     "recover_session_checkpoint"))
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
-      v = variables.VariableV1(2, name="v")
+      v = variable_v1.VariableV1(2, name="v")
       with self.cached_session():
-        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variable_v1.is_variable_initialized(v).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
       saver = saver_lib.Saver({"v": v})
@@ -801,13 +805,13 @@ class ObsoleteSessionManagerTest(test.TestCase):
       self.assertTrue(initialized)
       self.assertEqual(
           True,
-          variables.is_variable_initialized(
+          variable_v1.is_variable_initialized(
               sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
       self.assertEqual(1, sess.run(v))
 
   def testWaitForSessionReturnsNoneAfterTimeout(self):
     with ops.Graph().as_default():
-      variables.VariableV1(1, name="v")
+      variable_v1.VariableV1(1, name="v")
       sm = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized(),
           recovery_wait_secs=1)

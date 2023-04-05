@@ -4,6 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "VERSION_MAJOR", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//third_party/py/keras/api:__subpackages__",
@@ -16,7 +17,7 @@ py_library(
     srcs = ["public_api.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )
@@ -42,7 +43,7 @@ py_library(
     srcs = ["traverse.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
         "@six_archive//:six",
     ],
 )

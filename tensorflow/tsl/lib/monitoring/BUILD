@@ -1,12 +1,14 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
 package(
-    default_visibility = [
-        "//learning/brain/google/monitoring:__pkg__",
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = set_external_visibility([
+        "//learning/brain/google/monitoring:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
@@ -17,8 +19,12 @@ package(
         # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla/hlo/experimental:__subpackages__",
         "//tensorflow/core/lib/monitoring:__subpackages__",
-    ],
+        "//tensorflow/compiler/xla/service:__subpackages__",
+        "//tensorflow/tsl/framework:__subpackages__",
+        "//tensorflow/tsl/distributed_runtime:__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -62,7 +68,6 @@ cc_library(
     deps = [
         ":collection_registry",
         ":metric_def",
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/lib/histogram",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:macros",
@@ -70,6 +75,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -86,15 +92,15 @@ cc_library(
 cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//learning/brain/google/monitoring:__subpackages__",
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":types",
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -102,14 +108,13 @@ cc_library(
     name = "collection_registry",
     srcs = ["collection_registry.cc"],
     hdrs = ["collection_registry.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":collected_metrics",
         ":metric_def",
         ":types",
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
@@ -118,6 +123,7 @@ cc_library(
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -129,7 +135,7 @@ cc_library(
     deps = [
         ":metric_def",
         ":types",
-        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -189,9 +195,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
@@ -222,10 +228,10 @@ filegroup(
         "timed.h",
         "types.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/monitoring:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -243,10 +249,10 @@ filegroup(
         "timed.h",
         "types.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/monitoring:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -263,8 +269,8 @@ filegroup(
         "test_utils.h",
         "types.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/monitoring:__pkg__",
-    ],
+    ]),
 )

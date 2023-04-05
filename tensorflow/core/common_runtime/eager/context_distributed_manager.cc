@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -39,10 +40,10 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -599,7 +600,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   auto session_name = strings::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   if (reset_context) {
-    RemoteRendezvous* r =
+    tsl::core::RefCountPtr<RemoteRendezvous> r =
         server->worker_env()->rendezvous_mgr->Find(context_id);
     auto* device_mgr = server->worker_env()->device_mgr;
     std::shared_ptr<WorkerSession> worker_session;
@@ -622,8 +623,8 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
         std::move(new_server), server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
-        std::move(remote_mgr)));
+        remote_workers, context_id, r.release(), device_mgr, keep_alive_secs,
+        cluster_flr, std::move(remote_mgr)));
 
     // NOTE: We start the server after all other initialization, because the
     // GrpcServer cannot be destroyed after it is started.
@@ -722,37 +723,55 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       coordination_service_agent_ = session_mgr->GetCoordinationServiceAgent();
       LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
           coordination_service_agent_));
+      // Start preemption notifier that will propagate preemption signals to the
+      // cluster.
+      preemption_notifier_ = tsl::PreemptionNotifier::CreatePreemptionNotifier(
+          "sigterm", Env::Default());
+      preemption_notifier_->WillBePreemptedAtAsync(
+          [coord_agent = coordination_service_agent_](
+              StatusOr<absl::Time> time_or_status) {
+            if (time_or_status.ok()) {
+              const auto coord_task = coord_agent->GetOwnTask().value();
+              Status s = coord_agent->InsertKeyValue(
+                  "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
+                  absl::StrCat("/job:", coord_task.job_name(),
+                               "/task:", coord_task.task_id()));
+              if (!s.ok()) {
+                LOG(INFO) << "Preemption not exported to coordination service: "
+                          << s;
+              }
+            }
+          });
     }
 
     LOG_AND_RETURN_IF_ERROR(server->Start());
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        std::move(new_server), server->worker_env()->device_mgr,
+        server->worker_env()->collective_executor_mgr.get()));
 
     if (enable_coordination) {
       // Coordination agent: connect and wait for all tasks
       std::vector<DeviceAttributes> local_devices;
       server->worker_env()->device_mgr->ListDeviceAttributes(&local_devices);
-      CoordinationServiceDeviceInfo devices;
-      *devices.mutable_tf()->mutable_devices() = {
-          std::make_move_iterator(local_devices.begin()),
-          std::make_move_iterator(local_devices.end())};
+      DeviceInfo devices;
+      for (auto& local_device : local_devices) {
+        devices.mutable_device()->Add()->PackFrom(local_device);
+      }
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
       LOG_AND_RETURN_IF_ERROR(
           coordination_service_agent_->WaitForAllTasks(devices));
 
       // Add remote devices to eager context.
       std::vector<std::unique_ptr<Device>> remote_devices;
-      for (const auto& d :
-           coordination_service_agent_->GetClusterDeviceInfo().tf().devices()) {
+      for (const auto& device :
+           coordination_service_agent_->GetClusterDeviceInfo().device()) {
         // Treat all devices as remote so that EagerContext::remote_device_mgr
         // maintains all the devices, including both local and remote.
+        DeviceAttributes d;
+        device.UnpackTo(&d);
         remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
       }
       LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));
-    }
-
-    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
-        std::move(new_server), server->worker_env()->device_mgr,
-        server->worker_env()->collective_executor_mgr.get()));
-    if (enable_coordination) {
       // Update cluster_flr and remote device list
       eager::EagerClusterFunctionLibraryRuntime* cluster_flr =
           new eager::EagerClusterFunctionLibraryRuntime(

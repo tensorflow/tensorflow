@@ -127,7 +127,7 @@ class RendezvousInterface {
 //
 // This class is used in cases where a rendezvous may be shared between multiple
 // threads with no clear owner.
-class Rendezvous : public RendezvousInterface, public core::RefCounted {
+class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
  public:
   class Factory {
    public:
@@ -181,7 +181,7 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
 // Returns a Rendezvous instance that is limited to use only by
 // producers and consumers in the local process.  The caller assumes
 // ownership of one Ref() on the returned object.
-Rendezvous* NewLocalRendezvous();
+Rendezvous* NewLocalRendezvous(int num_shards = 1);
 
 }  // end namespace tensorflow
 

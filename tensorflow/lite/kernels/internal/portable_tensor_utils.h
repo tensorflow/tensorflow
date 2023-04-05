@@ -20,8 +20,8 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -599,6 +599,22 @@ void ApplyRelu6ToVector(const float* __restrict__ vector, int v_size,
 // Apply signbit to elements of a vector
 void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
                           float* __restrict__ result);
+
+// Unpack or inflate `src_buffer` by taking each element and splitting it as
+// two elements into `dst_buffer`.
+// Parameters:
+//   src_buffer   : Densely packed buffer containing int4 values
+//   num_elements : Number of elements stored in the buffer. Note that this can
+//                  be smaller than the size of `src_buffer` by 1 if it's odd,
+//                  in which case the last nibble in `src_buffer` is ignored.
+//                  This should be equal to the size of `dst_buffer`.
+//   dst_buffer   : Buffer to unpack into. Should be allocated by the caller.
+//                  Size should be at least `num_elements`.
+// Notes:
+//   For example, given `src_buffer = {0x12, 0x34};`, calling this function
+//   will return `dst_buffer = {0x02, 0x01, 0x04, 0x03}`.
+void UnpackDenseInt4IntoInt8(const int8_t* src_buffer, int num_elements,
+                             int8_t* dst_buffer);
 
 }  // namespace tensor_utils
 

@@ -3,7 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.EagerTensor\'>"
   is_instance: "<class \'tensorflow.python.framework.ops._EagerTensorBase\'>"
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyTensor\'>"
   is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Symbol\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Value\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
   is_instance: "<type \'object\'>"
   member {

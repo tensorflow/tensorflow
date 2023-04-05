@@ -17,28 +17,29 @@ tf_library(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_google",
+    "if_oss",
     "tf_cc_test",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
     metadata_object_file = ctx.actions.declare_file("%s_tfcompile_metadata.o" % ctx.attr.model_name)
     function_object_file = ctx.actions.declare_file("%s_tfcompile_function.o" % ctx.attr.model_name)
     session_module_pb = ctx.actions.declare_file("%s_session_module.pb" % ctx.attr.model_name)
+    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
+    compiler_log_file = None
+    if ctx.attr.gen_compiler_log:
+        compiler_log_file = ctx.actions.declare_file("%s_compiler.log" % ctx.attr.model_name)
+        out_files.append(compiler_log_file)
 
     output_dict = {}
     output_dict["header_files"] = [header_file]
     output_dict["object_files"] = [metadata_object_file, function_object_file]
+    if compiler_log_file:
+        output_dict["log_files"] = [compiler_log_file]
 
     output_flags = [
         "--out_header=" + header_file.path,
@@ -54,6 +55,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
+                      ctx.attr.xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
     }
@@ -79,24 +81,25 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--target_triple=" + ctx.attr.target_triple,
     ] + cpu_flags + output_flags + ctx.attr.extra_flags + dfsan_flags
 
+    post_command = ""
+    if ctx.attr.gen_compiler_log:
+        post_command += " --vmodule=cpu_compiler=5 2> >(tee -a " + compiler_log_file.path + " >&2) "
+
     full_cmd = (
-        ctx.executable.tfcompile_tool.path + " " + " ".join(flags) + " " + ctx.attr.flags
+        ctx.executable.tfcompile_tool.path + " " + " ".join(flags) + " " + ctx.attr.flags + post_command
     )
     ctx.actions.run_shell(
         inputs = ctx.files.srcs,
-        outputs = [header_file, metadata_object_file, function_object_file, session_module_pb],
+        outputs = out_files,
         tools = [ctx.executable.tfcompile_tool] + dfsan_deps,
         env = tfcompile_env,
         command = full_cmd,
         progress_message = "tfcompile for model %s (%s)" % (ctx.attr.model_name, ctx.file.tfcompile_graph.path),
         mnemonic = "TensorflowCompile",
     )
-    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
-    dep_files = [ctx.executable.tfcompile_tool]
     return [
         DefaultInfo(
             files = depset(out_files),
-            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
         ),
         OutputGroupInfo(**output_dict),
     ]
@@ -124,10 +127,12 @@ _tfcompile_model_library = rule(
         "dfsan": attr.bool(default = False),
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
         "is_linux": attr.bool(),
+        "gen_compiler_log": attr.bool(),
+        "xla_flags": attr.string(),
     },
 )
 
-def tf_library(
+def _tf_library(
         name,
         graph,
         config,
@@ -137,6 +142,7 @@ def tf_library(
         cpp_class = None,
         gen_test = True,
         gen_benchmark = True,
+        gen_compiler_log = False,
         visibility = None,
         testonly = None,
         tfcompile_flags = None,
@@ -146,65 +152,9 @@ def tf_library(
         enable_tracemes = False,
         mlir_components = "None",
         deps = None,
-        tags = []):
-    """Runs tfcompile to compile a TensorFlow graph into executable code with fast
-    math enabled on cpu.
-
-    Given an invocation of tf_library(name="foo", ...), generates the following
-    build targets:
-      foo:           A cc_library containing the generated header and
-                     computation.
-      foo_test:      A cc_test with simple tests and benchmarks. Only created if
-                     gen_test=True.
-      foo_benchmark: A cc_binary that runs a minimal-dependency benchmark,
-                     useful for mobile devices or other platforms that can't
-                     compile the full test libraries. Only created if
-                     gen_benchmark=True.
-    The output header is called <name>.h.
-
-    Args:
-      name: The name of the build rule.
-      graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'
-        it is expected to be in the human-readable proto text format, otherwise
-        it is expected to be in the proto binary format.
-      config: File containing tensorflow.tf2xla.Config proto.  If the file ends
-        in '.pbtxt' it is expected to be in the human-readable proto text
-        format, otherwise it is expected to be in the proto binary format.
-      freeze_checkpoint: If provided, run freeze_graph with this checkpoint to
-        convert variables into constants.
-      freeze_saver: If provided, run freeze_graph with this saver, in SaverDef
-        binary form, to convert variables into constants.
-      cpp_class: The name of the generated C++ class, wrapping the generated
-        function.  The syntax of this flag is
-        [[<optional_namespace>::],...]<class_name>.  This mirrors the C++ syntax
-        for referring to a class, where multiple namespaces may precede the
-        class name, separated by double-colons.  The class will be generated in
-        the given namespace(s), or if no namespaces are given, within the global
-        namespace.
-      gen_test: If True, also generate a cc_test rule that builds a simple
-        test and benchmark.
-      gen_benchmark: If True, also generate a binary with a simple benchmark.
-        Unlike the output of gen_test, this benchmark can be run on android.
-      visibility: Bazel build visibility.
-      testonly:   Bazel testonly attribute.
-      tfcompile_flags: Extra flags to pass to tfcompile to control compilation.
-      tfcompile_tool: The tfcompile binary. A non-default can be passed to
-        use a tfcompile built with extra dependencies.
-      include_standard_runtime_deps: If True, the standard list of
-        kernel/runtime deps is added to deps.  If False, deps must contain the
-        full set of deps needed by the generated library.
-      enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
-        program, and emit metadata that lets us pretty-print the gathered
-        profile counters.
-      enable_tracemes: Tell tfcompile to generate calls to
-        TraceMe::Activity{Start|End} around HLO instructions that can be used by
-        Xprof to construct profiler timelines.
-      mlir_components: When the value is "None", no components use MLIR. When
-        the value is "Bridge", use MLIR to translate GraphDef to HLO.
-      deps: a list of deps to include on the build rules for the generated
-        library, added to the standard deps if standard_runtime_deps is True.
-      tags: tags to apply to subsidiary build rules.
-    """
+        tags = [],
+        copts = [],
+        xla_flags = None):
     if not cpp_class:
         fail("cpp_class must be specified")
 
@@ -252,7 +202,7 @@ def tf_library(
         freeze_saver_srcs = []
         if freeze_saver:
             freeze_args += " --input_saver=$(location " + freeze_saver + ")"
-            freeze_saver_srcs += [freeze_saver]
+            freeze_saver_srcs.append(freeze_saver)
         native.genrule(
             name = freeze_name,
             srcs = [
@@ -275,7 +225,7 @@ def tf_library(
     # Rule that runs tfcompile to produce the header and object file.
     header_file = name + ".h"
 
-    # The XLA backends morph kernal name prefix __ that is not in the form of
+    # The XLA backends morph kernel name prefix __ that is not in the form of
     # __xla_.
     ep = ("__xla_" + native.package_name() + "__" + name).replace("/", "_")
     if type(tfcompile_flags) == type(""):
@@ -314,13 +264,14 @@ def tf_library(
         name = tfcompile_gen,
         model_name = name,
         srcs = srcs,
+        gen_compiler_log = gen_compiler_log,
         header_out = header_file,
         tfcompile_tool = tfcompile_tool,
         tfcompile_graph = tfcompile_graph,
         tfcompile_config = config,
         entry_point = ep,
         cpp_class = cpp_class,
-        target_cpu = tfcompile_target_cpu(),
+        target_cpu = tfcompile_target_cpu(name),
         target_triple = target_llvm_triple(),
         flags = flags,
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
@@ -333,6 +284,7 @@ def tf_library(
         visibility = visibility,
         testonly = testonly,
         tags = tags,
+        xla_flags = xla_flags,
     )
 
     tfcompile_gen_object_files = tfcompile_gen + "_object_files"
@@ -381,6 +333,7 @@ def tf_library(
             ] or []
         ) + (deps or []),
         tags = tags,
+        copts = copts,
     )
 
     # Variables used for gen_test and gen_benchmark.
@@ -399,18 +352,21 @@ def tf_library(
         test_name = name + "_test"
         test_file = test_name + ".cc"
 
-        # Rule to rewrite test.cc to produce the test_file.
+        template_file = "//tensorflow/compiler/aot:test"
+        template_file += if_oss("", "_google") + ".cc"
+
+        # Rule to rewrite the template_file to produce the test_file.
         native.genrule(
             name = ("gen_" + test_name),
             testonly = 1,
             srcs = [
-                "//tensorflow/compiler/aot:test.cc",
+                template_file,
                 header_file,
             ],
             outs = [test_file],
             cmd = (
                 "sed " + sed_replace +
-                " $(location //tensorflow/compiler/aot:test.cc) " +
+                " $(location " + template_file + ") " +
                 "> $(OUTS)"
             ),
             tags = tags,
@@ -429,10 +385,17 @@ def tf_library(
                 "//tensorflow/compiler/aot:tf_library_test_main",
                 "//tensorflow/compiler/xla:executable_run_options",
                 "//third_party/eigen3",
+            ] + if_oss([
                 "//tensorflow/core:lib",
                 "//tensorflow/core:test",
-            ],
+            ]) + if_google([
+                "@com_google_googletest//:gtest",
+                "//tensorflow/core/platform:byte_order",
+                "//tensorflow/core/platform:platform_port",
+            ]),
             tags = tags,
+            extra_copts = copts,
+            visibility = visibility,
         )
 
     if gen_benchmark:
@@ -468,7 +431,7 @@ def tf_library(
             name = benchmark_name,
             srcs = [benchmark_file],
             testonly = testonly,
-            copts = tf_copts(),
+            copts = copts + tf_copts(),
             linkopts = if_android(["-pie", "-s"]),
             deps = [
                 ":" + name,
@@ -479,6 +442,140 @@ def tf_library(
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),
             tags = tags,
+            visibility = visibility,
+        )
+
+def tf_library(
+        name,
+        graph,
+        config,
+        debug_info = None,
+        freeze_checkpoint = None,
+        freeze_saver = None,
+        cpp_class = None,
+        gen_test = True,
+        gen_benchmark = True,
+        gen_compiler_log = False,
+        visibility = None,
+        testonly = None,
+        tfcompile_flags = None,
+        tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
+        include_standard_runtime_deps = True,
+        enable_xla_hlo_profiling = False,
+        enable_tracemes = False,
+        mlir_components = "None",
+        deps = None,
+        tags = [],
+        copts = [],
+        xla_flags = None):
+    """Compiles a TensorFlow graph into an executable with fast math enabled.
+
+    Given an invocation of tf_library(name="foo", ...), generates the following
+    build targets:
+      foo:           A cc_library containing the generated header and
+                      computation.
+      foo_test:      A cc_test with simple tests and benchmarks. Only created if
+                      gen_test=True.
+      foo_benchmark: A cc_binary that runs a minimal-dependency benchmark,
+                      useful for mobile devices or other platforms that can't
+                      compile the full test libraries. Only created if
+                      gen_benchmark=True.
+    The output header is called <name>.h.
+
+    Args:
+      name: The name of the build rule.
+      graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'
+        it is expected to be in the human-readable proto text format, otherwise
+        it is expected to be in the proto binary format.
+      config: File containing tensorflow.tf2xla.Config proto.  If the file ends
+        in '.pbtxt' it is expected to be in the human-readable proto text
+        format, otherwise it is expected to be in the proto binary format.
+      debug_info: Debug info to include in the output.
+      freeze_checkpoint: If provided, run freeze_graph with this checkpoint to
+        convert variables into constants.
+      freeze_saver: If provided, run freeze_graph with this saver, in SaverDef
+        binary form, to convert variables into constants.
+      cpp_class: The name of the generated C++ class, wrapping the generated
+        function.  The syntax of this flag is
+        [[<optional_namespace>::],...]<class_name>.  This mirrors the C++ syntax
+        for referring to a class, where multiple namespaces may precede the
+        class name, separated by double-colons.  The class will be generated in
+        the given namespace(s), or if no namespaces are given, within the global
+        namespace.
+      gen_test: If True, also generate a cc_test rule that builds a simple
+        test and benchmark.
+      gen_benchmark: If True, also generate a binary with a simple benchmark.
+        Unlike the output of gen_test, this benchmark can be run on android.
+      gen_compiler_log: If True, dumps XLA:CPU debug output to a log file.
+      visibility: Bazel build visibility.
+      testonly:   Bazel testonly attribute.
+      tfcompile_flags: Extra flags to pass to tfcompile to control compilation.
+      tfcompile_tool: The tfcompile binary. A non-default can be passed to
+        use a tfcompile built with extra dependencies.
+      include_standard_runtime_deps: If True, the standard list of
+        kernel/runtime deps is added to deps.  If False, deps must contain the
+        full set of deps needed by the generated library.
+      enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
+        program, and emit metadata that lets us pretty-print the gathered
+        profile counters.
+      enable_tracemes: Tell tfcompile to generate calls to
+        TraceMe::Activity{Start|End} around HLO instructions that can be used by
+        Xprof to construct profiler timelines.
+      mlir_components: When the value is "None", no components use MLIR. When
+        the value is "Bridge", use MLIR to translate GraphDef to HLO.
+      deps: a list of deps to include on the build rules for the generated
+        library, added to the standard deps if standard_runtime_deps is True.
+      tags: tags to apply to subsidiary build rules.
+      copts: list of copts to pass to cc rules.
+    """
+    _tf_library(
+        name,
+        graph,
+        config,
+        debug_info,
+        freeze_checkpoint,
+        freeze_saver,
+        cpp_class,
+        gen_test,
+        gen_benchmark,
+        gen_compiler_log,
+        visibility,
+        testonly,
+        tfcompile_flags,
+        tfcompile_tool,
+        include_standard_runtime_deps,
+        enable_xla_hlo_profiling,
+        enable_tracemes,
+        mlir_components,
+        deps,
+        tags,
+        copts,
+        xla_flags,
+    )
+    if mlir_components == "None":
+        _tf_library(
+            name + "_mlir",
+            graph,
+            config,
+            debug_info,
+            freeze_checkpoint,
+            freeze_saver,
+            cpp_class,
+            gen_test,
+            gen_benchmark,
+            gen_compiler_log,
+            visibility,
+            testonly,
+            tfcompile_flags,
+            tfcompile_tool,
+            include_standard_runtime_deps,
+            enable_xla_hlo_profiling,
+            enable_tracemes,
+            "HloLowering",
+            deps,
+            tags + ["notap", "local", "manual"],
+            copts,
+            xla_flags,
         )
 
 def target_llvm_triple():

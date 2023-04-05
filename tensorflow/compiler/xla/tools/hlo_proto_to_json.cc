@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 using std::string;
 using tsl::Env;
@@ -52,7 +52,7 @@ StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
                                                          json_options);
   if (!status.ok()) {
     return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().data());
+                         std::string{status.message()});
   }
   return json_output;
 }
@@ -75,12 +75,12 @@ void RealMain(const std::string& input, const std::string& output) {
 
 int main(int argc, char** argv) {
   std::string input_file, output_file;
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("input_file", &input_file, "file to convert."),
-      tensorflow::Flag("output_file", &output_file, "converted file"),
+  const std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("input_file", &input_file, "file to convert."),
+      tsl::Flag("output_file", &output_file, "converted file"),
   };
-  const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  const std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parse_ok && argc == 1) << "\n" << usage;
 

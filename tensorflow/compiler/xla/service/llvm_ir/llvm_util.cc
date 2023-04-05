@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -43,14 +44,26 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
 
 namespace {
+
+// This works for most llvm / mlir types. This also accepts a const pointer to
+// objects which have a const print() method.
+template <typename T>
+std::string DumpToStringTempl(T* entity) {
+  CHECK_NE(entity, nullptr);
+
+  std::string s;
+  llvm::raw_string_ostream ostream(s);
+  ostream << *entity;
+  return s;
+}
 
 // Note, this function is only useful in an insertion context; in a global
 // (e.g. constants) context it will CHECK fail.
@@ -63,22 +76,26 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-std::unique_ptr<llvm::Module> DropConstantInitializers(
-    const llvm::Module& module) {
-  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
-  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
-    global_var.setInitializer(nullptr);
-    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
-  }
-  return cloned_module;
+std::string DumpToString(const llvm::Module* module) {
+  return DumpToStringTempl(module);
 }
 
-std::string DumpModuleToString(const llvm::Module& module) {
-  std::string buffer_string;
-  llvm::raw_string_ostream ostream(buffer_string);
-  module.print(ostream, nullptr);
-  ostream.flush();
-  return buffer_string;
+std::string DumpToString(const llvm::Type* type) {
+  return DumpToStringTempl(type);
+}
+
+std::string DumpToString(const llvm::Value* value) {
+  return DumpToStringTempl(value);
+}
+
+std::string DumpToString(mlir::Operation* operation) {
+  return DumpToStringTempl(operation);
+}
+
+std::string DumpToString(mlir::Type type) { return DumpToStringTempl(&type); }
+
+std::string DumpToString(mlir::Value value) {
+  return DumpToStringTempl(&value);
 }
 
 llvm::CallInst* EmitCallToIntrinsic(
@@ -127,9 +144,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
       llvm::cast<llvm::PointerType>(array_type);
   CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
-          << llvm_ir::DumpToString(*array_type)
-          << " array=" << llvm_ir::DumpToString(*array)
-          << " index=" << llvm_ir::DumpToString(*index);
+          << llvm_ir::DumpToString(array_type)
+          << " array=" << llvm_ir::DumpToString(array)
+          << " index=" << llvm_ir::DumpToString(index);
 
   return b->CreateInBoundsGEP(
       element_type, array,
@@ -147,6 +164,9 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
     case PRED:
+    // Int8 is used as there is no LLVM S4/U4 dtype
+    case S4:
+    case U4:
     case S8:
     case U8:
       return llvm::Type::getInt8Ty(module->getContext());
@@ -160,6 +180,11 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // addition to an addition on this type (int16_t) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
+    case F8E5M2:
+    case F8E4M3FN:
+      // Similarly as with BF16, we represent F8 as an int since there is no
+      // LLVM F8 dtype.
+      return llvm::Type::getInt8Ty(module->getContext());
     case F16:
       return llvm::Type::getHalfTy(module->getContext());
     case S32:
@@ -581,7 +606,6 @@ static Status CreateAndWriteStringToFile(const std::string& directory_name,
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  const auto& debug_opts = hlo_module.config().debug_options();
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
@@ -592,16 +616,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
       absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
                    filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
-                          DumpModuleToString(llvm_module));
-
-  // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.  Skip
-  // this if we're dumping to stdout; there's no point in duplicating everything
-  // when writing to the terminal.
-  if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
-                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
-  }
+                          DumpToString(&llvm_module));
 }
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,

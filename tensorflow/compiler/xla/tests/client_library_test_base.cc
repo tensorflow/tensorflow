@@ -159,7 +159,7 @@ std::string ClientLibraryTestBase::ExecuteToString(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
-    XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
+    XlaBuilder* builder, const tsl::core::Bitmap& expected,
     absl::Span<GlobalData* const> arguments) {
   Literal expected_literal = LiteralUtil::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
@@ -195,7 +195,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   std::vector<int64_t> minor_to_major(expected.shape().rank());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   do {
-    auto layout = ShapeUtil::MakeShapeWithLayout(
+    auto layout = ShapeUtil::MakeShapeWithDenseLayout(
         expected.shape().element_type(), expected.shape().dimensions(),
         minor_to_major);
     TF_ASSIGN_OR_RETURN(auto actual,

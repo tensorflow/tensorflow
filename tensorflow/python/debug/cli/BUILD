@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -340,13 +341,14 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/debug/lib:debug_data",
         "//tensorflow/python/debug/lib:debug_utils",
         "//tensorflow/python/debug/lib:source_utils",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
@@ -362,13 +364,13 @@ py_test(
         ":profile_analyzer_cli",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )

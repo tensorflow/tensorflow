@@ -1,0 +1,355 @@
+// Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Generated from configuration.proto
+
+namespace tflite;
+
+enum ExecutionPreference : int {
+  ANY = 0,
+  LOW_LATENCY = 1,
+  LOW_POWER = 2,
+  FORCE_CPU = 3,
+}
+
+enum Delegate : int {
+  NONE = 0,
+  NNAPI = 1,
+  GPU = 2,
+  HEXAGON = 3,
+  XNNPACK = 4,
+  EDGETPU = 5,
+  EDGETPU_CORAL = 6,
+  CORE_ML = 7,
+}
+
+enum NNAPIExecutionPreference : int {
+  UNDEFINED = 0,
+  NNAPI_LOW_POWER = 1,
+  NNAPI_FAST_SINGLE_ANSWER = 2,
+  NNAPI_SUSTAINED_SPEED = 3,
+}
+
+enum NNAPIExecutionPriority : int {
+  NNAPI_PRIORITY_UNDEFINED = 0,
+  NNAPI_PRIORITY_LOW = 1,
+  NNAPI_PRIORITY_MEDIUM = 2,
+  NNAPI_PRIORITY_HIGH = 3,
+}
+
+enum GPUBackend : int {
+  UNSET = 0,
+  OPENCL = 1,
+  OPENGL = 2,
+}
+
+enum GPUInferencePriority : int {
+  GPU_PRIORITY_AUTO = 0,
+  GPU_PRIORITY_MAX_PRECISION = 1,
+  GPU_PRIORITY_MIN_LATENCY = 2,
+  GPU_PRIORITY_MIN_MEMORY_USAGE = 3,
+}
+
+enum GPUInferenceUsage : int {
+  GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0,
+  GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1,
+}
+
+enum XNNPackFlags : int {
+  TFLITE_XNNPACK_DELEGATE_NO_FLAGS = 0,
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8 = 1,
+  TFLITE_XNNPACK_DELEGATE_FLAG_QU8 = 2,
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8 = 3,
+  TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 = 4,
+}
+
+namespace tflite.CoreMLSettings_;
+
+enum EnabledDevices : int {
+  DEVICES_ALL = 0,
+  DEVICES_WITH_NEURAL_ENGINE = 1,
+}
+
+namespace tflite.EdgeTpuDeviceSpec_;
+
+enum PlatformType : int {
+  MMIO = 0,
+  REFERENCE = 1,
+  SIMULATOR = 2,
+  REMOTE_SIMULATOR = 3,
+}
+
+namespace tflite;
+
+enum EdgeTpuPowerState : int {
+  UNDEFINED_POWERSTATE = 0,
+  TPU_CORE_OFF = 1,
+  READY = 2,
+  ACTIVE_MIN_POWER = 3,
+  ACTIVE_VERY_LOW_POWER = 4,
+  ACTIVE_LOW_POWER = 5,
+  ACTIVE = 6,
+  OVER_DRIVE = 7,
+}
+
+namespace tflite.EdgeTpuSettings_;
+
+enum FloatTruncationType : int {
+  UNSPECIFIED = 0,
+  NO_TRUNCATION = 1,
+  BFLOAT16 = 2,
+  HALF = 3,
+}
+
+enum QosClass : int {
+  QOS_UNDEFINED = 0,
+  BEST_EFFORT = 1,
+  REALTIME = 2,
+}
+
+namespace tflite.CoralSettings_;
+
+enum Performance : int {
+  UNDEFINED = 0,
+  MAXIMUM = 1,
+  HIGH = 2,
+  MEDIUM = 3,
+  LOW = 4,
+}
+
+namespace tflite;
+
+enum BenchmarkEventType : int {
+  UNDEFINED_BENCHMARK_EVENT_TYPE = 0,
+  START = 1,
+  END = 2,
+  ERROR = 3,
+  LOGGED = 4,
+  RECOVERED_ERROR = 5,
+}
+
+enum BenchmarkStage : int {
+  UNKNOWN = 0,
+  INITIALIZATION = 1,
+  INFERENCE = 2,
+}
+
+table ComputeSettings {
+  preference:tflite.ExecutionPreference;
+  tflite_settings:tflite.TFLiteSettings;
+  model_namespace_for_statistics:string;
+  model_identifier_for_statistics:string;
+  settings_to_test_locally:tflite.MinibenchmarkSettings;
+}
+
+table NNAPISettings {
+  accelerator_name:string;
+  cache_directory:string;
+  model_token:string;
+  execution_preference:tflite.NNAPIExecutionPreference;
+  no_of_nnapi_instances_to_cache:int;
+  fallback_settings:tflite.FallbackSettings;
+  allow_nnapi_cpu_on_android_10_plus:bool;
+  execution_priority:tflite.NNAPIExecutionPriority;
+  allow_dynamic_dimensions:bool;
+  allow_fp16_precision_for_fp32:bool;
+  use_burst_computation:bool;
+  support_library_handle:long;
+}
+
+table GPUSettings {
+  is_precision_loss_allowed:bool;
+  enable_quantized_inference:bool = true;
+  force_backend:tflite.GPUBackend;
+  inference_priority1:tflite.GPUInferencePriority;
+  inference_priority2:tflite.GPUInferencePriority;
+  inference_priority3:tflite.GPUInferencePriority;
+  inference_preference:tflite.GPUInferenceUsage;
+  cache_directory:string;
+  model_token:string;
+}
+
+table HexagonSettings {
+  debug_level:int;
+  powersave_level:int;
+  print_graph_profile:bool;
+  print_graph_debug:bool;
+}
+
+table XNNPackSettings {
+  num_threads:int;
+  flags:tflite.XNNPackFlags;
+}
+
+table CoreMLSettings {
+  enabled_devices:tflite.CoreMLSettings_.EnabledDevices;
+  coreml_version:int;
+  max_delegated_partitions:int;
+  min_nodes_per_partition:int = 2;
+}
+
+table StableDelegateLoaderSettings {
+  delegate_path:string;
+}
+
+table EdgeTpuDeviceSpec {
+  platform_type:tflite.EdgeTpuDeviceSpec_.PlatformType;
+  num_chips:int;
+  device_paths:[string];
+  chip_family:int;
+}
+
+table EdgeTpuInactivePowerConfig {
+  inactive_power_state:tflite.EdgeTpuPowerState;
+  inactive_timeout_us:long;
+}
+
+table EdgeTpuSettings {
+  inference_power_state:tflite.EdgeTpuPowerState;
+  inactive_power_configs:[tflite.EdgeTpuInactivePowerConfig];
+  inference_priority:int = -1;
+  edgetpu_device_spec:tflite.EdgeTpuDeviceSpec;
+  model_token:string;
+  float_truncation_type:tflite.EdgeTpuSettings_.FloatTruncationType;
+  qos_class:tflite.EdgeTpuSettings_.QosClass;
+}
+
+table CoralSettings {
+  device:string;
+  performance:tflite.CoralSettings_.Performance;
+  usb_always_dfu:bool;
+  usb_max_bulk_in_queue_length:int;
+}
+
+table CPUSettings {
+  num_threads:int = -1;
+}
+
+table TFLiteSettings {
+  delegate:tflite.Delegate;
+  nnapi_settings:tflite.NNAPISettings;
+  gpu_settings:tflite.GPUSettings;
+  hexagon_settings:tflite.HexagonSettings;
+  xnnpack_settings:tflite.XNNPackSettings;
+  coreml_settings:tflite.CoreMLSettings;
+  cpu_settings:tflite.CPUSettings;
+  max_delegated_partitions:int;
+  edgetpu_settings:tflite.EdgeTpuSettings;
+  coral_settings:tflite.CoralSettings;
+  fallback_settings:tflite.FallbackSettings;
+  disable_default_delegates:bool;
+  stable_delegate_loader_settings:tflite.StableDelegateLoaderSettings;
+}
+
+table FallbackSettings {
+  allow_automatic_fallback_on_compilation_error:bool;
+  allow_automatic_fallback_on_execution_error:bool;
+}
+
+table BenchmarkMetric {
+  name:string;
+  values:[float];
+}
+
+table BenchmarkResult {
+  initialization_time_us:[long];
+  inference_time_us:[long];
+  max_memory_kb:int;
+  ok:bool;
+  metrics:[tflite.BenchmarkMetric];
+  actual_output:[tflite.BenchmarkResult_.InferenceOutput];
+}
+
+namespace tflite.BenchmarkResult_;
+
+table InferenceOutput {
+  value:[ubyte];
+}
+
+namespace tflite;
+
+table ErrorCode {
+  source:tflite.Delegate;
+  tflite_error:int;
+  underlying_api_error:long;
+}
+
+table BenchmarkError {
+  stage:tflite.BenchmarkStage;
+  exit_code:int;
+  signal:int;
+  error_code:[tflite.ErrorCode];
+  mini_benchmark_error_code:int;
+}
+
+table BenchmarkEvent {
+  tflite_settings:tflite.TFLiteSettings;
+  event_type:tflite.BenchmarkEventType;
+  result:tflite.BenchmarkResult;
+  error:tflite.BenchmarkError;
+  boottime_us:long;
+  wallclock_us:long;
+}
+
+table BestAccelerationDecision {
+  number_of_source_events:int;
+  min_latency_event:tflite.BenchmarkEvent;
+  min_inference_time_us:long;
+}
+
+table BenchmarkInitializationFailure {
+  initialization_status:int;
+}
+
+table MiniBenchmarkEvent {
+  is_log_flushing_event:bool;
+  best_acceleration_decision:tflite.BestAccelerationDecision;
+  initialization_failure:tflite.BenchmarkInitializationFailure;
+  benchmark_event:tflite.BenchmarkEvent;
+}
+
+table ModelFile {
+  filename:string;
+  fd:long;
+  offset:long;
+  length:long;
+  model_id_group:tflite.ModelIdGroup;
+}
+
+table ModelIdGroup {
+  model_namespace:string;
+  model_id:string;
+}
+
+table BenchmarkStoragePaths {
+  storage_file_path:string;
+  data_directory_path:string;
+}
+
+table ValidationSettings {
+  per_test_timeout_ms:long;
+}
+
+table MinibenchmarkSettings {
+  settings_to_test:[tflite.TFLiteSettings];
+  model_file:tflite.ModelFile;
+  storage_paths:tflite.BenchmarkStoragePaths;
+  validation_settings:tflite.ValidationSettings;
+}
+
+table BenchmarkEventStorage {
+  model_id_group:tflite.ModelIdGroup;
+  benchmark_event:tflite.BenchmarkEvent;
+}
+

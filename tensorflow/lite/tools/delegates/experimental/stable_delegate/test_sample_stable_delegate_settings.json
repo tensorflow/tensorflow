@@ -1,0 +1,11 @@
+// Test only sample stable delegate settings file.
+//
+// This file follows the TFLiteSettings message structure in
+// tensorflow/lite/experimental/acceleration/configuration/configuration.proto
+// The stable delegate provider unit tests use it.
+{
+  "delegate": "NONE",
+  "stable_delegate_loader_settings": {
+    "delegate_path": "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/libtensorflowlite_sample_stable_delegate.so"
+  }
+}

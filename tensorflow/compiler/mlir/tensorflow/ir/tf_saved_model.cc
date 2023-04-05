@@ -63,10 +63,13 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
 
 LogicalResult GlobalTensorOp::verify() {
   GlobalTensorOp global_tensor = *this;
-  if (failed(VerifyTensorTypesCompatible(global_tensor.getType(),
-                                         global_tensor.getValue().getType()))) {
-    return global_tensor.emitError() << "'type' and 'value' attributes should "
-                                        "have compatible tensor types";
+  if (global_tensor.getValue()) {
+    if (failed(VerifyTensorTypesCompatible(
+            global_tensor.getType(), global_tensor.getValue()->getType()))) {
+      return global_tensor.emitError()
+             << "'type' and 'value' attributes should "
+                "have compatible tensor types";
+    }
   }
   if (!global_tensor.getIsMutable()) {
     if (!global_tensor.getType().cast<TensorType>().hasStaticShape()) {
@@ -139,8 +142,8 @@ TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
 static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   auto attr = named_attr.getValue().dyn_cast<ArrayAttr>();
   if (!attr) {
-    return op->emitError()
-           << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
+    return op->emitError() << "'" << kTfSavedModelIndexPathAttr
+                           << "' attribute should be an ArrayAttr";
   }
   for (auto element : attr) {
     if (element.isa<StringAttr>()) {
@@ -151,8 +154,8 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
         continue;
       }
     }
-    return op->emitError() << "'tf_saved_model.index_path' elements should "
-                              "be strings or 64-bit integers";
+    return op->emitError() << "'" << kTfSavedModelIndexPathAttr
+                           << "' elements should be strings or 64-bit integers";
   }
   return mlir::success();
 }
@@ -206,7 +209,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     auto arg_type = cast<func::FuncOp>(op).getArgument(arg_index).getType();
     return VerifyBoundInputArgType(op, arg_type, symbol_op);
   }
-  if (named_attr.getName() == "tf_saved_model.index_path") {
+  if (named_attr.getName() == kTfSavedModelIndexPathAttr) {
     return VerifyIndexPath(op, named_attr);
   }
 
@@ -217,7 +220,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
 LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
     Operation *op, unsigned region_index, unsigned result_index,
     NamedAttribute named_attr) {
-  if (named_attr.getName() == "tf_saved_model.index_path") {
+  if (named_attr.getName() == kTfSavedModelIndexPathAttr) {
     return VerifyIndexPath(op, named_attr);
   }
 
@@ -225,15 +228,44 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
                          << named_attr.getName().getValue() << "'";
 }
 
+// Verifies the session_init op. There should be no duplicate
+// tf_saved_model.initializer_type values.
+LogicalResult VerifySessionInitOp(SessionInitializerOp session_init_op,
+                                  SymbolTable &symbol_table) {
+  // Stores previously seen init types.
+  llvm::SmallDenseSet<StringAttr> init_types{};
+
+  for (auto init_sym :
+       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func = symbol_table.lookup<func::FuncOp>(init_sym);
+    if (!init_func) continue;
+
+    auto init_type =
+        init_func->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
+    if (!init_type) continue;
+
+    if (init_types.contains(init_type)) {
+      return init_func->emitError()
+             << "Attribute tf_saved_model.initializer_type should not have "
+                "duplicate values. Found duplicate: "
+             << init_type;
+    }
+
+    init_types.insert(init_type);
+  }
+
+  return success();
+}
+
 static bool HasAnyTfSavedModelArgAttr(func::FuncOp func) {
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
-    if (func.getArgAttr(i, "tf_saved_model.index_path") ||
+    if (func.getArgAttr(i, kTfSavedModelIndexPathAttr) ||
         func.getArgAttr(i, "tf_saved_model.bound_input")) {
       return true;
     }
   }
   for (int i = 0, e = func.getNumResults(); i < e; i++) {
-    if (func.getResultAttr(i, "tf_saved_model.index_path") ||
+    if (func.getResultAttr(i, kTfSavedModelIndexPathAttr) ||
         func.getResultAttr(i, "tf_saved_model.bound_input")) {
       return true;
     }
@@ -244,7 +276,7 @@ static bool HasAnyTfSavedModelArgAttr(func::FuncOp func) {
 static LogicalResult VerifySavedModelModule(
     ModuleOp module, TensorFlowSavedModelDialect *dialect) {
   auto exported_names_ident =
-      StringAttr::get(dialect->getContext(), "tf_saved_model.exported_names");
+      StringAttr::get(dialect->getContext(), kTfSavedModelExportedNamesAttr);
   // Check that there are no duplicated exported_names.
   DenseMap<StringRef, Operation *> exported_name_to_op;
   for (auto &op : module) {
@@ -286,11 +318,19 @@ static LogicalResult VerifySavedModelModule(
     }
   }
 
+  SymbolTable symbol_table(module);
+
   auto session_initializers = module.getOps<SessionInitializerOp>();
-  if (!session_initializers.empty() &&
-      !llvm::hasSingleElement(session_initializers)) {
-    return (*++session_initializers.begin()).emitError()
-           << "there must be no more than one session_initializer op";
+  if (!session_initializers.empty()) {
+    if (!llvm::hasSingleElement(session_initializers)) {
+      return (*++session_initializers.begin()).emitError()
+             << "there must be no more than one session_initializer op";
+    }
+
+    if (failed(
+            VerifySessionInitOp(*session_initializers.begin(), symbol_table))) {
+      return failure();
+    }
   }
 
   auto is_init = [&session_initializers](mlir::func::FuncOp func) {
@@ -302,7 +342,6 @@ static LogicalResult VerifySavedModelModule(
         });
   };
 
-  SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.has_value()) {
     return module.emitError() << "modules with 'tf_saved_model.semantics' must "
@@ -315,8 +354,14 @@ static LogicalResult VerifySavedModelModule(
       // If it is an init function, then it can be used by the unique
       // session_initializer op.
       if (is_init(func) &&
-          llvm::isa<SessionInitializerOp>(symbol_use.getUser()))
+          llvm::isa<SessionInitializerOp>(symbol_use.getUser())) {
+        if (!func->getAttr(kTfSavedModelInitializerTypeAttr)) {
+          LOG(WARNING)
+              << "func op in session_initializer op's initializers attribute "
+              << "should have tf_saved_model.initializer_type attribute.";
+        }
         continue;
+      }
 
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
@@ -335,11 +380,12 @@ LogicalResult VerifyExportedFunc(func::FuncOp func) {
       reached_bound_inputs = true;
       continue;
     }
-    if (func.getArgAttr(i, "tf_saved_model.index_path")) {
+    if (func.getArgAttr(i, kTfSavedModelIndexPathAttr)) {
       if (reached_bound_inputs) {
         return func.emitError()
-               << "all 'tf_saved_model.index_path' arg attributes should "
-                  "precede all 'tf_saved_model.bound_input' arg attributes";
+               << "all '" << kTfSavedModelIndexPathAttr
+               << "' arg attributes should precede all "
+                  "'tf_saved_model.bound_input' arg attributes";
       }
       continue;
     }
@@ -349,8 +395,9 @@ LogicalResult VerifyExportedFunc(func::FuncOp func) {
                                  "unless it is being under construction";
     }
     return func.emitError()
-           << "all arguments should have 'tf_saved_model.index_path', "
-              "'tf_saved_model.bound_input' or 'tf.resource_name' attributes";
+           << "all arguments should have '" << kTfSavedModelIndexPathAttr
+           << "', 'tf_saved_model.bound_input' or 'tf.resource_name' "
+              "attributes";
   }
   llvm::SmallDenseSet<StringRef, 8> unique_bound_inputs;
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
@@ -365,10 +412,40 @@ LogicalResult VerifyExportedFunc(func::FuncOp func) {
   }
 
   for (int i = 0, e = func.getNumResults(); i < e; i++) {
-    if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
-      return func.emitError() << "all results should have "
-                                 "'tf_saved_model.index_path' attributes";
+    if (!func.getResultAttr(i, kTfSavedModelIndexPathAttr)) {
+      return func.emitError() << "all results should have '"
+                              << kTfSavedModelIndexPathAttr << "' attributes";
     }
+  }
+
+  return success();
+}
+
+bool IsValidInitializerType(StringRef initializer_type) {
+  return initializer_type == kTfSavedModelInitializerRestoreType ||
+         initializer_type == kTfSavedModelInitializerInitType;
+}
+
+// Verifies the "tf_saved_model.initializer_type" attribute.
+LogicalResult VerifyInitializerTypeAttr(Operation *op,
+                                        const NamedAttribute named_attr) {
+  if (!isa<func::FuncOp>(op)) {
+    return op->emitError() << "Attribute tf_saved_model.initializer_type "
+                           << "should be on a func::FuncOp.";
+  }
+
+  // Validate the attribute value.
+  auto initializer_type_attr_value =
+      named_attr.getValue().dyn_cast_or_null<StringAttr>();
+  if (!initializer_type_attr_value) {
+    return op->emitError() << "Attribute tf_saved_model.initializer_type "
+                           << "should be a StringAttr.";
+  }
+
+  if (!IsValidInitializerType(initializer_type_attr_value)) {
+    return op->emitError() << "tf_saved_model.initializer_type should be one "
+                              "of 'restore_op' or 'init_op'. Got: "
+                           << initializer_type_attr_value.str();
   }
 
   return success();
@@ -376,20 +453,20 @@ LogicalResult VerifyExportedFunc(func::FuncOp func) {
 
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
-  if (named_attr.getName() == "tf_saved_model.exported_names") {
+  if (named_attr.getName() == kTfSavedModelExportedNamesAttr) {
     if (!isa<func::FuncOp, GlobalTensorOp>(op)) {
-      return op->emitError() << "'tf_saved_model.exported_names' must be on a "
-                                "'func' or 'tf_saved_model.global_tensor' op";
+      return op->emitError()
+             << "'" << kTfSavedModelExportedNamesAttr
+             << "' must be on a 'func' or 'tf_saved_model.global_tensor' op";
     }
     if (!IsStrArrayAttr(named_attr.getValue())) {
-      return op->emitError()
-             << "'tf_saved_model.exported_names' must be an array of strings";
+      return op->emitError() << "'" << kTfSavedModelExportedNamesAttr
+                             << "' must be an array of strings";
     }
     if (!op->getParentOp()->getAttr("tf_saved_model.semantics")) {
-      return op->emitError()
-             << "'tf_saved_model.exported_names' must be on an op "
-                "whose immediate parent has attribute "
-                "'tf_saved_model.semantics'";
+      return op->emitError() << "'" << kTfSavedModelExportedNamesAttr
+                             << "' must be on an op whose immediate parent has "
+                                "attribute 'tf_saved_model.semantics'";
     }
     if (auto func = dyn_cast<func::FuncOp>(op)) {
       if (failed(VerifyExportedFunc(func))) {
@@ -410,6 +487,10 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     return success();
   }
 
+  if (named_attr.getName() == kTfSavedModelInitializerTypeAttr) {
+    return VerifyInitializerTypeAttr(op, named_attr);
+  }
+
   return op->emitError() << "unknown tf_saved_model dialect attribute '"
                          << named_attr.getName().getValue() << "'";
 }
@@ -417,7 +498,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
 SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
   SmallVector<StringRef, 2> ret;
   auto exported_names =
-      op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
+      op->getAttrOfType<ArrayAttr>(kTfSavedModelExportedNamesAttr);
   if (exported_names) {
     for (auto name : exported_names) {
       ret.push_back(name.cast<StringAttr>().getValue());
@@ -428,7 +509,7 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
 
 bool IsExported(Operation *op) {
   auto exported_names =
-      op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
+      op->getAttrOfType<ArrayAttr>(kTfSavedModelExportedNamesAttr);
   return exported_names && !exported_names.empty();
 }
 
@@ -513,6 +594,39 @@ SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
   }
 
   return results;
+}
+
+SmallVector<func::FuncOp, 2> GetInitializerFunctions(ModuleOp module_op) {
+  SessionInitializerOp session_initializer_op =
+      GetSessionInitializerOp(module_op);
+  if (!session_initializer_op) return {};
+
+  SymbolTable symbol_table(module_op);
+
+  SmallVector<func::FuncOp, 2> init_func_ops;
+  for (auto init_func_sym : session_initializer_op.getInitializers()
+                                .getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_func_sym);
+    // `init_func_op` is guaranteed to be not null in a valid module.
+    init_func_ops.push_back(init_func_op);
+  }
+
+  return init_func_ops;
+}
+
+func::FuncOp GetInitializerFunction(ModuleOp module_op,
+                                    const StringRef initializer_type) {
+  SmallVector<func::FuncOp, 2> init_func_ops =
+      GetInitializerFunctions(module_op);
+
+  auto init_func_itr = absl::c_find_if(
+      init_func_ops, [initializer_type](const func::FuncOp init_func_op) {
+        const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+            kTfSavedModelInitializerTypeAttr);
+        return init_type_attr && init_type_attr == initializer_type;
+      });
+
+  return init_func_itr == init_func_ops.end() ? nullptr : *init_func_itr;
 }
 
 }  // namespace tf_saved_model

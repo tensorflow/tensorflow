@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 
+#include <memory>
+
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 namespace eager {
@@ -42,8 +43,8 @@ Status GrpcEagerServiceImpl::CreateMasterContext(
 void GrpcEagerServiceImpl::HandleRPCsLoop() {
 #define ENQUEUE_REQUEST(method)                                            \
   do {                                                                     \
-    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,           \
-         method##Request, method##Response>::                              \
+    tsl::Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,      \
+              method##Request, method##Response>::                         \
         EnqueueRequest(&service_, cq_.get(),                               \
                        &grpc::EagerService::AsyncService::Request##method, \
                        &GrpcEagerServiceImpl::method##Handler, false);     \
@@ -58,9 +59,9 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
 #undef ENQUEUE_REQUEST
 
   // Request a StreamingEnqueue call.
-  ServerBidirectionalStreamingCall<GrpcEagerServiceImpl,
-                                   grpc::EagerService::AsyncService,
-                                   EnqueueRequest, EnqueueResponse>::
+  tsl::ServerBidirectionalStreamingCall<GrpcEagerServiceImpl,
+                                        grpc::EagerService::AsyncService,
+                                        EnqueueRequest, EnqueueResponse>::
       EnqueueRequest(&service_, cq_.get(),
                      &grpc::EagerService::AsyncService::RequestStreamingEnqueue,
                      &GrpcEagerServiceImpl::StreamingEnqueueHandler);
@@ -73,8 +74,8 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
       // The queue is shutting down.
       break;
     }
-    GrpcCallTag<GrpcEagerServiceImpl>* callback_tag =
-        static_cast<GrpcCallTag<GrpcEagerServiceImpl>*>(tag);
+    tsl::GrpcCallTag<GrpcEagerServiceImpl>* callback_tag =
+        static_cast<tsl::GrpcCallTag<GrpcEagerServiceImpl>*>(tag);
 
     if (callback_tag) {
       callback_tag->OnCompleted(this, ok);
@@ -89,7 +90,7 @@ void GrpcEagerServiceImpl::Shutdown() {
   // This enqueues a special event (with a null tag)
   // that causes the completion queue to be shut down on the
   // polling thread.
-  shutdown_alarm_ = MakeUnique<::grpc::Alarm>(
+  shutdown_alarm_ = std::make_unique<::grpc::Alarm>(
       cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
 }
 

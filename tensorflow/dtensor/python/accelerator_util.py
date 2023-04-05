@@ -16,17 +16,14 @@
 
 from typing import List, Optional
 
-from absl import flags
 from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.platform import remote_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -38,12 +35,19 @@ def is_initialized() -> bool:
   return bool(_INITIALIZED_ACCELERATOR_SYSTEM_TYPE)
 
 
+def set_initialized(value):
+  """Sets if accelerator system has been initialized."""
+  global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = value
+
+
 def initialize_multi_client_cluster(job_name: str,
                                     dtensor_jobs: List[str],
                                     client_id: int,
                                     collective_leader: str,
                                     port: Optional[int] = None,
-                                    enable_coordination_service: bool = False):
+                                    gpu_use_nccl_communication: bool = False,
+                                    enable_coordination_service: bool = True):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
   This function can be used to initialize a multi-client cluster and enable
@@ -60,6 +64,8 @@ def initialize_multi_client_cluster(job_name: str,
     collective_leader: The job/task that will be used to run collectives.
     port: The port this client's GRPC server will run on. If omitted, use the
       port from dtensor_jobs for this client.
+    gpu_use_nccl_communication: if True, configure TensorFlow to use NCCL by
+      default.
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, a
       prerequisite for data transfer through cross-worker rendezvous.
@@ -72,8 +78,15 @@ def initialize_multi_client_cluster(job_name: str,
   if not collective_leader.startswith("/job:"):
     collective_leader = "/job:" + collective_leader
 
+  context.context().configure_collective_ops(
+      use_nccl_communication=gpu_use_nccl_communication,
+      collective_leader=collective_leader)
+  if enable_coordination_service:
+    context.context().configure_coordination_service(
+        service_type="standalone", service_leader=collective_leader)
+
   config_proto = context.get_config()
-  config_proto.experimental.collective_group_leader = collective_leader
+
   # Construct server def from the host directly instead of relying on
   # TF_CONFIG.
   cluster_def = cluster_pb2.ClusterDef()
@@ -91,22 +104,11 @@ def initialize_multi_client_cluster(job_name: str,
   server_def.default_session_config.rpc_options.num_channels_per_target = 4
   server_def.default_session_config.experimental.recv_buf_max_chunk = -1
 
-  context.context().configure_collective_ops(
-      collective_leader=collective_leader)
-  if enable_coordination_service:
-    context.context().configure_coordination_service(
-        service_type="standalone", service_leader=collective_leader)
-
   logging.info("Enabling collectives with server_def: %s", server_def)
+
   context.context().enable_collective_ops(server_def)
+
   context.ensure_initialized()
-
-
-def _configure_tpu_runtime():
-  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
-    context.context().use_tfrt = True
-    # Unit tests that skip tfrt backends requires the following line.
-    tfrt_utils.set_tfrt_enabled(True)
 
 
 @tf_export(
@@ -116,7 +118,9 @@ def _configure_tpu_runtime():
     v1=[])
 def initialize_accelerator_system(
     device_type: Optional[str] = None,
-    enable_coordination_service: Optional[bool] = False) -> str:
+    enable_coordination_service: Optional[bool] = True,
+    experimental_reset_context: Optional[bool] = False,
+) -> str:
   """Initializes accelerators and communication fabrics for DTensor.
 
   DTensor configures TensorFlow to run in the local mode or multi-client mode.
@@ -147,6 +151,8 @@ def initialize_accelerator_system(
       The default value is `localhost` in local mode, and
       `worker` when in the multi-client mode. All DTensor clients within the
       same multi-client cluster share the same job name.
+  - `DTENSOR_USE_PARALLEL_EXECUTOR`: string, with its value being `pw` to
+      specify that the backend is Pathways, and TensorFlow otherwise.
 
   Args:
     device_type: Type of accelerator to use, can be CPU, GPU, or TPU. If None,
@@ -154,6 +160,11 @@ def initialize_accelerator_system(
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, when
       there is more than 1 client.
+    experimental_reset_context: Reset the tensorflow context. Behaviors of
+      existing TensorFlow objects (e.g. Tensors) are undefined. Set this to True
+      as an escape hatch, if there is no clear way to refactor your code to call
+      initialize_accelerator_system() before calling TensorFlow APIs that
+      initialize the context.
 
   Returns:
     device_type: the type of accelerator that was initialized.
@@ -165,6 +176,15 @@ def initialize_accelerator_system(
     raise ValueError(
         "Accelerator system has already been initialized. "
         "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
+
+  if experimental_reset_context:
+    if context.context()._initialized:    # pylint: disable=protected-access
+      logging.warn(
+          "experimental_reset_context is True. "
+          "Resetting TensorFlow context. Existing TensorFlow objects "
+          "(e.g. Tensors and resources) are invalidated."
+      )
+      context.context().ensure_uninitialized()
 
   if context.context()._initialized:  # pylint: disable=protected-access
     raise ValueError(
@@ -182,14 +202,22 @@ def initialize_accelerator_system(
     raise ValueError(f"Unknown device_type {device_type}. "
                      "Allowed values are CPU, GPU, or TPU")
 
-  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
-  if device_type == "TPU":
-    _configure_tpu_runtime()
+  if config.gpu_use_nccl_communication():
+    logical_gpu_count = config.num_local_devices("GPU")
+    physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
+    if logical_gpu_count > physical_gpu_count:
+      raise ValueError(
+          "DTENSOR_GPU_USE_NCCL_COMMUNICATION is set for using NCCL. "
+          "NCCL Collectives require one to one mapping between logical and "
+          "physical GPUs. "
+          f"The number of logical GPU ({logical_gpu_count}) "
+          f"is more than the number of physical GPU ({physical_gpu_count})."
+      )
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):
-    num_local_devices = api.num_local_devices(device_type)
-    if api.num_local_devices("CPU") < num_local_devices:
+    num_local_devices = config.num_local_devices(device_type)
+    if config.num_local_devices("CPU") < num_local_devices:
       tf_config.set_logical_device_configuration(
           tf_config.list_physical_devices("CPU")[0],
           [context.LogicalDeviceConfiguration()] * num_local_devices)
@@ -200,9 +228,16 @@ def initialize_accelerator_system(
         dtensor_jobs=config.jobs(),
         client_id=config.client_id(),
         collective_leader=config.full_job_name(task_id=0),
+        gpu_use_nccl_communication=config.gpu_use_nccl_communication(),
         enable_coordination_service=enable_coordination_service)
+  else:
+    if device_type == "GPU":
+      # Enables Nccl on local mode.
+      context.context(  # pylint: disable=protected-access
+      )._collective_use_nccl_communication = config.gpu_use_nccl_communication(
+      )
 
-  if device_type == "TPU":
+  if device_type == "TPU" and not config.backend_is_pw():
     tpu_util.initialize_tpu_system()
 
   _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = device_type
@@ -231,7 +266,7 @@ def shutdown_accelerator_system() -> None:
         "Shutting down accelerator system under multi-client mode is "
         "not supported.")
 
-  if device_type == "TPU":
+  if device_type == "TPU" and not config.backend_is_pw():
     tpu_util.shutdown_tpu_system()
 
   # reset TF context to stop gRPC servers.

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 
 namespace tflite {
@@ -23,6 +27,14 @@ absl::Status CreateQcomConvolutionFilter(cl_context context, int kernel_x,
                                          int kernel_y, cl_mem* filter,
                                          const void* data) {
   return absl::UnavailableError("CreateQcomConvolutionFilter not available.");
+}
+
+std::vector<std::string> GetUnsupportedExtensions() {
+  return {"cl_qcom_accelerated_image_ops", "cl_qcom_recordable_queues"};
+}
+
+std::vector<std::pair<std::string, std::string>> GetClSpecificDefines() {
+  return {};
 }
 
 }  // namespace cl

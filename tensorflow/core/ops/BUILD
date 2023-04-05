@@ -5,17 +5,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_gen_op_libs",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -29,6 +22,7 @@ load(
 # A lot of packages try to minimize binary size by depending on individual ops,\
 # so they need access here.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -76,6 +70,7 @@ tf_gen_op_libs(
         "nccl_ops",
         "nn_ops",
         "no_op",
+        "optional_ops",
         "parsing_ops",
         "random_grad",
         "random_index_shuffle_ops",
@@ -95,9 +90,9 @@ tf_gen_op_libs(
         "state_ops",
         "stateless_random_ops",
         "stateless_random_ops_v2",
+        "sync_ops",
         "summary_ops",
         "training_ops",
-        "uniform_quant_ops",
     ],
     sub_directory = "",
     deps = [
@@ -248,6 +243,19 @@ tf_gen_op_libs(
     deps = ["//tensorflow/core/util:ragged_to_dense_util"],
 )
 
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "uniform_quant_ops",
+    ],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+    ],
+)
+
 cc_library(
     name = "ops",
     deps = [
@@ -260,6 +268,7 @@ cc_library(
         ":checkpoint_ops_op_lib",
         ":clustering_ops_op_lib",
         ":collective_ops_op_lib",
+        ":composite_tensor_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":count_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -270,7 +279,6 @@ cc_library(
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
         ":experimental_dataset_ops_op_lib",
-        ":composite_tensor_ops_op_lib",
         ":filesystem_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
@@ -278,14 +286,15 @@ cc_library(
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
         ":list_ops_op_lib",
-        ":map_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
+        ":map_ops_op_lib",
         ":math_ops_op_lib",
         ":nccl_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
+        ":optional_ops_op_lib",
         ":parsing_ops_op_lib",
         ":ragged_ops",
         ":random_index_shuffle_ops_op_lib",
@@ -293,8 +302,6 @@ cc_library(
         ":resource_variable_ops_op_lib",
         ":risc_ops_op_lib",
         ":rnn_ops_op_lib",
-        ":special_math_ops_op_lib",
-        ":stateful_random_ops_op_lib",
         ":scoped_allocator_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
@@ -302,12 +309,15 @@ cc_library(
         ":set_ops_op_lib",
         ":sparse_csr_matrix_ops_op_lib",
         ":sparse_ops_op_lib",
-        ":summary_ops_op_lib",
+        ":special_math_ops_op_lib",
         ":spectral_ops_op_lib",
         ":state_ops_op_lib",
+        ":stateful_random_ops_op_lib",
         ":stateless_random_ops_op_lib",
         ":stateless_random_ops_v2_op_lib",
         ":string_ops_op_lib",
+        ":summary_ops_op_lib",
+        ":sync_ops_op_lib",
         ":training_ops_op_lib",
         ":uniform_quant_ops_op_lib",
         ":word2vec_ops",
@@ -318,16 +328,16 @@ cc_library(
         "//conditions:default": [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
-            ":tpu_embedding_ops_op_lib",
             ":tpu_embedding_load_retrieve_ops_op_lib",
+            ":tpu_embedding_ops_op_lib",
             ":tpu_functional_ops_op_lib",
             ":tpu_heartbeat_ops_op_lib",
             ":tpu_host_compute_ops_op_lib",
-            ":tpu_sharding_util_ops_op_lib",
             ":tpu_infeed_ops_op_lib",
-            ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
+            ":tpu_outfeed_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            ":tpu_sharding_util_ops_op_lib",
         ],
     }) + if_mkl([
         ":mkl_array_ops_op_lib",
@@ -383,9 +393,9 @@ cc_library(
     srcs = ["nn_grad.cc"],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
+        ":nn_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        ":nn_ops_op_lib",
     ] + if_mkl([
         ":mkl_nn_ops_op_lib",
     ]),
@@ -429,7 +439,6 @@ tf_cc_test(
     name = "ops_array_grad_test",
     size = "small",
     srcs = ["array_grad_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":ops",
         "//tensorflow/cc:cc_ops",
@@ -457,7 +466,6 @@ tf_cc_test(
     name = "ops_math_grad_test",
     size = "small",
     srcs = ["math_grad_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_gpu"],
     deps = [
         ":ops",
@@ -512,7 +520,6 @@ tf_cc_test(
         "training_ops_test.cc",
         "uniform_quant_ops_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":ops",
         "//tensorflow/cc:cc_ops",
@@ -527,6 +534,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:type_inference",
         "//third_party/eigen3",
     ],
 )

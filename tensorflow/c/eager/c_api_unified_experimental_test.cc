@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -378,6 +380,13 @@ TEST_P(UnifiedCAPI, TestBasicGraph) {
   // Execute.
   TF_ExecuteOperation(add_op, 2, inputs, add_outputs, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  // Test that full type information can be accessed.
+  auto outs = unwrap(add_outputs);
+  auto h = outs->outputs[0];
+  ASSERT_NE(h, nullptr);
+  ASSERT_EQ(h->FullType().type_id(), TFT_UNSET);
+  ASSERT_EQ(unwrap(inputs[0])->FullType().type_id(), TFT_UNSET);
 
   // Clean up operation and inputs.
   TF_DeleteAbstractOp(add_op);

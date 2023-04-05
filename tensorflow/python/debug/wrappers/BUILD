@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -16,6 +17,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/debug/lib:debug_utils",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -101,9 +104,9 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/lib:debug_data",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
@@ -126,7 +129,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/debug/lib:debug_data",
     ],
 )
@@ -151,6 +154,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/debug/cli:cli_shared",
         "//tensorflow/python/debug/cli:debugger_cli_common",

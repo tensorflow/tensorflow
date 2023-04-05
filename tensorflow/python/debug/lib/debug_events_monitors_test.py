@@ -141,64 +141,51 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
 
       traces = test_monitor.graph_execution_traces
       if tensor_debug_mode == "CONCISE_HEALTH":
-        self.assertLen(traces, 3)  # [Placeholder:0, Unique:0 , Sum:0].
-        self.assertEqual(traces[0].op_type, "Placeholder")
+        self.assertLen(traces, 2)  # [Unique:0 , Sum:0].
+        self.assertEqual(traces[0].op_type, "Unique")
         self.assertEqual(traces[0].output_slot, 0)
-        self.assertEqual(traces[1].op_type, "Unique")
-        self.assertEqual(traces[1].output_slot, 0)
         # Unique:1 is not traced under CONCISE_HEALTH mode, as it's int-dtype.
-        self.assertEqual(traces[2].op_type, "Sum")
-        self.assertEqual(traces[2].output_slot, 0)
+        self.assertEqual(traces[1].op_type, "Sum")
+        self.assertEqual(traces[1].output_slot, 0)
         # [tensor_id, element_count, neg_inf_count, pos_inf_count, nan_count].
         self.assertLen(traces[0].debug_tensor_value, 5)
         self.assertLen(traces[1].debug_tensor_value, 5)
-        self.assertLen(traces[2].debug_tensor_value, 5)
       elif tensor_debug_mode == "FULL_HEALTH":
-        self.assertLen(traces, 3)  # [Placeholder:0, Unique:0 , Sum:0].
-        self.assertEqual(traces[0].op_type, "Placeholder")
+        self.assertLen(traces, 2)  # [Unique:0 , Sum:0].
+        self.assertEqual(traces[0].op_type, "Unique")
         self.assertEqual(traces[0].output_slot, 0)
-        self.assertEqual(traces[1].op_type, "Unique")
-        self.assertEqual(traces[1].output_slot, 0)
         # Unique:1 is not traced under FULL_HEALTH mode, as it's int-dtype.
-        self.assertEqual(traces[2].op_type, "Sum")
-        self.assertEqual(traces[2].output_slot, 0)
+        self.assertEqual(traces[1].op_type, "Sum")
+        self.assertEqual(traces[1].output_slot, 0)
         # [tensor_id, device_id, dtype, rank, element_count,
         #  neg_inf_count, pos_inf_count, nan_count,
         #  neg_finite_count, zero_count, pos_finite_count].
         self.assertLen(traces[0].debug_tensor_value, 11)
         self.assertLen(traces[1].debug_tensor_value, 11)
-        self.assertLen(traces[2].debug_tensor_value, 11)
       elif tensor_debug_mode == "FULL_TENSOR":
-        # [Placeholder:0, Unique:0, Unique:1, Const:0, Sum:0].
-        self.assertLen(traces, 5)
-        self.assertEqual(traces[0].op_type, "Placeholder")
+        # [Unique:0, Unique:1, Const:0, Sum:0].
+        self.assertEqual(traces[0].op_type, "Unique")
         self.assertEqual(traces[0].output_slot, 0)
         self.assertIsNone(traces[0].debug_tensor_value)
         self.assertAllEqual(
             reader.graph_execution_trace_to_tensor_value(traces[0]),
-            [2., 6., 8., 1., 2.])
+            [2., 6., 8., 1.])
         self.assertEqual(traces[1].op_type, "Unique")
-        self.assertEqual(traces[1].output_slot, 0)
+        self.assertEqual(traces[1].output_slot, 1)
         self.assertIsNone(traces[1].debug_tensor_value)
         self.assertAllEqual(
             reader.graph_execution_trace_to_tensor_value(traces[1]),
-            [2., 6., 8., 1.])
-        self.assertEqual(traces[2].op_type, "Unique")
-        self.assertEqual(traces[2].output_slot, 1)
-        self.assertIsNone(traces[2].debug_tensor_value)
-        self.assertAllEqual(
-            reader.graph_execution_trace_to_tensor_value(traces[2]),
             [0, 1, 2, 3, 0])
-        self.assertEqual(traces[3].op_type, "Const")
+        self.assertEqual(traces[2].op_type, "Const")
+        self.assertEqual(traces[2].output_slot, 0)
+        self.assertIsNone(traces[2].debug_tensor_value)
+        self.assertAllClose(
+            reader.graph_execution_trace_to_tensor_value(traces[2]), [0])
+        self.assertEqual(traces[3].op_type, "Sum")
         self.assertEqual(traces[3].output_slot, 0)
         self.assertIsNone(traces[3].debug_tensor_value)
         self.assertAllClose(
-            reader.graph_execution_trace_to_tensor_value(traces[3]), [0])
-        self.assertEqual(traces[4].op_type, "Sum")
-        self.assertEqual(traces[4].output_slot, 0)
-        self.assertIsNone(traces[4].debug_tensor_value)
-        self.assertAllClose(
-            reader.graph_execution_trace_to_tensor_value(traces[4]), 17.)
+            reader.graph_execution_trace_to_tensor_value(traces[3]), 17.)
 
 
 class AlertDataObjectsTest(test_util.TensorFlowTestCase):

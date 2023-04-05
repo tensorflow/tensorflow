@@ -140,7 +140,7 @@ class KernelAndDevice : public core::RefCounted {
       CancellationManager* cancellation_manager,
       const absl::optional<EagerFunctionParams>& eager_func_params,
       const absl::optional<ManagedStackTrace>& stack_trace,
-      CoordinationServiceAgent* coordination_service_agent) = 0;
+      tsl::CoordinationServiceAgent* coordination_service_agent) = 0;
 
   // Execute kernel asynchronously when applicable. Different from `Run` which
   // blocks the caller thread and waits for the execution of the op/function,
@@ -155,7 +155,7 @@ class KernelAndDevice : public core::RefCounted {
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
       const absl::optional<EagerFunctionParams>& eager_func_params,
-      CoordinationServiceAgent* coordination_service_agent,
+      tsl::CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
@@ -213,19 +213,20 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<EagerKernelRet>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerFunctionParams>& eager_func_params,
-             const absl::optional<ManagedStackTrace>& stack_trace,
-             CoordinationServiceAgent* coordination_service_agent) override;
+  Status Run(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerFunctionParams>& eager_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace,
+      tsl::CoordinationServiceAgent* coordination_service_agent) override;
 
   void RunAsync(ScopedStepContainer* step_container,
                 const EagerKernelArgs& inputs,
                 std::vector<EagerKernelRet>* outputs,
                 CancellationManager* cancellation_manager,
                 const absl::optional<EagerFunctionParams>& eager_func_params,
-                CoordinationServiceAgent* coordination_service_agent,
+                tsl::CoordinationServiceAgent* coordination_service_agent,
                 StatusCallback done) override {
     // Trivial async implementation on top of the sync version
     done(Run(step_container, inputs, outputs, cancellation_manager,
@@ -282,7 +283,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       const bool shape_inference_on_tfe_dialect_import,
       const bool int_args_and_retvals_on_device,
       absl::optional<string> xla_compile_device_type,
-      std::function<Rendezvous*(const int64_t)> rendezvous_creator,
+      Rendezvous::Factory rendezvous_factory,
       std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
@@ -300,7 +301,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
-        rendezvous_creator_(std::move(rendezvous_creator)),
+        rendezvous_factory_(std::move(rendezvous_factory)),
         get_op_id_(std::move(get_op_id)) {}
 
   ~KernelAndDeviceFunc() override;
@@ -315,19 +316,20 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<EagerKernelRet>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerFunctionParams>& eager_func_params,
-             const absl::optional<ManagedStackTrace>& stack_trace,
-             CoordinationServiceAgent* coordination_service_agent) override;
+  Status Run(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerFunctionParams>& eager_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace,
+      tsl::CoordinationServiceAgent* coordination_service_agent) override;
 
   void RunAsync(ScopedStepContainer* step_container,
                 const EagerKernelArgs& inputs,
                 std::vector<EagerKernelRet>* outputs,
                 CancellationManager* cancellation_manager,
                 const absl::optional<EagerFunctionParams>& eager_func_params,
-                CoordinationServiceAgent* coordination_service_agent,
+                tsl::CoordinationServiceAgent* coordination_service_agent,
                 StatusCallback done) override;
 
   const OpKernel* kernel() const override { return nullptr; }
@@ -350,7 +352,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       CancellationManager* cancellation_manager,
       const absl::optional<EagerFunctionParams>& eager_func_params,
       const absl::optional<ManagedStackTrace>& stack_trace,
-      CoordinationServiceAgent* coordination_service_agent);
+      tsl::CoordinationServiceAgent* coordination_service_agent);
 
   ProcessFunctionLibraryRuntime* const pflr_;  // non-null
   FunctionLibraryRuntime::Handle handle_;
@@ -392,7 +394,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   DataTypeVector output_dtypes_;
   string name_;
 
-  std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
+  Rendezvous::Factory rendezvous_factory_;
   std::function<int64_t()> get_op_id_;
 };
 

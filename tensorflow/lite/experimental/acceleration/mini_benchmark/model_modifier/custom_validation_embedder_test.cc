@@ -21,17 +21,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 namespace tflite {
 namespace acceleration {
@@ -48,11 +49,12 @@ class CustomValidationEmbedderTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_model,
         g_tflite_acceleration_embedded_mobilenet_model_len);
     ASSERT_TRUE(!plain_model_path.empty());
-    plain_model_loader_ = std::make_unique<PathModelLoader>(plain_model_path);
-    ASSERT_EQ(plain_model_loader_->Init(), kMinibenchmarkSuccess);
+    plain_model_loader_ =
+        std::make_unique<tools::PathModelLoader>(plain_model_path);
+    ASSERT_TRUE(plain_model_loader_->Init());
   }
 
-  std::unique_ptr<ModelLoader> plain_model_loader_;
+  std::unique_ptr<tools::ModelLoader> plain_model_loader_;
 };
 
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
@@ -86,6 +88,15 @@ TEST_F(CustomValidationEmbedderTest, BuildValidationModelSucceed) {
 TEST_F(CustomValidationEmbedderTest, BuildValidationModelTooManyInput) {
   int batch_size = 5;
   CustomValidationEmbedder embedder(batch_size, {{}, {}});
+
+  FlatBufferBuilder fbb;
+  EXPECT_EQ(
+      embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(), fbb),
+      kMinibenchmarkValidationSubgraphBuildFailed);
+}
+
+TEST_F(CustomValidationEmbedderTest, BuildValidationModelInvalidBufferSize) {
+  CustomValidationEmbedder embedder(2, {std::vector<uint8_t>(2, 2)});
 
   FlatBufferBuilder fbb;
   EXPECT_EQ(

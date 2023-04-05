@@ -2,6 +2,7 @@
 #   Utilities for reading and writing object-based checkpoints.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -20,11 +21,11 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -33,8 +34,8 @@ py_library(
     srcs = ["trackable_utils.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/trackable:trackable_utils",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -43,8 +44,8 @@ py_library(
     srcs = ["base_delegate.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/trackable:base_delegate",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -55,9 +56,9 @@ py_library(
     deps = [
         ":base",
         "//tensorflow/python:lib",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -68,8 +69,8 @@ py_library(
     deps = [
         ":base",
         ":data_structures",
-        "//tensorflow/python:util",
         "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -79,8 +80,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
-        "//tensorflow/python:util",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -100,8 +101,8 @@ py_library(
     srcs = ["layer_utils.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/trackable:layer_utils",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -112,9 +113,9 @@ py_library(
     deps = [
         ":base",
         ":layer_utils",
-        "//tensorflow/python:util",
         "//tensorflow/python/saved_model:revived_types",
         "//tensorflow/python/trackable:data_structures",
+        "//tensorflow/python/util:deprecation",
         "@wrapt",
     ],
 )
@@ -131,11 +132,11 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -164,16 +165,16 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_core",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -183,7 +184,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
-        "//tensorflow/python:util",
         "//tensorflow/python/trackable:python_state",
+        "//tensorflow/python/util:deprecation",
     ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 
+#include <memory>
 #include <utility>
 
 namespace xla {
@@ -22,22 +23,26 @@ namespace xla {
 Status HostCallbackContext::OnSend(int arg_num,
                                    const PjRtTransferMetadata& metadata,
                                    PjRtChunk data) {
-  const auto& arg_info = host_callback_.operands.at(arg_num);
-  const auto& host_shape = arg_info.shape;
-  const auto& device_shape = metadata.device_shape;
+  if (!use_major_to_minor_data_layout_for_callbacks_) {
+    const auto& arg_info = host_callback_.operands.at(arg_num);
+    const auto& host_shape = arg_info.shape;
+    const auto& device_shape = metadata.device_shape;
 
-  size_t host_size = ShapeUtil::ByteSizeOf(host_shape);
-  DCHECK_GE(data.size(), host_size);
+    size_t host_size = ShapeUtil::ByteSizeOf(host_shape);
+    DCHECK_GE(data.size(), host_size);
 
-  auto delinearized = PjRtChunk::AllocateDefault(host_size);
-  TF_CHECK_OK(host_memory_for_device_manager_->ToHostLayout(
-      data.data(), data.size(), device_shape, delinearized.data(),
-      delinearized.size(), host_shape));
+    auto delinearized = PjRtChunk::AllocateDefault(host_size);
+    TF_CHECK_OK(host_memory_for_device_manager_->ToHostLayout(
+        data.data(), data.size(), device_shape, delinearized.data(),
+        delinearized.size(), host_shape));
+
+    data = std::move(delinearized);
+  }
 
   // This assignment to update `args_` will not race with the assignments in
   // future send ops for this `arg_num` because send callbacks are supposed to
   // be invoked sequentially.
-  args_.at(arg_num) = std::move(delinearized);
+  args_.at(arg_num) = std::move(data);
 
   DCHECK_GE(ready_count_.load(), 1);
   if (ready_count_.fetch_sub(1) != 1) {
@@ -91,12 +96,15 @@ void HostCallbackContext::Receive(int res_num,
   auto& result_channel = result_channels_.at(res_num);
   PjRtChunk chunk = result_channel->Pop();
 
-  const auto& host_shape = host_callback_.results.at(res_num).shape;
-  const auto& device_shape = metadata.device_shape;
+  if (!use_major_to_minor_data_layout_for_callbacks_) {
+    const auto& host_shape = host_callback_.results.at(res_num).shape;
+    const auto& device_shape = metadata.device_shape;
+    auto statusor_linearized = host_memory_for_device_manager_->ToDeviceLayout(
+        chunk.data(), chunk.size(), host_shape, device_shape);
+    chunk = std::move(statusor_linearized.value());
+  }
 
-  auto statusor_linearized = host_memory_for_device_manager_->ToDeviceLayout(
-      chunk.data(), chunk.size(), host_shape, device_shape);
-  TF_CHECK_OK(stream.AddChunk(std::move(statusor_linearized).value()));
+  stream.AddChunk(std::move(chunk)).OnReady([](Status s) { TF_CHECK_OK(s); });
 }
 
 std::unique_ptr<HostCallbackContext>
@@ -104,9 +112,11 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
     HostCallback host_callback,
     PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
     std::vector<SendCallback>& send_callbacks,
-    std::vector<RecvCallback>& recv_callbacks) {
+    std::vector<RecvCallback>& recv_callbacks,
+    bool use_major_to_minor_data_layout_for_callbacks) {
   auto context = std::make_unique<HostCallbackContext>(
-      std::move(host_callback), host_memory_for_device_manager);
+      std::move(host_callback), use_major_to_minor_data_layout_for_callbacks,
+      host_memory_for_device_manager);
 
   const auto& hb = context->host_callback();
   for (int arg_num = 0; arg_num < hb.operands.size(); ++arg_num) {
@@ -122,13 +132,13 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
   for (int res_num = 0; res_num < hb.results.size(); ++res_num) {
     const auto& result_info = hb.results[res_num];
-    recv_callbacks.push_back(
-        RecvCallback{/*channel_id=*/result_info.channel_id,
-                     /*callback=*/[res_num, context = context.get()](
-                                      const PjRtTransferMetadata& metadata,
-                                      CopyToDeviceStream& stream) {
-                       context->Receive(res_num, metadata, stream);
-                     }});
+    recv_callbacks.push_back(RecvCallback{
+        /*channel_id=*/result_info.channel_id,
+        /*callback=*/[res_num, context = context.get()](
+                         const PjRtTransferMetadata& metadata,
+                         std::unique_ptr<CopyToDeviceStream> stream) {
+          context->Receive(res_num, metadata, *stream);
+        }});
   }
 
   return context;

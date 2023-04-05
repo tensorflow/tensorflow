@@ -25,6 +25,9 @@ namespace random {
 // in different processes.
 uint64 New64();
 
+// Same as previous method, but uses a different RNG for each thread.
+uint64 ThreadLocalNew64();
+
 // Return a 64-bit random value. Uses
 // std::mersenne_twister_engine::default_seed as seed value.
 uint64 New64DefaultSeed();

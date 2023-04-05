@@ -64,6 +64,8 @@ HANDLE_TF_REF_TYPE(Complex64Ref, COMPLEX64_REF, "complex64ref")
 HANDLE_TF_REF_TYPE(Complex128Ref, COMPLEX128_REF, "complex128ref")
 HANDLE_TF_REF_TYPE(HalfRef, HALF_REF, "halfref")
 HANDLE_TF_REF_TYPE(ResourceRef, RESOURCE_REF, "resourceref")
+HANDLE_TF_REF_TYPE(Float8E4M3FNRef, FLOAT8_E4M3FN_REF, "float8e4m3fnref")
+HANDLE_TF_REF_TYPE(Float8E5M2Ref, FLOAT8_E5M2_REF, "float8e5m2ref")
 
 #ifndef HANDLE_LAST_TF_TYPE
 #define HANDLE_LAST_TF_TYPE(class, enumerant, name) \

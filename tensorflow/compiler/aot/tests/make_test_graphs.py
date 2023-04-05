@@ -30,10 +30,14 @@ from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.training import saver as saver_lib
 
@@ -48,7 +52,7 @@ def tfadd(_):
 
 def tfadd_with_ckpt(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
-  y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
+  y = variable_v1.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
   init_op = variables.global_variables_initializer()
@@ -63,7 +67,7 @@ def tfadd_with_ckpt(out_dir):
 
 def tfadd_with_ckpt_saver(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
-  y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
+  y = variable_v1.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
   init_op = variables.global_variables_initializer()
@@ -83,7 +87,7 @@ def tfadd_with_ckpt_saver(out_dir):
 def tfassert_eq(_):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = array_ops.placeholder(dtypes.int32, name='y_hold')
-  control_flow_ops.Assert(
+  control_flow_assert.Assert(
       math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq')
   math_ops.add(x, math_ops.negative(y), name='x_y_diff')
 
@@ -92,7 +96,7 @@ def tfcond(_):
   p = array_ops.placeholder(dtypes.bool, name='p_hold')
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = array_ops.placeholder(dtypes.int32, name='y_hold')
-  z = control_flow_ops.cond(p, lambda: x, lambda: y)
+  z = cond.cond(p, lambda: x, lambda: y)
   array_ops.identity(z, name='result')
 
 
@@ -166,7 +170,7 @@ def tfvariable(_):
   old_x = x.value()
   with ops.control_dependencies([old_x]):
     new_x = x.assign_add([42.0])
-  array_ops.stack([old_x, new_x], name='result')
+  array_ops_stack.stack([old_x, new_x], name='result')
 
 
 def tfvariable_sequential_updates(_):

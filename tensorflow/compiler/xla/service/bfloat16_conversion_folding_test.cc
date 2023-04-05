@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_conversion_folding.h"
-#include "tensorflow/compiler/xla/service/bfloat16_support.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/float_support.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -27,13 +28,13 @@ limitations under the License.
 
 namespace xla {
 
-class TestBFloat16Support : public BFloat16Support {
+class TestBFloat16Support : public FloatSupport {
  public:
-  TestBFloat16Support() {}
+  TestBFloat16Support() : FloatSupport(BF16) {}
   ~TestBFloat16Support() override {}
 
-  bool SupportsBF16Operand(const HloInstruction& hlo,
-                           int64_t operand_index) const override {
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
     if (hlo.opcode() == HloOpcode::kAdd ||
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
@@ -44,7 +45,7 @@ class TestBFloat16Support : public BFloat16Support {
     return false;
   }
 
-  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
     if (hlo.opcode() == HloOpcode::kAdd ||
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||

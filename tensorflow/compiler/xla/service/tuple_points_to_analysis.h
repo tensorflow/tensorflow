@@ -27,16 +27,16 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/logical_buffer_analysis.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/compactptrset.h"
+#include "tensorflow/tsl/lib/gtl/compactptrset.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -68,7 +68,7 @@ class PointsToSet {
 
   // Creates a set containing the union of all LogicalBuffers contained in the
   // PointsToSet.
-  using BufferSet = tensorflow::gtl::CompactPointerSet<const LogicalBuffer*>;
+  using BufferSet = tsl::gtl::CompactPointerSet<const LogicalBuffer*>;
   BufferSet CreateFlattenedSet() const;
 
   // Returns true if the given buffer is in the points-to set at the given
@@ -102,7 +102,7 @@ class PointsToSet {
   // tuple_sources() at the index of an array shape (not a tuple) returns the
   // empty set. The instructions in the set returned by tuple_sources
   // necessarily are either Tuple instructions, constants, or parameters.
-  using SourceSet = tensorflow::gtl::CompactPointerSet<HloInstruction*>;
+  using SourceSet = tsl::gtl::CompactPointerSet<HloInstruction*>;
   const SourceSet& tuple_sources(const ShapeIndex& index) const;
 
   // Add a tuple source instruction for the given index.
@@ -258,6 +258,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleSend(HloInstruction* send) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
   Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
   std::string ToString() const;

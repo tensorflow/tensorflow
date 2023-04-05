@@ -88,12 +88,12 @@ TEST(StatusOr, TestNoDefaultConstructorInitialization) {
   // Explicitly initialize it with an error code.
   StatusOr<NoDefaultConstructor> statusor(errors::Cancelled(""));
   EXPECT_FALSE(statusor.ok());
-  EXPECT_EQ(statusor.status().code(), error::CANCELLED);
+  EXPECT_EQ(statusor.status().code(), absl::StatusCode::kCancelled);
 
   // Default construction of StatusOr initializes it with an UNKNOWN error code.
   StatusOr<NoDefaultConstructor> statusor2;
   EXPECT_FALSE(statusor2.ok());
-  EXPECT_EQ(statusor2.status().code(), error::UNKNOWN);
+  EXPECT_EQ(statusor2.status().code(), absl::StatusCode::kUnknown);
 }
 
 TEST(StatusOr, TestMoveOnlyInitialization) {
@@ -144,15 +144,15 @@ TEST(StatusOr, TestMoveOnlyVector) {
   vec.resize(2);
   auto another_vec = std::move(vec);
   EXPECT_EQ(0, *another_vec[0].value());
-  EXPECT_EQ(error::UNKNOWN, another_vec[1].status().code());
+  EXPECT_EQ(absl::StatusCode::kUnknown, another_vec[1].status().code());
 }
 
 TEST(StatusOr, TestMoveWithValuesAndErrors) {
   StatusOr<std::string> status_or(std::string(1000, '0'));
   StatusOr<std::string> value1(std::string(1000, '1'));
   StatusOr<std::string> value2(std::string(1000, '2'));
-  StatusOr<std::string> error1(Status(error::UNKNOWN, "error1"));
-  StatusOr<std::string> error2(Status(error::UNKNOWN, "error2"));
+  StatusOr<std::string> error1(Status(absl::StatusCode::kUnknown, "error1"));
+  StatusOr<std::string> error2(Status(absl::StatusCode::kUnknown, "error2"));
 
   ASSERT_TRUE(status_or.ok());
   EXPECT_EQ(std::string(1000, '0'), status_or.value());
@@ -182,8 +182,8 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   StatusOr<std::string> status_or(std::string(1000, '0'));
   StatusOr<std::string> value1(std::string(1000, '1'));
   StatusOr<std::string> value2(std::string(1000, '2'));
-  StatusOr<std::string> error1(Status(error::UNKNOWN, "error1"));
-  StatusOr<std::string> error2(Status(error::UNKNOWN, "error2"));
+  StatusOr<std::string> error1(Status(absl::StatusCode::kUnknown, "error1"));
+  StatusOr<std::string> error2(Status(absl::StatusCode::kUnknown, "error2"));
 
   ASSERT_TRUE(status_or.ok());
   EXPECT_EQ(std::string(1000, '0'), status_or.value());
@@ -218,7 +218,7 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
 TEST(StatusOr, TestDefaultCtor) {
   StatusOr<int> thing;
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status().code(), error::UNKNOWN);
+  EXPECT_EQ(thing.status().code(), absl::StatusCode::kUnknown);
 }
 
 TEST(StatusOrDeathTest, TestDefaultCtorValue) {
@@ -230,9 +230,9 @@ TEST(StatusOrDeathTest, TestDefaultCtorValue) {
 }
 
 TEST(StatusOr, TestStatusCtor) {
-  StatusOr<int> thing(Status(error::CANCELLED, ""));
+  StatusOr<int> thing(Status(absl::StatusCode::kCancelled, ""));
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status().code(), error::CANCELLED);
+  EXPECT_EQ(thing.status().code(), absl::StatusCode::kCancelled);
 }
 
 TEST(StatusOr, TestValueCtor) {
@@ -251,7 +251,7 @@ TEST(StatusOr, TestCopyCtorStatusOk) {
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOk) {
-  StatusOr<int> original(Status(error::CANCELLED, ""));
+  StatusOr<int> original(Status(absl::StatusCode::kCancelled, ""));
   StatusOr<int> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -274,7 +274,7 @@ TEST(StatusOr, TestCopyCtorStatusOKConverting) {
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOkConverting) {
-  StatusOr<int> original(Status(error::CANCELLED, ""));
+  StatusOr<int> original(Status(absl::StatusCode::kCancelled, ""));
   StatusOr<double> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -289,7 +289,7 @@ TEST(StatusOr, TestAssignmentStatusOk) {
 }
 
 TEST(StatusOr, TestAssignmentStatusNotOk) {
-  StatusOr<int> source(Status(error::CANCELLED, ""));
+  StatusOr<int> source(Status(absl::StatusCode::kCancelled, ""));
   StatusOr<int> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
@@ -298,9 +298,9 @@ TEST(StatusOr, TestAssignmentStatusNotOk) {
 TEST(StatusOr, TestStatus) {
   StatusOr<int> good(4);
   EXPECT_TRUE(good.ok());
-  StatusOr<int> bad(Status(error::CANCELLED, ""));
+  StatusOr<int> bad(Status(absl::StatusCode::kCancelled, ""));
   EXPECT_FALSE(bad.ok());
-  EXPECT_EQ(bad.status(), Status(error::CANCELLED, ""));
+  EXPECT_EQ(bad.status(), Status(absl::StatusCode::kCancelled, ""));
 }
 
 TEST(StatusOr, TestValue) {
@@ -316,19 +316,19 @@ TEST(StatusOr, TestValueConst) {
 }
 
 TEST(StatusOrDeathTest, TestValueNotOk) {
-  StatusOr<int> thing(Status(error::CANCELLED, "cancelled"));
+  StatusOr<int> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
   EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 TEST(StatusOrDeathTest, TestValueNotOkConst) {
-  const StatusOr<int> thing(Status(error::UNKNOWN, ""));
+  const StatusOr<int> thing(Status(absl::StatusCode::kUnknown, ""));
   EXPECT_DEATH(thing.value(), "");
 }
 
 TEST(StatusOr, TestPointerDefaultCtor) {
   StatusOr<int*> thing;
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status().code(), error::UNKNOWN);
+  EXPECT_EQ(thing.status().code(), absl::StatusCode::kUnknown);
 }
 
 TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
@@ -337,9 +337,9 @@ TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
 }
 
 TEST(StatusOr, TestPointerStatusCtor) {
-  StatusOr<int*> thing(Status(error::CANCELLED, ""));
+  StatusOr<int*> thing(Status(absl::StatusCode::kCancelled, ""));
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status(), Status(error::CANCELLED, ""));
+  EXPECT_EQ(thing.status(), Status(absl::StatusCode::kCancelled, ""));
 }
 
 TEST(StatusOr, TestPointerValueCtor) {
@@ -358,7 +358,7 @@ TEST(StatusOr, TestPointerCopyCtorStatusOk) {
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOk) {
-  StatusOr<int*> original(Status(error::CANCELLED, ""));
+  StatusOr<int*> original(Status(absl::StatusCode::kCancelled, ""));
   StatusOr<int*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -372,7 +372,7 @@ TEST(StatusOr, TestPointerCopyCtorStatusOKConverting) {
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOkConverting) {
-  StatusOr<Derived*> original(Status(error::CANCELLED, ""));
+  StatusOr<Derived*> original(Status(absl::StatusCode::kCancelled, ""));
   StatusOr<Base2*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
@@ -387,7 +387,7 @@ TEST(StatusOr, TestPointerAssignmentStatusOk) {
 }
 
 TEST(StatusOr, TestPointerAssignmentStatusNotOk) {
-  StatusOr<int*> source(Status(error::CANCELLED, ""));
+  StatusOr<int*> source(Status(absl::StatusCode::kCancelled, ""));
   StatusOr<int*> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
@@ -397,8 +397,8 @@ TEST(StatusOr, TestPointerStatus) {
   const int kI = 0;
   StatusOr<const int*> good(&kI);
   EXPECT_TRUE(good.ok());
-  StatusOr<const int*> bad(Status(error::CANCELLED, ""));
-  EXPECT_EQ(bad.status(), Status(error::CANCELLED, ""));
+  StatusOr<const int*> bad(Status(absl::StatusCode::kCancelled, ""));
+  EXPECT_EQ(bad.status(), Status(absl::StatusCode::kCancelled, ""));
 }
 
 TEST(StatusOr, TestPointerValue) {
@@ -419,7 +419,7 @@ TEST(StatusOr, TestArrowOperator) {
 }
 
 TEST(StatusOr, TestArrowOperatorNotOk) {
-  StatusOr<Base1> error(Status(error::CANCELLED, "cancelled"));
+  StatusOr<Base1> error(Status(absl::StatusCode::kCancelled, "cancelled"));
   EXPECT_DEATH(error->pad_++, "cancelled");
 }
 
@@ -429,7 +429,7 @@ TEST(StatusOr, TestStarOperator) {
 }
 
 TEST(StatusOr, TestStarOperatorDeath) {
-  StatusOr<Base1> error(Status(error::CANCELLED, "cancelled"));
+  StatusOr<Base1> error(Status(absl::StatusCode::kCancelled, "cancelled"));
   EXPECT_DEATH(*error, "cancelled");
 }
 
@@ -443,12 +443,12 @@ TEST(StatusOr, TestStarOperatorDeath) {
 // }
 
 TEST(StatusOrDeathTest, TestPointerValueNotOk) {
-  StatusOr<int*> thing(Status(error::CANCELLED, "cancelled"));
+  StatusOr<int*> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
   EXPECT_DEATH(thing.value(), "cancelled");
 }
 
 TEST(StatusOrDeathTest, TestPointerValueNotOkConst) {
-  const StatusOr<int*> thing(Status(error::CANCELLED, "cancelled"));
+  const StatusOr<int*> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
   EXPECT_DEATH(thing.value(), "cancelled");
 }
 
@@ -483,17 +483,17 @@ class BenchmarkFactory {
 
   Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(error::CANCELLED, "");
+    return Status(absl::StatusCode::kCancelled, "");
   }
 
   Status ArgumentFactoryFailShortMsg(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(error::INTERNAL, "");
+    return Status(absl::StatusCode::kInternal, "");
   }
 
   Status ArgumentFactoryFailLongMsg(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(error::INTERNAL,
+    return Status(absl::StatusCode::kInternal,
                   "a big string of message junk that will never be read");
   }
 
@@ -505,15 +505,15 @@ class BenchmarkFactory {
   }
 
   StatusOr<T*> StatusOrFactoryFail() TF_ATTRIBUTE_NOINLINE {
-    return Status(error::CANCELLED, "");
+    return Status(absl::StatusCode::kCancelled, "");
   }
 
   StatusOr<T*> StatusOrFactoryFailShortMsg() TF_ATTRIBUTE_NOINLINE {
-    return Status(error::INTERNAL, "");
+    return Status(absl::StatusCode::kInternal, "");
   }
 
   StatusOr<T*> StatusOrFactoryFailLongMsg() TF_ATTRIBUTE_NOINLINE {
-    return Status(error::INTERNAL,
+    return Status(absl::StatusCode::kInternal,
                   "a big string of message junk that will never be read");
   }
 

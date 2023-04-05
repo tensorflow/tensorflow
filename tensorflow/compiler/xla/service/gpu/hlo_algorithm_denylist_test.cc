@@ -39,10 +39,10 @@ class DenylistTest : public testing::Test {
 
     tsl::setenv(
         "XLA_FLAGS",
-        absl::StrCat(existing_xla_flags, "--xla_gpu_algorithm_denylist_path=",
-                     tsl::GetDataDependencyFilepath(tsl::io::JoinPath(
-                         "tensorflow", "compiler", "xla", "service", "gpu",
-                         "data", "hlo_algorithm_denylist.pbtxt")))
+        absl::StrCat(
+            existing_xla_flags, "--xla_gpu_algorithm_denylist_path=",
+            tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                              "data", "hlo_algorithm_denylist.pbtxt"))
             .data(),
         /*overwrite=*/true);
   }

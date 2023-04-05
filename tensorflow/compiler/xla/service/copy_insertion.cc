@@ -23,19 +23,21 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/any.h"
+#include "tensorflow/compiler/xla/frontend_attributes.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -491,7 +493,7 @@ class LiveRangeRegions {
   // The value-defining and value-use instructions do not have to belong to the
   // same computation, but the value use needs to be nested within the defining
   // computation.
-  typedef absl::flat_hash_map<HloInstruction*, InstructionInfo> InstructionMap;
+  typedef HloInstructionMap<InstructionInfo> InstructionMap;
   typedef std::pair<HloInstruction*, InstructionInfo> InstructionEntry;
   // Map each computation to its immediately contained instructions.
   typedef absl::flat_hash_map<const HloComputation*, InstructionMap>
@@ -509,10 +511,12 @@ class LiveRangeRegions {
     CHECK(p != computation_map_.end());
     return p->second;
   }
-  ComputationMap::const_iterator begin() const {
-    return computation_map_.begin();
+  absl::InlinedVector<const HloComputation*, 5>::const_iterator begin() const {
+    return computation_vector_.begin();
   }
-  ComputationMap::const_iterator end() const { return computation_map_.end(); }
+  absl::InlinedVector<const HloComputation*, 5>::const_iterator end() const {
+    return computation_vector_.end();
+  }
   int64_t size() const {
     CHECK_EQ(computation_vector_.size(), computation_map_.size());
     return computation_vector_.size();
@@ -521,7 +525,7 @@ class LiveRangeRegions {
   const HloComputation* Computation(int64_t index) const {
     return computation_vector_[index];
   }
-  bool contains(const HloInstruction* instr) const {
+  bool contains(HloInstruction* instr) const {
     CHECK_NE(instr, nullptr);
     auto* computation = instr->parent();
     auto p = computation_map_.find(computation);
@@ -773,9 +777,8 @@ class ComputeRelativeLocation {
     Relation dir_src_dest;
     for (int64_t index = 0; index < range1.size(); index++) {
       auto* computation1 = range1.Computation(index);
-      for (const auto& computation_entry2 : range2) {
-        auto* computation2 = computation_entry2.first;
-        for (auto instr_entry2 : computation_entry2.second) {
+      for (const auto* computation2 : range2) {
+        for (auto instr_entry2 : range2[computation2]) {
           if (!ordering_->call_graph().Dominates(computation1, computation2)) {
             continue;
           }
@@ -956,7 +959,7 @@ class ComputeRelativeLocation {
       case HloOpcode::kCopy:
         // Checking the copy simply copies from the other live range with no
         // layout conflicts.
-        if (region.contains(instr->operand(0)) &&
+        if (region.contains(instr->mutable_operand(0)) &&
             ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape())) {
           return false;  // Cannot intercept.
         }
@@ -1703,7 +1706,7 @@ class CopyRemover {
   // If element is not head, traverse from element to tail, then wrap
   // around. The ordering is important for live range region analysis.
   void ForEachValueInRange(const ValueNode* element,
-                           std::function<void(const ValueNode*)> visitor) {
+                           absl::FunctionRef<void(const ValueNode*)> visitor) {
     const ValueNode* head = element;
     for (const ValueNode* p = head; p != nullptr; p = Next(*p)) {
       visitor(p);
@@ -1720,10 +1723,9 @@ class CopyRemover {
     std::string result = "{";
     auto VisitValueNode = [&](const ValueNode* node) {
       if (result == "{") {
-        result = node->value->ToShortString();
-      } else {
-        StrAppend(&result, ", ");
         StrAppend(&result, node->value->ToShortString());
+      } else {
+        StrAppend(&result, ", ", node->value->ToShortString());
       }
     };
     VisitValueNode(element);
@@ -1840,6 +1842,33 @@ Status CopyInsertion::AddCopiesToResolveInterference(
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
           if (copied_operands.contains(operand_index.operand_number)) {
+            continue;
+          }
+
+          bool can_share_buffer = false;
+          if (can_share_buffer_ != nullptr) {
+            auto maybe_can_share_buffer = can_share_buffer_(
+                instruction, instruction->operand(operand_index.operand_number),
+                operand_index.operand_index);
+            if (maybe_can_share_buffer.has_value()) {
+              can_share_buffer = maybe_can_share_buffer.value();
+            }
+          }
+
+          // Skip copies for aliasing input/output pairs iff:
+          // *) Operand can share buffer with 'instruction' output.
+          // *) Instruction has frontend attribute which indicates that the
+          //    write region of the input/output aliased buffer updated by
+          //    'instruction' is disjoint from the read region of the shared
+          //    buffer.
+          // *) All uses of the operand are 'instruction'.
+          if (can_share_buffer &&
+              HasDisjointReadWriteRegionsAttr(instruction) &&
+              absl::c_all_of(
+                  instruction->operand(operand_index.operand_number)->users(),
+                  [&instruction](const HloInstruction* user) {
+                    return user == instruction;
+                  })) {
             continue;
           }
           copied_operands.insert(operand_index.operand_number);

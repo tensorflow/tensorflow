@@ -467,6 +467,21 @@ TEST_F(ConversionTest, CoralSettings) {
   EXPECT_EQ(768, output_settings.usb_max_bulk_in_queue_length());
 }
 
+TEST_F(ConversionTest, StableDelegateLoaderSettings) {
+  const std::string kDelegatePath = "TEST_DELEGATE_PATH";
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->stable_delegate_loader_settings =
+      std::make_unique<StableDelegateLoaderSettingsT>();
+
+  settings_.tflite_settings->stable_delegate_loader_settings->delegate_path =
+      kDelegatePath;
+  EXPECT_EQ(ConvertFromFlatbuffer(settings_)
+                .tflite_settings()
+                .stable_delegate_loader_settings()
+                .delegate_path(),
+            kDelegatePath);
+}
+
 TEST_F(ConversionTest, CPUSettings) {
   settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
   settings_.tflite_settings->cpu_settings = std::make_unique<CPUSettingsT>();

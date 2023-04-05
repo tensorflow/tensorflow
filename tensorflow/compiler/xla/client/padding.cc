@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -34,6 +34,16 @@ Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
         "strides size %u",
         input_dimensions.size(), window_dimensions.size(),
         window_strides.size());
+  }
+  for (size_t i = 0; i < input_dimensions.size(); ++i) {
+    if (window_dimensions[i] <= 0) {
+      return InvalidArgument("Window dimension %u has non-positive size %d", i,
+                             window_dimensions[i]);
+    }
+    if (window_strides[i] <= 0) {
+      return InvalidArgument("Window dimension %u has non-positive stride %d",
+                             i, window_strides[i]);
+    }
   }
   return OkStatus();
 }
@@ -120,14 +130,14 @@ std::vector<std::pair<int64_t, int64_t>> MakePadding(
         // 4'th kernel:                12345
         // padded base area:  00----------00
         int64_t output_dimension =
-            tensorflow::MathUtil::CeilOfRatio(input_dimension, window_stride);
+            tsl::MathUtil::CeilOfRatio(input_dimension, window_stride);
         int64_t padding_size =
             std::max<int64_t>((output_dimension - 1) * window_stride +
                                   window_dimension - input_dimension,
                               0);
         low_high_padding.emplace_back(
-            tensorflow::MathUtil::FloorOfRatio(padding_size, int64_t{2}),
-            tensorflow::MathUtil::CeilOfRatio(padding_size, int64_t{2}));
+            tsl::MathUtil::FloorOfRatio(padding_size, int64_t{2}),
+            tsl::MathUtil::CeilOfRatio(padding_size, int64_t{2}));
       }
       break;
   }

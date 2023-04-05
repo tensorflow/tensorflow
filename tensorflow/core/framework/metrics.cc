@@ -19,195 +19,232 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/tsl/lib/monitoring/counter.h"
+#include "tensorflow/tsl/lib/monitoring/gauge.h"
+#include "tensorflow/tsl/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace metrics {
 namespace {
 
-auto* graph_runs = monitoring::Counter<0>::New(
+auto* graph_runs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_runs",
     "The number of graph executions used to collect "
     "/tensorflow/core/graph_run_time_usecs");
 
-auto* graph_run_time_usecs = monitoring::Counter<0>::New(
+auto* graph_run_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
 
-auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
+auto* graph_run_time_usecs_histogram = tsl::monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_time_usecs_histogram",
      "The wall-clock time spent on executing graphs in microseconds."},
     // Power of 2 with bucket count 20 (> 17 minutes)
-    {monitoring::Buckets::Exponential(1000, 2, 20)});
+    {tsl::monitoring::Buckets::Exponential(1000, 2, 20)});
 
-auto* graph_pending_queue_length_histogram = monitoring::Sampler<0>::New(
+auto* graph_pending_queue_length_histogram = tsl::monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_pending_queue_length_histogram",
      "The number of pending (ready but not running) tasks in graph executor."},
     // Power of 1.5 with bucket count 30 (> 191k)
-    {monitoring::Buckets::Exponential(1, 1.5, 30)});
+    {tsl::monitoring::Buckets::Exponential(1, 1.5, 30)});
 
-auto* graph_run_input_tensor_bytes = monitoring::Sampler<0>::New(
+auto* graph_run_input_tensor_bytes = tsl::monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_input_tensor_bytes",
      "The size of input tensors in bytes."},
     // Power of 2 with bucket count 14 (256MB)
-    {monitoring::Buckets::Exponential(1, 4, 14)});
+    {tsl::monitoring::Buckets::Exponential(1, 4, 14)});
 
-auto* graph_run_output_tensor_bytes = monitoring::Sampler<0>::New(
+auto* graph_run_output_tensor_bytes = tsl::monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_output_tensor_bytes",
      "The size of output tensors in bytes."},
     // Power of 2 with bucket count 14 (256MB)
-    {monitoring::Buckets::Exponential(1, 4, 14)});
+    {tsl::monitoring::Buckets::Exponential(1, 4, 14)});
 
-auto* graph_unused_outputs = monitoring::Counter<1>::New(
+auto* graph_unused_outputs = tsl::monitoring::Counter<1>::New(
     "/tensorflow/core/graph_unused_outputs",
     "The number of unused outputs for ops of a given type.", "name");
 
-auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
+auto* tf_data_fetch_op_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/fetch_op",
+    "The number of times a tf.data operation that fetches output(s) of a "
+    "tf.data input pipeline (e.g. `IteratorGetNext`) was executed.",
+    "fetch_op");
+
+auto* tf_data_autotune_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
-auto* tf_data_bytes_consumed_counter = monitoring::Counter<1>::New(
+auto* tf_data_bytes_consumed_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_consumed",
     "The number of bytes consumed by a tf.data Dataset.", "name");
 
-auto* tf_data_bytes_produced_counter = monitoring::Counter<1>::New(
+auto* tf_data_bytes_produced_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_produced",
     "The number of bytes produced by a tf.data Dataset.", "name");
 
-auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
+auto* tf_data_bytes_read_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_read",
     "The number of bytes read by tf.data Dataset sources.", "name");
 
-auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
+auto* tf_data_bytes_fetched_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/bytes_fetched",
     "The number of bytes fetched from tf.data Dataset iterator.");
 
-auto* tf_data_elements_counter = monitoring::Counter<1>::New(
+auto* tf_data_elements_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
-auto* tf_data_experiment_counter = monitoring::Counter<1>::New(
+auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/experiment",
     "The number of times tf.data experiment is applied to input pipelines.",
     "name");
 
-auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
+auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
-auto* tf_data_get_next_duration_usecs_histogram = monitoring::Sampler<0>::New(
-    {"/tensorflow/data/getnext_duration",
-     "Microseconds spent fetching an element from tf.data iterator."},
-    // Power of 2 with bucket count 10 (1024 microseconds) and 1 second.
-    {monitoring::Buckets::Explicit(
-        {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
+auto* tf_data_get_next_duration_usecs_histogram =
+    tsl::monitoring::Sampler<0>::New(
+        {"/tensorflow/data/getnext_duration",
+         "Microseconds spent fetching an element from tf.data iterator."},
+        // Power of 2 with bucket count 10 (1024 microseconds) and 1 second.
+        {tsl::monitoring::Buckets::Explicit(
+            {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
 
-auto* tf_data_used_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+auto* tf_data_used_vs_budget_ratio_histogram = tsl::monitoring::Sampler<0>::New(
     {"/tensorflow/data/used_vs_budget_ratio",
      "Ratio of tf.data used ram over ram budget when running optimization."},
     // Uniform linear buckets with count 10 from 0 to 2
-    {monitoring::Buckets::Explicit(
+    {tsl::monitoring::Buckets::Explicit(
         {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
 
-auto* tf_data_buffered_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
-    {"/tensorflow/data/buffered_vs_budget_ratio",
-     "Ratio of tf.data max buffer bytes over ram budget when running "
-     "optimization."},
-    // Uniform linear buckets with count 10 from 0 to 2
-    {monitoring::Buckets::Explicit(
-        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+auto* tf_data_buffered_vs_budget_ratio_histogram =
+    tsl::monitoring::Sampler<0>::New(
+        {"/tensorflow/data/buffered_vs_budget_ratio",
+         "Ratio of tf.data max buffer bytes over ram budget when running "
+         "optimization."},
+        // Uniform linear buckets with count 10 from 0 to 2
+        {tsl::monitoring::Buckets::Explicit(
+            {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
 
-auto* tf_data_iterator_busy_counter =
-    monitoring::Counter<0>::New("/tensorflow/data/iterator_busy",
-                                "The time (in microseconds) during which a "
-                                "tf.data iterator was busy processing at "
-                                "least one `GetNext()` request.");
+auto* tf_data_iterator_busy_counter = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/data/iterator_busy",
+    "The time (in microseconds) during which a "
+    "tf.data iterator was busy processing at "
+    "least one `GetNext()` request.");
 
-auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
+auto* tf_data_iterator_lifetime_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/iterator_lifetime",
     "The time (in microseconds) between a tf.data iterator receiving the first "
     "`GetNext()` request and responding to the last `GetNext()` request.");
 
-auto* tf_data_iterator_gap_msec_histogram = monitoring::Sampler<0>::New(
+auto* tf_data_iterator_gap_msec_histogram = tsl::monitoring::Sampler<0>::New(
     {"/tensorflow/data/iterator_gap",
      "The time (in milliseconds) between a tf.data iterator responding to a "
      "`GetNext()` request and receiving the next `GetNext()` request."},
     // Power of 1.5 with bucket count of 20 (from 1 msec to about 2.2 secs).
-    {monitoring::Buckets::Exponential(1, 1.5, 20)});
+    {tsl::monitoring::Buckets::Exponential(1, 1.5, 20)});
 
-auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
+auto* tf_data_optimization_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
 auto* tf_data_service_workers_created_counter =
-    monitoring::Counter<0>::New("/tensorflow/data/service/workers_created",
-                                "Number of tf.data service workers created");
+    tsl::monitoring::Counter<0>::New(
+        "/tensorflow/data/service/workers_created",
+        "Number of tf.data service workers created");
 
-auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
+auto* tf_data_service_jobs_created_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/service/jobs_created", "Number of tf.data service jobs.",
     "processing_mode", "coordinated_read");
 
-auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
-    "/tensorflow/data/service/client_iterators",
-    "Number of tf.data service client iterators created.", "worker_uid",
-    "deployment_mode", "processing_mode", "is_coordinated_read");
+auto* tf_data_service_client_iterators_counter =
+    tsl::monitoring::Counter<4>::New(
+        "/tensorflow/data/service/client_iterators",
+        "Number of tf.data service client iterators created.", "worker_uid",
+        "deployment_mode", "processing_mode", "is_coordinated_read");
 
 auto* tf_data_service_cross_trainer_cache_queries_counter =
-    monitoring::Counter<1>::New(
+    tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/service/cross_trainer_cache_queries",
         "tf.data service cross-trainer cache queries counter. The result can "
         "be hit or miss.",
         "cache_hit");
 
 auto* tf_data_service_cross_trainer_cache_size_bytes =
-    monitoring::Gauge<int64_t, 0>::New(
+    tsl::monitoring::Gauge<int64_t, 0>::New(
         "/tensorflow/data/service/cross_trainer_cache_size_bytes",
         "tf.data service cross-trainer cache memory usage in bytes.");
 
-auto* tf_data_filename_counter = monitoring::Counter<2>::New(
+auto* tf_data_service_snapshot_bytes_committed =
+    tsl::monitoring::Counter<0>::New(
+        "/tensorflow/data/service/snapshot_bytes_committed",
+        "tf.data service distributed snapshot committed bytes.");
+
+auto* tf_data_service_data_transfer_protocol_used =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol.",
+        "data_transfer_protocol");
+
+auto* tf_data_service_data_transfer_protocol_fallback =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_fallback",
+        "The number of tf.data service worker clients created that fell back "
+        "from using this data transfer protocol for this reason.",
+        "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_service_data_transfer_protocol_error =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_error",
+        "The number of times a tf.data service worker client got this type "
+        "of non-retriable error with this message when using this protocol.",
+        "data_transfer_protocol", "error_type", "error_message");
+
+auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
 
 auto* tf_data_model_gauge =
-    monitoring::Gauge<std::function<std::string()>, 1>::New(
+    tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
         "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
-auto* tf_data_auto_shard = monitoring::Gauge<int64, 2>::New(
+auto* tf_data_auto_shard = tsl::monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
 
 auto* tf_data_auto_shard_rewrite_batch_size_eligible =
-    monitoring::Counter<1>::New(
+    tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/autoshard_rewrite_batch_size/eligible",
         "Whether tf.data pipelines that are eligible for autoshard "
         "to rewrite the batch size.",
         "eligible");
 
 auto* tf_data_auto_shard_rewrite_batch_size_reason =
-    monitoring::Counter<1>::New(
+    tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/autoshard_rewrite_batch_size/reason",
         "The reasons that tf.data pipelines are ineligible for autoshard "
         "to rewrite the batch size.",
         "reason");
 
 auto* tf_data_autotune_stopping_criteria_counter =
-    monitoring::Counter<1>::New("/tensorflow/data/autotune_stopping_criteria",
-                                "The number of times each tf.data autotune "
-                                "algorithm stopping criterion is met.",
-                                "name");
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/autotune_stopping_criteria",
+        "The number of times each tf.data autotune "
+        "algorithm stopping criterion is met.",
+        "name");
 
-auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
+auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
 
-auto* parse_sparse_feature_counter = monitoring::Counter<0>::New(
+auto* parse_sparse_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/sparse_feature",
     "The number of sparse features parsed by ops for parsing tf.Example.");
 
-auto* parse_ragged_feature_counter = monitoring::Counter<0>::New(
+auto* parse_ragged_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/ragged_feature",
     "The number of ragged features parsed by ops for parsing tf.Example.");
 
-auto* build_graph_calls = monitoring::Counter<0>::New(
+auto* build_graph_calls = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_build_calls",
     "The number of times TensorFlow has created a new client graph. "
     "A client graph is a sub-graph of the full graph, induced by a set of "
@@ -215,7 +252,7 @@ auto* build_graph_calls = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
-auto* build_graph_time_usecs = monitoring::Counter<0>::New(
+auto* build_graph_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_build_time_usecs",
     "The amount of time TensorFlow has spent creating new client graphs in "
     "microseconds. "
@@ -224,80 +261,91 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
-auto* function_graph_optimization_time_usecs = monitoring::Counter<0>::New(
+auto* function_graph_optimization_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/function_graph_optimization_time_usecs",
     "The amount of time TensorFlow has spent optimizing function graphs, in "
     "microseconds. ");
 
-auto* xla_compilations = monitoring::Counter<0>::New(
+auto* xla_compilations = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilations",
     "The number of XLA compilations used to collect "
     "/tensorflow/core/xla_compilation_time_usecs");
 
-auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
+auto* xla_compilation_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
 
-auto* xla_tpu_spmd_cores_per_replica = monitoring::Counter<1>::New(
+auto* xla_tpu_spmd_cores_per_replica = tsl::monitoring::Counter<1>::New(
     "/tensorflow/tpu/xla_spmd_cores_per_replica",
     "The number of cores used by XLA SPMD-replicated models.", "cores");
 
-auto* bfc_allocator_delay =
-    monitoring::Counter<0>::New("/tensorflow/core/bfc_allocator_delay",
-                                "The total time spent running each graph "
-                                "optimization pass in microseconds.");
-
-auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
+auto* tpu_variable_distribution_time_usecs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/tpu/variable_distribution_time",
     "Time spent sending variables from primary task to other worker tasks "
     "at the start of a call to TPUExecute.  Timer starts at RunGraph "
     "invocation and ends when TPUExecute args are ready on the current task.");
 
-auto* test_counters =
-    monitoring::Counter<2>::New("/tensorflow/core/test_counters",
-                                "Counters used for testing.", "name", "label");
+auto* test_counters = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/core/test_counters", "Counters used for testing.", "name",
+    "label");
 
 }  // namespace
 
-auto* tpu_op_error_counter = monitoring::Counter<2>::New(
+auto* tpu_op_error_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/tpu/op_error_count",
     "Count the tpu related errors by op and error_type.", "op", "error_type");
 
-auto* eager_client_error_counter = monitoring::Counter<2>::New(
+auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/core/eager_client_error_count",
     "Count the errors in eager client as a central place.", "error_source",
     "error_type");
 
-monitoring::Counter<2>* GetGraphOptimizationCounter() {
-  static auto* graph_optimization_counter =
-      monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
-                                  "The total time spent running each graph "
-                                  "optimization pass in microseconds.",
-                                  "kind", "name");
+auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
+    "/tensorflow/core/tf_mlir_bridge_first_phase_count",
+    "Tracks processing state in first phase of mlir bridge", "device",
+    "version", "fallback", "result");
+
+auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
+    "/tensorflow/core/tf1_features_by_graph_count",
+    "Marks which tf1 feature (if any) a graph contains.", "device", "context",
+    "control_flow", "ref_variable", "manual_control_deps");
+
+tsl::monitoring::Counter<2>* GetGraphOptimizationCounter() {
+  static auto* graph_optimization_counter = tsl::monitoring::Counter<2>::New(
+      "/tensorflow/core/graph_optimization_usecs",
+      "The total time spent running each graph "
+      "optimization pass in microseconds.",
+      "kind", "name");
   return graph_optimization_counter;
+}
+
+void RecordTFDataFetchOp(const string& name) {
+  tf_data_fetch_op_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
 
-monitoring::CounterCell* GetTFDataBytesConsumedCounter(const string& name) {
+tsl::monitoring::CounterCell* GetTFDataBytesConsumedCounter(
+    const string& name) {
   return tf_data_bytes_consumed_counter->GetCell(name);
 }
 
-monitoring::CounterCell* GetTFDataBytesProducedCounter(const string& name) {
+tsl::monitoring::CounterCell* GetTFDataBytesProducedCounter(
+    const string& name) {
   return tf_data_bytes_produced_counter->GetCell(name);
 }
 
-monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
+tsl::monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
   return tf_data_bytes_read_counter->GetCell(name);
 }
 
-monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
+tsl::monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
   return tf_data_elements_counter->GetCell(name);
 }
 
-monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
+tsl::monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
     const string& id) {
   return tf_data_model_gauge->GetCell(id);
 }
@@ -359,7 +407,7 @@ void RecordTFDataServiceWorkerCreated() {
 }
 
 void RecordTFDataServiceJobsCreated(
-    const tensorflow::data::ProcessingModeDef& processing_mode,
+    const data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read) {
   const std::string sharding_policy_str =
       data::ProcessingModeDef::ShardingPolicy_Name(
@@ -372,11 +420,11 @@ void RecordTFDataServiceJobsCreated(
 }
 
 void RecordTFDataServiceClientIterators(
-    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
-    const tensorflow::data::ProcessingModeDef& processing_mode,
+    int64_t worker_uid, data::DeploymentMode deployment_mode,
+    const data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read) {
   const std::string deployment_mode_str =
-      tensorflow::data::DeploymentMode_Name(deployment_mode);
+      data::DeploymentMode_Name(deployment_mode);
   const std::string sharding_policy_str =
       data::ProcessingModeDef::ShardingPolicy_Name(
           processing_mode.sharding_policy());
@@ -385,6 +433,28 @@ void RecordTFDataServiceClientIterators(
   tf_data_service_client_iterators_counter
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol) {
+  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_fallback
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_error
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
 }
 
@@ -399,11 +469,16 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
       static_cast<int64_t>(bytes));
 }
 
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
+  tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
-void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
+void RecordTFDataAutoShard(const string& id,
+                           data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
   tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
@@ -514,13 +589,6 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
   }
 }
 
-void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
-  static auto* bfc_allocator_delay_cell = bfc_allocator_delay->GetCell();
-  if (delay_usecs > 0) {
-    bfc_allocator_delay_cell->IncrementBy(delay_usecs);
-  }
-}
-
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
 }
@@ -529,8 +597,8 @@ void IncrementTestCounter(const string& name, const string& label) {
   test_counters->GetCell(name, label)->IncrementBy(1);
 }
 
-const monitoring::CounterCell* TestCounter(const string& name,
-                                           const string& label) {
+const tsl::monitoring::CounterCell* TestCounter(const string& name,
+                                                const string& label) {
   return test_counters->GetCell(name, label);
 }
 
@@ -547,13 +615,10 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result) {
-  static auto* metric = monitoring::Counter<4>::New(
-      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
-      "Tracks processing state in first phase of mlir bridge", "device",
-      "version", "fallback", "result");
   std::string fallback_status =
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
-  metric->GetCell(device_type, bridge_version, fallback_status, result)
+  mlir_bridge_first_phase_counter
+      ->GetCell(device_type, bridge_version, fallback_status, result)
       ->IncrementBy(1);
 }
 
@@ -573,7 +638,7 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& allow_soft_placement,
     const std::string& use_spmd_for_xla_partitioning,
     const std::string& unsupported_reason, bool has_unsupported_features) {
-  static auto* metric = monitoring::Counter<10>::New(
+  static auto* metric = tsl::monitoring::Counter<10>::New(
       "/tensorflow/core/tf_mlir_bridge_graph_analysis_per_op",
       "Tracks processing state per op in first phase of mlir bridge", "op_name",
       "construction_context", "is_single_core_inference_mode", "num_replicas",
@@ -587,6 +652,18 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
                 num_cores_per_replica, use_tpu, allow_soft_placement,
                 use_spmd_for_xla_partitioning, unsupported_reason,
                 has_unsupported_features ? "Yes" : "No")
+      ->IncrementBy(1);
+}
+
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps) {
+  tf1_features_by_graph_count
+      ->GetCell(device, context, hasControlFlowV1 ? "true" : "false",
+                hasReferenceVariables ? "true" : "false",
+                hasManualControlDeps ? "true" : "false")
       ->IncrementBy(1);
 }
 

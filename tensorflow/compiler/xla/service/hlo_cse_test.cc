@@ -21,13 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -307,57 +307,6 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsSameInputAndDifferentBodies) {
   EXPECT_EQ(5, computation->instruction_count());
 }
 
-// Test two identical while loops with different inputs
-TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesDifferentInput) {
-  const char* const hlo_string = R"(
-    HloModule WhileLoopsIdenticalConditionsAndBodiesDifferentInput
-
-    %body {
-      %param = (f32[], f32[]) parameter(0)
-      %get-tuple-element = get-tuple-element(%param), index=0
-      %get-tuple-element.1 = get-tuple-element(%param), index=1
-      %add = add(%get-tuple-element, %get-tuple-element.1)
-      ROOT %tuple = tuple(%get-tuple-element, %add)
-    }
-
-    %body.1 {
-      %param.1 = (f32[], f32[]) parameter(0)
-      %gte = get-tuple-element(%param.1), index=0
-      %gte1 = get-tuple-element(%param.1), index=1
-      %add.1 = add(%gte, %gte1)
-      ROOT %tuple = tuple(%gte, %add.1)
-    }
-
-    %condition {
-      %param.1 = (f32[], f32[]) parameter(0)
-      ROOT %constant = pred[] constant(false)
-    }
-
-    %condition.1 {
-      %param.2 = (f32[], f32[]) parameter(0)
-      ROOT %constant.1 = pred[] constant(false)
-    }
-
-    ENTRY %WhileLoopsIdenticalConditionsAndBodiesDifferentInput {
-      %constant.2 = f32[] constant(1)
-      %constant.3 = f32[] constant(2)
-      %tuple.1 =  tuple(%constant.2, %constant.3)
-      %while = while(%tuple.1), condition=%condition, body=%body
-      %constant.4 = f32[] constant(1)
-      %constant.5 = f32[] constant(3)
-      %tuple.2 = tuple(%constant.4, %constant.5)
-      ROOT %while.1 = while(%tuple.2), condition=%condition.1, body=%body.1
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  auto computation = m->entry_computation();
-
-  EXPECT_EQ(8, computation->instruction_count());
-  HloCSE cse(true);
-  EXPECT_FALSE(cse.Run(m.get()).value());
-  EXPECT_EQ(8, computation->instruction_count());
-}
-
 // Test two while loops with identical bodies and same inputs, but different
 // conditions
 TEST_F(HloCseTest, WhileLoopsIdenticalBodiesAndInputDifferentConditions) {
@@ -581,6 +530,22 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   EXPECT_THAT(root, op::Add(rng1, rng2));
 }
 
+TEST_F(HloCseTest, DoNotCombineOpsWithDifferentShardings) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  constant.68 = s32[1]{0} constant({0})
+  custom-call.82 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", sharding={replicated}
+  custom-call.1343 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", sharding={manual}
+  custom-call.1344 = s32[8]{0} custom-call(custom-call.1343), custom_call_target="SPMDShardToFullShape", sharding={devices=[8]0,1,2,3,4,5,6,7}
+  ROOT tuple = (s32[1]{0}, s32[8]{0}) tuple(custom-call.82, custom-call.1344)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_FALSE(cse.Run(m.get()).value());
+}
+
 TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   // Test that two calls to an impure function are not commoned. RNG
   // is the source of the impurity.
@@ -665,30 +630,6 @@ TEST_F(HloCseTest, CompareComputations) {
   EXPECT_TRUE(cse.Run(m.get()).value());
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0), root->operand(1));
-}
-
-TEST_F(HloCseTest, ConstantsSameValueInDifferentDomains) {
-  // Test that constants and iotas with the same value but in different domains
-  // (disjoint in this case) are not collapsed.
-  auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(42)));
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(42)));
-  builder.AddInstruction(
-      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {42}), 0));
-  builder.AddInstruction(
-      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {42}), 0));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-
-  EXPECT_EQ(4, computation->instruction_count());
-
-  HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_FALSE(cse.Run(module.get()).value());
-
-  EXPECT_EQ(4, computation->instruction_count());
 }
 
 TEST_F(HloCseTest, Domain) {

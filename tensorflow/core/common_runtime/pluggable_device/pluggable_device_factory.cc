@@ -25,9 +25,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
@@ -82,9 +82,9 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
   int64_t total_memory = 0;
   int64_t available_memory = 0;
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
-  se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
-          .value();
+  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                               platform, platform_device_id)
+                               .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return errors::Unknown(
         "Failed to query available memory for PluggableDevice ",
@@ -177,7 +177,7 @@ Status PluggableDeviceFactory::CreateDevices(
   std::vector<PlatformDeviceId> visible_device_order;
 
   if (num_tf_devices > 0) {
-    TF_RETURN_IF_ERROR(DeviceIdUtil::ParseVisibleDeviceList(
+    TF_RETURN_IF_ERROR(se::DeviceIdUtil::ParseVisibleDeviceList(
         device_options.visible_device_list(), platform->VisibleDeviceCount(),
         &visible_device_order));
   }
@@ -232,8 +232,8 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
       name_prefix, "/device:", device_type_, ":", tf_device_id.value());
 
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
-                                     tf_device_id);
+  se::DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
+                                         tf_device_id);
   PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(DeviceIdManager::TfToPlatformDeviceId(
       DeviceType(device_type_), tf_device_id, &platform_device_id));

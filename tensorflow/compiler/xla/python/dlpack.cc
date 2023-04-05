@@ -25,10 +25,13 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "pybind11/pytypes.h"
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -203,11 +206,13 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
     if (strides[a] > strides[b]) {
       return false;
     }
-    return dims[a] == 1 && dims[b] != 1;
+    // If two dimensions have the same stride, prefer the major-to-minor
+    // interpretation of the ordering, since that's what JAX wants.
+    return b < a;
   });
   int64_t stride = 1;
   for (int64_t d : minor_to_major) {
-    if (strides[d] != stride) {
+    if (dims[d] > 1 && strides[d] != stride) {
       return Unimplemented(
           "Only DLPack tensors with trivial (compact) striding are supported; "
           "i.e., tensors whose striding represents a transposition of the "
@@ -224,7 +229,14 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {
-    return kDLCUDA;
+    const StreamExecutorGpuDevice& gdevice =
+        dynamic_cast<const StreamExecutorGpuDevice&>(device);
+
+    if (absl::StrContains(gdevice.device_vendor(), "Advanced Micro Devices")) {
+      return kDLROCM;
+    } else {
+      return kDLCUDA;
+    }
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
                          device.DebugString());
@@ -255,6 +267,13 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
       }
       TF_RET_CHECK(gpu_client->platform_id() == GpuId());
       return gpu_client->LookupAddressableDevice(context.device_id);
+    case kDLROCM:
+      if (gpu_client == nullptr) {
+        return InvalidArgument(
+            "DLPack tensor is on GPU, but no GPU backend was provided.");
+      }
+      TF_RET_CHECK(gpu_client->platform_id() == GpuId());
+      return gpu_client->LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
@@ -265,14 +284,19 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                                                   bool take_ownership) {
-  TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(py_buffer));
+  ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
   auto pack = std::make_unique<DLPackTensor>();
-  if (buffer->buffer()->on_device_shape().IsTuple()) {
+  if (ifrt_array == nullptr) {
     return Unimplemented(
-        "unsafe_buffer_pointer is not implemented for tuple "
+        "BufferToDLPackManagedTensor called on deleted array.");
+  }
+  PjRtBuffer* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
+  if (pjrt_buffer->on_device_shape().IsTuple()) {
+    return Unimplemented(
+        "BufferToDLPackManagedTensor is not implemented for tuple "
         "buffers.");
   }
-  if (buffer->buffer()->on_device_shape().is_dynamic()) {
+  if (pjrt_buffer->on_device_shape().is_dynamic()) {
     return Unimplemented("DynamicShape is not implemented in DLPack.");
   }
 
@@ -281,7 +305,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
     StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> buffer_or =
-        buffer->buffer()->ReleaseDeviceMemoryOwnership(
+        pjrt_buffer->ReleaseDeviceMemoryOwnership(
             /*wait_for_operations_to_complete=*/true);
     if (!buffer_or.ok()) {
       return InvalidArgument(
@@ -296,26 +320,29 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   } else {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
-    TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
+    {
+      GlobalPyRefManager()->CollectGarbage();
+      py::gil_scoped_release gil_release;
+      TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+    }
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
     TF_ASSIGN_OR_RETURN(pack->external_reference,
-                        buffer->buffer()->AcquireExternalReference());
+                        pjrt_buffer->AcquireExternalReference());
   }
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
-  TF_ASSIGN_OR_RETURN(dt.device,
-                      DLDeviceForDevice(*buffer->buffer()->device()));
-  dt.device.device_id = buffer->buffer()->device()->local_hardware_id();
-  dt.ndim = buffer->buffer()->on_device_shape().dimensions_size();
-  TF_ASSIGN_OR_RETURN(dt.dtype,
-                      PrimitiveTypeToDLDataType(
-                          buffer->buffer()->on_device_shape().element_type()));
+  TF_ASSIGN_OR_RETURN(dt.device, DLDeviceForDevice(*pjrt_buffer->device()));
+  dt.device.device_id = pjrt_buffer->device()->local_hardware_id();
+  dt.ndim = pjrt_buffer->on_device_shape().dimensions_size();
+  TF_ASSIGN_OR_RETURN(
+      dt.dtype,
+      PrimitiveTypeToDLDataType(pjrt_buffer->on_device_shape().element_type()));
 
-  pack->shape = std::vector<int64_t>(
-      buffer->buffer()->on_device_shape().dimensions().begin(),
-      buffer->buffer()->on_device_shape().dimensions().end());
-  pack->strides = StridesForShape(buffer->buffer()->on_device_shape());
+  pack->shape =
+      std::vector<int64_t>(pjrt_buffer->on_device_shape().dimensions().begin(),
+                           pjrt_buffer->on_device_shape().dimensions().end());
+  pack->strides = StridesForShape(pjrt_buffer->on_device_shape());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;
@@ -335,18 +362,23 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   return capsule;
 }
 
-StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
+StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
     std::shared_ptr<PyClient> gpu_client) {
+  // TODO(hyeontaek): This is a potential target for an IFRT client to multiplex
+  // multiple PjRt clients. Devices from these PjRt clients could be expressed
+  // as a unified set of IFRT devices.
   // Backward compatibility: if only one client is passed, it may be from any
   // platform. Drop this support after dropping support for jax <= 0.2.14.
   if (cpu_client && cpu_client->pjrt_client()->platform_id() == GpuId()) {
     gpu_client = std::move(cpu_client);
     cpu_client = nullptr;
   }
-  if (cpu_client && cpu_client->pjrt_client()->platform_id() != CpuId()) {
+  auto* cpu_pjrt_client = cpu_client ? cpu_client->pjrt_client() : nullptr;
+  auto* gpu_pjrt_client = gpu_client ? gpu_client->pjrt_client() : nullptr;
+  if (cpu_client && cpu_pjrt_client->platform_id() != CpuId()) {
     return InvalidArgument("DLPack does not support platform %s",
-                           cpu_client->pjrt_client()->platform_name());
+                           cpu_pjrt_client->platform_name());
   }
 
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
@@ -361,11 +393,10 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
         dlmt->dl_tensor.ndim);
   }
-  TF_ASSIGN_OR_RETURN(
-      PjRtDevice * device,
-      DeviceForDLDevice(cpu_client ? cpu_client->pjrt_client() : nullptr,
-                        gpu_client ? gpu_client->pjrt_client() : nullptr,
-                        dlmt->dl_tensor.device));
+  TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                      DeviceForDLDevice(cpu_client ? cpu_pjrt_client : nullptr,
+                                        gpu_client ? gpu_pjrt_client : nullptr,
+                                        dlmt->dl_tensor.device));
   absl::Span<int64_t const> dimensions(
       reinterpret_cast<int64_t*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
@@ -382,8 +413,8 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     minor_to_major.resize(dlmt->dl_tensor.ndim);
     std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
   }
-  Shape shape =
-      ShapeUtil::MakeShapeWithLayout(element_type, dimensions, minor_to_major);
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {
@@ -400,11 +431,19 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
   // TODO(phawkins): simplify the expression below once we know cpu_client is
   // always non-null.
-  return PyBuffer::Make(
-      (cpu_client && device->client() == cpu_client->pjrt_client())
-          ? std::move(cpu_client)
-          : std::move(gpu_client),
-      std::move(pjrt_buffer), Traceback::Get());
+  auto client = (cpu_client && device->client() == cpu_pjrt_client)
+                    ? std::move(cpu_client)
+                    : std::move(gpu_client);
+  auto* ifrt_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
+  if (ifrt_client == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                      ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
 }
 
 }  // namespace xla

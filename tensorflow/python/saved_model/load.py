@@ -19,6 +19,9 @@ import functools
 import os
 import sys
 
+from absl import logging
+
+from tensorflow.core.function.capture import restore_captures
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
@@ -36,14 +39,18 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
@@ -54,6 +61,7 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import data_structures
 from tensorflow.python.trackable import resource
 from tensorflow.python.trackable import trackable_utils
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -83,7 +91,7 @@ def _unused_handle():
       "Try saving a tf.function with input_signature instead, and file a bug if"
       " there are still issues.")
 
-  assert_op = control_flow_ops.Assert(
+  assert_op = control_flow_assert.Assert(
       array_ops.placeholder_with_default(False, shape=()), [error_message])
   if (not context.executing_eagerly()
      ) and ops.get_default_graph().building_function:
@@ -366,7 +374,7 @@ class Loader(object):
     concrete_function = self._concrete_functions[concrete_function_name]
     proto = self._proto.concrete_functions[concrete_function_name]
     inputs = [nodes[node_id] for node_id in proto.bound_inputs]
-    function_saved_model_utils.restore_captures(concrete_function, inputs)
+    restore_captures.restore_captures(concrete_function, inputs)
 
   def _initialize_loaded_nodes(self):
     nodes = {}
@@ -513,7 +521,7 @@ class Loader(object):
 
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
     # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = checkpoint.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
@@ -529,6 +537,8 @@ class Loader(object):
     ckpt = load_status._checkpoint
 
     if not context.executing_eagerly():
+      reader = py_checkpoint_reader.NewCheckpointReader(variables_path)
+
       # When running in eager mode, the `restore` call above has already run and
       # restored the state of trackables, and calling `position.restore_ops()`
       # would re-run the restore. In graph mode, that will return a cached list
@@ -546,7 +556,7 @@ class Loader(object):
               f"not supported in graph mode. The loaded object {obj} uses the "
               f"saver registered with the name {registered_saver}.")
 
-        restore_ops = position.restore_ops()
+        restore_ops = position.restore_ops(reader)
         if restore_ops:
           if resource_variable_ops.is_resource_variable(obj):
             if len(restore_ops) == 1:
@@ -638,6 +648,19 @@ class Loader(object):
 
   def _recreate_user_object(self, proto, node_id):
     """Instantiates a SavedUserObject."""
+    if proto.identifier == "optimizer":
+      # Make sure that the Keras optimizers module is imported. This is needed
+      # to be able to load the "optimizer" object (OptimizerV2), which has
+      # special logic around adding slot variables with `add_slot` in this file.
+      try:
+        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+      except ImportError:
+        try:
+          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+        except ImportError as e:
+          raise ImportError(
+              "Error when importing Keras. Unable to load SavedModel that "
+              "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -966,6 +989,22 @@ def load_partial(export_dir, filters, tags=None, options=None):
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info
+  # For privacy concerns, please see the note in
+  #  tensorflow/cc/saved_model/metrics.h
+  metrics.SetReadPath(saved_model_path=str(export_dir))
+
+  # Read and log SavedModel checksum, if it is nonzero.
+  try:
+    fingerprint = fingerprinting.read_fingerprint(export_dir)
+  except FileNotFoundError:
+    logging.exception("Unable to load fingerprint when loading saved model.")
+    singleprint = ""
+  else:
+    metrics.SetReadFingerprint(
+        fingerprint=fingerprinting_utils.to_proto(
+            fingerprint).SerializeToString())
+    singleprint = fingerprint.singleprint()
+  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

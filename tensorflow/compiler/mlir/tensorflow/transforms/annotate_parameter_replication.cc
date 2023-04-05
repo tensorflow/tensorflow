@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -38,10 +37,13 @@ namespace {
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
+#define GEN_PASS_DEF_ANNOTATEPARAMETERREPLICATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
 struct AnnotateParameterReplicationPass
-    : public AnnotateParameterReplicationPassBase<
+    : public impl::AnnotateParameterReplicationPassBase<
           AnnotateParameterReplicationPass> {
   void runOnOperation() override;
 };

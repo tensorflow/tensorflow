@@ -1,10 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -15,7 +12,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -26,7 +23,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )
@@ -52,6 +49,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -79,7 +77,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )

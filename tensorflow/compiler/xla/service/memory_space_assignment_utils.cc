@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 
 namespace xla {
 
@@ -65,13 +65,16 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
       return false;
     }
 
-    if (auto* custom_call =
-            DynCast<HloCustomCallInstruction>(position.instruction)) {
-      for (const auto& pair : custom_call->output_to_operand_aliasing()) {
+    // WARNING (b/259460539): output_to_operand_aliasing was moved from
+    // HloCustomCallInstruction to HloCallableInstruction so that fusions can
+    // also be annotated with this aliasing. This feature might not be complete.
+    if (auto* callable =
+            DynCast<HloCallableInstruction>(position.instruction)) {
+      for (const auto& pair : callable->output_to_operand_aliasing()) {
         if (position.index == pair.first) {
           VLOG(4) << "Keeping value " << value->ToShortString()
-                  << " in default mem because it is a custom-call output that "
-                     "aliases an operand buffer.";
+                  << " in default mem because it is a custom-call/fusion output"
+                     " that aliases an operand buffer.";
           return false;
         }
       }

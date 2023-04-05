@@ -145,6 +145,7 @@ class SliceTest(test.TestCase):
         slice_val = self.evaluate(slice_t)
         self.assertAllEqual(slice_val, inp[lo:hi])
 
+  @test_util.run_without_tensor_float_32("Use FP32 in conv3d.")
   def test3Dimension(self):
     with self.cached_session():
       input_shape = [8, 16, 16, 16, 8]
@@ -248,6 +249,7 @@ class SliceTest(test.TestCase):
           np.float64,
           np.complex64,
           np.complex128,
+          dtypes.bfloat16.as_numpy_dtype,
       ]:
         inp = np.random.rand(4, 4).astype(dtype)
         a = constant_op.constant(

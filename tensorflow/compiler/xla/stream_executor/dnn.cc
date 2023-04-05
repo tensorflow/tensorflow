@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
 
-#include "absl/hash/hash.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -44,6 +49,8 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 
 }  // namespace
 
+constexpr DataType ToDataType<tsl::float8_e4m3fn>::value;
+constexpr DataType ToDataType<tsl::float8_e5m2>::value;
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;
@@ -84,12 +91,14 @@ std::string AlgorithmDesc::ToString() const {
   if (is_cudnn_frontend()) {
     // Format similarly to cudnn_frontend::ExecutionPlan::getTag(), e.g.
     // "eng2{k1=2,k3=4}".
+    absl::btree_map<int64_t, int64_t> tuning_knobs_sorted;
+    absl::c_copy(proto_.tuning_knobs(),
+                 std::inserter(tuning_knobs_sorted, tuning_knobs_sorted.end()));
     return absl::StrFormat(
         "eng%d{%s}", proto_.algo_id(),
         absl::StrJoin(
-            proto_.tuning_knobs(), ",",
-            [](std::string* out,
-               const google::protobuf::Map<int64_t, int64_t>::value_type& pair) {
+            tuning_knobs_sorted, ",",
+            [](std::string* out, const std::pair<int64_t, int64_t>& pair) {
               absl::StrAppendFormat(out, "k%d=%d", pair.first, pair.second);
             }));
   }
@@ -110,12 +119,12 @@ std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
-port::Status DnnSupport::GetConvolveRunners(
+tsl::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
     Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
@@ -127,10 +136,10 @@ port::Status DnnSupport::GetConvolveRunners(
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
-  return port::UnimplementedError("GetConvolveRunners not implemented.");
+  return tsl::errors::Unimplemented("GetConvolveRunners not implemented.");
 }
 
-port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 DnnSupport::ConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -138,10 +147,10 @@ DnnSupport::ConvolveRunnerFromDesc(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
-  return port::UnimplementedError("ConvolveRunnerFromDesc not implemented.");
+  return tsl::errors::Unimplemented("ConvolveRunnerFromDesc not implemented.");
 }
 
-port::Status DnnSupport::GetFusedConvolveRunners(
+tsl::Status DnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType element_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
@@ -153,10 +162,10 @@ port::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
-  return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
+  return tsl::errors::Unimplemented("GetFusedConvolveRunners not implemented.");
 }
 
-port::Status DnnSupport::GetFusedMatmulRunners(
+tsl::Status DnnSupport::GetFusedMatmulRunners(
     bool use_cudnn_frontend, dnn::DataType element_type,
     dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
     bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
@@ -164,10 +173,10 @@ port::Status DnnSupport::GetFusedMatmulRunners(
     bool use_fallback,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
-  return port::UnimplementedError("GetFusedMatmulRunners not implemented.");
+  return tsl::errors::Unimplemented("GetFusedMatmulRunners not implemented.");
 }
 
-port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 DnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType element_type,
@@ -179,8 +188,68 @@ DnnSupport::FusedConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::ActivationMode activation_mode) {
-  return port::UnimplementedError(
+  return tsl::errors::Unimplemented(
       "FusedConvolveRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
+DnnSupport::FusedMHASoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+  return tsl::errors::Unimplemented(
+      "FusedMHASoftmaxRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+DnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& mask_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleMaskSoftmaxRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+DnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& mask_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
+DnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::FusedMHAKind kind,
+    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+  return tsl::errors::Unimplemented(
+      "FusedMHAScaleBiasSoftmaxRunnerFromDesc not implemented.");
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
@@ -202,13 +271,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -242,6 +311,8 @@ std::string ActivationModeString(ActivationMode mode) {
       return "tanh";
     case ActivationMode::kBandPass:
       return "bandpass";
+    case ActivationMode::kElu:
+      return "elu";
     default:
       return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
   }
@@ -287,6 +358,8 @@ std::string FilterLayoutString(FilterLayout layout) {
       return "OutputInputYX4";
     case FilterLayout::kOutputInputYX32:
       return "OutputInputYX32";
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
+      return "OutputInputYX32_CudnnReordered";
     case FilterLayout::kInputYXOutput:
       return "InputYXOutput";
     case FilterLayout::kYXInputOutput:
@@ -381,6 +454,7 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
     case FilterLayout::kOutputInputYX:
     case FilterLayout::kOutputInputYX4:
     case FilterLayout::kOutputInputYX32:
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
       dim_indices.filter.input_idx = 1;
       dim_indices.filter.output_idx = 0;
       dim_indices.filter.spatial_idx = 2;
@@ -467,6 +541,169 @@ std::string AlgorithmConfig::ToString() const {
     algo_no_scratch = algorithm_no_scratch()->ToString();
   }
   return absl::StrCat(algo, ", ", algo_no_scratch);
+}
+
+// -- TensorDescriptor
+
+int TensorDescriptor::ndims() const {
+  CHECK_EQ(dimensions_.size(), minor_to_major_.size());
+  return dimensions_.size();
+}
+
+tsl::StatusOr<std::vector<int64_t>>
+TensorDescriptor::GetPhysicalDimensionsMajorToMinor() const {
+  std::vector<int64_t> logical_to_physical(minor_to_major_.size());
+  for (int64_t physical = 0; physical < logical_to_physical.size();
+       ++physical) {
+    int64_t logical = minor_to_major_.at(minor_to_major_.size() - 1 - physical);
+    logical_to_physical[logical] = physical;
+  }
+  if (dimensions_.size() != minor_to_major_.size())
+    return tsl::errors::Internal(
+        "Dimensions size should match the layout size.");
+
+  std::vector<int64_t> physical_dims(dimensions_.size());
+  for (int64_t i = 0; i < physical_dims.size(); ++i) {
+    physical_dims[logical_to_physical[i]] = dimensions_[i];
+  }
+  return physical_dims;
+}
+
+std::vector<int64_t> TensorDescriptor::GetPhysicalStridesMajorToMinor() const {
+  std::vector<int64_t> phys_dims = GetPhysicalDimensionsMajorToMinor().value();
+  std::vector<int64_t> phys_strides(ndims());
+  phys_strides[ndims() - 1] = 1;
+  for (int i = ndims() - 2; i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return phys_strides;
+}
+
+std::vector<int64_t> TensorDescriptor::GetLogicalStrides() const {
+  std::vector<int64_t> physical_strides = GetPhysicalStridesMajorToMinor();
+  std::reverse(physical_strides.begin(), physical_strides.end());
+  std::vector<int64_t> logical_strides(physical_strides.size());
+  for (int i = 0; i < ndims(); i++) {
+    logical_strides[minor_to_major_[i]] = physical_strides[i];
+  }
+  return logical_strides;
+}
+
+/*static*/ TensorDescriptor TensorDescriptor::For(
+    DataType type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major) {
+  std::vector<int64_t> dims(dimensions.size());
+  std::vector<int64_t> minor_to_major_vec(minor_to_major.size());
+  CHECK_EQ(dimensions.size(), minor_to_major.size());
+  for (int i = 0; i < dimensions.size(); i++) {
+    dims[i] = dimensions[i];
+    minor_to_major_vec[i] = minor_to_major[i];
+  }
+  return TensorDescriptor(type, dims, minor_to_major_vec);
+}
+
+std::string TensorDescriptor::ToString() const {
+  return absl::StrFormat("{dimensions: %s minor_to_major: %s}",
+                         absl::StrJoin(dimensions(), ","),
+                         absl::StrJoin(minor_to_major(), ","));
+}
+
+// -- MatmulTensorDescriptor
+
+tsl::StatusOr<std::vector<int64_t>>
+MatmulTensorDescriptor::GetNonContractingDims() const {
+  std::vector<int64_t> non_contracting_dims;
+  for (int64_t dim = 0; dim < tensor_.dimensions().size(); ++dim) {
+    bool is_batch = absl::c_count(batch_dimension_numbers_, dim) != 0;
+    bool is_contracting = absl::c_count(contracting_dim_, dim) != 0;
+    if (is_batch && is_contracting)
+      return tsl::errors::Internal(
+          "A dimension cannot be both a batch dimension and a contracting "
+          "dimension.");
+    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
+  }
+
+  if (batch_dimension_numbers_.size() + contracting_dim_.size() +
+          non_contracting_dims.size() !=
+      tensor_.dimensions().size())
+    return tsl::errors::Internal(
+        "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
+        "should sum up to the total number of dimensions.");
+  return non_contracting_dims;
+}
+
+tsl::StatusOr<std::vector<int64_t>> MatmulTensorDescriptor::MakeCudnnCompatible(
+    const std::vector<int64_t>& vec, bool is_lhs) const {
+  std::vector<int64_t> cudnn_compatible(vec.size());
+  int batch_dim_size = batch_dimension_numbers_.size();
+  CHECK_LT(batch_dim_size, vec.size());
+  for (int i = 0; i < batch_dim_size; i++) {
+    cudnn_compatible[i] = vec.at(batch_dimension_numbers_.at(i));
+  }
+  std::vector<int64_t> non_contracting_dims = GetNonContractingDims().value();
+  if (batch_dimension_numbers_.size() + contracting_dim_.size() +
+          non_contracting_dims.size() !=
+      vec.size())
+    return tsl::errors::Internal(
+        "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
+        "should sum up to the total number of dimensions.");
+  if (is_lhs) /* lhs -> {b0, b1,....bk, m, k} */ {
+    for (int i = 0; i < non_contracting_dims.size(); i++) {
+      cudnn_compatible[batch_dim_size + i] = vec.at(non_contracting_dims.at(i));
+    }
+    for (int i = 0; i < contracting_dim_.size(); i++) {
+      cudnn_compatible[batch_dim_size + non_contracting_dims.size() + i] =
+          vec.at(contracting_dim_.at(i));
+    }
+  } else /* rhs -> {b0, b1, ... bk, k, n} */ {
+    for (int i = 0; i < contracting_dim_.size(); i++) {
+      cudnn_compatible[batch_dim_size + i] = vec.at(contracting_dim_.at(i));
+    }
+    for (int i = 0; i < non_contracting_dims.size(); i++) {
+      cudnn_compatible[batch_dim_size + contracting_dim_.size() + i] =
+          vec.at(non_contracting_dims.at(i));
+    }
+  }
+  return cudnn_compatible;
+}
+
+std::vector<int64_t> MatmulTensorDescriptor::GetCudnnCompatibleDimensions(
+    bool is_lhs) const {
+  std::vector<int64_t> cudnn_compatible_dims =
+      MakeCudnnCompatible(tensor_.dimensions(), is_lhs).value();
+  return cudnn_compatible_dims;
+}
+
+std::vector<int64_t> MatmulTensorDescriptor::GetCudnnCompatibleStrides(
+    bool is_lhs) const {
+  std::vector<int64_t> cudnn_compatible_strides =
+      MakeCudnnCompatible(tensor_.GetLogicalStrides(), is_lhs).value();
+  return cudnn_compatible_strides;
+}
+
+/*static*/ MatmulTensorDescriptor MatmulTensorDescriptor::For(
+    DataType type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major,
+    absl::Span<const int64_t> batch_dims,
+    absl::Span<const int64_t> contracting_dims) {
+  std::vector<int64_t> batch_dims_vec(batch_dims.size());
+  std::vector<int64_t> contracting_dims_vec(contracting_dims.size());
+  for (int i = 0; i < batch_dims.size(); i++) {
+    batch_dims_vec[i] = batch_dims[i];
+  }
+  for (int i = 0; i < contracting_dims.size(); i++) {
+    contracting_dims_vec[i] = contracting_dims[i];
+  }
+  return MatmulTensorDescriptor(
+      TensorDescriptor::For(type, dimensions, minor_to_major), batch_dims_vec,
+      contracting_dims_vec);
+}
+
+std::string MatmulTensorDescriptor::ToString() const {
+  return absl::StrFormat(
+      "{%s, batch_dimension_numbers: %s contracting_dim: %s}",
+      tensor_.ToString(), absl::StrJoin(batch_dimension_numbers_, ","),
+      absl::StrJoin(contracting_dim_, ","));
 }
 
 // -- BatchDescriptor
@@ -608,7 +845,7 @@ int64_t BatchDescriptor::FullyConnectedBiasCount(
 }
 
 BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    port::ArraySlice<dnn::BatchDescriptor> inputs) {  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> inputs) {
   if (inputs.empty()) {
     return BatchDescriptor();
   }
@@ -679,6 +916,7 @@ std::string FilterDescriptor::ToShortString() const {
       return absl::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
     case FilterLayout::kOutputInputYX32:
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
       return absl::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
       return absl::StrCat(id, spatial, od);
@@ -875,7 +1113,7 @@ std::string NormalizeDescriptor::ToShortString() const {
                       "_size:", segment_size_);
 }
 
-bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
+bool DnnSupport::IsStatusOk(const tsl::Status& status, bool report_error) {
   if (status.ok()) {
     return true;
   }
@@ -885,7 +1123,7 @@ bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
   return false;
 }
 
-port::Status DnnSupport::DoCtcLoss(
+tsl::Status DnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const RnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
@@ -893,7 +1131,7 @@ port::Status DnnSupport::DoCtcLoss(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
     DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
-  return port::UnimplementedError("CtcLoss not implemented");
+  return tsl::errors::Unimplemented("CtcLoss not implemented");
 }
 
 }  // namespace dnn

@@ -27,7 +27,8 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
 void AddQuantizePtqDynamicRangePasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options);
 
-void AddQuantizePtqPreCalibrationPasses(mlir::PassManager &pm);
+void AddQuantizePtqPreCalibrationPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options);
 
 void AddQuantizePtqPostCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options);

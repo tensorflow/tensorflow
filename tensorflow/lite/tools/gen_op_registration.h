@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_GEN_OP_REGISTRATION_H_
 #define TENSORFLOW_LITE_TOOLS_GEN_OP_REGISTRATION_H_
 
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {

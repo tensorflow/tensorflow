@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -122,12 +121,6 @@ SymbolRefAttr lookupGlobalTensor(func::FuncOp func, Value resource,
 }
 
 static LogicalResult convertTFGlobals(ModuleOp module) {
-  if (auto sessionInitializer =
-          tf_saved_model::GetSessionInitializerOp(module)) {
-    return sessionInitializer.emitError()
-           << "Session initializer is not supported yet";
-  }
-
   OpBuilder globalBuilder(module.getBodyRegion());
   DenseMap<Operation *, std::string> opToName;
   for (auto globalTensor : module.getOps<tf_saved_model::GlobalTensorOp>()) {
@@ -141,10 +134,16 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
       return globalTensor.emitError()
              << "Multiple exported names for global tensor not supported yet";
     }
+    Attribute initial_value;
+    if (globalTensor.getValue()) {
+      initial_value = *globalTensor.getValue();
+    } else {
+      initial_value = mlir::Attribute();
+    }
     opToName[globalTensor] = name;
     auto variableOp = globalBuilder.create<ml_program::GlobalOp>(
         globalTensor.getLoc(), name, globalTensor.getType(),
-        globalTensor.getIsMutable(), globalTensor.getValue(),
+        globalTensor.getIsMutable(), initial_value,
         /*visibility=*/globalBuilder.getStringAttr("private"));
     variableOp.setPrivate();
   }
@@ -156,22 +155,22 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
     }
     bool success = true;
     func.walk([&](mlir::TF::ReadVariableOp op) {
-      auto sym = lookupGlobalTensor(func, op.resource(), syms, opToName);
+      auto sym = lookupGlobalTensor(func, op.getResource(), syms, opToName);
       success &= !!sym;
       if (!success) return;
       OpBuilder builder(op);
       auto load = builder.create<mlir::ml_program::GlobalLoadOp>(
-          op.getLoc(), op.value().getType(), sym);
-      op.value().replaceAllUsesWith(load.getResult());
+          op.getLoc(), op.getValue().getType(), sym);
+      op.getValue().replaceAllUsesWith(load.getResult());
       op.erase();
     });
     func.walk([&](mlir::TF::AssignVariableOp op) {
-      auto sym = lookupGlobalTensor(func, op.resource(), syms, opToName);
+      auto sym = lookupGlobalTensor(func, op.getResource(), syms, opToName);
       success &= !!sym;
       if (!success) return;
       OpBuilder builder(op);
       builder.create<mlir::ml_program::GlobalStoreOp>(op.getLoc(), sym,
-                                                      op.value());
+                                                      op.getValue());
       op.erase();
     });
     if (!success) return failure();
@@ -201,8 +200,10 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
   return success();
 }
 
+#define GEN_PASS_DEF_LOWERGLOBALSTOMLPROGRAMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 class LowerGlobalsToMlProgram
-    : public LowerGlobalsToMlProgramPassBase<LowerGlobalsToMlProgram> {
+    : public impl::LowerGlobalsToMlProgramPassBase<LowerGlobalsToMlProgram> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::tf_saved_model::TensorFlowSavedModelDialect,

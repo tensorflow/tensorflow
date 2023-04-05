@@ -5,30 +5,39 @@
 #   to other TF components outside of TSL.
 
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "check_deps",
-    "tf_copts",
+    "set_external_visibility",
+    "tsl_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
+)
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
+    ],
 )
 
 filegroup(
@@ -38,9 +47,10 @@ filegroup(
         "command_line_flags.h",
         "determinism.cc",
         "determinism.h",
+        "device_name_utils.cc",
+        "device_name_utils.h",
         "env_var.cc",
         "env_var.h",
-        "ptr_util.h",
         "use_cudnn.cc",
         "use_cudnn.h",
     ],
@@ -52,18 +62,21 @@ filegroup(
         "determinism.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow:__subpackages__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
+        "byte_swap_array.h",
         "command_line_flags.h",
+        "device_name_utils.h",
         "env_var.h",
-        "ptr_util.h",
+        "stat_summarizer_options.h",
+        "stats_calculator.h",
         "use_cudnn.h",
     ],
 )
@@ -71,7 +84,6 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "command_line_flags.cc",
         "use_cudnn.cc",
     ],
 )
@@ -83,10 +95,10 @@ filegroup(
         "env_var.h",
         "use_cudnn.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -95,17 +107,29 @@ filegroup(
         "determinism.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow:__subpackages__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
     name = "framework_srcs",
     srcs = [
-        "ptr_util.h",
+        "device_name_utils.h",
+        "stat_summarizer_options.h",
         "use_cudnn.h",
+    ],
+)
+
+cc_library(
+    name = "byte_swap_array",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/tsl/platform:byte_order",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -122,8 +146,8 @@ cc_library(
     name = "determinism",
     srcs = ["determinism.cc"],
     hdrs = ["determinism.h"],
-    copts = tf_copts(),
-    visibility = ["//tensorflow:__subpackages__"],
+    copts = tsl_copts(),
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         ":env_var",
         "//tensorflow/tsl/platform:mutex",
@@ -146,7 +170,7 @@ cc_library(
 alias(
     name = "determinism_for_kernels",
     actual = if_static(":determinism", ":determinism_hdr_lib"),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
 )
 
 check_deps(
@@ -156,7 +180,6 @@ check_deps(
         otherwise = [":determinism"],
     ),
     deps = [
-        "//tensorflow:tensorflow_cc",
     ],
 )
 
@@ -188,26 +211,85 @@ cc_library(
 )
 
 cc_library(
-    name = "ptr_util",
-    hdrs = ["ptr_util.h"],
-)
-
-cc_library(
     name = "reporter",
     srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
     deps = [
-        "//tensorflow/core/util:test_log_proto_impl_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:test_log_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "stats_calculator_portable",
+    srcs = [
+        "stats_calculator.cc",
+    ],
+    hdrs = [
+        "stat_summarizer_options.h",
+        "stats_calculator.h",
+    ],
+    copts = tsl_copts(),
+    visibility = set_external_visibility([
+        "//tensorflow/tsl:internal",
+    ]),
+)
+
+tsl_cc_test(
+    name = "stats_calculator_test",
+    srcs = ["stats_calculator_test.cc"],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "device_name_utils",
+    srcs = ["device_name_utils.cc"],
+    hdrs = ["device_name_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:stringpiece",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_name_utils_test",
+    size = "small",
+    srcs = ["device_name_utils_test.cc"],
+    deps = [
+        ":device_name_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "command_line_flags",
+    srcs = ["command_line_flags.cc"],
+    hdrs = ["command_line_flags.h"],
+    deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/platform:stringpiece",
+        "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:types",
     ],
 )
@@ -218,7 +300,7 @@ filegroup(
     srcs = [
         "reporter.h",
     ],
-    visibility = ["//tensorflow/core/util:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core/util:__pkg__"]),
 )
 
 filegroup(
@@ -227,10 +309,10 @@ filegroup(
     srcs = [
         "reporter.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -240,8 +322,8 @@ filegroup(
         "reporter.cc",
         ":android_test_hdrs",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
-    ],
+    ]),
 )

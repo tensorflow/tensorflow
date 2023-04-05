@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/idl.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/grafter.h"
 #include "tensorflow/lite/schema/schema_generated.h"

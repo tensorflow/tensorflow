@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/Bitfields.h"
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -83,7 +83,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     // Now look at launches and make use of the knowledge we have.
     function.walk([&](gpu::LaunchFuncOp launch) {
       auto module = launch->getParentOfType<ModuleOp>();
-      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
+      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.getKernel());
 
       if (!kernel || kernel.isExternal()) return;
 

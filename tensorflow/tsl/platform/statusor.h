@@ -203,10 +203,6 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   const T&& value() const&&;
   T&& value() &&;
 
-  // Deprecated, use `value()` instead.
-  ABSL_DEPRECATED("Use `value()` instead.") T& ValueOrDie() &;
-  ABSL_DEPRECATED("Use `value()` instead.") T&& ValueOrDie() &&;
-
   // Returns a reference to the current value.
   //
   // REQUIRES: this->ok() == true, otherwise the behavior is undefined.
@@ -238,7 +234,7 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
 // Implementation details for StatusOr<T>
 
 template <typename T>
-StatusOr<T>::StatusOr() : Base(Status(tsl::error::UNKNOWN, "")) {}
+StatusOr<T>::StatusOr() : Base(Status(absl::StatusCode::kUnknown, "")) {}
 
 template <typename T>
 StatusOr<T>::StatusOr(const T& value) : Base(value) {}
@@ -335,20 +331,6 @@ const T&& StatusOr<T>::value() const&& {
 
 template <typename T>
 T&& StatusOr<T>::value() && {
-  this->EnsureOk();
-  return std::move(this->data_);
-}
-
-
-template <typename T>
-T& StatusOr<T>::ValueOrDie() & {
-  this->EnsureOk();
-  return this->data_;
-}
-
-
-template <typename T>
-T&& StatusOr<T>::ValueOrDie() && {
   this->EnsureOk();
   return std::move(this->data_);
 }

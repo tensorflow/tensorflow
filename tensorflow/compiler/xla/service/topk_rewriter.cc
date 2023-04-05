@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "absl/strings/match.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -99,6 +105,34 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return param;
   };
 
+  auto match_compare = [](PrimitiveType type) {
+    auto param0 = m::Parameter(0).WithShape(m::Shape().WithElementType(type));
+    auto param1 = m::Parameter(1).WithShape(m::Shape().WithElementType(type));
+    return m::Gt(param0, param1);
+  };
+
+  auto match_default_compare = [](PrimitiveType type) {
+    auto params_with_type = [&](int i, PrimitiveType t) {
+      return m::Parameter(i).WithShape(m::Shape().WithElementType(t));
+    };
+    auto params =
+        std::vector({// Values
+                     params_with_type(0, type), params_with_type(1, type),
+                     // Indices
+                     params_with_type(2, S32), params_with_type(3, S32)});
+    auto const_true = m::Broadcast(m::Constant());
+    auto values_gt = m::Gt(params[0], params[1]);
+    return m::Select(const_true, values_gt, const_true);
+  };
+
+  auto match_all_types = [](HloInstruction* root, auto callback) {
+    bool result = false;
+    for (auto type : {BF16, F32, S32, U32}) {
+      result = result || Match(root, callback(type));
+    }
+    return result;
+  };
+
   return Match(comp->root_instruction(),
                m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
          Match(comp->root_instruction(),
@@ -109,7 +143,20 @@ static bool IsNanSafeGt(HloComputation* comp) {
          Match(comp->root_instruction(),
                m::Gt(match_bitcast_bf16_with_convert(0),
                      match_bitcast_bf16_with_convert(1))) ||
-         Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1)));
+         Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1))) ||
+         match_all_types(comp->root_instruction(), match_compare) ||
+         match_all_types(comp->root_instruction(), match_default_compare);
+}
+
+// Look for the instructions emitted from: xla/client/lib/sorting.cc
+static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
+  namespace m = match;
+  const auto sort_dims = {data->shape().dimensions(sort->sort_dimension())};
+  auto match_iota = [](auto dims) {
+    return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
+  };
+  return Match(sort->operand(1), match_iota(data->shape().dimensions())) ||
+         Match(sort->operand(1), m::Broadcast(match_iota(sort_dims)));
 }
 
 std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
@@ -122,15 +169,8 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   }
   HloInstruction* data = sort->mutable_operand(0);
 
-  if (sort->operand_count() == 2) {
-    HloIotaInstruction* iota =
-        DynCast<HloIotaInstruction>(sort->mutable_operand(1));
-    if (iota == nullptr || iota->shape().rank() != data->shape().rank() ||
-        iota->shape().element_type() != S32 ||
-        iota->opcode() != HloOpcode::kIota ||
-        iota->iota_dimension() != sort->sort_dimension()) {
-      return std::nullopt;
-    }
+  if (sort->operand_count() == 2 && !HasIota(sort, data)) {
+    return std::nullopt;
   }
   if (!IsNanSafeGt(sort->to_apply())) {
     return std::nullopt;
@@ -230,8 +270,9 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
                     : ShapeUtil::MakeTupleShape(
                           {ShapeUtil::MakeShape(element_type, {k.value()}),
                            ShapeUtil::MakeShape(S32, {k.value()})});
-      HloInstruction* topk = comp->AddInstruction(
-          HloInstruction::CreateCustomCall(topk_shape, {input}, "TopK"));
+      HloInstruction* topk =
+          comp->AddInstruction(HloInstruction::CreateCustomCall(
+              topk_shape, {input}, /*to_apply=*/sort->to_apply(), "TopK"));
       HloInstruction* value_gte =
           comp->AddInstruction(HloInstruction::CreateGetTupleElement(
               topk->shape().tuple_shapes(0), topk, 0));
@@ -265,6 +306,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(
           TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(value_gte));
         }
       }
+      VLOG(2) << "Rewritten Topk: " << topk->ToString();
       changed = true;
     }
   }
@@ -279,6 +321,64 @@ StatusOr<bool> TopkRewriter::Run(
                       TransformToCustomCall(module, execution_threads));
   changed |= transform_to_customcall_changed;
   return changed;
+}
+
+class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
+ public:
+  Status HandleCustomCall(HloInstruction* inst) override {
+    HloCustomCallInstruction* call = DynCast<HloCustomCallInstruction>(inst);
+    HloComputation* comp = inst->parent();
+    if (call == nullptr || call->custom_call_target() != "TopK") {
+      return OkStatus();
+    }
+
+    HloInstruction* input = call->mutable_operand(0);
+    Shape iota_shape = input->shape();
+    iota_shape.set_element_type(S32);
+    size_t sort_dimension = input->shape().dimensions_size() - 1;
+    std::vector<int64_t> zeroes(iota_shape.rank(), 0);
+    std::vector<int64_t> ones(iota_shape.rank(), 1);
+    HloComputation* comparator = call->to_apply();
+    // Apply a slice to a tuple.
+    auto slice_tuple = [&](HloInstruction* sort, const size_t index) {
+      return comp->AddInstruction(HloInstruction::CreateSlice(
+          call->shape().tuple_shapes(index),
+          comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+              sort->shape().tuple_shapes(index), sort, index)),
+          zeroes, call->shape().tuple_shapes(index).dimensions(), ones));
+    };
+    CHECK_NE(comparator, nullptr);
+    // If only the topk values are necessary, skip the iota.
+    if (call->user_count() == 1) {
+      HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
+          {input->shape()}, sort_dimension, {input}, call->to_apply(),
+          /*is_stable=*/false));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(
+          call->users().front(),
+          comp->AddInstruction(HloInstruction::CreateSlice(
+              call->shape().tuple_shapes(0), sort, zeroes,
+              call->shape().tuple_shapes(0).dimensions(), ones))));
+      sort->set_metadata(call->metadata());
+    } else {
+      HloInstruction* iota = comp->AddInstruction(
+          HloInstruction::CreateIota(iota_shape, iota_shape.rank() - 1));
+      HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
+          ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
+          sort_dimension, {input, iota}, call->to_apply(),
+          /*is_stable=*/false));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(
+          call, comp->AddInstruction(HloInstruction::CreateTuple(
+                    {slice_tuple(sort, 0), slice_tuple(sort, 1)}))));
+      sort->set_metadata(call->metadata());
+    }
+    return OkStatus();
+  }
+};
+
+StatusOr<bool> TopkDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return TopkDecomposerVisitor().RunOnModule(module, execution_threads);
 }
 
 }  // namespace xla

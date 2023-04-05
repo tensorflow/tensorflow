@@ -34,13 +34,14 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/model_loader.h"
 #include "tensorflow/lite/tools/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
@@ -370,6 +372,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("optimize_memory_for_large_tensors",
                           BenchmarkParam::Create<int32_t>(0));
+  default_params.AddParam("disable_delegate_clustering",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("output_filepath",
                           BenchmarkParam::Create<std::string>(""));
 
@@ -449,6 +453,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<int32_t>(
           "optimize_memory_for_large_tensors", &params_,
           "Optimize memory usage for large tensors with sacrificing latency."),
+      CreateFlag<bool>("disable_delegate_clustering", &params_,
+                       "Disable delegate clustering."),
       CreateFlag<std::string>(
           "output_filepath", &params_,
           "File path to export outputs layer as binary data.")};
@@ -494,6 +500,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Release dynamic tensor memory", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
                       "Optimize memory usage for large tensors", verbose);
+  LOG_BENCHMARK_PARAM(bool, "disable_delegate_clustering",
+                      "Disable delegate clustering", verbose);
   LOG_BENCHMARK_PARAM(std::string, "output_filepath",
                       "File path to export outputs layer to", verbose);
 
@@ -665,7 +673,15 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   const bool use_caching = params_.Get<bool>("use_caching");
 
-  tflite::InterpreterBuilder builder(*model_, *resolver);
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased(
+      params_.Get<bool>("release_dynamic_tensors"));
+  options.OptimizeMemoryForLargeTensors(
+      params_.Get<int32_t>("optimize_memory_for_large_tensors"));
+  options.SetDisableDelegateClustering(
+      params_.Get<bool>("disable_delegate_clustering"));
+
+  tflite::InterpreterBuilder builder(*model_, *resolver, &options);
   if (builder.SetNumThreads(num_threads) != kTfLiteOk) {
     TFLITE_LOG(ERROR) << "Failed to set thread number";
     return kTfLiteError;
@@ -718,13 +734,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
-  InterpreterOptions options;
-  options.SetEnsureDynamicTensorsAreReleased(
-      params_.Get<bool>("release_dynamic_tensors"));
-  options.OptimizeMemoryForLargeTensors(
-      params_.Get<int32_t>("optimize_memory_for_large_tensors"));
-  interpreter_->ApplyOptions(&options);
-
   owned_delegates_.clear();
 
   // Contains all ids of TfLiteNodes that have been checked to see whether it's
@@ -735,6 +744,15 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
       << "Going to apply " << created_delegates.size()
       << " delegates one after another.";
+
+  // If created_delegates is empty, 'require_full_delegation' flag will not be
+  // checked, thus CPU fallback will happen. Adding check here to avoid
+  // fallback in this situation.
+  if (created_delegates.empty() &&
+      params_.Get<bool>("require_full_delegation")) {
+    TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+    return kTfLiteError;
+  }
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     TfLiteDelegate* delegate = created_delegate.delegate.get();
@@ -847,13 +865,20 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
-  std::string graph = params_.Get<std::string>("graph");
-  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model_) {
-    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+  std::string fd_or_graph_path = params_.Get<std::string>("graph");
+  model_loader_ = tools::CreateModelLoaderFromPath(fd_or_graph_path);
+  if (!model_loader_) {
+    TFLITE_LOG(ERROR) << "Failed to initialize model loader with path "
+                      << fd_or_graph_path;
     return kTfLiteError;
   }
-  TFLITE_LOG(INFO) << "Loaded model " << graph;
+  if (!model_loader_->Init()) {
+    TFLITE_LOG(ERROR) << "Failed to load model " << fd_or_graph_path;
+    return kTfLiteError;
+  }
+  model_ = tflite::FlatBufferModel::BuildFromModel(
+      model_loader_->GetModel()->GetModel());
+  TFLITE_LOG(INFO) << "Loaded model " << fd_or_graph_path;
   return kTfLiteOk;
 }
 

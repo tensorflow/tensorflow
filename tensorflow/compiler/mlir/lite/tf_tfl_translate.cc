@@ -15,10 +15,9 @@ limitations under the License.
 
 #include <functional>
 #include <iostream>
+#include <optional>
 
 #include "absl/strings/str_split.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -48,20 +48,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
@@ -152,6 +153,15 @@ int main(int argc, char **argv) {
   MLIRContext context;
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
+  mlir::DialectRegistry registry;
+
+  if (input_mlir) {
+    // TODO(@zichuanwei): hack to enable mlir conversion via this tool, will get
+    // back to do it properly in the future
+    RegisterAllTensorFlowDialects(registry);
+    registry.insert<mlir::func::FuncDialect>();
+    context.appendDialectRegistry(registry);
+  }
 
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module;
   std::unordered_set<std::string> tags;
@@ -286,6 +296,7 @@ int main(int argc, char **argv) {
   toco_flags.set_allow_custom_ops(emit_custom_ops);
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
   toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
+  toco_flags.set_post_training_quantize(post_training_quantization);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
@@ -296,7 +307,7 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
-  llvm::Optional<tensorflow::Session *> session = llvm::None;
+  std::optional<tensorflow::Session *> session = std::nullopt;
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,

@@ -1157,6 +1157,14 @@ class ArrayMethodsTest(test.TestCase):
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
 
+  def testHSplitBecomesVsplitFor1DInput(self):
+    @def_function.function
+    def f(arr):
+      return np_array_ops.hsplit(arr, 2)
+
+    x = np_array_ops.arange(4)
+    self.assertListEqual([[0, 1], [2, 3]], f(x))
+
   def testSign(self):
     state = np.random.RandomState(0)
     test_types = [np.float16, np.float32, np.float64, np.int32, np.int64,

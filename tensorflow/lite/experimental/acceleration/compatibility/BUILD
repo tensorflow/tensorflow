@@ -18,6 +18,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -131,7 +132,10 @@ genrule(
 cc_library(
     name = "devicedb_sample",
     srcs = ["devicedb-sample.cc"],
-    hdrs = ["devicedb-sample.h"],
+    hdrs = [
+        "devicedb-sample.h",
+        "variables.h",
+    ],
     deps = [":database_fbs"],
 )
 
@@ -194,16 +198,16 @@ cc_library(
     srcs = ["gpu_compatibility.cc"],
     hdrs = ["gpu_compatibility.h"],
     deps = [
-        ":canonicalize_value",
         ":android_info",
+        ":canonicalize_value",
         ":database_fbs",
         ":devicedb",
         ":gpu_compatibility_binary_embed",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/delegates/gpu:delegate_options",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ] + tflite_extra_gles_deps(),
 )
 

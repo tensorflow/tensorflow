@@ -1,41 +1,42 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
+py_strict_library(
+    name = "directives",
+    srcs = ["directives.py"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python/util:tf_export",
+    ],
 )
 
-py_library(
-    name = "lang",
-    srcs = [
-        "directives.py",
-        "special_functions.py",
-    ],
-    srcs_version = "PY3",
+py_strict_library(
+    name = "special_functions",
+    srcs = ["special_functions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:tensor_util",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "special_functions_test",
     srcs = ["special_functions_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":lang",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python/autograph/lang:special_functions",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_util",
+        "//third_party/py/numpy",
     ],
 )

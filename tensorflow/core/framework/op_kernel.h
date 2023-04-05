@@ -59,10 +59,22 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
+// Used to match ops to kernel sources (and eventually to kernel targets)
+#ifdef TF_LOG_KERNEL_SOURCES
+#define LOG_KERNEL_SOURCES(name) \
+  LOG(INFO) << "Kernel found: " << name << " " << __FILE__ << "\n";
+#else
+#define LOG_KERNEL_SOURCES(name)
+#endif
+
 namespace Eigen {
 struct ThreadPoolDevice;
 struct GpuDevice;
 }  // end namespace Eigen
+
+namespace tsl {
+class CoordinationServiceAgent;
+}
 
 namespace tensorflow {
 
@@ -81,7 +93,6 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
-class CoordinationServiceAgent;
 
 // A label that is added to kernels that are JIT compiled. These labels will be
 // removed before kernels are looked up, so they can be used without specifying
@@ -681,7 +692,7 @@ class OpKernelContext {
     bool* outputs_required_array = nullptr;
 
     // For access to distributed coordination service.
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -1153,7 +1164,7 @@ class OpKernelContext {
   }
 
   // Access to distributed coordination service.
-  CoordinationServiceAgent* coordination_service_agent() const {
+  tsl::CoordinationServiceAgent* coordination_service_agent() const {
     return params_->coordination_service_agent;
   }
 
@@ -1430,6 +1441,7 @@ class Name : public KernelDefBuilder {
                      return new __VA_ARGS__(context);                       \
                    });                                                      \
                (void)registrar;                                             \
+               LOG_KERNEL_SOURCES(op_name)                                  \
                return ::tensorflow::InitOnStartupMarker{};                  \
              })(kernel_builder_expr.Build());
 

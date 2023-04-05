@@ -9,6 +9,7 @@
 # ":grpc_debug_server": Server interface for grpc:// debug URLs.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -19,7 +20,6 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/debug/lib:check_numerics_callback",
         "//tensorflow/python/debug/lib:debug_data",
         "//tensorflow/python/debug/lib:debug_events_monitors",
@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/python/debug/wrappers:grpc_wrapper",
         "//tensorflow/python/debug/wrappers:hooks",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
+        "//tensorflow/python/util:all_util",
     ],
 )
 

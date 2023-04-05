@@ -21,17 +21,17 @@ limitations under the License.
 #include <utility>
 
 #include <gmock/gmock.h>
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -1618,28 +1618,28 @@ TEST_F(ConditionalCodeMotionTest, ShapeChangingMovePreservesSharding) {
 HloModule RemoveIdenticalInstruction
 
 %on_true (arg_tuple.1: (f32[10])) -> (f32[10]) {
-  %arg_tuple.1 = (f32[10]{0}) parameter(0), sharding={{devices=[2,2]0,1,2,3}}
-  %get-tuple-element.1 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.1), index=0, sharding={devices=[2,2]0,1,2,3}
-  %add.1 = f32[10]{0} add(f32[10]{0} %get-tuple-element.1, f32[10]{0} %get-tuple-element.1), sharding={devices=[2,2]0,1,2,3}
-  ROOT %tuple.3 = (f32[10]{0}) tuple(f32[10]{0} %add.1), sharding={{devices=[2,2]0,1,2,3}}
+  %arg_tuple.1 = (f32[10]{0}) parameter(0), sharding={{devices=[4]0,1,2,3}}
+  %get-tuple-element.1 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.1), index=0, sharding={devices=[4]0,1,2,3}
+  %add.1 = f32[10]{0} add(f32[10]{0} %get-tuple-element.1, f32[10]{0} %get-tuple-element.1), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.3 = (f32[10]{0}) tuple(f32[10]{0} %add.1), sharding={{devices=[4]0,1,2,3}}
 }
 
 %on_false (arg_tuple.2: (f32[10])) -> (f32[10]) {
-  %arg_tuple.2 = (f32[10]{0}) parameter(0), sharding={{devices=[2,2]0,1,2,3}}
-  %get-tuple-element.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.2), index=0, sharding={devices=[2,2]0,1,2,3}
-  %mul.1 = f32[10]{0} multiply(f32[10]{0} %get-tuple-element.2, f32[10]{0} %get-tuple-element.2), sharding={devices=[2,2]0,1,2,3}
-  ROOT %tuple.4 = (f32[10]{0}) tuple(f32[10]{0} %mul.1), sharding={{devices=[2,2]0,1,2,3}}
+  %arg_tuple.2 = (f32[10]{0}) parameter(0), sharding={{devices=[4]0,1,2,3}}
+  %get-tuple-element.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.2), index=0, sharding={devices=[4]0,1,2,3}
+  %mul.1 = f32[10]{0} multiply(f32[10]{0} %get-tuple-element.2, f32[10]{0} %get-tuple-element.2), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.4 = (f32[10]{0}) tuple(f32[10]{0} %mul.1), sharding={{devices=[4]0,1,2,3}}
 }
 
 ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10], f32[10]) {
   %pred.1 = pred[] parameter(0), sharding={replicated}
   %tuple.1 = (f32[10]{0}) parameter(1), sharding={{replicated}}
-  %tuple.2 = (f32[10]{0}) parameter(2), sharding={{devices=[2,2]0,1,2,3}}
-  %conditional = (f32[10]{0}) conditional(pred[] %pred.1, (f32[10]{0}) %tuple.1, (f32[10]{0}) %tuple.2), true_computation=%on_true, false_computation=%on_false, sharding={{devices=[2,2]0,1,2,3}}
-  %get-first-index = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[2,2]0,1,2,3}
-  %get-first-index.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[2,2]0,1,2,3}
-  %pow.1 = f32[10]{0} power(f32[10]{0} %get-first-index, f32[10]{0} %get-first-index.2), sharding={devices=[2,2]0,1,2,3}
-  ROOT %tuple.0 = (f32[10]{0}, f32[10]{0}) tuple(f32[10]{0} %pow.1, f32[10]{0} %get-first-index.2), sharding={{devices=[2,2]0,1,2,3}, {devices=[2,2]0,1,2,3}}
+  %tuple.2 = (f32[10]{0}) parameter(2), sharding={{devices=[4]0,1,2,3}}
+  %conditional = (f32[10]{0}) conditional(pred[] %pred.1, (f32[10]{0}) %tuple.1, (f32[10]{0}) %tuple.2), true_computation=%on_true, false_computation=%on_false, sharding={{devices=[4]0,1,2,3}}
+  %get-first-index = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[4]0,1,2,3}
+  %get-first-index.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[4]0,1,2,3}
+  %pow.1 = f32[10]{0} power(f32[10]{0} %get-first-index, f32[10]{0} %get-first-index.2), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.0 = (f32[10]{0}, f32[10]{0}) tuple(f32[10]{0} %pow.1, f32[10]{0} %get-first-index.2), sharding={{devices=[4]0,1,2,3}, {devices=[4]0,1,2,3}}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1655,7 +1655,7 @@ ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10]
   EXPECT_THAT(
       conditional,
       AnyOf(op::NoSharding(),
-            op::Sharding("{{devices=[2,2]0,1,2,3},{devices=[2,2]0,1,2,3}}")));
+            op::Sharding("{{devices=[4]0,1,2,3},{devices=[4]0,1,2,3}}")));
 }
 
 TEST_F(ConditionalCodeMotionTest, ConvertDuplicate) {
@@ -1858,18 +1858,20 @@ ENTRY %xla_computation_unknown.45 (parameter.3: u8[], parameter.4: u8[], paramet
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
   pass.Run(&*module).value();
+  VLOG(3) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
-  // We do not move reduce operations due to potential memory considerations.
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 4);
-  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 6);
+  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 8);
   // Expect the add.0 and convert.35 in brnach_1_comp.31 to be moved
   // inside conditional.39.
   HloInstruction* conditional_39 =
       root->branch_computation(1)->root_instruction();
   CHECK_EQ(conditional_39->opcode(), HloOpcode::kConditional);
   const HloInstruction* conditional_39_pred = conditional_39->operand(0);
-  EXPECT_THAT(conditional_39_pred, op::Convert(op::GetTupleElement()));
+  EXPECT_THAT(
+      conditional_39_pred,
+      op::Convert(op::Reduce(op::GetTupleElement(), op::GetTupleElement())));
   const HloInstruction* conditional_39_true =
       conditional_39->branch_computation(0)->root_instruction();
   EXPECT_THAT(conditional_39_true, op::Tuple(op::Convert(op::Convert(
@@ -2247,6 +2249,122 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   EXPECT_THAT(conditional_false,
               op::Add(op::GetTupleElement(), op::GetTupleElement()));
+}
+
+// Move partially used operands inside empty conditional branches.
+TEST_F(ConditionalCodeMotionTest, MovePartialyUsedOperands9) {
+  absl::string_view hlo_string =
+      R"(
+HloModule xla_computation
+
+%branch_true  {
+  ROOT tmp = ((f32[], f32[])) parameter(0)
+ }
+
+%branch_false {
+   ROOT tmp = ((f32[], f32[])) parameter(0)
+}
+%scalar_add_computation.1 (scalar_lhs.1: u32[], scalar_rhs.1: u32[]) -> u32[] {
+  %scalar_lhs.1 = u32[] parameter(0)
+  %scalar_rhs.1 = u32[] parameter(1)
+  ROOT %add.1 = u32[] add(u32[] %scalar_lhs.1, u32[] %scalar_rhs.1)
+}
+
+ENTRY %xla_computation  {
+  %parameter.0 = f32[] parameter(0)
+  %parameter.1 = f32[] parameter(1)
+  %parameter.2 = pred[] parameter(2)
+  %constant.13862 = f32[] constant(0.00025)
+  %constant.13863 = f32[] constant(0.97)
+  %add.0 = f32[] add(parameter.1, parameter.1)
+  %floor.145 = f32[]{:T(256)} floor(f32[]{:T(256)} %parameter.0)
+  %power.1 = f32[] power(f32[] %constant.13863, f32[]{:T(256)} %floor.145)
+  %multiply.13463 = f32[] multiply(f32[] %parameter.1, f32[] %power.1)
+  %multiply.13464 = f32[] multiply(f32[] %parameter.0, f32[] %multiply.13463)
+  %tuple.1 = (f32[], f32[]) tuple(add.0, add.0)
+  %tuple.2 = ((f32[], f32[])) tuple(%tuple.1)
+  %tuple.3 = (f32[], f32[]) tuple(multiply.13463, multiply.13464)
+  %tuple.4 = ((f32[], f32[])) tuple(tuple.3)
+  ROOT conditional.1 = ((f32[], f32[])) conditional(%parameter.2, %tuple.2, %tuple.4), true_computation=branch_true, false_computation=branch_false
+}
+
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  pass.Run(&*module).value();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Conditional());
+  const HloInstruction* conditional_false =
+      root->branch_computation(1)->root_instruction();
+  const HloInstruction* conditional_true =
+      root->branch_computation(0)->root_instruction();
+  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 1);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes_size(),
+              2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 1);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes_size(), 2);
+}
+
+// Move partially used operands inside empty conditional branches.
+TEST_F(ConditionalCodeMotionTest, MovePartialyUsedOperands10) {
+  absl::string_view hlo_string =
+      R"(
+HloModule xla_computation
+
+%branch_true  {
+  tmp = ((f32[], f32[])) parameter(0)
+  tmp1 = (f32[], f32[]) get-tuple-element(tmp), index=0
+  tmp2 = f32[] get-tuple-element(tmp1), index=0
+  tmp3 = f32[] get-tuple-element(tmp1), index=1
+  add = f32[] add(tmp2, tmp3)
+  ROOT tuple  = (f32[], (f32[], f32[])) tuple(add, tmp1)
+ }
+
+%branch_false {
+   tmp = ((f32[], f32[])) parameter(0)
+   tmp1 = (f32[], f32[]) get-tuple-element(tmp), index=0
+   tmp2 = f32[] get-tuple-element(tmp1), index=0
+   ROOT tuple = (f32[], (f32[], f32[])) tuple(tmp2, tmp1)
+}
+%scalar_add_computation.1 (scalar_lhs.1: u32[], scalar_rhs.1: u32[]) -> u32[] {
+  %scalar_lhs.1 = u32[] parameter(0)
+  %scalar_rhs.1 = u32[] parameter(1)
+  ROOT %add.1 = u32[] add(u32[] %scalar_lhs.1, u32[] %scalar_rhs.1)
+}
+
+ENTRY %xla_computation  {
+  %parameter.0 = f32[] parameter(0)
+  %parameter.1 = f32[] parameter(1)
+  %parameter.2 = pred[] parameter(2)
+  %constant.13862 = f32[] constant(0.00025)
+  %constant.13863 = f32[] constant(0.97)
+  %add.0 = f32[] add(parameter.1, parameter.1)
+  %floor.145 = f32[]{:T(256)} floor(f32[]{:T(256)} %parameter.0)
+  %power.1 = f32[] power(f32[] %constant.13863, f32[]{:T(256)} %floor.145)
+  %multiply.13463 = f32[] multiply(f32[] %parameter.1, f32[] %power.1)
+  %multiply.13464 = f32[] multiply(f32[] %parameter.0, f32[] %multiply.13463)
+  %tuple.1 = (f32[], f32[]) tuple(add.0, add.0)
+  %tuple.2 = ((f32[], f32[])) tuple(%tuple.1)
+  %tuple.3 = (f32[], f32[]) tuple(multiply.13463, multiply.13464)
+  %tuple.4 = ((f32[], f32[])) tuple(tuple.3)
+  ROOT conditional.1 = (f32[], (f32[], f32[])) conditional(%parameter.2, %tuple.2, %tuple.4), true_computation=branch_true, false_computation=branch_false
+}
+
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  pass.Run(&*module).value();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Conditional());
+  const HloInstruction* conditional_false =
+      root->branch_computation(1)->root_instruction();
+  const HloInstruction* conditional_true =
+      root->branch_computation(0)->root_instruction();
+  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes_size(),
+              2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes_size(), 2);
 }
 }  // namespace conditional_opt
 

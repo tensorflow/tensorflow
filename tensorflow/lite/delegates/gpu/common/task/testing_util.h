@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-
+using TensorInt32 = Tensor<BHWC, DataType::INT32>;
 class TestExecutionEnvironment {
  public:
   TestExecutionEnvironment() = default;
@@ -48,14 +48,25 @@ class TestExecutionEnvironment {
       const std::vector<TensorDescriptor*>& dst_cpu,
       std::unique_ptr<GPUOperation>&& operation);
 
+  template <typename DstTensorType>
   absl::Status ExecuteGpuModel(const std::vector<TensorFloat32>& src_cpu,
-                               const std::vector<TensorFloat32*>& dst_cpu,
+                               const std::vector<DstTensorType*>& dst_cpu,
                                GpuModel* gpu_model);
 
+  template <typename DstTensorType>
   absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                    std::unique_ptr<GPUOperation>&& operation,
                                    const std::vector<BHWC>& dst_sizes,
-                                   const std::vector<TensorFloat32*>& dst_cpu);
+                                   const std::vector<DstTensorType*>& dst_cpu);
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWC>& dst_sizes,
+      const std::initializer_list<TensorFloat32*>& dst_cpu) {
+    return ExecuteGPUOperation(src_cpu, std::move(operation), dst_sizes,
+                               std::vector<TensorFloat32*>(dst_cpu));
+  }
 
   absl::Status ExecuteGPUOperation(
       const std::vector<Tensor5DFloat32>& src_cpu,

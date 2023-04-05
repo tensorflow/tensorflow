@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <functional>
 
-#include "grpcpp/impl/codegen/async_generic_service.h"
+#include "grpcpp/generic/async_generic_service.h"
 #include "grpcpp/impl/codegen/async_stream.h"
 #include "grpcpp/impl/codegen/async_unary_call.h"
 #include "grpcpp/impl/codegen/client_callback.h"

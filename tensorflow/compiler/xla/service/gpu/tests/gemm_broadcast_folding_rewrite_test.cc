@@ -24,7 +24,15 @@ namespace gpu {
 
 namespace {
 
-class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {};
+class GemmBroadcastFoldingRewriteTest : public GpuCodegenTest {
+ protected:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
 
 TEST_F(GemmBroadcastFoldingRewriteTest, BroadcastedStridedRewriteRhs) {
   const char* hlo_text = R"(
@@ -46,7 +54,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[3,2,2]{2,1,0} custom-call([[P0]], [[P1]]),
-; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
@@ -85,7 +93,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,2,2]{2,1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[3,2,2]{2,1,0} custom-call([[P0]], [[P1]]),
-; CHECK    :       custom_call_target="__cublas$gemm",
+; CHECK    :       custom_call_target="__cublas${{(lt\$matmul|gemm)}}",
 ; CHECK    :       backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
@@ -121,7 +129,7 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
-  GemmRewriter gemm_rewriter;
+  GemmRewriter gemm_rewriter(GetCudaComputeCapability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
@@ -147,7 +155,7 @@ ENTRY AddDotsFunc {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
-  GemmRewriter gemm_rewriter;
+  GemmRewriter gemm_rewriter(GetCudaComputeCapability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
@@ -171,7 +179,7 @@ ENTRY %LHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
-  GemmRewriter gemm_rewriter;
+  GemmRewriter gemm_rewriter(GetCudaComputeCapability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
@@ -194,7 +202,7 @@ ENTRY %RHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter gemm_rewriter;
+  GemmRewriter gemm_rewriter(GetCudaComputeCapability());
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);

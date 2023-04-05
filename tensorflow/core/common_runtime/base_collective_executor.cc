@@ -294,7 +294,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
         timeout_microseconds, [this, is_callback_called, done] {
           bool called = is_callback_called->exchange(true);
           if (!called) {
-            Status status(error::DEADLINE_EXCEEDED,
+            Status status(absl::StatusCode::kDeadlineExceeded,
                           "Collective has timed out during execution.");
             StartAbort(status);
             done(status);
@@ -303,14 +303,16 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
 
   Tensor* output = ctx->mutable_output(0);
-  const Tensor* input = (col_params->instance.type == REDUCTION_COLLECTIVE ||
-                         col_params->instance.type == GATHER_COLLECTIVE ||
-                         col_params->instance.type == PERMUTE_COLLECTIVE ||
-                         col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
-                         (col_params->instance.type == BROADCAST_COLLECTIVE &&
-                          col_params->is_source))
-                            ? &ctx->input(0)
-                            : nullptr;
+  const Tensor* input =
+      (col_params->instance.type == REDUCTION_COLLECTIVE ||
+       col_params->instance.type == GATHER_COLLECTIVE ||
+       col_params->instance.type == PERMUTE_COLLECTIVE ||
+       col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
+       col_params->instance.type == REDUCE_SCATTER_COLLECTIVE ||
+       (col_params->instance.type == BROADCAST_COLLECTIVE &&
+        col_params->is_source))
+          ? &ctx->input(0)
+          : nullptr;
   CollectiveImplementationInterface* col_impl = nullptr;
   Status status = CreateCollective(*col_params, &col_impl);
   if (!status.ok()) {
@@ -391,7 +393,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
           bool called = is_callback_called->exchange(true);
           if (!called) {
             Status status(
-                error::DEADLINE_EXCEEDED,
+                absl::StatusCode::kDeadlineExceeded,
                 "Collective has timed out waiting for other workers.");
             StartAbort(status);
             done(status);

@@ -80,7 +80,7 @@ void IdentifyTPUFunctions(
   if (!main_func) return;
 
   for (auto call : main_func.getOps<mlir::TF::StatefulPartitionedCallOp>()) {
-    auto mesh_or_status = Mesh::FromString(string(call.config()));
+    auto mesh_or_status = Mesh::FromString(string(call.getConfig()));
     // Function calls created by end users instead of being converted from
     // tf_device.cluster do not have a serialized mesh as a config attribute. We
     // ignore the error returned from parsing in this case.

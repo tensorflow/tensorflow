@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -47,8 +46,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
-
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
 
@@ -205,6 +204,31 @@ Status AddOpRetvalsToResponse(
   }
   return sg.as_summary_status();
 }
+
+Status ResetAgentAndConnectToCoordinationService(
+    tsl::CoordinationServiceAgent* coord_agent) {
+  // The error state should already be consumed when a new context is
+  // created. It should be fine to reset the agent.
+  if (coord_agent->IsError()) {
+    const Status s = coord_agent->Reset();
+    if (!s.ok()) {
+      LOG(ERROR) << "Coordination Service agent reset failed " << s;
+      return s;
+    }
+  }
+  // In the scenario of PS strategy, the setup is single client and the error
+  // cannot be propagated. As a result, Coordination Service agent can still
+  // have the status of being connected. We should not let it connect again.
+  if (!coord_agent->IsConnected()) {
+    const Status s = coord_agent->Connect();
+    if (!s.ok()) {
+      LOG(ERROR) << "Coordination Service agent connect failed " << s;
+      return s;
+    }
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
@@ -233,7 +257,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
 
-  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+  tsl::core::RefCountPtr<RemoteRendezvous> r =
+      env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
   if (VLOG_IS_ON(2)) {
@@ -269,9 +294,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   std::function<Rendezvous*(const int64_t)> rendezvous_creator =
       [worker_session, this](const int64_t step_id) {
-        auto* r = env_->rendezvous_mgr->Find(step_id);
+        tsl::core::RefCountPtr<RemoteRendezvous> r =
+            env_->rendezvous_mgr->Find(step_id);
         r->Initialize(worker_session.get()).IgnoreError();
-        return r;
+        return r.release();
       };
 
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
@@ -281,8 +307,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, worker_session->cluster_flr(),
-      env_->collective_executor_mgr.get());
+      request->async(), device_mgr, false, r.release(),
+      worker_session->cluster_flr(), env_->collective_executor_mgr.get());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -320,12 +346,19 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
     auto coord_agent = env_->session_mgr->GetCoordinationServiceAgent();
     dist_mgr->SetCoordinationServiceAgent(coord_agent);
+    // TODO(b/254356090): See if enabling health check needs to be inside the
+    // Coordination Service.
+    if (config.experimental().coordination_config().enable_health_check()) {
+      TF_RETURN_IF_ERROR(
+          ResetAgentAndConnectToCoordinationService(coord_agent));
+    }
     auto preemption_notifier =
-        PreemptionNotifier::CreatePreemptionNotifier("sigterm", Env::Default());
+        tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
+                                                          Env::Default());
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
-            const auto& coord_task = coord_agent->GetOwnTask().value();
+            const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
                 "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
                 absl::StrCat("/job:", coord_task.job_name(),
@@ -336,6 +369,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             }
           }
         });
+    dist_mgr->SetPreemptionNotifier(std::move(preemption_notifier));
     ctx->SetDistributedManager(std::move(dist_mgr));
   }
 #endif  // !IS_MOBILE_PLATFORM
@@ -430,6 +464,17 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
     VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
     return s;
   }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  const auto& config = request->server_def().default_session_config();
+  const bool should_connect =
+      !config.experimental().coordination_config().service_type().empty() &&
+      config.experimental().coordination_config().enable_health_check();
+  if (should_connect) {
+    auto coord_agent = env_->session_mgr->GetCoordinationServiceAgent();
+    TF_RETURN_IF_ERROR(ResetAgentAndConnectToCoordinationService(coord_agent));
+  }
+#endif  // !IS_MOBILE_PLATFORM
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -622,6 +667,8 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
       s = SendPackedHandle(item.send_packed_handle(), context->Context());
     } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
+    } else if (item.has_remove_function()) {
+      s = RemoveFunction(item.remove_function(), context->Context());
     } else if (item.has_cleanup_function()) {
       s = CleanupFunction(item.cleanup_function());
     } else {
@@ -703,6 +750,11 @@ Status EagerServiceImpl::RegisterFunction(
   return eager_context->AddFunctionDef(
       register_function.function_def(), register_function.library(),
       register_function.is_component_function());
+}
+
+Status EagerServiceImpl::RemoveFunction(const RemoveFunctionOp& remove_function,
+                                        EagerContext* eager_context) {
+  return eager_context->RemoveFunction(remove_function.function_name());
 }
 
 Status EagerServiceImpl::CleanupFunction(

@@ -15,19 +15,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -127,11 +126,18 @@ TEST_F(HloShardingTest, Tile) {
   }
 
   {
+    // Test should fail because not all devices present in tile assignment.
+    HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
+    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+                                       /*num_devices=*/5));
+  }
+
+  {
     // Test should pass.
     Shape shape = ShapeUtil::MakeShape(U32, {4, 5});
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
     EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
-                                   /*num_devices=*/5));
+                                   /*num_devices=*/4));
 
     EXPECT_EQ(0, sharding.DeviceForTileIndex({0, 0}));
     EXPECT_EQ(3, sharding.DeviceForTileIndex({0, 1}));
@@ -180,7 +186,7 @@ TEST_F(HloShardingTest, NestedTuple) {
   EXPECT_EQ(shape_tree.element({1, 0}), HloSharding::AssignDevice(0));
   EXPECT_EQ(shape_tree.element({2}), tiled_sharding);
 
-  EXPECT_IS_OK(tuple_sharding.Validate(nested_tuple_shape, /*num_devices=*/5));
+  EXPECT_IS_OK(tuple_sharding.Validate(nested_tuple_shape, /*num_devices=*/2));
   // Test should fail because tuple element count does not match.
   EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeTupleShape({}),
                                            /*num_devices=*/5));

@@ -18,7 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -35,6 +35,11 @@ constexpr int kInputMultipliers = 1;
 constexpr int kOutputTensor = 0;
 
 namespace {
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
+
 template <typename T>
 TfLiteIntArray* MultiplyShapeDims(const TfLiteIntArray& shape,
                                   const TfLiteTensor* multipliers,
@@ -216,51 +221,14 @@ void TileString(const TfLiteIntArray& in_dimensions,
 }
 }  // namespace
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
-
-  const TfLiteTensor* multipliers;
-  TF_LITE_ENSURE_OK(
-      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
-  // Only int32 and int64 multipliers type is supported.
-  if (multipliers->type != kTfLiteInt32 && multipliers->type != kTfLiteInt64) {
-    TF_LITE_KERNEL_LOG(context,
-                       "Multipliers of type '%s' are not supported by tile.",
-                       TfLiteTypeGetName(multipliers->type));
-    return kTfLiteError;
-  }
-
-  if (IsConstantTensor(multipliers)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
-  } else {
-    SetTensorToDynamic(output);
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-  const TfLiteTensor* multipliers;
-  TF_LITE_ENSURE_OK(
-      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
-
-  if (IsDynamicTensor(output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
-  }
+TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
+                      const TfLiteTensor* multipliers, TfLiteTensor* output) {
   if (GetTensorShape(output).FlatSize() == 0) {
+    if (output->type == kTfLiteString) {
+      // For safety, ensure that we write to the output tensor.
+      DynamicBuffer buffer;
+      buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    }
     return kTfLiteOk;
   }
 
@@ -297,9 +265,76 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  op_data->noop = false;
+
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
+
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
+  // Only int32 and int64 multipliers type is supported.
+  if (multipliers->type != kTfLiteInt32 && multipliers->type != kTfLiteInt64) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Multipliers of type '%s' are not supported by tile.",
+                       TfLiteTypeGetName(multipliers->type));
+    return kTfLiteError;
+  }
+
+  if (IsConstantOrPersistentTensor(multipliers)) {
+    if (IsConstantOrPersistentTensor(input)) {
+      SetTensorToPersistentRo(output);
+      TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+      op_data->noop = true;
+      return EvalImpl(context, input, multipliers, output);
+    }
+    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+  } else {
+    SetTensorToDynamic(output);
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
+
+  if (reinterpret_cast<OpData*>(node->user_data)->noop) {
+    return kTfLiteOk;
+  }
+  if (IsDynamicTensor(output)) {
+    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+  }
+  return EvalImpl(context, input, multipliers, output);
+}
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 }  // namespace tile
 TfLiteRegistration* Register_TILE() {
-  static TfLiteRegistration r = {nullptr, nullptr, tile::Prepare, tile::Eval};
+  static TfLiteRegistration r = {tile::Init, tile::Free, tile::Prepare,
+                                 tile::Eval};
   return &r;
 }
 }  // namespace builtin

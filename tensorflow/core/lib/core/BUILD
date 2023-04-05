@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
@@ -43,6 +44,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/core:bits",
     ],
 )
 
@@ -130,14 +132,14 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/core/protobuf:error_codes_proto_impl",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl",
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core/protobuf:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
     ],
-    exports = ["//tensorflow/core/protobuf:error_codes_proto_impl"],
+    exports = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

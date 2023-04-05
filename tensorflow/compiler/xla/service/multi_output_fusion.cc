@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/multi_output_fusion.h"
 
+#include <optional>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -365,12 +367,12 @@ void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
     absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
         instrs_to_update,
-    const std::function<bool(HloInstruction*)>& skip) {
+    std::optional<absl::FunctionRef<bool(HloInstruction*)>> skip) {
   auto instr1_i = reachability_->GetIndex(instr1);
   auto instr2_i = reachability_->GetIndex(instr2);
   for (auto& instr_and_index : instrs_to_update) {
     HloInstruction* instr = instr_and_index.first;
-    if (skip != nullptr && skip(instr)) {
+    if (skip != std::nullopt && (*skip)(instr)) {
       continue;
     }
     auto instr_i = instr_and_index.second;

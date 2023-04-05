@@ -29,10 +29,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.profiler import model_analyzer
@@ -756,8 +756,8 @@ class PrintModelAnalysisTest(test.TestCase):
         x *= x
         return i + 1, x
 
-      _, y = control_flow_ops.while_loop(lambda i, x: i < n, loop_body,
-                                         [array_ops.constant(0), x])
+      _, y = while_loop.while_loop(lambda i, x: i < n, loop_body,
+                                   [array_ops.constant(0), x])
 
     grad = gradients.gradients(y, [x1])
 

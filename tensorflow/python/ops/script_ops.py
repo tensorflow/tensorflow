@@ -23,6 +23,7 @@ import weakref
 
 import numpy as np
 
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -36,20 +37,16 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.lib.core import _pywrap_py_func
+from tensorflow.python.ops import autograph_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
-
-autograph = lazy_loader.LazyLoader(
-    "autograph", globals(),
-    "tensorflow.python.autograph.impl.api")
 
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);

@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include <optional>
+#include <tuple>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -37,21 +40,13 @@ class GpuConvRewriter : public HloModulePass {
  public:
   absl::string_view name() const override { return "gpu-conv-rewriter"; }
 
+  static bool ConvIsLowerable(HloInstruction* conv);
+
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
-
-namespace conv_matchers {
-
-bool CanImplementAsGpuForwardConv(HloInstruction* conv);
-std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
-MatchBackwardFilter(HloInstruction* conv);
-std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
-MatchBackwardInput(HloInstruction* conv);
-
-}  // namespace conv_matchers
 
 }  // namespace gpu
 }  // namespace xla

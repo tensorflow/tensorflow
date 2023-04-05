@@ -335,11 +335,11 @@ func.func @move_assuming_all_over_assuming_region(%arg0: tensor<?xindex>,
 // CHECK-SAME:  (%[[ARG:.*]]: tensor<?x32xi16>, %[[W:.*]]: !shape.witness)
 func.func @move_down_into_assuming(%arg0: tensor<?x32xi16>, %w: !shape.witness) -> tensor<?x32xf16> {
   // CHECK: %[[RES:.*]] = shape.assuming %[[W]]
-  // CHECK:   %[[INNER_RES:.*]] = mhlo.convert(%[[ARG]])
+  // CHECK:   %[[INNER_RES:.*]] = mhlo.convert %[[ARG]]
   // CHECK:   shape.assuming_yield %[[INNER_RES]]
   // CHECK: }
   // CHECK: return %[[RES]]
-  %0 = mhlo.convert(%arg0) : (tensor<?x32xi16>) -> tensor<?x32xf16>
+  %0 = mhlo.convert %arg0 : (tensor<?x32xi16>) -> tensor<?x32xf16>
   "some.possibly_side_effecting_op"() : () -> ()
   %4 = shape.assuming %w -> (tensor<?x32xf16>) {
     shape.assuming_yield %0 : tensor<?x32xf16>

@@ -16,13 +16,13 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -471,10 +471,10 @@ class RaiseToTFOpsPass
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
-                    arith::ArithmeticDialect, func::FuncDialect>();
+                    arith::ArithDialect, func::FuncDialect>();
   }
 
-  explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,
+  explicit RaiseToTFOpsPass(std::optional<ModuleOp> tfr_module,
                             bool materialize_derived_attrs)
       : external_tfr_module_(tfr_module),
         materialize_derived_attrs_(materialize_derived_attrs) {}
@@ -488,7 +488,7 @@ class RaiseToTFOpsPass
   void runOnOperation() override;
 
  private:
-  llvm::Optional<ModuleOp> external_tfr_module_;
+  std::optional<ModuleOp> external_tfr_module_;
   const bool materialize_derived_attrs_;
 };
 
@@ -510,7 +510,7 @@ void RaiseToTFOpsPass::runOnOperation() {
 
 // Creates an instance of the pass to raise TFR call ops to the TF ops.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseToTFOpsPass(
-    llvm::Optional<ModuleOp> tfr_module, bool materialize_derived_attrs) {
+    std::optional<ModuleOp> tfr_module, bool materialize_derived_attrs) {
   return std::make_unique<RaiseToTFOpsPass>(tfr_module,
                                             materialize_derived_attrs);
 }

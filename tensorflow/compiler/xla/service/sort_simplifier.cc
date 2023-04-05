@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -145,9 +145,7 @@ StatusOr<bool> SortSimplifier::Run(
   std::vector<HloInstruction*> sort_instrs;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(sort_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kSort;
-                    });
+                    HloPredicateIsOp<HloOpcode::kSort>);
   }
 
   for (HloInstruction* sort_instr : sort_instrs) {

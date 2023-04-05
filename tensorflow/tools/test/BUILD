@@ -8,6 +8,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -29,7 +30,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
         "@six_archive//:six",
     ],
 )
@@ -41,7 +42,6 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         ":system_info_lib",
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -54,7 +54,8 @@ py_library(
     deps = [
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
+        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
@@ -80,7 +81,8 @@ py_library(
         ":run_and_gather_logs_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "@six_archive//:six",
     ],
 )

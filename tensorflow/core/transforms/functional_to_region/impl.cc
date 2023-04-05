@@ -21,10 +21,10 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -73,7 +73,7 @@ class BasePattern {
 
   // Clone ops from one region to another with a given value mapping. Rename
   // clone ops with unique names.
-  void CloneAndRename(Region &from, Region &to, BlockAndValueMapping &bv) const;
+  void CloneAndRename(Region &from, Region &to, IRMapping &bv) const;
 
  protected:
   // Symbol table for looking up branch/loop functions.
@@ -275,10 +275,10 @@ YieldOp BasePattern::ReplaceReturnWithYield(Block &block, TypeRange types,
 void BasePattern::CloneAndReorderArgs(TypeRange types, Region &from, Region &to,
                                       PatternRewriter &rewriter) const {
   ControlType control_ty = dialect_.getControlType();
-  BlockAndValueMapping bv;
+  IRMapping bv;
   CloneAndRename(from, to, bv);
   SmallVector<Location> arg_locs(types.size(), from.getLoc());
-  for (auto &it :
+  for (const auto &it :
        llvm::enumerate(llvm::to_vector(to.addArguments(types, arg_locs)))) {
     BlockArgument arg = to.getArgument(it.index() * 2);
     BlockArgument ctl = to.getArgument(arg.getArgNumber() + 1);
@@ -291,7 +291,7 @@ void BasePattern::CloneAndReorderArgs(TypeRange types, Region &from, Region &to,
 }
 
 void BasePattern::CloneAndRename(Region &from, Region &to,
-                                 BlockAndValueMapping &bv) const {
+                                 IRMapping &bv) const {
   from.cloneInto(&to, bv);
   StringAttr name_id = dialect_.getNameAttrIdentifier();
   auto op_name = to.getParentOp()->getAttrOfType<StringAttr>(name_id);
@@ -330,7 +330,7 @@ LogicalResult ConvertIfLikeOp<IfLikeOp, IfLikeRegionOp>::matchAndRewrite(
 
   // Move the regions over and replace the block arguments.
   ControlType control_ty = this->dialect_.getControlType();
-  BlockAndValueMapping then_bv, else_bv;
+  IRMapping then_bv, else_bv;
   auto func_args =
       llvm::zip(then_func.getArguments(), else_func.getArguments()).begin();
   rewriter.setInsertionPoint(region_op);
@@ -351,8 +351,8 @@ LogicalResult ConvertIfLikeOp<IfLikeOp, IfLikeRegionOp>::matchAndRewrite(
 
   // Replace the terminators `return` with `yield`.
   TypeRange ret_types = region_op.getOuts().getTypes();
-  this->ReplaceReturnWithYield(region_op.then_block(), ret_types, rewriter);
-  this->ReplaceReturnWithYield(region_op.else_block(), ret_types, rewriter);
+  this->ReplaceReturnWithYield(region_op.getThenBlock(), ret_types, rewriter);
+  this->ReplaceReturnWithYield(region_op.getElseBlock(), ret_types, rewriter);
   rewriter.replaceOp(op, region_op.getResults());
   return success();
 }
@@ -397,13 +397,13 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
 
   // Move the regions over and replace the block arguments.
   ControlType control_ty = this->dialect_.getControlType();
-  SmallVector<BlockAndValueMapping> bvs(branch_funcs.size(), {});
+  SmallVector<IRMapping> bvs(branch_funcs.size(), {});
   rewriter.setInsertionPoint(region_op);
-  for (auto &arg : llvm::enumerate(args)) {
+  for (const auto &arg : llvm::enumerate(args)) {
     for (auto it : llvm::zip(branch_funcs, bvs)) {
       BlockArgument branch_arg =
           GraphFuncOp::getDataValue(std::get<0>(it).getBody(), arg.index());
-      BlockAndValueMapping &bv = std::get<1>(it);
+      IRMapping &bv = std::get<1>(it);
       bv.map(branch_arg, arg.value());
       bv.map(GraphFuncOp::getControlTokenOf(branch_arg),
              LookupControlDependency(arg.value()));
@@ -453,11 +453,11 @@ ConvertWhileLikeOp<WhileLikeOp, WhileLikeRegionOp>::matchAndRewrite(
                             region_op.getCondRegion(), rewriter);
   this->CloneAndReorderArgs(init.getTypes(), body_func.getBody(),
                             region_op.getBodyRegion(), rewriter);
-  this->ReplaceReturnWithYield(region_op.body_block(), init.getTypes(),
+  this->ReplaceReturnWithYield(region_op.getBodyBlock(), init.getTypes(),
                                rewriter);
 
   // Replace `return(tensor<*xi1>)` with `condition`.
-  auto ret_op = cast<ReturnOp>(region_op.cond_block().getTerminator());
+  auto ret_op = cast<ReturnOp>(region_op.getCondBlock().getTerminator());
   ValueRange ret_args, ret_ctls;
   std::tie(ret_args, ret_ctls) = this->SplitControl(ret_op.getOperands());
   rewriter.setInsertionPoint(ret_op);
@@ -491,7 +491,7 @@ LogicalResult ConvertForOp::matchAndRewrite(tfg::ForOp op,
   OperandRange args = op.getOperands().drop_front(2).drop_back(ctls.size());
   CloneAndReorderArgs(args.getTypes(), body_func.getBody(),
                       region_op.getBodyRegion(), rewriter);
-  ReplaceReturnWithYield(region_op.body_block(), init.getTypes(), rewriter);
+  ReplaceReturnWithYield(region_op.getBodyBlock(), init.getTypes(), rewriter);
   rewriter.replaceOp(op, region_op->getResults());
   return success();
 }

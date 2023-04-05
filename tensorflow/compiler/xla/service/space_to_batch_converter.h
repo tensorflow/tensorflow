@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPACE_TO_BATCH_CONVERTER_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 

@@ -27,7 +27,6 @@ limitations under the License.
 #include <sys/types.h>
 #include <time.h>
 
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/file_system_helper.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/windows/error_windows.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef DeleteFile
@@ -139,7 +139,8 @@ class WindowsRandomAccessFile : public RandomAccessFile {
         dst += r;
         n -= r;
       } else if (r == 0) {
-        s = Status(error::OUT_OF_RANGE, "Read fewer bytes than requested");
+        s = Status(absl::StatusCode::kOutOfRange,
+                   "Read fewer bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // Retry
       } else {
@@ -308,11 +309,71 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 }  // namespace
 
+#define MAX_LONGPATH_LENGTH 400
+
+static std::wstring GetUncPathName(const std::wstring& path) {
+  WCHAR wcPath[MAX_LONGPATH_LENGTH];
+
+  // boundary case check
+  if (path.size() >= MAX_LONGPATH_LENGTH) {
+    string context = "ERROR: GetUncPathName cannot handle path size >= " +
+                     std::to_string(MAX_LONGPATH_LENGTH) + ", " +
+                     WideCharToUtf8(path);
+    LOG(ERROR) << context;
+    return std::wstring(path);
+  }
+
+  auto rcode =
+      GetFullPathNameW(path.c_str(), MAX_LONGPATH_LENGTH, wcPath, NULL);
+  std::wstring ws_final_path(wcPath);
+  std::wstring uncPath;
+  if (wcPath[0] == '\\' && wcPath[1] == '\\' && wcPath[2] == '?' &&
+      wcPath[3] == '\\') {
+    uncPath = ws_final_path;
+  } else {
+    uncPath = L"\\\\?\\" + ws_final_path;
+  }
+
+  return uncPath;
+}
+
+static std::wstring GetUncPathName(const std::string& path) {
+  return GetUncPathName(Utf8ToWideChar(path));
+}
+
+static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath) {
+  WCHAR path[MAX_LONGPATH_LENGTH];
+
+  std::wstring uncLinkPath = GetUncPathName(linkPath);
+
+  HANDLE hFile = ::CreateFileW(
+      uncLinkPath.c_str(), GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING,
+      FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED, 0);
+
+  if (INVALID_HANDLE_VALUE != hFile) {
+    auto rcode = GetFinalPathNameByHandleW(hFile, path, MAX_LONGPATH_LENGTH,
+                                           FILE_NAME_NORMALIZED);
+    ::CloseHandle(hFile);
+    if (rcode) {
+      return std::wstring(path, path + rcode);
+    }
+  } else {
+    DWORD dwErr = GetLastError();
+    LOG(ERROR) << "ERROR: GetSymbolicLinkTarget cannot open file for "
+               << WideCharToUtf8(uncLinkPath).c_str()
+               << " GetLastError: " << dwErr << "\n";
+  }
+
+  return uncLinkPath;
+}
+
 Status WindowsFileSystem::NewRandomAccessFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   result->reset();
 
   // Open the file for read-only random access
@@ -323,9 +384,8 @@ Status WindowsFileSystem::NewRandomAccessFile(
   // almost all tests would work with a possible exception of fault_injection.
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
-  HANDLE hfile =
-      ::CreateFileW(ws_translated_fname.c_str(), GENERIC_READ, share_mode, NULL,
-                    OPEN_EXISTING, file_flags, NULL);
+  HANDLE hfile = ::CreateFileW(ws_final_fname.c_str(), GENERIC_READ, share_mode,
+                               NULL, OPEN_EXISTING, file_flags, NULL);
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "NewRandomAccessFile failed to Create/Open: " + fname;
@@ -339,21 +399,20 @@ Status WindowsFileSystem::NewRandomAccessFile(
 Status WindowsFileSystem::NewWritableFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<WritableFile>* result) {
-  string translated_fname = TranslateName(fname);
-  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
+  std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   result->reset();
 
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
   HANDLE hfile =
-      ::CreateFileW(ws_translated_fname.c_str(), GENERIC_WRITE, share_mode,
-                    NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+      ::CreateFileW(ws_final_fname.c_str(), GENERIC_WRITE, share_mode, NULL,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "Failed to create a NewWriteableFile: " + fname;
     return IOErrorFromWindowsError(context);
   }
 
-  result->reset(new WindowsWritableFile(translated_fname, hfile));
+  result->reset(new WindowsWritableFile(WideCharToUtf8(ws_final_fname), hfile));
   return OkStatus();
 }
 
@@ -479,11 +538,10 @@ Status WindowsFileSystem::FileExists(const string& fname,
 Status WindowsFileSystem::GetChildren(const string& dir,
                                       TransactionToken* token,
                                       std::vector<string>* result) {
-  string translated_dir = TranslateName(dir);
-  std::wstring ws_translated_dir = Utf8ToWideChar(translated_dir);
+  std::wstring ws_fname_final = GetUncPathName(TranslateName(dir));
   result->clear();
 
-  std::wstring pattern = ws_translated_dir;
+  std::wstring pattern = ws_fname_final;
   if (!pattern.empty() && pattern.back() != '\\' && pattern.back() != '/') {
     pattern += L"\\*";
   } else {
@@ -493,7 +551,8 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   WIN32_FIND_DATAW find_data;
   HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
   if (find_handle == INVALID_HANDLE_VALUE) {
-    string context = "FindFirstFile failed for: " + translated_dir;
+    string context =
+        "FindFirstFile failed for: " + WideCharToUtf8(ws_fname_final);
     return IOErrorFromWindowsError(context);
   }
 
@@ -506,7 +565,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   } while (::FindNextFileW(find_handle, &find_data));
 
   if (!::FindClose(find_handle)) {
-    string context = "FindClose failed for: " + translated_dir;
+    string context = "FindClose failed for: " + WideCharToUtf8(ws_fname_final);
     return IOErrorFromWindowsError(context);
   }
 
@@ -516,8 +575,8 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 Status WindowsFileSystem::DeleteFile(const string& fname,
                                      TransactionToken* token) {
   Status result;
-  std::wstring file_name = Utf8ToWideChar(fname);
-  if (_wunlink(file_name.c_str()) != 0) {
+  std::wstring ws_fname_final = GetUncPathName(TranslateName(fname));
+  if (_wunlink(ws_fname_final.c_str()) != 0) {
     result = IOError("Failed to delete a file: " + fname, errno);
   }
   return result;
@@ -539,20 +598,36 @@ Status WindowsFileSystem::CreateDir(const string& name,
 Status WindowsFileSystem::DeleteDir(const string& name,
                                     TransactionToken* token) {
   Status result;
-  std::wstring ws_name = Utf8ToWideChar(name);
-  if (_wrmdir(ws_name.c_str()) != 0) {
-    result = IOError("Failed to remove a directory: " + name, errno);
+  WIN32_FIND_DATAW ffd;
+  LARGE_INTEGER filesize;
+
+  std::wstring ws_name = GetUncPathName(TranslateName(name));
+  if (RemoveDirectoryW(ws_name.c_str()) == 0) {
+    DWORD lastError = ::GetLastError();
+    result = IOError("Failed to remove a directory: " + name, lastError);
   }
   return result;
+}
+
+Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
+                                            TransactionToken* token,
+                                            int64_t* undeleted_files,
+                                            int64_t* undeleted_dirs) {
+  Status result;
+  std::wstring ws1 = GetUncPathName(TranslateName(dirname));
+  std::string dirname_final(ws1.begin(), ws1.end());
+  return FileSystem::DeleteRecursively(dirname_final, token, undeleted_files,
+                                       undeleted_dirs);
 }
 
 Status WindowsFileSystem::GetFileSize(const string& fname,
                                       TransactionToken* token, uint64* size) {
   string translated_fname = TranslateName(fname);
-  std::wstring ws_translated_dir = Utf8ToWideChar(translated_fname);
+  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
-  if (TRUE == ::GetFileAttributesExW(ws_translated_dir.c_str(),
+  if (TRUE == ::GetFileAttributesExW(ws_final_fname.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
     ULARGE_INTEGER file_size;
     file_size.HighPart = attrs.nFileSizeHigh;
@@ -567,12 +642,13 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
 
 Status WindowsFileSystem::IsDirectory(const string& fname,
                                       TransactionToken* token) {
-  TF_RETURN_IF_ERROR(FileExists(fname));
-  std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  if (PathIsDirectoryW(ws_translated_fname.c_str())) {
+  std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
+  std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
+  TF_RETURN_IF_ERROR(FileExists(str_final_fname));
+  if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return OkStatus();
   }
-  return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
+  return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
 Status WindowsFileSystem::RenameFile(const string& src, const string& target,

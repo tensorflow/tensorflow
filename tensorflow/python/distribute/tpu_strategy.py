@@ -24,9 +24,9 @@ import weakref
 from absl import logging
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -364,10 +364,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    # Packed variable is currently not supported when SPMD is enabled.
-    # TODO(b/202047549): enable Packed variable in SPMD mode.
-    self._enable_packed_variable_in_eager_mode = (
-        not experimental_spmd_xla_partitioning)
+    self._enable_packed_variable_in_eager_mode = True
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -690,7 +687,7 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     logging.warning(
         "`tf.distribute.experimental.TPUStrategy` is deprecated, please use "
-        " the non experimental symbol `tf.distribute.TPUStrategy` instead.")
+        "the non-experimental symbol `tf.distribute.TPUStrategy` instead.")
 
     super(TPUStrategy, self).__init__(
         TPUExtended(

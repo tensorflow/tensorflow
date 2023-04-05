@@ -16,23 +16,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
 #include <memory>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
@@ -99,9 +100,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-  // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
-  // NCHW.
-  if (input_ty != F16 ||
+  // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
+  // easy: Use NCHW.
+  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
+  if (!isFloat16 ||
       !stream_executor->GetDeviceDescription()
            .cuda_compute_capability()
            .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
@@ -233,9 +235,13 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
   // If we are able to construct a `MatrixLayout` then the dot can support
   // this layout.
   return MatrixLayout::For(shape, dot_dims.lhs_batch_dimensions().size(),
-                           dot_dims.lhs_contracting_dimensions().size(),
+                           dot->operand(0)->shape().rank() -
+                               dot_dims.lhs_contracting_dimensions().size() -
+                               dot_dims.lhs_batch_dimensions().size(),
                            dot_dims.rhs_batch_dimensions().size(),
-                           dot_dims.rhs_contracting_dimensions().size())
+                           dot->operand(1)->shape().rank() -
+                               dot_dims.rhs_contracting_dimensions().size() -
+                               dot_dims.rhs_batch_dimensions().size())
       .ok();
 }
 
@@ -415,9 +421,17 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
   if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
     return SetOperandLayout(shape, instruction, operand);
 
-  // Otherwise, fallback to forcing a (batch, rows, cols) layout.
+  // Otherwise, fallback to forcing the same layout as chosen by dot
+  // normalization, i.e. (batch, rows, cols) layout for the second operand and
+  // (batch, cols, rows) layout for the first operand.
+  if (operand == 1) {
+    return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
+                                         row_dims, col_dims);
+  }
+  // To get (batch, cols, rows) layout, simply swap 'row_dims' with 'col_dims'
+  // when calling SetOperandBatchRowsColsLayout.
   return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
-                                       row_dims, col_dims);
+                                       col_dims, row_dims);
 }
 
 Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(

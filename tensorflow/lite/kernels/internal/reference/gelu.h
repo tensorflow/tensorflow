@@ -33,23 +33,21 @@ constexpr float kSqrt2dPi = M_2_SQRTPI * M_SQRT1_2;  // sqrt( 2 / pi )
 
 }  // namespace gelu_internal
 
-// Plain implementation for GELU. Used for populating lookup table.
-inline std::function<float(float)> GeluTransform(bool approximate) {
-  if (approximate) {
-    return [](float in) {
-      // 0.5 * x * ( 1 + tanh( sqrt( 2 / pi ) * ( x + 0.044715 * x^3 ) ) )
-      return 0.5f * in *
-             (1.f + std::tanh(gelu_internal::kSqrt2dPi *
-                              // Note: Avoid std::pow for integer exponents
-                              // as it leads to much slower performance.
-                              (in + 0.044715f * in * in * in)));
-    };
-  } else {
-    return [](float in) {
-      // 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) )
-      return 0.5f * in * (1.f + std::erf(in * M_SQRT1_2));
-    };
-  }
+// Plain implementations for GELU. Used for populating lookup table.
+inline float GeluTransform(float in) {
+  // Note: 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) ) is commonly used, but cause
+  // catastropic cancellation for large negative inputs. Rewriting the
+  // expression via erfc avoids the numerical stability issues.
+  return 0.5f * in * std::erfc(in * static_cast<float>(-M_SQRT1_2));
+}
+
+inline float GeluTransformApproximate(float in) {
+  // 0.5 * x * ( 1 + tanh( sqrt( 2 / pi ) * ( x + 0.044715 * x^3 ) ) )
+  return 0.5f * in *
+         (1.f + std::tanh(gelu_internal::kSqrt2dPi *
+                          // Note: Avoid std::pow for integer exponents
+                          // as it leads to much slower performance.
+                          (in + 0.044715f * in * in * in)));
 }
 
 template <typename T>
@@ -69,11 +67,12 @@ inline void Gelu(const RuntimeShape& input_shape, const T* input_data,
                                                     input_map.array().cube()))
                               .tanh());
   } else {
-    // 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) )
+    // Note: 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) ) is commonly used, but cause
+    // catastropic cancellation for large negative inputs. Rewriting the
+    // expression via erfc avoids the numerical stability issues.
     output_map.array() =
         static_cast<T>(0.5) * input_map.array() *
-        (static_cast<T>(1) +
-         (input_map.array() * static_cast<T>(M_SQRT1_2)).erf());
+        (input_map.array() * static_cast<T>(-M_SQRT1_2)).erfc();
   }
 }
 

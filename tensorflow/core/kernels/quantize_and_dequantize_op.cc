@@ -249,7 +249,7 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    OP_REQUIRES(ctx, axis_ < input.dims(),
+    OP_REQUIRES(ctx, -input.dims() <= axis_ && axis_ < input.dims(),
                 InvalidArgument(
                     "Axis requested is larger than input dimensions. Axis: ",
                     axis_, " Input Dimensions: ", input.dims()));

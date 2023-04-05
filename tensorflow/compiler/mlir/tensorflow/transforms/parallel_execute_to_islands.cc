@@ -65,24 +65,38 @@ limitations under the License.
 //  then this pass will run following `replicate-to-island` pass and
 //  `tf-executor-break-up-islands` pass.
 
+#include <memory>
+#include <string>
+
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFDevice {
 namespace {
 
+#define GEN_PASS_DEF_PARALLELEXECUTETOISLANDSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ParallelExecuteToIslandsPass
-    : public TF::ParallelExecuteToIslandsPassBase<
+    : public impl::ParallelExecuteToIslandsPassBase<
           ParallelExecuteToIslandsPass> {
+  explicit ParallelExecuteToIslandsPass(bool legacy_graph_export) {
+    legacy_graph_export_ = legacy_graph_export;
+  }
   void runOnOperation() override;
 };
 
@@ -92,7 +106,8 @@ struct ParallelExecuteToIslandsPass
 void ExpandParallelExecuteToIslands(
     tf_executor::IslandOp island_op,
     tf_device::ParallelExecuteOp parallel_execute_op, OpBuilder* builder,
-    llvm::SmallVectorImpl<tf_executor::IslandOp>& executes) {
+    llvm::SmallVectorImpl<tf_executor::IslandOp>& executes,
+    bool legacy_graph_export, int parallel_group_idx) {
   const int num_regions = parallel_execute_op.getOperation()->getNumRegions();
   executes.reserve(num_regions);
 
@@ -115,19 +130,46 @@ void ExpandParallelExecuteToIslands(
     // Move over tf_device.parallel_execute body region into newly the created
     // island.
     execute_island.getBody().takeBody(*execute_block.getParent());
+
+    // In new graph export pipeline, we will update control dependencies in the
+    // end of the pipeline. Mostly, it will rely on side effect analysis by
+    // considering accessing resource only. However, for branches under parallel
+    // group, there should not be any control deps between them even side effect
+    // analysis indicate some control deps. Therefore, we will mark parallel
+    // group and branch information here so that `UpdateControlDependenciesPass`
+    // can fetch the related information later.
+    if (!legacy_graph_export) {
+      std::string group_annotation = absl::StrCat(
+          "p", std::to_string(parallel_group_idx), ":", std::to_string(i));
+      if (auto parallel_group_attr =
+              parallel_execute_op->getAttrOfType<StringAttr>(
+                  TF::kParallelExecAnnotation)) {
+        // Extend the existing attribute so that nested parallel execution
+        // structure is supported.
+        group_annotation = absl::StrCat(parallel_group_attr.getValue().str(),
+                                        ",", group_annotation);
+      }
+      for (auto& op : execute_island.GetBody()) {
+        op.setAttr(TF::kParallelExecAnnotation,
+                   builder->getStringAttr(group_annotation));
+      }
+    }
+
     executes.push_back(execute_island);
   }
 }
 
 void CreateIslandsFromParallelExecute(
     tf_executor::IslandOp island_op,
-    tf_device::ParallelExecuteOp parallel_execute_op) {
+    tf_device::ParallelExecuteOp parallel_execute_op, bool legacy_graph_export,
+    int parallel_group_idx) {
   OpBuilder builder(island_op);
 
   // Create islands for each region of the parallel_execute op.
   llvm::SmallVector<tf_executor::IslandOp, 4> executes;
   ExpandParallelExecuteToIslands(island_op, parallel_execute_op, &builder,
-                                 executes);
+                                 executes, legacy_graph_export,
+                                 parallel_group_idx);
 
   // Remap all results of parallel_execute op with outputs from newly created
   // islands.
@@ -161,22 +203,34 @@ void CreateIslandsFromParallelExecute(
     island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
-  // Islands with no uses should be pinned to a graph fetch so they still
-  // execute.
-  llvm::SmallVector<Value, 8> unused_execute_controls;
-  for (auto& execute : executes)
-    if (execute.use_empty())
-      unused_execute_controls.push_back(execute.getControl());
+  if (legacy_graph_export) {
+    // Islands with no uses should be pinned to a graph fetch so they still
+    // execute.
+    llvm::SmallVector<Value, 8> unused_execute_controls;
+    for (auto& execute : executes)
+      if (execute.use_empty())
+        unused_execute_controls.push_back(execute.getControl());
 
-  if (!unused_execute_controls.empty()) {
-    auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
-    tf_executor::FetchOp fetch = graph_op.GetFetch();
-    auto fetches = llvm::to_vector<8>(fetch.getOperands());
-    fetches.append(unused_execute_controls.begin(),
-                   unused_execute_controls.end());
-    builder.setInsertionPoint(fetch);
-    builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
-    fetch.erase();
+    if (!unused_execute_controls.empty()) {
+      auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
+      tf_executor::FetchOp fetch = graph_op.GetFetch();
+      auto fetches = llvm::to_vector<8>(fetch.getOperands());
+      fetches.append(unused_execute_controls.begin(),
+                     unused_execute_controls.end());
+      builder.setInsertionPoint(fetch);
+      builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+      fetch.erase();
+    }
+  } else {
+    // Now, finally, we need to maintain the invariant expected to be maintained
+    // throughout the graph export pipeline that all islands always perfectly
+    // wrap a single op. So we'll split all islands which wrap multiple ops.
+    auto control_type = tf_executor::ControlType::get(island_op.getContext());
+    for (auto& execute : executes) {
+      if (execute.GetBody().getOperations().size() > 1) {
+        mlir::TF::SplitIsland(execute, control_type);
+      }
+    }
   }
 
   island_op.erase();
@@ -188,24 +242,37 @@ void ParallelExecuteToIslandsPass::runOnOperation() {
   llvm::SmallVector<tf_executor::IslandOp, 4> parallel_execute_op_islands;
   getOperation().walk([&](tf_executor::GraphOp graph_op) {
     for (auto island_op : graph_op.getOps<tf_executor::IslandOp>()) {
-      if (!island_op.WrapsSingleOp()) continue;
+      if (!island_op.WrapsSingleOp()) {
+        island_op.emitError(
+            "tf_executor.island must perfectly wrap a single op");
+        signalPassFailure();
+      }
 
       if (isa<tf_device::ParallelExecuteOp>(&island_op.GetBody().front()))
         parallel_execute_op_islands.push_back(island_op);
     }
   });
 
+  // This number is unique within each function which is sufficient for
+  // `UpdateControlDependenciesPass` which consumes the related attributes.
+  // However, this assumes that we don't inline functions between this pass
+  // and `UpdateControlDependenciesPass`.
+  // If we need globally unique parallel group IDs in the future,
+  // we can either make this pass a module pass (using a global counter)
+  // or use an atomic counter.
+  int parallel_group_idx = 0;
   for (tf_executor::IslandOp island_op : parallel_execute_op_islands) {
     auto parallel_execute_op =
         cast<tf_device::ParallelExecuteOp>(island_op.GetBody().front());
-    CreateIslandsFromParallelExecute(island_op, parallel_execute_op);
+    CreateIslandsFromParallelExecute(island_op, parallel_execute_op,
+                                     legacy_graph_export_, parallel_group_idx);
   }
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateParallelExecuteToIslandsPass() {
-  return std::make_unique<ParallelExecuteToIslandsPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
+    bool legacy_graph_export) {
+  return std::make_unique<ParallelExecuteToIslandsPass>(legacy_graph_export);
 }
 
 }  // namespace TFDevice

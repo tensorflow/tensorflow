@@ -26,22 +26,27 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, Winograd4x4To36TileX6) {
   auto status = Winograd4x4To36TileX6Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, Winograd36To4x4Tile4x1) {
   auto status = Winograd36To4x4Tile4x1Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, Winograd4x4To36) {
   auto status = Winograd4x4To36Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, Winograd4x4To36Batch) {
+  auto status = Winograd4x4To36BatchTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, Winograd36To4x4) {
   auto status = Winograd36To4x4Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

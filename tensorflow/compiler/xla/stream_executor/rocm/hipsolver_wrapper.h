@@ -25,11 +25,11 @@ limitations under the License.
 #if TF_ROCM_VERSION >= 40500
 
 #include "rocm/include/hipsolver.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -52,9 +52,9 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = TO_STR(api_name);                            \
       void* f;                                                                \
-      auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary(   \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
           stream_executor::internal::CachedDsoLoader::GetHipsolverDsoHandle() \
-              .value(),                                                  \
+              .value(),                                                       \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
                     << " in hipsolver lib; dlerror: " << s.error_message();   \
@@ -132,7 +132,7 @@ FOREACH_HIPSOLVER_API(HIPSOLVER_API_WRAPPER)
 #undef HIPSOLVER_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TF_ROCM_VERSION
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_

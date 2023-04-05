@@ -8,17 +8,10 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
@@ -223,11 +216,11 @@ tf_kernel_library(
     prefix = "matrix_triangular_solve_op",
     deps = [
         ":linalg_ops_common",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
+        "//third_party/eigen3",
     ] + if_cuda([
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
@@ -282,9 +275,9 @@ tf_kernel_library(
     ]) + if_rocm([
         "//tensorflow/core/util:rocm_solvers",
     ]) + [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 

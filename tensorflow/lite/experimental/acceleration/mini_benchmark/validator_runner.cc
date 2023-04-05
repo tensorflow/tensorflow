@@ -14,63 +14,50 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace acceleration {
 constexpr int kMaxAttempts = 2;
 
-ValidatorRunner::ValidatorRunner(const Options& options)
-    : storage_(options.storage_path, options.error_reporter),
+ValidatorRunner::ValidatorRunner(const ValidatorRunnerOptions& options)
+    : storage_path_(options.storage_path),
+      storage_(options.storage_path, options.error_reporter),
       error_reporter_(options.error_reporter) {
-  std::string model_path;
-  if (!options.model_path.empty()) {
-    model_path = options.model_path;
-  } else if (options.model_fd >= 0) {
-    model_path = absl::StrCat("fd:", options.model_fd, ":",
-                              options.model_offset, ":", options.model_size);
-  }
-
   validator_runner_impl_ = std::make_unique<ValidatorRunnerImpl>(
-      model_path, options.storage_path, options.data_directory_path,
-      options.per_test_timeout_ms,
+      CreateModelLoaderPath(options), options.storage_path,
+      options.data_directory_path, options.per_test_timeout_ms,
       options.custom_input_data.empty()
           ? nullptr
           : std::make_unique<CustomValidationEmbedder>(
-                options.custom_input_batch_size, options.custom_input_data),
-      error_reporter_, options.nnapi_sl, options.validation_entrypoint_name);
+                options.custom_input_batch_size, options.custom_input_data,
+                options.error_reporter),
+      error_reporter_, options.nnapi_sl, options.gpu_plugin_handle,
+      options.validation_entrypoint_name, options.benchmark_result_evaluator);
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {
-  MinibenchmarkStatus status = validator_runner_impl_->Init();
-  if (status != kMinibenchmarkSuccess) {
-    return status;
-  }
-#ifndef _WIN32
-  status = storage_.Read();
+  MinibenchmarkStatus status = storage_.Read();
   if (status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Storage::Read failed");
     return status;
   }
-  return kMinibenchmarkSuccess;
-#else   // _WIN32
-  return kMinibenchmarkUnsupportedPlatform;
-#endif  // !_WIN32
+  return validator_runner_impl_->Init();
 }
 
 int ValidatorRunner::TriggerMissingValidation(
-    std::vector<const TFLiteSettings*> for_settings) {
+    const std::vector<const TFLiteSettings*>& for_settings) {
   if (triggered_) {
     return 0;
   }
@@ -78,8 +65,7 @@ int ValidatorRunner::TriggerMissingValidation(
   storage_.Read();
 
   // Filter out settings that have already been tried.
-  auto to_be_run =
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>();
+  std::vector<flatbuffers::FlatBufferBuilder> to_be_run;
   for (auto settings : for_settings) {
     TFLiteSettingsT tflite_settings;
     settings->UnPackTo(&tflite_settings);
@@ -112,37 +98,12 @@ int ValidatorRunner::TriggerMissingValidation(
     }
     flatbuffers::FlatBufferBuilder copy;
     copy.Finish(CreateTFLiteSettings(copy, &tflite_settings));
-    to_be_run->emplace_back(std::move(copy));
+    to_be_run.emplace_back(std::move(copy));
   }
-  int to_be_run_count = to_be_run->size();
-  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run));
+  int to_be_run_count = to_be_run.size();
+  validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run),
+                                                 storage_path_);
   return to_be_run_count;
-}
-
-std::vector<const BenchmarkEvent*> ValidatorRunner::GetSuccessfulResults() {
-  std::vector<const BenchmarkEvent*> results;
-  storage_.Read();
-  for (int i = 0; i < storage_.Count(); i++) {
-    const BenchmarkEvent* event = storage_.Get(i);
-    if (event->event_type() == BenchmarkEventType_END && event->result() &&
-        event->result()->ok()) {
-      results.push_back(event);
-    }
-  }
-  return results;
-}
-
-int ValidatorRunner::GetNumCompletedResults() {
-  storage_.Read();
-  int num_results = 0;
-  for (int i = 0; i < storage_.Count(); i++) {
-    const BenchmarkEvent* event = storage_.Get(i);
-    if (event->event_type() == BenchmarkEventType_ERROR ||
-        (event->event_type() == BenchmarkEventType_END && event->result())) {
-      num_results++;
-    }
-  }
-  return num_results;
 }
 
 std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(

@@ -23,7 +23,6 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
@@ -36,8 +35,9 @@ from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
@@ -50,6 +50,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
@@ -57,7 +58,9 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -279,10 +282,9 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         return (i + 1, a, ta.write(i, a))
 
       n = 4
-      i, _, ta = control_flow_ops.while_loop(
-          lambda i, *_: i < n,
-          _Step, [0, 0, tensor_array_ops.TensorArray(
-              dtypes.int32, size=n)])
+      i, _, ta = while_loop.while_loop(
+          lambda i, *_: i < n, _Step,
+          [0, 0, tensor_array_ops.TensorArray(dtypes.int32, size=n)])
       target = ta.read(i - 1)
       grad, = gradients.gradients(target, v)
       self.assertIsNone(grad)
@@ -319,7 +321,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testVariableRefGradient(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0)
-      var = variables.VariableV1(init)
+      var = variable_v1.VariableV1(init)
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
@@ -584,7 +586,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
 
-      @function.defun()
+      @def_function.function
       def Foo():
         y = math_ops.multiply(x, 2.0, name="y")
         g = gradients_impl.gradients(y, x)
@@ -612,7 +614,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       var = resource_variable_ops.ResourceVariable(1.0, name="var")
 
-      @function.defun()
+      @def_function.function
       def Foo():
         y = math_ops.multiply(var, 2.0, name="y")
         g = gradients_impl.gradients(y, var)
@@ -629,11 +631,11 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       x2 = constant_op.constant(2.0, name="x2")
       x3 = math_ops.multiply(x1, x2, name="x3")
 
-      @function.defun()
+      @def_function.function
       def Outer():
         outer1 = array_ops.identity(x1, name="outer1")
 
-        @function.defun()
+        @def_function.function
         def Inner():
           inner1 = array_ops.identity(outer1, name="inner1")
           inner2 = array_ops.identity(x2, name="inner2")
@@ -654,11 +656,11 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
 
-      @function.defun()
+      @def_function.function
       def Outer():
         y = math_ops.multiply(x, 2.0, name="y")
 
-        @function.defun()
+        @def_function.function
         def Inner():
           z = math_ops.multiply(y, 3.0, name="z")
           g = gradients_impl.gradients(z, y)
@@ -678,7 +680,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       c = constant_op.constant(2.0, name="c")
 
-      @function.defun
+      @def_function.function
       def Foo():
         x = constant_op.constant(10.0, name="x")
         y = math_ops.multiply(x, c, name="y")
@@ -857,8 +859,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         numpy_list.append(np_val)
         dense_list.append(c)
         sparse_list.append(c_sparse)
-      packed_dense = array_ops.stack(dense_list)
-      packed_sparse = array_ops.stack(sparse_list)
+      packed_dense = array_ops_stack.stack(dense_list)
+      packed_sparse = array_ops_stack.stack(sparse_list)
       self.assertAllClose(packed_dense, self.evaluate(packed_sparse))
 
   @test_util.run_v1_only("b/120545219")
@@ -943,7 +945,7 @@ class ResourceCondTest(test_util.TensorFlowTestCase):
       return output
 
     training = array_ops.placeholder_with_default(True, shape=())
-    output = control_flow_ops.cond(
+    output = cond.cond(
         training, TestFn, lambda: inputs)
 
     loss = output
@@ -1030,7 +1032,7 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
     with context.graph_mode():
       init = constant_op.constant(100.0)
       var = variable_scope.variable(init, name="a/replica_1")
-      if isinstance(var, variables.RefVariable):
+      if isinstance(var, ref_variable.RefVariable):
         var._variable = array_ops.identity(var, name="a")
       else:
         var._handle = array_ops.identity(var, name="a")
@@ -1442,7 +1444,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           dtype="float32")
 
       conditional = array_ops.placeholder_with_default(True, shape=())
-      output = control_flow_ops.cond(
+      output = cond.cond(
           conditional, lambda: alpha * 2, lambda: alpha * 3)
 
       g, = gradients_impl.gradients(output, alpha)
@@ -1611,7 +1613,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     grads = self._grad(F)(x)
     self.assertAllClose(grads_re, grads)
 
-    f_graph = function.defun(F, input_signature=[tensor_spec.TensorSpec(None)])
+    f_graph = def_function.function(
+        F, input_signature=[tensor_spec.TensorSpec(None)])
     grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x)
     grads = self._grad(f_graph)(x)
     self.assertAllClose(grads_re, grads)
@@ -1627,7 +1630,7 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     grads = self._grad(F)(x1, x2)
     self.assertAllClose(grads_re, grads)
 
-    f_graph = function.defun(
+    f_graph = def_function.function(
         F,
         input_signature=[
             tensor_spec.TensorSpec(None, dtype=dtypes.int32),

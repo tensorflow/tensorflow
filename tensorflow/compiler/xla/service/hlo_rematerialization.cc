@@ -20,26 +20,30 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -52,7 +56,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::tensorflow::strings::HumanReadableNumBytes;
+using ::tsl::strings::HumanReadableNumBytes;
 
 // Potential optimizations:
 // . TODO(b/35244891): Avoid N^2 behavior by keeping a priority queue
@@ -322,7 +326,7 @@ class InstructionList {
 
   // Scan the list and promote nodes to express lane if should_promote(Item)
   // returns true;
-  void PromoteNodesToSkip(std::function<bool(Item*)> should_promote) {
+  void PromoteNodesToSkip(absl::FunctionRef<bool(Item*)> should_promote) {
     int64_t count = 0;
     for (auto* item = first(); item != nullptr; item = next(item)) {
       if (should_promote(item)) {
@@ -1197,7 +1201,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
       }
       default: {
         LOG(FATAL) << "Unsupported indirect instruction with opcode "
-                   << HloOpcodeString(indirect_user->instruction->opcode());
+                   << indirect_user->instruction->opcode();
         break;
       }
     }
@@ -1227,13 +1231,14 @@ std::string MemoryUsageTracker::ToString() const {
   for (auto* item = instruction_list_.first(); item != nullptr;
        item = instruction_list_.next(item)) {
     const HloInstruction* instruction = item->instruction;
-    std::string inprogress = item == in_progress_item_ ? " in-progress" : "";
-    std::string placed = item->placed ? " placed" : "";
+    absl::string_view inprogress =
+        item == in_progress_item_ ? " in-progress" : "";
+    absl::string_view placed = item->placed ? " placed" : "";
     absl::StrAppend(&output, "  ", instruction->name(), inprogress, placed,
                     "\n    Defines:\n");
     for (BufferId buffer_id : item->buffers_defined) {
       const Buffer& buffer = buffers_[buffer_id];
-      std::string live = IsCurrentlyLive(buffer_id) ? " live" : "";
+      absl::string_view live = IsCurrentlyLive(buffer_id) ? " live" : "";
       absl::StrAppend(&output, "      ", buffer.ToString(), live, ", ",
                       buffer.unfinished_user_count, " unfinished uses\n");
     }
@@ -1547,7 +1552,7 @@ const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
 StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
-    InstructionList* instruction_list,
+    InstructionList* instruction_list, HloSchedule* schedule,
     HloRematerialization* rematerialization) {
   int64_t net_instructions_added = 0;
   int64_t total_memory_saved =
@@ -1568,8 +1573,21 @@ StatusOr<int64_t> RematerializeInstructions(
       continue;
     }
 
+    HloCloneContext context(computation->parent());
     HloInstruction* remat =
-        computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
+        computation->AddInstruction(best->Clone(/*suffix=*/"remat", &context));
+    for (auto& cloned_computation_pair : context.cloned_computations()) {
+      if (!schedule->is_computation_scheduled(cloned_computation_pair.first)) {
+        continue;
+      }
+      HloInstructionSequence& sequence =
+          schedule->GetOrCreateSequence(cloned_computation_pair.second);
+      HloInstructionSequence& old_sequence =
+          schedule->GetOrCreateSequence(cloned_computation_pair.first);
+      for (HloInstruction* instr : old_sequence.instructions()) {
+        sequence.push_back(instr);
+      }
+    }
     // Increment channel_id on channel instructions with a channel id.
     if (DynCast<HloChannelInstruction>(best) &&
         DynCast<HloChannelInstruction>(best)->channel_id()) {
@@ -1733,11 +1751,11 @@ StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
   HloComputation* computation = best->parent();
   HloInstruction* compressed = computation->AddInstruction(
       HloInstruction::CreateUnary(compact_shape, HloOpcode::kCopy, best),
-      /*new_name=*/best->name() + ".remat_compressed");
+      /*new_name=*/absl::StrCat(best->name(), ".remat_compressed"));
 
   HloInstruction* uncompressed = computation->AddInstruction(
       HloInstruction::CreateUnary(best->shape(), HloOpcode::kCopy, compressed),
-      /*new_name=*/best->name() + ".remat_uncompressed");
+      /*new_name=*/absl::StrCat(best->name(), ".remat_uncompressed"));
 
   Item* compressed_item = instruction_list->CreateItem(compressed);
   compressed_item->placed = true;
@@ -1792,7 +1810,8 @@ struct InstructionsAdded {
 // instructions can be found. Returns number of instructions rematerialized.
 StatusOr<InstructionsAdded> RematerializeBestBlock(
     int min_block_size, int max_block_size, MemoryUsageTracker* memory_tracker,
-    InstructionList* instruction_list, int64_t memory_limit_bytes,
+    InstructionList* instruction_list, HloSchedule* schedule,
+    int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
     HloRematerialization* rematerialization) {
@@ -1833,7 +1852,7 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
         num_instructions_added.net_instructions_added,
         RematerializeInstructions(memory_tracker, &best_items,
                                   remat_move_instructions, instruction_list,
-                                  rematerialization));
+                                  schedule, rematerialization));
   }
   return num_instructions_added;
 }
@@ -1974,7 +1993,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         TF_ASSIGN_OR_RETURN(
             InstructionsAdded instructions_added,
             RematerializeBestBlock(min_block_size, max_block_size,
-                                   &memory_tracker, &instruction_list,
+                                   &memory_tracker, &instruction_list, schedule,
                                    memory_limit_bytes, &rematerializable_map,
                                    &remat_move_instructions, this));
         net_instructions_added += instructions_added.net_instructions_added;

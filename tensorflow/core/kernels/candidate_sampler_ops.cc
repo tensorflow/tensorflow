@@ -73,6 +73,14 @@ class BaseCandidateSamplerOp : public OpKernel {
 
     gtl::ArraySlice<int64_t> true_candidate(
         true_classes.matrix<int64_t>().data(), batch_size * num_true_);
+
+    for (const auto& candidate : true_candidate) {
+      OP_REQUIRES(context, candidate >= 0 && candidate < sampler_->range(),
+                  errors::InvalidArgument("`true_candidate` out of range [", 0,
+                                          ", ", sampler_->range(),
+                                          "), received ", candidate));
+    }
+
     gtl::MutableArraySlice<int64_t> sampled_candidate(
         out_sampled_candidates->vec<int64_t>().data(), num_sampled_);
     gtl::MutableArraySlice<float> true_expected_count(
@@ -172,15 +180,14 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
     OP_REQUIRES_OK(context, context->GetAttr("num_shards", &num_shards));
     int64_t shard;
     OP_REQUIRES_OK(context, context->GetAttr("shard", &shard));
-
-    if (!vocab_file.empty()) {
-      set_sampler(new FixedUnigramSampler(context->env(), range_max, vocab_file,
-                                          distortion, num_reserved_ids,
-                                          num_shards, shard));
-    } else {
-      set_sampler(new FixedUnigramSampler(range_max, unigrams, distortion,
-                                          num_reserved_ids, num_shards, shard));
-    }
+    FixedUnigramSampler* sampler = new FixedUnigramSampler(
+        range_max, distortion, num_reserved_ids, num_shards, shard);
+    if (!vocab_file.empty())
+      OP_REQUIRES_OK(
+          context, sampler->SetDistributionSampler(context->env(), vocab_file));
+    else
+      OP_REQUIRES_OK(context, sampler->SetDistributionSampler(unigrams));
+    set_sampler(sampler);
   }
 };
 

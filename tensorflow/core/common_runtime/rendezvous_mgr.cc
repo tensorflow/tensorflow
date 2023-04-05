@@ -168,9 +168,12 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
 
 RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(this) {}
+    : device_mgr_(device_mgr),
+      local_(this, /* num_shards= */ device_mgr->NumDevices()) {}
 
-RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
+RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {
+  VLOG(5) << "Destructor of IntraProcessRendezvous: " << this;
+}
 
 Status RefCountedIntraProcessRendezvous::Send(const ParsedKey& key,
                                               const Rendezvous::Args& args,
@@ -188,6 +191,7 @@ void RefCountedIntraProcessRendezvous::RecvAsync(const ParsedKey& key,
 }
 
 void RefCountedIntraProcessRendezvous::StartAbort(const Status& s) {
+  VLOG(1) << "IntraProcessRendezvous start Abort " << this;
   local_.StartAbort(s);
 }
 
@@ -197,7 +201,8 @@ Status RefCountedIntraProcessRendezvous::GetLocalRendezvousStatus() {
 
 PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(nullptr) {}
+    : device_mgr_(device_mgr),
+      local_(nullptr, /* num_shards= */ device_mgr->NumDevices()) {}
 
 PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
 

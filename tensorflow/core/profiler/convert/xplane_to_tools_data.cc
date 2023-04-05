@@ -21,21 +21,21 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
+#include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -65,8 +66,10 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                       session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/true);
   std::string content;
-  ConvertXSpaceToTraceEventsString(*xspace, &content);
+  tsl::profiler::ConvertXSpaceToTraceEventsString(*xspace, &content);
   return content;
 }
 
@@ -127,6 +130,8 @@ StatusOr<std::string> ConvertXSpaceToMemoryProfile(
   std::string json_output;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                       session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/false);
   TF_RETURN_IF_ERROR(ConvertXSpaceToMemoryProfileJson(*xspace, &json_output));
   return json_output;
 }
@@ -163,6 +168,8 @@ StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(idx));
 
+    PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                               /*derived_timeline=*/false);
     XPlane* host_plane =
         FindMutablePlaneWithName(xspace.get(), kHostThreadsPlaneName);
     std::string host_name_from_file = session_snapshot.GetHostname(idx);
@@ -207,6 +214,21 @@ StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
   return json_output;
 }
 
+StatusOr<std::string> PreprocessXSpace(
+    const SessionSnapshot& session_snapshot) {
+  if (session_snapshot.XSpaceSize() != 1) {
+    return errors::InvalidArgument(
+        "PreprocessXSpace tool expects only 1 XSpace path but gets ",
+        session_snapshot.XSpaceSize());
+  }
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/true);
+  return xspace->SerializeAsString();
+}
+
 }  // namespace
 
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
@@ -234,6 +256,8 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
+  } else if (tool_name == "_xplane.pb") {  // internal test only.
+    return PreprocessXSpace(session_snapshot);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,

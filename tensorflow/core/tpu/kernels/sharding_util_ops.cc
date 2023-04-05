@@ -134,45 +134,37 @@ Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
     absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 1> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 1> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 2> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 2> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 3> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 4> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 4> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 5> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 5> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 6> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 6> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 7> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 7> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape, const int index);
 template <>
-Eigen::DSizes<Eigen::DenseIndex, 8> GetSliceIndices(
+Eigen::DSizes<Eigen::DenseIndex, 8> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
     absl::Span<const int32> num_partitions,
-    const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape,
-    const int index) TF_ATTRIBUTE_NOINLINE;
+    const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape, const int index);
 
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
@@ -350,18 +342,17 @@ constexpr absl::string_view kTensorName = "'input' tensor";
 constexpr absl::string_view kResourceName = "'resource' variable tensor";
 
 template <int Rank>
-Eigen::DSizes<Eigen::DenseIndex, Rank> ShapeAsEigenDSizes(
-    const TensorShape& shape) TF_ATTRIBUTE_NOINLINE;
+Eigen::DSizes<Eigen::DenseIndex, Rank> TF_ATTRIBUTE_NOINLINE
+ShapeAsEigenDSizes(const TensorShape& shape);
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> ShapeAsEigenDSizes(
     const TensorShape& shape) {
   return shape.AsEigenDSizes<Rank>();
 }
 
-bool ValidateShapesForSlice(
+bool TF_ATTRIBUTE_NOINLINE ValidateShapesForSlice(
     OpKernelContext* ctx, bool resource, const Tensor* input,
-    const std::vector<int32>& num_splits,
-    const std::vector<int32>& paddings) TF_ATTRIBUTE_NOINLINE;
+    const std::vector<int32>& num_splits, const std::vector<int32>& paddings);
 
 bool ValidateShapesForSlice(OpKernelContext* ctx, bool resource,
                             const Tensor* input,
@@ -405,10 +396,8 @@ bool ValidateShapesForSlice(OpKernelContext* ctx, bool resource,
 // Shared base class to save code space
 class XlaSplitNDShared : public OpKernel {
  public:
-  explicit XlaSplitNDShared(OpKernelConstruction* ctx) TF_ATTRIBUTE_NOINLINE
-      : OpKernel(ctx),
-        num_slices_(1),
-        has_paddings_(false) {
+  explicit TF_ATTRIBUTE_NOINLINE XlaSplitNDShared(OpKernelConstruction* ctx)
+      : OpKernel(ctx), num_slices_(1), has_paddings_(false) {
     GetAndValidateAttributes(/*split=*/true, ctx, num_splits_, num_slices_,
                              paddings_, has_paddings_);
   }
@@ -425,10 +414,10 @@ class XlaSplitNDShared : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, Rank> output_slice_shape_dsizes_;
     Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes_;
 
-    SliceAndMaybePadState(absl::Span<const int32> num_splits,
-                          const absl::Span<const int64_t> input_shape,
-                          const TensorShape& output_slice_shape,
-                          int slice_index) TF_ATTRIBUTE_NOINLINE {
+    TF_ATTRIBUTE_NOINLINE SliceAndMaybePadState(
+        absl::Span<const int32> num_splits,
+        const absl::Span<const int64_t> input_shape,
+        const TensorShape& output_slice_shape, int slice_index) {
       output_slice_shape_dsizes_ = ShapeAsEigenDSizes<Rank>(output_slice_shape);
       num_complete_pad_dims_ = 0;
       num_partial_pad_dims_ = 0;
@@ -462,8 +451,9 @@ class XlaSplitNDShared : public OpKernel {
     }
   };
 
-  static void GetDtypeHelper(OpKernelConstruction* ctx, const char* attr_name,
-                             DataType* dtype_ptr) TF_ATTRIBUTE_NOINLINE {
+  static void TF_ATTRIBUTE_NOINLINE GetDtypeHelper(OpKernelConstruction* ctx,
+                                                   const char* attr_name,
+                                                   DataType* dtype_ptr) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(attr_name, dtype_ptr));
   }
 
@@ -538,29 +528,28 @@ class XlaSplitNDBaseOp : public XlaSplitNDShared {
   }
 
  private:
-  void SetToConstant(Tensor* output_slice,
-                     const Device& device) TF_ATTRIBUTE_NOINLINE {
+  void TF_ATTRIBUTE_NOINLINE SetToConstant(Tensor* output_slice,
+                                           const Device& device) {
     auto output_flat = output_slice->flat<T>();
     output_flat.device(device) = output_flat.constant(T());
   }
 
   template <int Rank>
-  void AssignFromInput(
+  void TF_ATTRIBUTE_NOINLINE AssignFromInput(
       Tensor* output_slice, const Device& device, const Tensor* input,
       const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_indices,
-      const Eigen::DSizes<Eigen::DenseIndex, Rank>& output_slice_shape_dsizes)
-      TF_ATTRIBUTE_NOINLINE {
+      const Eigen::DSizes<Eigen::DenseIndex, Rank>& output_slice_shape_dsizes) {
     output_slice->tensor<T, Rank>().device(device) =
         input->tensor<T, Rank>().slice(slice_indices,
                                        output_slice_shape_dsizes);
   }
 
   template <int Rank>
-  void SliceAndMaybePad(
+  void TF_ATTRIBUTE_NOINLINE SliceAndMaybePad(
       OpKernelContext* ctx, const Device& device, const Tensor* input,
       const absl::Span<const int64_t> input_shape,
       const TensorShape& output_slice_shape,
-      const std::vector<Tensor*>& output_slices) TF_ATTRIBUTE_NOINLINE {
+      const std::vector<Tensor*>& output_slices) {
     const auto& input_tensor = input->tensor<T, Rank>();
     // Slice shape with optional padding.
     for (int i = 0; i < num_slices_; ++i) {
@@ -591,7 +580,7 @@ class XlaSplitNDBaseOp : public XlaSplitNDShared {
 template <typename Device, typename T>
 class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
  public:
-  explicit XlaSplitNDOp(OpKernelConstruction* ctx) TF_ATTRIBUTE_NOINLINE
+  explicit TF_ATTRIBUTE_NOINLINE XlaSplitNDOp(OpKernelConstruction* ctx)
       : XlaSplitNDBaseOp<Device, T>(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
@@ -610,8 +599,9 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
 template <typename Device, typename T>
 class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
  public:
-  explicit ReadVariableXlaSplitNDOp(OpKernelConstruction* ctx)
-      TF_ATTRIBUTE_NOINLINE : XlaSplitNDBaseOp<Device, T>(ctx) {
+  explicit TF_ATTRIBUTE_NOINLINE ReadVariableXlaSplitNDOp(
+      OpKernelConstruction* ctx)
+      : XlaSplitNDBaseOp<Device, T>(ctx) {
     XlaSplitNDShared::GetDtypeHelper(ctx, "T", &dtype_);
   }
 
@@ -675,10 +665,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 // Shared base class to save code space
 class XlaConcatNDShared : public OpKernel {
  public:
-  explicit XlaConcatNDShared(OpKernelConstruction* ctx) TF_ATTRIBUTE_NOINLINE
-      : OpKernel(ctx),
-        num_slices_(1),
-        has_paddings_(false) {
+  explicit TF_ATTRIBUTE_NOINLINE XlaConcatNDShared(OpKernelConstruction* ctx)
+      : OpKernel(ctx), num_slices_(1), has_paddings_(false) {
     GetAndValidateAttributes(/*split=*/false, ctx, num_concats_, num_slices_,
                              paddings_, has_paddings_);
   }
@@ -711,7 +699,8 @@ class XlaConcatNDShared : public OpKernel {
             "'paddings' must not exceed expected output shape dimension ",
             max_dim_size, " at index ", i, ", but got ", paddings_[i], ".");
       }
-      output_shape.AddDim(max_dim_size - paddings_[i]);
+      TF_RETURN_IF_ERROR(
+          output_shape.AddDimWithStatus(max_dim_size - paddings_[i]));
     }
 
     return OkStatus();
@@ -735,9 +724,9 @@ class XlaConcatNDShared : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, Rank> output_slice_shape_dsizes_;
     Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes_;
 
-    MaybeUnpadAndAssignState(absl::Span<const int32> num_concats,
-                             const Tensor& input0, Tensor* output,
-                             int slice_index) TF_ATTRIBUTE_NOINLINE {
+    TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssignState(
+        absl::Span<const int32> num_concats, const Tensor& input0,
+        Tensor* output, int slice_index) {
       slice_shape_dsizes_ = input0.shape().AsEigenDSizes<Rank>();
       slice_indices_ =
           GetSliceIndices<Rank>(num_concats, slice_shape_dsizes_, slice_index);
@@ -775,7 +764,7 @@ class XlaConcatNDShared : public OpKernel {
 template <typename Device, typename T>
 class XlaConcatNDBaseOp : public XlaConcatNDShared {
  public:
-  explicit XlaConcatNDBaseOp(OpKernelConstruction* ctx) TF_ATTRIBUTE_NOINLINE
+  explicit TF_ATTRIBUTE_NOINLINE XlaConcatNDBaseOp(OpKernelConstruction* ctx)
       : XlaConcatNDShared(ctx) {}
 
  protected:
@@ -822,9 +811,10 @@ class XlaConcatNDBaseOp : public XlaConcatNDShared {
 
  private:
   template <int Rank>
-  void MaybeUnpadAndAssign(OpKernelContext* ctx, const Device& device,
-                           const OpInputList& inputs,
-                           Tensor* output) TF_ATTRIBUTE_NOINLINE {
+  void TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssign(OpKernelContext* ctx,
+                                                 const Device& device,
+                                                 const OpInputList& inputs,
+                                                 Tensor* output) {
     for (int i = 0; i < num_slices_; ++i) {
       MaybeUnpadAndAssignState<Rank> r(num_concats_, inputs[0], output, i);
       if (r.num_complete_pad_dims_ == Rank) {
@@ -875,8 +865,9 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
 template <typename Device, typename T>
 class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
  public:
-  explicit AssignVariableXlaConcatNDOp(OpKernelConstruction* ctx)
-      TF_ATTRIBUTE_NOINLINE : XlaConcatNDBaseOp<Device, T>(ctx) {
+  explicit TF_ATTRIBUTE_NOINLINE AssignVariableXlaConcatNDOp(
+      OpKernelConstruction* ctx)
+      : XlaConcatNDBaseOp<Device, T>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   }
 

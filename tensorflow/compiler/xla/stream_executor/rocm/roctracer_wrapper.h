@@ -21,13 +21,18 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 
 #include "rocm/include/roctracer/roctracer.h"
-#include "rocm/include/roctracer/roctracer_hcc.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
+#include "rocm/rocm_config.h"
+#if TF_ROCM_VERSION >= 50300
+#include "rocm/include/roctracer/roctracer_roctx.h"
+#else
+#include "rocm/include/roctracer/roctracer_hcc.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -60,6 +65,25 @@ namespace wrap {
 
 #endif  // PLATFORM_GOOGLE
 
+#if TF_ROCM_VERSION >= 50300
+#define FOREACH_ROCTRACER_API(DO_FUNC)           \
+  DO_FUNC(roctracer_default_pool_expl)           \
+  DO_FUNC(roctracer_disable_domain_activity)     \
+  DO_FUNC(roctracer_disable_domain_callback)     \
+  DO_FUNC(roctracer_disable_op_activity)         \
+  DO_FUNC(roctracer_disable_op_callback)         \
+  DO_FUNC(roctracer_enable_domain_activity_expl) \
+  DO_FUNC(roctracer_enable_domain_callback)      \
+  DO_FUNC(roctracer_enable_op_activity_expl)     \
+  DO_FUNC(roctracer_enable_op_callback)          \
+  DO_FUNC(roctracer_error_string)                \
+  DO_FUNC(roctracer_flush_activity_expl)         \
+  DO_FUNC(roctracer_get_timestamp)               \
+  DO_FUNC(roctracer_op_string)                   \
+  DO_FUNC(roctracer_open_pool_expl)              \
+  DO_FUNC(roctracer_set_properties)              \
+  DO_FUNC(roctracer_next_record)
+#else
 #define FOREACH_ROCTRACER_API(DO_FUNC)           \
   DO_FUNC(roctracer_default_pool_expl)           \
   DO_FUNC(roctracer_disable_domain_activity)     \
@@ -76,13 +100,13 @@ namespace wrap {
   DO_FUNC(roctracer_op_string)                   \
   DO_FUNC(roctracer_open_pool_expl)              \
   DO_FUNC(roctracer_set_properties)
-
+#endif
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 
 #undef FOREACH_ROCTRACER_API
 #undef ROCTRACER_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_

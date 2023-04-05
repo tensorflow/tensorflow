@@ -148,6 +148,11 @@ class CropAndResizeOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
         errors::InvalidArgument("image dimensions must be positive"), done);
+    OP_REQUIRES_ASYNC(
+        context, TensorShapeUtils::IsVector(box_index.shape()),
+        errors::InvalidArgument("box_indices must be rank 1 but is shape ",
+                                box_index.shape().DebugString()),
+        done);
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
@@ -914,7 +919,9 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
                               .TypeConstraint<T>("T"),             \
                           CropAndResizeGradBoxesOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+TF_CALL_half(REGISTER_KERNEL);
+TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 

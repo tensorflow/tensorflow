@@ -102,6 +102,7 @@ real = _unary_op(math_ops.real)
 round = _unary_op(math_ops.round)
 sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
+tan = _unary_op(math_ops.tan)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel
@@ -391,10 +392,10 @@ def rng_bit_generator(algorithm, initial_state, shape, dtype):
     https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
 
   Args:
-    algorithm: The PRNG algorithm to use, one of
-      tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
-    initial_state: Initial state for the PRNG algorithm. For THREEFRY, it
-      should be a u64[2] and for PHILOX a u64[3].
+    algorithm: The PRNG algorithm to use, one of tf.random.Algorithm.{PHILOX,
+      THREEFRY, AUTO_SELECT}.
+    initial_state: Initial state for the PRNG algorithm. For THREEFRY, it should
+      be a u64[2] and for PHILOX a u64[3].
     shape: The output shape of the generated data.
     dtype: The type of the tensor.
 
@@ -402,8 +403,8 @@ def rng_bit_generator(algorithm, initial_state, shape, dtype):
     a tuple with a new state and generated data of the given shape.
   """
   alg_int = stateless_random_ops.convert_alg_to_int(algorithm)
-  return gen_xla_ops.xla_rng_bit_generator(alg_int, initial_state, shape,
-                                           dtype=dtype)
+  return gen_xla_ops.xla_rng_bit_generator(
+      alg_int, initial_state, shape, dtype=dtype)
 
 
 recv = gen_xla_ops.xla_recv
@@ -468,7 +469,6 @@ replica_id = gen_xla_ops.xla_replica_id
 #   return t[:p]            # xla knows the bound of the slice is 3.
 set_bound = gen_xla_ops.xla_set_bound
 
-
 # Make a static dimension into a xla bounded dynamic dimension. The current
 # static dimension size will become the bound and the second operand becomes the
 # dynamic size of the dimension.
@@ -482,7 +482,6 @@ set_bound = gen_xla_ops.xla_set_bound
 #   p = xla_set_dynamic_dimension_size(array, dim, 3)
 #   assert(reduce_sum(p) == 6) # xla knows only the first 3 elements are valid.
 set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
-
 
 # Inverse of xla_set_dynamic_dimension_size. Make an xla bounded dynamic
 # dimension into a static dimension. The bound of the size of dimension
@@ -563,13 +562,62 @@ dequantize = gen_xla_ops.xla_dequantize
 custom_call = gen_xla_ops.xla_custom_call
 
 
-def call_module(args, *, module, Tout, Sout, dim_args_spec=()):
+def custom_call_v2(
+    call_target_name,
+    operands,
+    result_specs,
+    backend_config=None,
+    has_side_effect=None,
+    name=None,
+):
+  """Emits an HLO `CustomCall` operation with multiple outputs.
+
+  See `CustomCall` specification at
+    https://tensorflow.org/xla/operation_semantics#customcall,
+  and `mhlo.custom_call` specification at
+    https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+
+  Args:
+    call_target_name: Name of the user function. The function signature must
+      conform to version 3 of the API, see
+      `API_VERSION_STATUS_RETURNING_UNIFIED`. All operands and results assumed
+      to be in the default layout.
+    operands: A sequence of tensors with possibly different types.
+    result_specs: A sequence of tensor specs for all results.
+    backend_config: A string that encodes a metadata for the backend. Empty
+      string by default.
+    has_side_effect: Indicates whether the custom call has side effects. `False`
+      by default.
+    name: Optional name of the operation.
+
+  Returns:
+    A tuple of output tensors.
+  """
+  return gen_xla_ops.xla_custom_call_v2(
+      operands=operands,
+      call_target_name=call_target_name,
+      backend_config="" if backend_config is None else backend_config,
+      has_side_effect=False if has_side_effect is None else has_side_effect,
+      result_dtypes=tuple(spec.dtype for spec in result_specs),
+      result_shapes=tuple(spec.shape for spec in result_specs),
+      name=name,
+  )
+
+
+def call_module(args, *, version=4, module, Tout, Sout,
+                dim_args_spec=(), platforms=()):
+  # See documentation for the XlaCallModule op.
   return gen_xla_ops.xla_call_module(
-      args, module=module, dim_args_spec=dim_args_spec, Tout=Tout, Sout=Sout)
+      args, version=version, module=module, dim_args_spec=dim_args_spec,
+      Tout=Tout, Sout=Sout, platforms=platforms)
 
 
-def gather(operand, start_indices, dimension_numbers, slice_sizes,
-           indices_are_sorted=False, name=None):
+def gather(operand,
+           start_indices,
+           dimension_numbers,
+           slice_sizes,
+           indices_are_sorted=False,
+           name=None):
   return gen_xla_ops.xla_gather(
       operand,
       start_indices,
@@ -579,8 +627,13 @@ def gather(operand, start_indices, dimension_numbers, slice_sizes,
       name=name)
 
 
-def scatter(operand, scatter_indices, updates, update_computation,
-            dimension_numbers, indices_are_sorted=False, name=None):
+def scatter(operand,
+            scatter_indices,
+            updates,
+            update_computation,
+            dimension_numbers,
+            indices_are_sorted=False,
+            name=None):
   return gen_xla_ops.xla_scatter(
       operand,
       scatter_indices,

@@ -16,18 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -51,7 +55,6 @@ struct JitState {
 
   std::optional<bool> disable_jit;
   std::optional<bool> enable_x64;
-  std::optional<bool> jax_array;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
@@ -68,14 +71,15 @@ struct JitState {
   std::optional<pybind11::function> post_hook;
 };
 
-JitState& GetGlobalState();
-JitState& GetLocalState();
+JitState& GlobalJitState();
+
+// Requires the GIL.
+JitState& ThreadLocalJitState();
 
 // Getters for JitState fields that first look in thread-local state, then
 // fallback to global state.
 bool GetDisableJit();
 bool GetEnableX64();
-bool GetEnableJaxArray();
 // TODO(skyewm): return a C++ type when all JAX backends support a single C++
 // device interface
 std::optional<pybind11::object> GetDefaultDevice();
@@ -116,12 +120,17 @@ struct CallSignature {
   // Static keyword argument names. Interned, and sorted by keyword name.
   std::vector<pybind11::object> static_arg_names;
 
+  absl::InlinedVector<bool, 2> committed_args;
+
   // For JIT, we need this in the key because computation follows the data, so
   // we may have multiple executables depending on the devices the data is on.
   // This is not the case for PMAP, and is set to `nullptr`.
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
-  bool jax_array = false;
+
+  // For JIT on PJIT, we need to fallback to python whenever default_device
+  // changes.
+  std::optional<pybind11::object> default_device;
 
   // Opaque additional context that should be included as part of the cache key.
   std::optional<pybind11::object> global_extra_jit_context;
@@ -147,12 +156,14 @@ H AbslHashValue(H h, const CallSignature& s) {
   // slow python hashing function. Consider implementing hashing function and
   // equality checks in C++ in jax::Sharding and use those here.
   for (const auto& sharding : s.dynamic_arg_shardings) {
-    h = H::combine(std::move(h), sharding.ptr());
+    h = H::combine(std::move(h), ShardingHash(sharding));
   }
 
   for (const auto& name : s.dynamic_arg_names) {
     h = H::combine(std::move(h), name.ptr());
   }
+
+  h = H::combine(std::move(h), s.committed_args);
 
   h = H::combine(std::move(h), s.dynamic_arg_names.size());
   for (const auto& static_arg : s.static_args) {
@@ -197,19 +208,16 @@ struct ParsedArgumentsAsBuffers {
   absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
+  xla::ifrt::Client* ifrt_client;
   // The following is only valid if the parsing succeeds.
-  std::vector<xla::PjRtBuffer*> arg_buffers;
-  // We may need to keep these objects around, because:
-  // (a) we need to extend the lifetime of objects created within
-  //    `CopyBuffersToDevice`
-  // (b) `arg_buffers` do not maintain ownership
-  std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> ifrt_arg_arrays;
 };
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-xla::Status ParseArguments(pybind11::handle args,
-                           const std::optional<pybind11::kwargs>& py_kwargs,
+xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
+                           absl::Span<PyObject* const> keyword_args,
+                           pybind11::handle kwnames,
                            absl::Span<int const> static_argnums,
                            absl::Span<pybind11::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments);

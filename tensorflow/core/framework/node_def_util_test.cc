@@ -161,7 +161,8 @@ TEST(NodeDefUtilTest, Out) {
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
                 "values: float, double, int32, uint8, int16, int8, complex64, "
-                "int64, qint8, quint8, qint32, bfloat16, uint16, complex128, "
+                "int64, qint8, quint8, qint32, bfloat16, qint16, quint16, "
+                "uint16, complex128, "
                 "half, uint32, uint64");
 }
 
@@ -875,7 +876,7 @@ TEST(AttachDef, AllowMultipleFormattedNode) {
   a.set_name("a");
   NodeDef b;
   b.set_name("b");
-  Status s = Status(error::CANCELLED, "Error");
+  Status s = Status(absl::StatusCode::kCancelled, "Error");
   Status s2 = AttachDef(s, a, true);
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
   Status s3 = AttachDef(s2, b, true);
@@ -887,7 +888,7 @@ TEST(AttachDef, DisallowMultipleFormattedNode) {
   a.set_name("a");
   NodeDef b;
   b.set_name("b");
-  Status s = Status(error::CANCELLED, "Error");
+  Status s = Status(absl::StatusCode::kCancelled, "Error");
   Status s2 = AttachDef(s, a, false);
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
   Status s3 = AttachDef(s2, b, false);

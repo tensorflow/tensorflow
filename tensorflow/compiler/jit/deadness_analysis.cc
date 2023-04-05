@@ -115,7 +115,7 @@ namespace tensorflow {
 
 namespace {
 
-using se::port::StatusOr;
+using tsl::StatusOr;
 
 // Represents a logical predicate, used as described in the algorithm overview
 // above.

@@ -18,7 +18,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass.h"
 
 #include <algorithm>
+#include <map>
+#include <optional>
 #include <queue>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -37,6 +40,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -61,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/error_payloads.h"
@@ -78,7 +84,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_fingerprint_utils.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -99,7 +104,10 @@ static constexpr int kTPUMaxTopologySize = 4096;
 const char kShardingAttribute[] = "_XlaSharding";
 
 const char kTPUPartitionedInput[] = "TPUPartitionedInput";
+const char kTPUPartitionedInputV2[] = "TPUPartitionedInputV2";
+
 const char kTPUPartitionedOutput[] = "TPUPartitionedOutput";
+const char kTPUPartitionedOutputV2[] = "TPUPartitionedOutputV2";
 
 const char kVarHandleOp[] = "VarHandleOp";
 
@@ -301,6 +309,16 @@ class IntrusiveHeap {
 
   Rep rep_;
 };
+
+bool _IsTPUPartitionedInput(const Node* node) {
+  return (node->type_string() == kTPUPartitionedInput) ||
+         (node->type_string() == kTPUPartitionedInputV2);
+}
+
+bool _IsTPUPartitionedOutput(const Node* node) {
+  return (node->type_string() == kTPUPartitionedOutput) ||
+         (node->type_string() == kTPUPartitionedOutputV2);
+}
 
 string CoreDeviceLabel(int core) {
   return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
@@ -1469,16 +1487,16 @@ void FindNodesMaybeContainingShardingInfo(const Node& input_node,
 // XlaSharding configuration may be derived from
 //   a) Connected Identity op node.
 //   b) Connected Cast op node.
-xla::StatusOr<absl::optional<NodeAndSharding>>
+xla::StatusOr<std::optional<NodeAndSharding>>
 ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
                                    const Node& node) {
   // If |node| has `device` attribute or is a XlaSharding op,
   // return the parsed OpSharding.
-  TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+  TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       ParseShardingFromDevice(node, num_cores_per_replica,
                                               /*add_metadata=*/true));
   if (sharding.has_value()) {
-    return absl::optional<NodeAndSharding>(NodeAndSharding(&node, *sharding));
+    return std::optional<NodeAndSharding>(NodeAndSharding(&node, *sharding));
   }
 
   // XlaShardingOp may be followed by an identity or followed by identity
@@ -1491,15 +1509,15 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
     if (maybe_node_with_sharding_info->type_string() != "XlaSharding") continue;
 
     TF_ASSIGN_OR_RETURN(
-        absl::optional<xla::OpSharding> sharding_config,
+        std::optional<xla::OpSharding> sharding_config,
         ParseShardingFromDevice(*maybe_node_with_sharding_info,
                                 num_cores_per_replica, /*add_metadata=*/true));
     if (sharding_config.has_value()) {
-      return absl::optional<NodeAndSharding>(
+      return std::optional<NodeAndSharding>(
           NodeAndSharding(maybe_node_with_sharding_info, *sharding_config));
     }
   }
-  return absl::optional<NodeAndSharding>();
+  return std::optional<NodeAndSharding>();
 }
 
 // Walk the graph from an argument node to find OpSharding configuration
@@ -1510,7 +1528,7 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
 Status ParseAndValidateShardingFromNeighbors(
     const int num_cores_per_replica, const std::string& arg_node_name,
     const Node& neighbor_node, int64_t* inferred_core_id, bool* is_fast_mem,
-    absl::optional<NodeAndSharding>* result) {
+    std::optional<NodeAndSharding>* result) {
   if (neighbor_node.attrs().Find(TPU_FAST_MEM_ATTR) != nullptr) {
     *is_fast_mem = true;
     VLOG(2) << "place " << neighbor_node.name() << " on fast memory because "
@@ -1520,7 +1538,7 @@ Status ParseAndValidateShardingFromNeighbors(
   // XlaSharding information may be encoded on node directly connected to the
   // argument node.
   TF_ASSIGN_OR_RETURN(
-      absl::optional<NodeAndSharding> node_and_sharding,
+      std::optional<NodeAndSharding> node_and_sharding,
       ParseInputShardingFromAdjacentNode(num_cores_per_replica, neighbor_node));
   if (node_and_sharding.has_value()) {
     TF_RETURN_IF_ERROR(ParseAndValidateSharding(
@@ -1542,7 +1560,7 @@ Status ParseAndValidateShardingFromNeighbors(
       }
 
       TF_ASSIGN_OR_RETURN(
-          absl::optional<NodeAndSharding> node_and_sharding,
+          std::optional<NodeAndSharding> node_and_sharding,
           ParseInputShardingFromAdjacentNode(num_cores_per_replica, *e->dst()));
       if (node_and_sharding.has_value()) {
         TF_RETURN_IF_ERROR(ParseAndValidateSharding(*node_and_sharding,
@@ -2029,7 +2047,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
 static Status ValidateCoreNumbers(const Graph& graph,
                                   int num_cores_per_replica) {
   for (Node* n : graph.nodes()) {
-    TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+    TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                         ParseShardingFromDevice(*n, num_cores_per_replica,
                                                 /*add_metadata=*/true));
   }
@@ -2039,10 +2057,10 @@ static Status ValidateCoreNumbers(const Graph& graph,
 static Status InferXlaShardingFromNeighbors(
     const Node& n, int num_cores_per_replica, FunctionLibraryRuntime* flr,
     CachedFunctionHandles* cached_function_handles,
-    absl::optional<NodeAndSharding>* output_node_and_sharding,
+    std::optional<NodeAndSharding>* output_node_and_sharding,
     bool* is_fast_mem) {
   int64_t core = -1;
-  absl::optional<NodeAndSharding> result;
+  std::optional<NodeAndSharding> result;
   // We assume the variable has been allocated on fast memory if any consuming
   // op has TPU_FAST_MEM_ATTR attribute. This is a protocol between runtime and
   // compiler.
@@ -2155,7 +2173,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   for (const Edge* edge : replicate_node->out_edges()) {
     int num_partitioned_outputs = 0;
     for (const Edge* out_edge : edge->dst()->out_edges()) {
-      if (out_edge->dst()->type_string() == kTPUPartitionedOutput) {
+      if (_IsTPUPartitionedOutput(out_edge->dst())) {
         partitioned_output_nodes[edge->src_output()] = out_edge->dst();
         num_partitioned_outputs++;
       }
@@ -2203,8 +2221,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       (params_info.NumReplicas() - 1) * params_info.NumPerReplicaArgs();
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
-    absl::optional<int64_t> assigned_core;
-    absl::optional<NodeAndSharding> node_and_sharding;
+    std::optional<int64_t> assigned_core;
+    std::optional<NodeAndSharding> node_and_sharding;
     bool is_fast_mem;
     TF_RETURN_IF_ERROR(InferXlaShardingFromNeighbors(
         *n, num_cores_per_replica, flr, &cached_function_handles,
@@ -2215,7 +2233,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       Node* input_node;
       TF_RETURN_IF_ERROR(replicate_node->input_node(
           i + (is_per_replica_arg ? 0 : index_offset), &input_node));
-      if (input_node->type_string() == kTPUPartitionedInput) {
+      if (_IsTPUPartitionedInput(input_node)) {
         TF_ASSIGN_OR_RETURN(
             absl::optional<xla::OpSharding> parsed_sharding,
             GetShardingFromNodeDef(input_node->def(), /*add_metadata=*/true));
@@ -3285,7 +3303,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   const bool mpmd = (num_cores_per_replica > 1) && !use_spmd;
 
   for (const Edge* e : replicate_input_edges) {
-    if (e->src()->type_string() == kTPUPartitionedInput) {
+    if (_IsTPUPartitionedInput(e->src())) {
       int num_users = 0;
       for (const auto& ue : e->src()->out_edges()) {
         if (!ue->IsControlEdge()) ++num_users;
@@ -3300,15 +3318,23 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       nodes.resize(num_cores_per_replica, NodeAndPort(nullptr, 0));
       VLOG(2) << "allocate " << num_cores_per_replica
               << " for replicate_input_fan_in_nodes[" << e->dst_input() << "]";
+
       std::vector<const Edge*> fan_in_edges;
       TF_RETURN_IF_ERROR(e->src()->input_edges(&fan_in_edges));
-      TF_RET_CHECK(fan_in_edges.size() == num_cores_per_replica);
 
-      for (const Edge* fe : fan_in_edges) {
-        nodes[fe->dst_input()].node = fe->src();
-        nodes[fe->dst_input()].port = fe->src_output();
+      bool is_packed = false;
+      TF_RET_CHECK((e->src()->type_string() == kTPUPartitionedInput) ||
+                   TryGetNodeAttr(e->src()->def(), "is_packed", &is_packed));
+
+      int num_fan_in_edges = fan_in_edges.size();
+      TF_RET_CHECK(is_packed || (num_fan_in_edges == num_cores_per_replica));
+
+      for (int i = 0; i < num_cores_per_replica; ++i) {
+        const Edge* fe = fan_in_edges[i % num_fan_in_edges];
+        nodes[i].node = fe->src();
+        nodes[i].port = fe->src_output();
         VLOG(2) << "replicate_input_fan_in_nodes[" << e->dst_input() << "]["
-                << fe->dst_input() << "] = " << fe->src()->name();
+                << i << "] = " << fe->src()->name();
       }
     }
   }
@@ -3327,7 +3353,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     int num_partitioned_outputs = 0;
 
     for (const Edge* out_edge : edge->dst()->out_edges()) {
-      if (out_edge->dst()->type_string() == kTPUPartitionedOutput) {
+      if (_IsTPUPartitionedOutput(out_edge->dst())) {
         num_partitioned_outputs++;
         // Paths between replicate_node and replicate_output_fan_out_nodes:
         // ReplicateNode->TpuOutIdenity->kTPUPartitionedOutput->fan-out-nodes
@@ -3556,7 +3582,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           if (arg_shardings[orig_arg_num].type() == xla::OpSharding::OTHER) {
             // Don't automatically add a split node when input node is
             // kTPUPartitionedInput
-            if (edge->src()->type_string() == kTPUPartitionedInput) {
+            if (_IsTPUPartitionedInput(edge->src())) {
               VLOG(2)
                   << "Connect "
                   << replicate_input_fan_in_nodes[input_num][core].node->name()
@@ -3605,7 +3631,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
               graph->AddEdge(split_node_and_index.node,
                              split_node_and_index.index, node, i);
             }
-          } else if (edge->src()->type_string() == kTPUPartitionedInput &&
+          } else if (_IsTPUPartitionedInput(edge->src()) &&
                      arg_shardings[orig_arg_num].type() ==
                          xla::OpSharding::REPLICATED) {
             graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
@@ -3743,7 +3769,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           const Edge* e = replicate_output_edges[output_num];
           const Edge* e_out;
           for (const Edge* out_edge : e->dst()->out_edges()) {
-            if (out_edge->dst()->type_string() == kTPUPartitionedOutput) {
+            if (_IsTPUPartitionedOutput(out_edge->dst())) {
               isPartitionOutNode = true;
               e_out = out_edge;
             }
@@ -4420,12 +4446,11 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   // calls); this may be okay, but to be conservative, just assume that the
   // master session has the proper flags set.
 
-  // We do not initialize platform right now, but we can still retrieve the
-  // TPU topology even with an uninitialized platform.
-  auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform(
-      /*initialize_platform=*/false);
-  TF_RET_CHECK(tpu_platform);
-  tpu::TpuTopologyExternal tpu_topology(tpu_platform->GetTopologyPtr());
+  // The TPU system may be uninitialized yet, but we can still retrieve the
+  // TPU topology even with an uninitialized TPU system via
+  // TpuUtil_GetTopologyPtrFn.
+  tpu::TpuTopologyExternal tpu_topology(
+      stream_executor::tpu::OpsApiFn()->TpuUtil_GetTopologyPtrFn());
   TF_RET_CHECK(num_tpus_per_task ==
                tpu_topology.LogicalDevicesPerHost(kTensorCore));
   TF_RETURN_IF_ERROR(BuildDeviceAssignment(
@@ -4942,7 +4967,7 @@ Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
 Status DistributedTPURewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   Status status = InternalRun(options);
-  OkOrSetErrorCounterPayload(
+  tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::TF_XLA_BRIDGE, status);
   return status;
 }
@@ -4984,7 +5009,7 @@ Status DistributedTPURewritePass::InternalRun(
   if (replicate_nodes.empty()) {
     // Remove unused TPUPartitionedInput nodes.
     for (Node* n : graph->nodes()) {
-      if (n->type_string() == kTPUPartitionedInput) graph->RemoveNode(n);
+      if (_IsTPUPartitionedInput(n)) graph->RemoveNode(n);
     }
     VLOG(1) << DumpGraphToFile("distributed_tpu_compilation_after", *graph,
                                options.flib_def);

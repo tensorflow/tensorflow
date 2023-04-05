@@ -20,6 +20,7 @@ import re
 from tensorflow.python.data.experimental.ops import lookup_ops as data_lookup_ops
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import test_mode
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
@@ -71,6 +72,10 @@ def v2_eager_only_combinations():
 
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
+
+  def setUp(self):
+    super().setUp()
+    test_mode.toggle_test_mode(True)
 
   def assert_op_cancelled(self, op):
     with self.assertRaises(errors.CancelledError):

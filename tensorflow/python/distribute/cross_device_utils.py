@@ -20,7 +20,7 @@ from typing import Callable, List, Optional, Union
 
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import values as value_lib
-from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -28,7 +28,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -501,7 +501,7 @@ class CollectiveReplicaLauncher(object):
   ) -> indexed_slices.IndexedSlices:
     """All-reduce an IndexedSlices.
 
-    This method must be called inside a tf.function.
+    This method can be called outside  tf.function.
 
     Args:
       input_slices: an IndexedSlices.
@@ -510,13 +510,7 @@ class CollectiveReplicaLauncher(object):
 
     Returns:
       The reduced IndexedSlices.
-
-    Raises:
-      RuntimeError: if called in eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          'all_reduce_indexed_slices is not supported in eager mode.')
 
     # Current CollectiveAllGather implementations require input IndexedSlices to
     # have consistent length across the board, we handle the reduction of
@@ -564,7 +558,7 @@ class CollectiveReplicaLauncher(object):
                                                   all_lengths[i]])
         return array_ops.concat(split_tensors, 0)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           math_ops.equal(
               math_ops.reduce_max(all_lengths),
               math_ops.reduce_min(all_lengths)),
@@ -575,14 +569,14 @@ class CollectiveReplicaLauncher(object):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, indexed_slices.IndexedSlices) for v in values):
-    return backprop.aggregate_indexed_slices_gradients(values)
+    return backprop_util.AggregateIndexedSlicesGradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, indexed_slices.IndexedSlices):
-    value = backprop.flatten_nested_indexed_slices(value)
+    value = backprop_util.FlattenNestedIndexedSlices(value)
     return indexed_slices.IndexedSlices(value.values / n, value.indices,
                                         value.dense_shape)
   else:

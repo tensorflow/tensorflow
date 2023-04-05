@@ -78,24 +78,24 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(0)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(0)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimy: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_y,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(1)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(1)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimz: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_z,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
-                                              {b_->getInt32(2)}, {U32}, U64, {},
-                                              b_);
+                                              {b_->getInt32(2)}, {U32}, U64,
+                                              {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kGroupBarrierId: {
@@ -158,6 +158,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kSqrt: {
       return {"__nv_sqrt", "__ocml_sqrt"};
     }
+    case TargetDeviceFunctionID::kTan: {
+      return {"__nv_tan", "__ocml_tan"};
+    }
     case TargetDeviceFunctionID::kTanh: {
       return {"__nv_tanh", "__ocml_tanh"};
     }
@@ -198,8 +201,8 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    absl::Span<const llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* b, absl::string_view name) {
+    const llvm::AttrBuilder& attributes, llvm::IRBuilder<>* b,
+    absl::string_view name) {
   std::vector<llvm::Type*> ir_input_types;
   llvm::Module* module = b->GetInsertBlock()->getModule();
   for (PrimitiveType input_type : input_types) {
@@ -218,9 +221,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
           ->getOrInsertFunction(callee_name, callee_type)
           .getCallee());
 
-  for (auto attribute : attributes) {
-    callee->addFnAttr(attribute);
-  }
+  callee->addFnAttrs(attributes);
 
   return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }

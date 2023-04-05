@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,15 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// \file
-/// Main abstraction controlling the tflite interpreter.
-/// See c/common.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
 /// For documentation, see
-/// third_party/tensorflow/lite/core/impl/interpreter.h.
+/// tensorflow/lite/core/interpreter.h.
 
-#include "tensorflow/lite/core/impl/interpreter.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/interpreter.h"
+
+namespace tflite {
+using Interpreter = ::tflite::impl::Interpreter;
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

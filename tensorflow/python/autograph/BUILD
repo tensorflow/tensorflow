@@ -1,19 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//visibility:private"],
 )
 
 py_strict_library(
@@ -25,10 +14,15 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
-        "//tensorflow/python/autograph/core",
-        "//tensorflow/python/autograph/impl",
-        "//tensorflow/python/autograph/lang",
+        "//tensorflow/python/autograph/converters:__init__",
+        "//tensorflow/python/autograph/core:converter",
+        "//tensorflow/python/autograph/impl:api",
+        "//tensorflow/python/autograph/lang:directives",
+        "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/autograph/operators",
-        "//tensorflow/python/autograph/utils",
+        "//tensorflow/python/autograph/pyct/common_transformers",
+        "//tensorflow/python/autograph/utils:__init__",
+        "//tensorflow/python/autograph/utils:ag_logging",
+        "//tensorflow/python/util:all_util",
     ],
 )

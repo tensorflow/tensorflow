@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -103,8 +103,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  NumDimensions(op_context.input) <= kInputMaxDimensionNum);
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
-  if (!IsConstantTensor(op_context.block_shape) ||
-      !IsConstantTensor(op_context.crops)) {
+  if (!IsConstantOrPersistentTensor(op_context.block_shape) ||
+      !IsConstantOrPersistentTensor(op_context.crops)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }

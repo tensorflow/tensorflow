@@ -170,6 +170,37 @@ Status LaunchSegmentMeanNormalizeKernel(
                          output);
 }
 
+template <typename SegmentId, typename Index, typename T>
+__global__ void SegmentSetEmptyKernel(
+    SegmentId nsegments, Index ninner,
+    const Index* __restrict__ segment_offsets,  // [nsegments + 1]
+    const T empty_value,
+    T* __restrict__ output) {  // [nsegments, ninner]
+  for (SegmentId seg : GpuGridRangeY(nsegments)) {
+    SegmentId segment_size = segment_offsets[seg + 1] - segment_offsets[seg];
+    if (segment_size == 0) {
+      for (Index i : GpuGridRangeX(ninner)) {
+        output[seg * ninner + i] = empty_value;
+      }
+    }
+  }
+}
+
+template <typename SegmentId, typename Index, typename T>
+Status LaunchSegmentSetEmptyKernel(
+    const GPUDevice& d, SegmentId nsegments, Index ninner,
+    const Index* __restrict__ segment_offsets,  // [nsegments + 1]
+    const T empty_value,
+    T* __restrict__ output) {  // [nsegments, ninner]
+  Gpu2DLaunchConfig config = GetGpu2DLaunchConfig(
+      ninner, nsegments, d, SegmentSetEmptyKernel<SegmentId, Index, T>,
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  return GpuLaunchKernel(SegmentSetEmptyKernel<SegmentId, Index, T>,
+                         config.block_count, config.thread_per_block, 0,
+                         d.stream(), nsegments, ninner, segment_offsets,
+                         empty_value, output);
+}
+
 // UnsortedSegmentSumKernel processes 'input_total_size' elements.
 // Each element is mapped from input to output by a combination of its
 // 'segment_ids' mapping and 'inner_dim_size'.
@@ -689,6 +720,11 @@ struct ReduceType<functor::Sum, Eigen::half> {
   using type = float;
 };
 
+template <>
+struct ReduceType<functor::Sum, Eigen::bfloat16> {
+  using type = float;
+};
+
 namespace functor {
 
 template <typename T, typename Index, typename InitialValueF,
@@ -716,26 +752,19 @@ void SegmentReductionFunctor<
   const Index num_segments = output.size() / input_inner_dim_size;
 
   bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-      // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-      // build error.
-      false;
-#else
       UseDeterministicSegmentReductions() ||
       (OpDeterminismRequired() && !ReduceOpIsAssociative<ReductionF, T>::value);
-#endif
 
   // TODO(benbarsdell): If there are no performance concerns with the new
-  // deterministic kernels, remove this runtime check and only compile the old
-  // non-deterministic kernels on Windows (as a workaround for the build failure
-  // issue).
+  // deterministic kernels, remove this runtime check and the old
+  // non-deterministic kernels.
   if (!use_deterministic_kernels) {
     // Set 'output' to initial value.
     GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
-    const T InitialValue = InitialValueF()();
+    const T initial_value = InitialValueF()();
     TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
-                                output.size(), output.data(), InitialValue));
+                                output.size(), output.data(), initial_value));
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
@@ -757,9 +786,10 @@ void SegmentReductionFunctor<
         config.block_count, config.thread_per_block, 0, d.stream(),
         input_outer_dim_size, input_inner_dim_size, output_rows,
         segment_ids.data(), data, output.data(), total_stripe_count,
-        InitialValue));
+        initial_value));
 
-    if (is_mean) {
+    const T empty_value = EmptySegmentValueF()();
+    if (is_mean || initial_value != empty_value) {
       Tensor segment_offsets;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<Index>::value,
                                              TensorShape({num_segments + 1}),
@@ -769,14 +799,19 @@ void SegmentReductionFunctor<
                               d, input_outer_dim_size, num_segments,
                               segment_ids.data(), segment_offsets_ptr));
 
-      OP_REQUIRES_OK(ctx, LaunchSegmentMeanNormalizeKernel(
-                              d, num_segments, input_inner_dim_size,
-                              segment_offsets_ptr, output.data()));
+      if (is_mean) {
+        OP_REQUIRES_OK(ctx, LaunchSegmentMeanNormalizeKernel(
+                                d, num_segments, input_inner_dim_size,
+                                segment_offsets_ptr, output.data()));
+      }
+      if (initial_value != empty_value) {
+        OP_REQUIRES_OK(
+            ctx, LaunchSegmentSetEmptyKernel(
+                     d, num_segments, input_inner_dim_size, segment_offsets_ptr,
+                     empty_value, output.data()));
+      }
     }
   } else {
-    // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-    // build error.
-#if !defined(PLATFORM_WINDOWS)
     using Treduce = typename ReduceType<ReductionF, T>::type;
     OP_REQUIRES_OK(
         ctx,
@@ -786,13 +821,6 @@ void SegmentReductionFunctor<
             /*is_mean=*/is_mean, /*is_sqrtn=*/false, data, segment_ids.data(),
             /*indices=*/static_cast<const Index*>(nullptr),
             /*weights=*/static_cast<T*>(nullptr), output.data()));
-#else
-    // Note: Shouldn't reach here because use_deterministic_kernels is always
-    // false on Windows.
-    OP_REQUIRES(ctx, false,
-                errors::Unimplemented("Deterministic segment reductions are "
-                                      "not implemented on Windows."));
-#endif
   }
 }
 
@@ -808,15 +836,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
 
     bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-        // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-        // build error.
-        false;
-#else
         UseDeterministicSegmentReductions() ||
         (!ReduceOpIsAssociative<ReductionF, T>::value &&
          OpDeterminismRequired());
-#endif
 
     bool determinism_requirement_met =
         use_deterministic_kernels ||
@@ -840,9 +862,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index num_segments = output.size() / input_inner_dim_size;
 
     // TODO(benbarsdell): If there are no performance concerns with the new
-    // deterministic kernels, remove this runtime check and only compile the old
-    // non-deterministic kernels on Windows (as a workaround for the build
-    // failure issue).
+    // deterministic kernels, remove this runtime check and the old
+    // non-deterministic kernels.
     if (!use_deterministic_kernels) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
@@ -862,9 +883,6 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
           input_outer_dim_size, input_inner_dim_size, output_outer_dim_size,
           unsorted_segment_ids.data(), data.data(), output.data()));
     } else {
-      // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows CI
-      // build error.
-#if !defined(PLATFORM_WINDOWS)
       // Allocate temporary space and sort segment_ids, then call the sorted
       // implem.
       Tensor segment_ids;
@@ -899,14 +917,6 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
               /*is_sqrtn=*/false, /*input=*/data.data(),
               /*segment_ids=*/segment_ids_ptr, /*indices=*/sorted_indices_ptr,
               /*weights=*/static_cast<T*>(nullptr), output.data()));
-#else
-      // Note: Shouldn't reach here because use_deterministic_kernels is always
-      // false on Windows.
-      OP_REQUIRES(
-          ctx, false,
-          errors::Unimplemented("Deterministic unsorted segment reductions are "
-                                "not implemented on Windows."));
-#endif
     }
   }
 };

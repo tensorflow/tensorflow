@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -491,7 +491,8 @@ def LegalizeConv2DBackpropInput : Pat<
      /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
-     /*stride_w=*/ ExtractI32At<2>:$strides)>;
+     /*stride_w=*/ ExtractI32At<2>:$strides,
+     /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
   : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
@@ -575,3 +576,23 @@ def LegalizeXlaDynamicUpdateSlice : Pat<
 def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
 
 def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;
+
+def LegalizeBitcast : Pat<(TF_BitcastOp $x), (TFL_BitcastOp $x)>;
+
+def LegalizeBitwiseXor : Pat<(TF_BitwiseXorOp $l, $r),
+                             (TFL_BitwiseXorOp $l, $r)>;
+
+def LegalizeRightShift : Pat<(TF_RightShiftOp $l, $r),
+                             (TFL_RightShiftOp $l, $r)>;
+
+// =============================================================================
+// Training OPs
+// =============================================================================
+
+// `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`
+def LegalizeSigmoidGrad : Pat<(TF_SigmoidGradOp $y, $dy),
+  (TFL_MulOp $dy, (TFL_MulOp $y, (TFL_SubOp
+        (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+        $y, TFL_AF_None),
+  TFL_AF_None), TFL_AF_None)>;
+

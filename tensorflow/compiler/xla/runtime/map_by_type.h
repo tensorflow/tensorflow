@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_MAP_BY_TYPE_H_
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_MAP_BY_TYPE_H_
 
+#include <algorithm>
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
@@ -39,9 +40,16 @@ namespace runtime {
 //   assert(map.contains<int32_t*>());
 //   assert(map.contains<int64_t*>());
 //
-template <typename IdSet>
+template <typename IdSet, unsigned n = 16>
 class PtrMapByType {
  public:
+  PtrMapByType() = default;
+
+  template <typename... Ts>
+  explicit PtrMapByType(Ts*... values) {
+    insert_all<Ts...>(values..., std::make_index_sequence<sizeof...(Ts)>{});
+  }
+
   template <typename T>
   T* insert(T* value) {
     size_t id = GetDenseTypeId<T>();
@@ -54,16 +62,7 @@ class PtrMapByType {
 
   template <typename... Ts>
   void insert_all(Ts*... values) {
-    static constexpr size_t n = sizeof...(Ts);
-    if (n == 0) {
-      return;
-    }
-
-    // Resize the `data_` to prepare the storage for inserted values.
-    std::array<size_t, n> ids = {GetDenseTypeId<Ts>()...};
-    data_.resize(1 + *std::max_element(ids.begin(), ids.end()), nullptr);
-
-    (insert<Ts>(values), ...);
+    insert_all<Ts...>(values..., std::make_index_sequence<sizeof...(Ts)>{});
   }
 
   template <typename T>
@@ -92,7 +91,17 @@ class PtrMapByType {
     return DenseTypeId<IdSet>::template get<T>();
   }
 
-  llvm::SmallVector<void*> data_;
+  template <typename... Ts, size_t... Is>
+  void insert_all(Ts*... values, std::index_sequence<Is...>) {
+    static constexpr size_t kNumInserted = sizeof...(Ts);
+    if constexpr (kNumInserted > 0) {
+      std::array<size_t, kNumInserted> ids = {GetDenseTypeId<Ts>()...};
+      data_.resize(1 + *std::max_element(ids.begin(), ids.end()), nullptr);
+      ((data_[ids[Is]] = const_cast<std::decay_t<Ts>*>(values)), ...);
+    }
+  }
+
+  llvm::SmallVector<void*, n> data_;
 };
 
 }  // namespace runtime

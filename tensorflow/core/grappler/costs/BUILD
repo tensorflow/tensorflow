@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -13,6 +13,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -71,20 +72,21 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/core/grappler/utils:functions",
-        "//tensorflow/core/grappler/utils:topological_sort",
-        "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:evaluation_utils",
+        "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/types:optional",
     ] + tf_protos_grappler(),
 )
 
@@ -171,19 +173,19 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cost_estimator",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core/common_runtime/gpu:gpu_id",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/util:overflow",
-        "//tensorflow/core/grappler/clusters:utils",
     ] + tf_protos_grappler(),
 )
 
@@ -261,8 +263,8 @@ cc_library(
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + tf_protos_grappler(),
 )
 
@@ -338,13 +340,13 @@ cc_library(
         ":cost_estimator",
         ":op_context",
         ":utils",
-        "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_grappler(),
 )
 

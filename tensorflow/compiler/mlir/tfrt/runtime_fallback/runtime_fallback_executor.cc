@@ -33,13 +33,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -52,12 +53,9 @@ using ::tfrt::AsyncValue;
 using ::tfrt::BEFFile;
 using ::tfrt::ExecutionContext;
 using ::tfrt::Function;
-using ::tfrt::HostContext;
 using ::tfrt::MakeAvailableAsyncValueRef;
 using ::tfrt::RCReference;
-using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::ResourceContext;
 
 using ::tensorflow::Env;
 using ::tensorflow::thread::ThreadPool;
@@ -147,7 +145,7 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
   TfrtPipelineOptions pipeline_opts;
   pipeline_opts.default_device = kDefaultHostDeviceName;
   pipeline_opts.hoist_invariant_ops = true;
-  pipeline_opts.enable_native_ops = false;
+  pipeline_opts.sink_in_invariant_ops = false;
   pipeline_opts.cost_threshold = 1024;
   pipeline_opts.upper_cost_threshold = 100000;
   pipeline_opts.merge_inter_dependent_streams = true;

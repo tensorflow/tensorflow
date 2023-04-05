@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -80,22 +81,22 @@ class ShapeInferenceTestutil {
 
 }  // namespace shape_inference
 
-#define INFER_OK(op, i, o)                                                    \
-  EXPECT_EQ(                                                                  \
-      "", ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
-              op, i, o)                                                       \
-              .error_message())
-#define INFER_ERROR(error_substring, op, i)                                 \
-  {                                                                         \
-    std::string error_message =                                             \
-        ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
-            op, i, "e")                                                     \
-            .error_message();                                               \
-    const std::string substring = error_substring;                          \
-    EXPECT_NE("", error_message);                                           \
-    EXPECT_TRUE(absl::StrContains(error_message, substring))                \
-        << "Expected to see '" << substring << "' in '" << error_message    \
-        << "'";                                                             \
+#define INFER_OK(op, i, o)                                                     \
+  EXPECT_TRUE(                                                                 \
+      ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes(op,   \
+                                                                         i, o) \
+          .ok())
+#define INFER_ERROR(error_substring, op, i)                                  \
+  {                                                                          \
+    tensorflow::Status status =                                              \
+        (::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
+            op, i, "e"));                                                    \
+    std::string error_message = status.ToString();                           \
+    const std::string substring = std::string(error_substring);              \
+    EXPECT_FALSE(status.ok());                                               \
+    EXPECT_TRUE(absl::StrContains(error_message, substring))                 \
+        << "Expected to see '" << substring << "' in '" << error_message     \
+        << "'";                                                              \
   }
 
 }  // namespace tensorflow

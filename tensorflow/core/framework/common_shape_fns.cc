@@ -2178,7 +2178,7 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return OkStatus();
 }
 
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c) {
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   ShapeHandle s_data = c->input(0);
   ShapeHandle s_segment_ids = c->input(1);
   ShapeHandle s_num_segments = c->input(2);
@@ -2604,19 +2604,19 @@ Status FusedQuantizedConvShape(InferenceContext* c, int num_dims) {
     c->set_output(1, channel);
     c->set_output(2, channel);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FusedQuantizedConv2DShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true));
   TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FusedQuantizedDepthwiseConv2D(InferenceContext* c) {
   TF_RETURN_IF_ERROR(DepthwiseConv2DNativeShapeImpl(c, true));
   TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QuantizedAvgPoolShape(InferenceContext* c) {

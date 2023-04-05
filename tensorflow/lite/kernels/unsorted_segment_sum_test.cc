@@ -141,8 +141,5 @@ TEST(UnsortedSegmentSumModelTest,
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 0, 0}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 2}));
 }
-
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(UnsortedSegmentTest);
-
 }  // namespace
 }  // namespace tflite

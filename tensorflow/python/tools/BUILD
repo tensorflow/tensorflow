@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_binary"
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -134,6 +135,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -329,7 +331,9 @@ py_library(
         # broken saved_model_cli.
         ":saved_model_aot_compile",
         ":saved_model_utils",
+        "@absl_py//absl/flags:argparse_flags",
         "//tensorflow/python",
+        "//tensorflow/python/client:session",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
     ] + if_google([
         "//tensorflow/core/tfrt/tfrt_session",
@@ -357,9 +361,6 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "noasan",  # asan disabled in b/222716501.
-    ],
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",

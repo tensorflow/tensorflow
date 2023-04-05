@@ -30,7 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#if GOOGLE_CUDA
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+#endif
 
 namespace xla {
 
@@ -70,8 +73,18 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
         {4, 5, 10, 11},
         {3, 9, 11, 17},
     };
+
+#if GOOGLE_CUDA
+    tf32_init_state_ = tsl::tensor_float_32_execution_enabled();
+    tsl::enable_tensor_float_32_execution(false);
+#endif
   }
-  void TearDown() override { ClientLibraryTestBase::TearDown(); }
+  void TearDown() override {
+    ClientLibraryTestBase::TearDown();
+#if GOOGLE_CUDA
+    tsl::enable_tensor_float_32_execution(tf32_init_state_);
+#endif
+  }
 
   Array3D<float> GetUnitMatrix3D(const Array3D<float>& matrix) {
     Array3D<float> result(matrix.n1(), matrix.n2(), matrix.n3(), 0.0);
@@ -106,6 +119,7 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
   Array2D<float> matrix2d_8x8_;
   Array2D<float> low_rank_4x4_;
   Array2D<int> wrong_type_4x4_;
+  bool tf32_init_state_;
 };
 
 XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {

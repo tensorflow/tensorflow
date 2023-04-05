@@ -180,8 +180,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
                                   output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
                                   output_max_mkl_shape, this->native_format_);
-        output_min->flat<float>()(0) = min_input;
-        output_max->flat<float>()(0) = max_input;
+        output_min->scalar<float>()() = min_input;
+        output_max->scalar<float>()() = max_input;
       } else {
         MklDnnData<uint8> dnn_data_wksp(&cpu_engine_);
         AllocateWorkspaceTensor(context, *(pooling_fwd->GetPoolingFwdPd()),
@@ -259,6 +259,19 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       MklPoolParameters pool_params;
       TensorShape orig_input_shape = orig_input_tensor.shape();
 
+      if (orig_input_tensor.NumElements() == 0 ||
+          grad_tensor.NumElements() == 0) {
+        Tensor* output = nullptr;
+        TensorShape output_shape;
+        auto shape_vec = orig_input_tensor.vec<int32>();
+        for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
+          OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
+        }
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(0, output_shape, &output));
+        output->flat<T>().setZero();
+        return;
+      }
       bool is_pool2d = (this->ksize_.size() == 4);
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);
@@ -417,22 +430,23 @@ TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL3D_KERNELS);
 TF_CALL_float(REGISTER_MKL_MAXPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL_KERNELS);
 
-#define REGISTER_MAXPOOL_KERNELS(T)                          \
-  REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")       \
-                              .Device(DEVICE_CPU)            \
-                              .TypeConstraint<T>("T") LABEL, \
-                          MklMaxPoolingOp<CPUDevice, T, true>);
+#define REGISTER_MAXPOOL_KERNELS(OP_NAME, T)                         \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name(OP_NAME).Device(DEVICE_CPU).TypeConstraint<T>("T") LABEL, \
+      MklMaxPoolingOp<CPUDevice, T, true>);
 
 // Legacy ops that go through rewrite use labels. We are gradually removing
 // that label requirement. It is kept here for backward compatibility.
 #define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
-REGISTER_MAXPOOL_KERNELS(quint8)
-REGISTER_MAXPOOL_KERNELS(qint8)
+REGISTER_MAXPOOL_KERNELS("_MklQuantizedMaxPool", quint8)
+REGISTER_MAXPOOL_KERNELS("_MklQuantizedMaxPool", qint8)
 #undef LABEL
 
 #define LABEL
-REGISTER_MAXPOOL_KERNELS(quint8)
-REGISTER_MAXPOOL_KERNELS(qint8)
+REGISTER_MAXPOOL_KERNELS("_MklQuantizedMaxPool", quint8)
+REGISTER_MAXPOOL_KERNELS("_MklQuantizedMaxPool", qint8)
+REGISTER_MAXPOOL_KERNELS("_QuantizedMaxPool3D", quint8)
+REGISTER_MAXPOOL_KERNELS("_QuantizedMaxPool3D", qint8)
 #undef LABEL
 
 }  // namespace tensorflow

@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -84,7 +84,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
-  llvm::Expected<llvm::JITEvaluatedSymbol> FindCompiledSymbol(
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> FindCompiledSymbol(
       const std::string& name);
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
@@ -100,7 +100,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   }
 
  private:
-  llvm::JITEvaluatedSymbol ResolveRuntimeSymbol(llvm::StringRef name);
+  llvm::orc::ExecutorSymbolDef ResolveRuntimeSymbol(llvm::StringRef name);
 
   void notifyObjectLoaded(
       llvm::JITEventListener::ObjectKey key,
@@ -126,6 +126,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   // free this, but the function is poorly named and really just returns a
   // pointer to a static object.
   llvm::JITEventListener* gdb_jit_event_listener_;
+
+  llvm::JITEventListener* perf_jit_event_listener_;
 };
 
 }  // namespace cpu

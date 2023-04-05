@@ -18,11 +18,10 @@ limitations under the License.
 // flow/frames or side effecting ops yet.
 
 #include <iterator>
+#include <optional>
 #include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
@@ -477,8 +475,11 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
 // Pass Entry Point
 //===----------------------------------------------------------------------===//
 
+#define GEN_PASS_DEF_EXECUTORISLANDCOARSENINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ExecutorIslandCoarseningPass
-    : public TF::ExecutorIslandCoarseningPassBase<
+    : public impl::ExecutorIslandCoarseningPassBase<
           ExecutorIslandCoarseningPass> {
   void runOnOperation() override;
 };

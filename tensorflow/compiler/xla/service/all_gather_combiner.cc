@@ -18,27 +18,26 @@ limitations under the License.
 #include <algorithm>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/collective_combiner_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -85,9 +84,8 @@ Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine) {
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
-  if (to_combine.front()->has_sharding()) {
-    combined->set_sharding(to_combine.front()->sharding());
-  }
+  combined->set_sharding(
+      hlo_sharding_util::CreateTupleSharding(combined->shape(), to_combine));
   VLOG(1) << "Replacing with : " << combined->ToString();
 
   // Replace all the smaller AllGathers with elements of the tuple output
