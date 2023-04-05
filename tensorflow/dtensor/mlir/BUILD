@@ -100,6 +100,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",
+        "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:tensor_layout",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

@@ -67,7 +67,7 @@ namespace {
 bool IsCollectiveV2(const string& op) {
   return op == "CollectiveReduceV2" || op == "CollectiveGatherV2" ||
          op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2" ||
-         op == "ColectiveReduceScatterV2";
+         op == "ColectiveReduceScatterV2" || op == "ColectiveAllToAllV2";
 }
 }  // namespace
 

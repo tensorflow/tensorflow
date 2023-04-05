@@ -41,6 +41,7 @@ cc_library(
     hdrs = ["dtensor_utils.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/strings",
     ],
 )
