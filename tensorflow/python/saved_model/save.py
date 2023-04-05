@@ -271,7 +271,7 @@ class _SaveableView(object):
 
     untraced_functions = self.augmented_graph_view.untraced_functions
     if untraced_functions:
-      logging.warning(
+      logging.info(
           "Found untraced functions such as %s while saving (showing %d of %d)."
           " These functions will not be directly callable after loading.",
           ", ".join(untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),

@@ -2908,11 +2908,11 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         return a
 
     root = ObjWithFunction()
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       loaded = cycle(root, 1, use_cpp_bindings=use_cpp_bindings)
 
     expected_save_message = (
-        "WARNING:absl:Found untraced functions such as foo while saving "
+        "INFO:absl:Found untraced functions such as foo while saving "
         "(showing 1 of 1). These functions will not be directly callable after "
         "loading."
     )

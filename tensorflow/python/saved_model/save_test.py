@@ -307,11 +307,11 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root = ObjWithFunction()
     root.bar(1)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       save.save(root, save_dir)
 
     expected_message = (
-        "WARNING:absl:Found untraced functions such as foo while saving "
+        "INFO:absl:Found untraced functions such as foo while saving "
         "(showing 1 of 1). These functions will not be directly callable after "
         "loading.")
     self.assertIn(expected_message, logs.output)
