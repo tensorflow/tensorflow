@@ -208,7 +208,7 @@ cc_library_with_tflite(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     tflite_deps = [
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_stable",
     ],
     deps = [
         ":verifier_internal",
