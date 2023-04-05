@@ -42,7 +42,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_py",
         "//third_party/py/numpy",
     ],
 )
@@ -57,7 +57,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_py",
         "//third_party/py/numpy",
     ],
 )
@@ -71,7 +71,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:logging_ops",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_py",
     ],
 )
 
@@ -85,7 +85,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_py",
         "//third_party/py/numpy",
     ],
 )

@@ -95,7 +95,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:__init__",
         "//tensorflow/python/tpu:tpu_lib",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -154,6 +154,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/ops/structured:structured_tensor_dynamic",
     "//tensorflow/python/profiler:trace",
     "//tensorflow/python/saved_model:saved_model",
+    "//tensorflow/python/summary:__init__",
     "//tensorflow/python/summary:plugin_asset",
     "//tensorflow/python/summary:summary_iterator",
     "//tensorflow/python/summary:summary_py",

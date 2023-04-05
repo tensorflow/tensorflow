@@ -68,7 +68,6 @@ pytype_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/summary",
     ],
 )
 
@@ -173,7 +172,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:util",
-        "//tensorflow/python/summary",
     ],
 )
 
@@ -274,7 +272,7 @@ pytype_library(
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_iterator",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/training:training_util",
