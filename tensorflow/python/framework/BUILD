@@ -109,7 +109,6 @@ cc_library(
         ":op_reg_offset_proto_cc",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
