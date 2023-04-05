@@ -62,8 +62,12 @@ def verify_build_defines(params):
 # BEGIN cc_configure common functions.
 def find_cc(repository_ctx):
     """Find the C++ compiler."""
-    target_cc_name = "gcc"
-    cc_path_envvar = _GCC_HOST_COMPILER_PATH
+    if _use_clang(repository_ctx):
+        target_cc_name = "clang"
+        cc_path_envvar = "CLANG_COMPILER_PATH"
+    else:
+        target_cc_name = "gcc"
+        cc_path_envvar = _GCC_HOST_COMPILER_PATH
     cc_name = target_cc_name
 
     cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
@@ -160,6 +164,9 @@ def auto_configure_fail(msg):
 
 # END cc_configure common functions (see TODO above).
 
+def _use_clang(repository_ctx):
+    return get_host_environ(repository_ctx, "CC_TOOLCHAIN_NAME") == "linux_llvm_aarch64"
+
 def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
@@ -224,7 +231,77 @@ def _create_local_aarch64_repository(repository_ctx):
         {},
     )
 
+def _create_local_aarch64_clang_repository(repository_ctx):
+    """Creates the repository containing files set up to build with clang."""
+
+    # Resolve all labels before doing any real work. Resolving causes the
+    # function to be restarted with all previous state being lost. This
+    # can easily lead to a O(n^2) runtime in the number of labels.
+    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
+    tpl_paths = {filename: _tpl_path(repository_ctx, filename) for filename in [
+        "crosstool:BUILD",
+        "crosstool:cc_toolchain_config.bzl",
+    ]}
+
+    tf_sysroot = _tf_sysroot(repository_ctx)
+
+    cc = find_cc(repository_ctx)
+    cc_fullpath = cc
+
+    host_compiler_includes = get_cxx_inc_directories(
+        repository_ctx,
+        cc_fullpath,
+        tf_sysroot,
+    )
+
+    aarch64_clang_defines = {}
+    aarch64_clang_defines["%{builtin_sysroot}"] = tf_sysroot
+    aarch64_clang_defines["%{compiler}"] = "clang"
+
+    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
+    if not host_compiler_prefix:
+        host_compiler_prefix = "/usr/bin"
+
+    aarch64_clang_defines["%{host_compiler_prefix}"] = host_compiler_prefix
+
+    aarch64_clang_defines["%{linker_bin_path}"] = host_compiler_prefix
+    aarch64_clang_defines["%{host_compiler_path}"] = str(cc)
+    aarch64_clang_defines["%{host_compiler_warnings}"] = """
+        # Some parts of the codebase set -Werror and hit this warning, so
+        # switch it off for now.
+        "-Wno-invalid-partial-specialization"
+    """
+    aarch64_clang_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes)
+    aarch64_clang_defines["%{compiler_deps}"] = ":empty"
+    aarch64_clang_defines["%{extra_no_canonical_prefixes_flags}"] = ""
+    aarch64_clang_defines["%{unfiltered_compile_flags}"] = ""
+
+    verify_build_defines(aarch64_clang_defines)
+
+    # Only expand template variables in the BUILD file
+    repository_ctx.template(
+        "crosstool/BUILD",
+        tpl_paths["crosstool:BUILD"],
+        aarch64_clang_defines,
+    )
+
+    # No templating of cc_toolchain_config - use attributes and templatize the
+    # BUILD file.
+    repository_ctx.template(
+        "crosstool/cc_toolchain_config.bzl",
+        tpl_paths["crosstool:cc_toolchain_config.bzl"],
+        {},
+    )
+
+def _clang_autoconf_impl(repository_ctx):
+    if _use_clang(repository_ctx):
+        _create_local_aarch64_clang_repository(repository_ctx)
+    else:
+        _create_local_aarch64_repository(repository_ctx)
+
 _ENVIRONS = [
+    "CC_TOOLCHAIN_NAME",
+    "CLANG_COMPILER_PATH",
     _GCC_HOST_COMPILER_PATH,
     _GCC_HOST_COMPILER_PREFIX,
     _PYTHON_BIN_PATH,
@@ -233,7 +310,7 @@ _ENVIRONS = [
 ]
 
 remote_aarch64_configure = repository_rule(
-    implementation = _create_local_aarch64_repository,
+    implementation = _clang_autoconf_impl,
     environ = _ENVIRONS,
     remotable = True,
     attrs = {
