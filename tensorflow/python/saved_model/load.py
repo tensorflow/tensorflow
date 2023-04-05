@@ -121,7 +121,7 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
 
     def get_handle(x):
       return x.handle if distribute_utils.is_distributed_variable(x) else x
@@ -143,8 +143,7 @@ class _WrapperFunction(function.ConcreteFunction):
       captured_inputs = list(map(get_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(map(get_unused_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
-                                                    cancellation_manager)
+    return super()._call_flat(args, captured_inputs)
 
 
 class Loader(object):

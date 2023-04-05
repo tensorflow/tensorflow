@@ -18,6 +18,7 @@ import dataclasses
 from typing import Any
 
 from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
@@ -155,16 +156,14 @@ class AtomicFunction:
   def name(self):
     return self._name
 
-  def call(self, args, cancellation_manager=None):
+  def __call__(self, *args):
     """Calls this function with `args` as inputs.
 
     `ConcreteFunction` execution respects device annotations only if the
     function won't be compiled with xla.
 
     Args:
-      args: a list of arguments to supply this function with.
-      cancellation_manager: a `CancellationManager` object that can be used to
-        cancel function execution.
+      *args: arguments to call this function with.
 
     Returns:
       The outputs of the function call.
@@ -192,11 +191,11 @@ class AtomicFunction:
     attrs = ("executor_type", executor_type, "config_proto", config)
     if executing_eagerly:
       with _InterpolateFunctionError(self):
-        if cancellation_manager is None:
+        if cancellation.context() is None:
           outputs = execute.execute(
               str(self.cached_definition.signature.name),
               num_outputs=self._graph_artifacts.num_outputs,
-              inputs=args,
+              inputs=list(args),
               attrs=attrs,
               ctx=self._bound_context,
           )
@@ -204,10 +203,10 @@ class AtomicFunction:
           outputs = execute.execute_with_cancellation(
               str(self.cached_definition.signature.name),
               num_outputs=self._graph_artifacts.num_outputs,
-              inputs=args,
+              inputs=list(args),
               attrs=attrs,
               ctx=self._bound_context,
-              cancellation_manager=cancellation_manager,
+              cancellation_manager=cancellation.context(),
           )
       # Replace empty list with None
       outputs = outputs or None
@@ -225,7 +224,7 @@ class AtomicFunction:
 
             op = functional_ops.partitioned_call_op(
                 name=self.name,
-                args=args,
+                args=list(args),
                 is_stateful=len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
                 tout=self._graph_artifacts.output_types,
                 config=config,
