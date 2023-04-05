@@ -454,8 +454,6 @@ class DTensorDevice {
                                            std::unique_ptr<TensorWithLayout> t,
                                            TF_Status* status);
 
-  void RecordInShapeLayoutCache(const TensorWithLayout& tensor);
-
   // Choose a mesh to broadcast a non-dtensor to a dtensor based on the
   // operation, other input meshes, default mesh, and dtypes.
   std::optional<Mesh> ChooseBroadcastingMesh(
@@ -499,14 +497,6 @@ class DTensorDevice {
   std::optional<Layout> default_layout_;
 
   DTensorMlirPassRunner pass_runner_;
-
-  struct CachedLayout {
-    // The first layout seen with this shape
-    Layout layout;
-    // Whether the layout is unique for this shape
-    bool is_unique;
-  };
-  absl::flat_hash_map<int64_t, CachedLayout> shape_layout_cache_;
 
   // DTensor op execution is divided into two general stages:
   // Stage 1: DTensor function is converted to MLIR module. And the
@@ -664,20 +654,6 @@ TFE_TensorHandle* DTensorDevice::MakeLayoutTensorHandle(
   return TFE_NewCustomDeviceTensorHandle(context, name_.c_str(), dtype,
                                          /*data=*/t.release(), handle_methods,
                                          status);
-}
-
-void DTensorDevice::RecordInShapeLayoutCache(const TensorWithLayout& tensor) {
-  auto existing = shape_layout_cache_.insert(
-      {FingerprintShape(tensor.global_shape()),
-       CachedLayout{tensor.layout(), /*is_unique=*/true}});
-
-  if (!existing.second) {
-    // There is an entry already; if the layout doesn't match we should record
-    // the fact that it's not unique.
-    if (tensor.layout() != existing.first->second.layout) {
-      existing.first->second.is_unique = false;
-    }
-  }
 }
 
 bool DTensorDevice::is_remote_mesh(const Mesh& mesh) const {
@@ -1054,7 +1030,6 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
                         .value();
   }
 
-  RecordInShapeLayoutCache(*packed_tensor);
   TFE_TensorHandle* output =
       MakeLayoutTensorHandle(context, std::move(packed_tensor), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -1201,7 +1176,6 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
             .value();
   }
 
-  RecordInShapeLayoutCache(*packed_tensor);
   TFE_TensorHandle* output =
       MakeLayoutTensorHandle(context, std::move(packed_tensor), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -2112,7 +2086,6 @@ void DTensorDevice::ExecuteRegularOperation(
                 function.shape_output_metadata.at(i));
       }
 
-      RecordInShapeLayoutCache(*output_with_layout[i]);
       typed_outputs[function.output_index_map[i]] =
           std::move(output_with_layout[i]);
     }
