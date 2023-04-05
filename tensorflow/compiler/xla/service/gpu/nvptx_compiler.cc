@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_transpose_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
@@ -220,7 +219,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
   AlgebraicSimplifierOptions options({}, {});
   mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(options);
-  //mha_fusion_pipeline.AddPass<CudnnFusedMHATransposeFusion>();
   mha_fusion_pipeline.AddPass<HloDCE>();
 
   TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
