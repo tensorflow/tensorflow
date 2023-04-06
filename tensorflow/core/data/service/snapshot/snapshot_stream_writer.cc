@@ -317,8 +317,10 @@ Status SnapshotStreamWriter::DeleteCheckpoints() {
 Status SnapshotStreamWriter::Restore() {
   StatusOr<std::pair<int64_t, int64_t>> checkpoint_info = LastCheckpointInfo();
   if (errors::IsNotFound(checkpoint_info.status())) {
-    // No checkpoint has been written. Does not restore anything.
-    return OkStatus();
+    // No checkpoint has been written. Deletes any uncommitted chunks.
+    // Otherwise, it may attempt to write an existing file.
+    return SyncCheckpointWithChunks(/*checkpoint_index=*/std::nullopt,
+                                    kUnknownNumElements);
   }
   TF_RETURN_IF_ERROR(checkpoint_info.status());
   auto [checkpoint_index, checkpoint_num_elements] = *checkpoint_info;
@@ -363,7 +365,7 @@ StatusOr<std::pair<int64_t, int64_t>> SnapshotStreamWriter::LastCheckpointInfo()
 }
 
 Status SnapshotStreamWriter::SyncCheckpointWithChunks(
-    int64_t checkpoint_index, int64_t checkpoint_num_elements) {
+    std::optional<int64_t> checkpoint_index, int64_t checkpoint_num_elements) {
   // In case the worker fails after writing the checkpoint but before committing
   // a chunk file, this will synchronize the checkpoint with the chunks. It will
   // commit uncommitted chunk files written before the checkpoint and delete
@@ -376,14 +378,14 @@ Status SnapshotStreamWriter::SyncCheckpointWithChunks(
         params_.UncommittedChunksDirectory(), uncommitted_chunk);
     TF_ASSIGN_OR_RETURN(int64_t chunk_index,
                         GetFileIndex(uncommitted_chunk, "chunk"));
-    int64_t chunk_num_elements = chunk_index == checkpoint_index
-                                     ? checkpoint_num_elements
-                                     : kUnknownNumElements;
-    std::string committed_chunk_filename =
-        tsl::io::JoinPath(params_.CommittedChunksDirectory(),
-                          absl::StrCat("chunk_", params_.stream_index, "_",
-                                       chunk_index, "_", chunk_num_elements));
-    if (chunk_index <= checkpoint_index) {
+    if (checkpoint_index.has_value() && chunk_index <= *checkpoint_index) {
+      int64_t chunk_num_elements = chunk_index == *checkpoint_index
+                                       ? checkpoint_num_elements
+                                       : kUnknownNumElements;
+      std::string committed_chunk_filename =
+          tsl::io::JoinPath(params_.CommittedChunksDirectory(),
+                            absl::StrCat("chunk_", params_.stream_index, "_",
+                                         chunk_index, "_", chunk_num_elements));
       TF_RETURN_IF_ERROR(params_.env->RenameFile(uncommitted_chunk_filename,
                                                  committed_chunk_filename));
     } else {

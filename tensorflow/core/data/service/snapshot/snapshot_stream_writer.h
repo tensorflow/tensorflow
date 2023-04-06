@@ -193,8 +193,9 @@ class SnapshotStreamWriter {
 
   // Synchronizes the checkpoint with the committed chunks. This is called when
   // the worker restores the snapshot in case the worker fails after writing the
-  // checkpoint but before committing a chunk file.
-  Status SyncCheckpointWithChunks(int64_t checkpoint_index,
+  // checkpoint but before committing a chunk file. If no checkpoint has been
+  // written, `checkpoint_index` is nullopt.
+  Status SyncCheckpointWithChunks(std::optional<int64_t> checkpoint_index,
                                   int64_t checkpoint_num_elements);
 
   // Returns the path of the checkpoint for `chunk_index` with
