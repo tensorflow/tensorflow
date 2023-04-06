@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -43,14 +44,15 @@ class LocalRendezvous {
   // can make sure it outlives the async recv requests.
   // Pass in nullptr if the wrapping class is not refcounted.
   explicit LocalRendezvous(Rendezvous* owner, int num_shards)
-      : table_buckets_(num_shards > 0 ? num_shards : 1) {
-    if (owner) rc_owner_.emplace(owner);
-  }
+      : num_buckets_(num_shards > 0 ? num_shards : 1),
+        has_rc_owner_(owner != nullptr),
+        rc_owner_(owner),
+        table_buckets_(std::make_unique<TableBucket[]>(num_buckets_)) {}
   ~LocalRendezvous();
 
   Status Send(const Rendezvous::ParsedKey& key,
               const Rendezvous::Args& send_args, const Tensor& val,
-              const bool is_dead);
+              bool is_dead);
   void RecvAsync(const Rendezvous::ParsedKey& key,
                  const Rendezvous::Args& recv_args,
                  Rendezvous::DoneCallback done);
@@ -77,8 +79,11 @@ class LocalRendezvous {
 
   typedef gtl::FlatMap<uint64, ItemQueue> Table;
 
-  // Pointer to the owner class of this LocalRendezvous if it is refcounted.
-  std::optional<tsl::core::WeakPtr<Rendezvous>> rc_owner_;
+  const int num_buckets_;
+  const bool has_rc_owner_;
+  // Pointer to the owner class of this LocalRendezvous if it is refcounted,
+  // nullptr otherwise.
+  tsl::core::WeakPtr<Rendezvous> rc_owner_;
 
   struct TableBucket {
     mutex mu;
@@ -89,8 +94,8 @@ class LocalRendezvous {
     condition_variable pending_callback_cond_var TF_GUARDED_BY(mu);
   };
 
-  // Immutable vector.
-  std::vector<TableBucket> table_buckets_;
+  // Immutable set of buckets. This uses less memory than std::vector.
+  const std::unique_ptr<TableBucket[]> table_buckets_;
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
 
