@@ -63,16 +63,21 @@ class DistributedSaveTest(
 
   # TODO(mpcallanan): Add test for multiple workers.
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSaveLoad(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3])))
+  def testSaveLoad(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(10)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, self._test_dir, cluster.dispatcher_address()))
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, list(range(10)))
+    ignore_order = num_workers > 1
+    self.assertDatasetProduces(
+        dataset, list(range(10)), assert_items_equal=ignore_order)
 
   @combinations.generate(
       combinations.times(
