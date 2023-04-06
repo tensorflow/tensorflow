@@ -3122,8 +3122,8 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
                 "Unable to parse input file '{}'.".format(graph_def_file)
             )
 
-        if sys.byteorder == "big":
-          bst.swap_tensor_content_in_graph_node(graph_def, "little", "big")
+        if sys.byteorder == 'big':
+          bst.swap_tensor_content_in_graph(graph_def, "little", "big")
 
         # Handles models with custom TFLite ops that cannot be resolved in
         # TensorFlow.

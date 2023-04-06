@@ -16,19 +16,20 @@
 
 import functools
 import os
+import sys
 
 from google.protobuf.any_pb2 import Any
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.framework import byte_swap_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model.pywrap_saved_model import constants
@@ -427,6 +428,10 @@ class _SavedModelBuilder(object):
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 
+    if sys.byteorder == 'big':
+      byte_swap_tensor.swap_tensor_content_in_saved_model(self._saved_model,
+                                                          "big", "little")
+
     if as_text:
       path = file_io.join(
           compat.as_bytes(self._export_dir),
@@ -460,6 +465,10 @@ class _SavedModelBuilder(object):
       # Placeholder for internal TF1 model fingerprint write
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
+
+    if sys.byteorder == 'big':
+      byte_swap_tensor.swap_tensor_content_in_saved_model(self._saved_model,
+                                                          "little", "big")
 
     return path
 

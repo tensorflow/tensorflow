@@ -1052,7 +1052,7 @@ def _fill_meta_graph_def(
   meta_graph.strip_graph_default_valued_attrs(meta_graph_def)
   # store tensor_content in litle endian format
   if sys.byteorder == "big":
-    utils_impl.swap_function_tensor_content(meta_graph_def, "big", "little")
+    utils_impl.swap_tensor_content_in_graph(meta_graph_def, "big", "little")
   if enable_debug_stripper:
     _strip_debug_nodes(meta_graph_def)
   meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
