@@ -254,7 +254,10 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
     llvm::CGSCCAnalysisManager cgam;
     llvm::ModuleAnalysisManager mam;
 
-    llvm::PassBuilder pb(targetMachine);
+    llvm::PipelineTuningOptions tuningOptions;
+    // Vectorization happens at the MLIR level.
+    tuningOptions.LoopVectorization = false;
+    llvm::PassBuilder pb(targetMachine, tuningOptions);
 
     pb.registerModuleAnalyses(mam);
     pb.registerCGSCCAnalyses(cgam);

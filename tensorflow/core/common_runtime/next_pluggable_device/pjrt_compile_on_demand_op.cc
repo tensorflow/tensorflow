@@ -57,16 +57,6 @@ static StatusOr<xla::Shape> DeviceShapeRepresentation(
   return c_device_shape.AsCpp<xla::Shape>();
 }
 
-static int GetDeviceOrdinal(const DeviceBase* device) {
-  return device->parsed_name().id;
-}
-
-static DeviceType GetDeviceType(OpKernelContext* ctx) {
-  auto* device =
-      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
-  return DeviceType(device->device_type());
-}
-
 // LINT.IfChange
 static XlaCompiler::Options GenerateXlaCompilerOptions(
     const FunctionLibraryRuntime& function_library, DeviceBase* device_base) {
@@ -135,15 +125,6 @@ Status PjRtCompileOnDemandOp::Run(
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
     std::unique_ptr<xla::PjRtLoadedExecutable> executable) {
-  xla::ExecuteOptions options;
-  options.arguments_are_tupled = false;
-  options.untuple_result = true;
-  // Note: TF does not use PJRT host callbacks as of today. Setting this option
-  // to true to workaround an ExecuteOptions check: [1].
-  //
-  // [1]:
-  // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
-  options.use_major_to_minor_data_layout_for_callbacks = true;
   TF_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
       pjrt_client->LookupAddressableDevice(GetDeviceOrdinal(ctx->device())));
@@ -155,7 +136,8 @@ Status PjRtCompileOnDemandOp::Run(
   // and num_partition = 1). Support multiple partitions case.
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
-      executable->ExecutePortable(executable_args, device, options));
+      executable->ExecutePortable(executable_args, device,
+                                  GetPjRtExecuteOptions()));
 
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
       inputs, variables, compilation_result, execute_outputs, ctx));

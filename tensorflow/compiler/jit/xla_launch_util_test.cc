@@ -435,5 +435,16 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
   test::ExpectTensorEqual<int32>(*expected, *host_tensor);
 }
 
+TEST_F(PjRtExecutionUtilTest, GetDeviceOrdinal) {
+  EXPECT_EQ(GetDeviceOrdinal(device_), 0);
+}
+
+TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
+  xla::ExecuteOptions options = GetPjRtExecuteOptions();
+  EXPECT_FALSE(options.arguments_are_tupled);
+  EXPECT_TRUE(options.untuple_result);
+  EXPECT_TRUE(options.use_major_to_minor_data_layout_for_callbacks);
+}
+
 }  // namespace
 }  // namespace tensorflow

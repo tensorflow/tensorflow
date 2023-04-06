@@ -120,7 +120,7 @@ LocalRendezvous::~LocalRendezvous() {
   // Before destroying this rendezvous instance, make sure all the done-callback
   // calls have finished and the tensors have been released from the queue.
   bool table_not_empty = false;
-  for (int i = 0; i < table_buckets_.size(); ++i) {
+  for (int i = 0; i < num_buckets_; ++i) {
     auto& bucket = table_buckets_[i];
     {
       mutex_lock l(bucket.mu);
@@ -166,7 +166,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 
   TF_RETURN_IF_ERROR(status());
 
-  int bucket_index = key_hash % table_buckets_.size();
+  int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
@@ -226,8 +226,8 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 }
 
 LocalRendezvous::OptionalOwnerPtr LocalRendezvous::GetOwnerRefCountPtr() {
-  if (rc_owner_.has_value()) {
-    tsl::core::RefCountPtr<Rendezvous> rc_keep_alive{(*rc_owner_).GetNewRef()};
+  if (has_rc_owner_) {
+    tsl::core::RefCountPtr<Rendezvous> rc_keep_alive{rc_owner_.GetNewRef()};
     if (rc_keep_alive == nullptr) {
       LOG(ERROR) << "Calling Send on a destroyed Local Rendezvous. "
                     "This may indicate a bug on the caller side. (b/274683676)";
@@ -260,7 +260,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     return;
   }
 
-  int bucket_index = key_hash % table_buckets_.size();
+  int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
 
@@ -411,7 +411,7 @@ void LocalRendezvous::StartAbort(const Status& status) {
   // Already destroyed.
   if (keep_alive.has_value() && (*keep_alive) == nullptr) return;
 
-  for (int i = 0; i < table_buckets_.size(); ++i) {
+  for (int i = 0; i < num_buckets_; ++i) {
     auto& bucket = table_buckets_[i];
     Table table;
     {

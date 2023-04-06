@@ -61,12 +61,6 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   return platform_id;
 }
 
-DeviceType GetDeviceType(OpKernelContext* ctx) {
-  auto* device =
-      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
-  return DeviceType(device->device_type());
-}
-
 absl::flat_hash_map<int, int> CreateVariableLookup(
     const std::vector<VariableInfo>& variables) {
   absl::flat_hash_map<int, int> variable_lookup;
@@ -686,6 +680,29 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     ++output_num;
   }
   return OkStatus();
+}
+
+xla::ExecuteOptions GetPjRtExecuteOptions() {
+  xla::ExecuteOptions options;
+  options.arguments_are_tupled = false;
+  options.untuple_result = true;
+  // Note: TF does not use PJRT host callbacks as of today. Setting this option
+  // to true to workaround an ExecuteOptions check: [1].
+  //
+  // [1]:
+  // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
+  options.use_major_to_minor_data_layout_for_callbacks = true;
+  return options;
+}
+
+DeviceType GetDeviceType(OpKernelContext* ctx) {
+  auto* device =
+      tensorflow::down_cast<Device*>(ctx->device()->UnderlyingDevice());
+  return DeviceType(device->device_type());
+}
+
+int GetDeviceOrdinal(const DeviceBase* device) {
+  return device->parsed_name().id;
 }
 
 }  // namespace tensorflow
