@@ -34,7 +34,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":checkpoint_context",
-        "//tensorflow/python/tpu:tpu_embedding_v2",
         "//tensorflow/python/util:object_identity",
     ],
 )
