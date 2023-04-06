@@ -626,6 +626,18 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                                CUfunction* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
+  cudaError_t cuda_error = cudaPeekAtLastError();
+  if (cuda_error != cudaSuccess) {
+    // Printing the cuda_error value is useful when cudaGetErrorName doesn't
+    // work.
+    const std::string error =
+        absl::StrCat("There was an error before calling cuModuleGetFunction (",
+                     cuda_error, "): ", cudaGetErrorName(cuda_error), " : ",
+                     cudaGetErrorString(cuda_error));
+    LOG(ERROR) << error;
+    return false;
+  }
+
   CUresult res = cuModuleGetFunction(function, module, kernel_name);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to get PTX kernel \"" << kernel_name
