@@ -146,7 +146,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     if (TF_GetCode(status) != TF_OK) return nullptr;
     auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, layout);
     return ret;
   }
 
@@ -158,9 +158,8 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
                  ? 0
                  : r.dtypes_and_shapes().begin()->shape.dims();
 
-  StatusOr<std::unique_ptr<TensorWithLayoutTf>> result =
-      CreateTensorWithLayout(std::move(parallel_tensor), target_mesh,
-                             Layout::ReplicatedOnMesh(target_mesh, rank));
+  StatusOr<std::unique_ptr<TensorWithLayoutTf>> result = CreateTensorWithLayout(
+      std::move(parallel_tensor), Layout::ReplicatedOnMesh(target_mesh, rank));
   if (!result.ok()) {
     TF_SetStatus(
         status, TF_INTERNAL,
@@ -320,7 +319,7 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
     if (TF_GetCode(status) != TF_OK) return nullptr;
     auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, layout);
     std::optional<NodeDef> const_value =
         ExtractSmallTensorValue(context, tensor, layout, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -349,19 +348,19 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
-      std::move(parallel_tensor), target_mesh, std::move(layout), *shape,
+      std::move(parallel_tensor), std::move(layout), *shape,
       /*dtype=*/std::nullopt, std::move(const_value)));
   return result;
 }
 
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    std::unique_ptr<parallel_device::ParallelTensor> tensor,
     const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
 
   return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(tensor), mesh, layout, *shape));
+      new TensorWithLayoutTf(std::move(tensor), layout, *shape));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
@@ -376,16 +375,16 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
     return nullptr;
   }
 
-  return absl::WrapUnique(new TensorWithLayoutTf(std::move(single_tensor),
-                                                 layout.mesh(), layout, shape));
+  return absl::WrapUnique(
+      new TensorWithLayoutTf(std::move(single_tensor), layout, shape));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
-    const Mesh& mesh, const Layout& layout) {
+    const Layout& layout) {
   return absl::WrapUnique(
       new TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor>(),
-                             mesh, layout, local_shape, dtype));
+                             layout, local_shape, dtype));
 }
 
 std::string TensorWithLayoutTf::SummarizeValue() const {
@@ -422,19 +421,18 @@ char ResourceHandleWithLayout::ID = 0;
 
 StatusOr<std::unique_ptr<ResourceHandleWithLayout>>
 ResourceHandleWithLayout::Wrap(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    std::unique_ptr<parallel_device::ParallelTensor> tensor,
     const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
   return absl::WrapUnique(
-      new ResourceHandleWithLayout(std::move(tensor), mesh, layout, *shape));
+      new ResourceHandleWithLayout(std::move(tensor), layout, *shape));
 }
 
 std::unique_ptr<ResourceHandleWithLayout> ResourceHandleWithLayout::Dummy(
-    const std::vector<int64_t>& local_shape, const Mesh& mesh,
-    const Layout& layout) {
+    const std::vector<int64_t>& local_shape, const Layout& layout) {
   return absl::WrapUnique(new ResourceHandleWithLayout(
-      /*tensor=*/nullptr, mesh, layout, local_shape));
+      /*tensor=*/nullptr, layout, local_shape));
 }
 
 void ResourceHandleWithLayout::EncodeAttributes(
@@ -502,11 +500,10 @@ StatusOr<std::unique_ptr<SparseTensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-    const Mesh& mesh, const Layout& layout,
-    const std::vector<int64_t>& local_shape) {
+    const Layout& layout, const std::vector<int64_t>& local_shape) {
   return absl::WrapUnique(new SparseTensorWithLayout(
       std::move(indices_tensor), std::move(values_tensor),
-      std::move(shapes_tensor), mesh, layout, local_shape));
+      std::move(shapes_tensor), layout, local_shape));
 }
 
 std::string SparseTensorWithLayout::SummarizeValue() const {
@@ -574,23 +571,23 @@ TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
 
 std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,
-    const Mesh& mesh, const Layout& layout) {
+    const Layout& layout) {
   switch (dtype) {
     case TF_RESOURCE:
-      return ResourceHandleWithLayout::Dummy(local_shape, mesh, layout);
+      return ResourceHandleWithLayout::Dummy(local_shape, layout);
     default:
-      return TensorWithLayoutTf::Dummy(local_shape, dtype, mesh, layout);
+      return TensorWithLayoutTf::Dummy(local_shape, dtype, layout);
   }
 }
 
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    std::unique_ptr<parallel_device::ParallelTensor> tensor,
     const Layout& layout) {
   switch (tensor->dtype()) {
     case TF_RESOURCE:
-      return ResourceHandleWithLayout::Wrap(std::move(tensor), mesh, layout);
+      return ResourceHandleWithLayout::Wrap(std::move(tensor), layout);
     default:
-      return TensorWithLayoutTf::Wrap(std::move(tensor), mesh, layout);
+      return TensorWithLayoutTf::Wrap(std::move(tensor), layout);
   }
 }
 

@@ -983,18 +983,14 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
                  "Failed to parse layout from string layout");
     return nullptr;
   }
+  const Mesh& target_mesh = target_layout->mesh();
   StatusOr<MeshWithParallelDevice*> parallel_device_mesh =
       GetMeshWithParallelDevice(target_layout->mesh(), /*strict=*/true);
-  // FIXME(feyu): This mesh object is owned by the DTensorDevice via the
-  // parallel_device_mesh. We really should have used a pointer in Layout
-  // instead of Mesh& to let the compiler to check for accidentally passing
-  // in a temporary Mesh object to a Layout object.
-  const Mesh& target_mesh = (*parallel_device_mesh)->mesh_config();
   if (!parallel_device_mesh.ok()) {
     Set_TF_Status_from_Status(status, parallel_device_mesh.status());
     return nullptr;
   }
-  std::unique_ptr<TensorWithLayout> packed_tensor;
+  StatusOr<std::unique_ptr<TensorWithLayout>> packed_tensor;
   if (is_remote_mesh(target_mesh)) {
     // Create a dummy output for DTensorPack if inputs are on a remote mesh.
     TF_DataType dtype = TFE_TensorHandleDataType(inputs[0]);
@@ -1006,8 +1002,8 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       component_shape.push_back(TFE_TensorHandleDim(inputs[0], i, status));
       if (TF_GetCode(status) != TF_OK) return nullptr;
     }
-    packed_tensor = CreateDummyTensorWithLayout(component_shape, dtype,
-                                                target_mesh, *target_layout);
+    packed_tensor = std::unique_ptr<TensorWithLayout>(
+        CreateDummyTensorWithLayout(component_shape, dtype, *target_layout));
 
   } else {
     auto local_devices = target_mesh.local_devices();
@@ -1064,13 +1060,17 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    packed_tensor = CreateTensorWithLayout(std::move(parallel_tensor),
-                                           target_mesh, *target_layout)
-                        .value();
+    packed_tensor =
+        CreateTensorWithLayout(std::move(parallel_tensor), *target_layout);
+  }
+
+  if (!packed_tensor.ok()) {
+    Set_TF_Status_from_Status(status, packed_tensor.status());
+    return nullptr;
   }
 
   TFE_TensorHandle* output =
-      MakeLayoutTensorHandle(context, std::move(packed_tensor), status);
+      MakeLayoutTensorHandle(context, std::move(*packed_tensor), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   return output;
 }
@@ -1085,18 +1085,14 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
                  "Failed to parse layout from string layout");
     return nullptr;
   }
+
+  const Mesh& target_mesh = target_layout->mesh();
   StatusOr<MeshWithParallelDevice*> parallel_device_mesh =
       GetMeshWithParallelDevice(target_layout->mesh(), /*strict=*/true);
   if (!parallel_device_mesh.ok()) {
     Set_TF_Status_from_Status(status, parallel_device_mesh.status());
     return nullptr;
   }
-
-  // FIXME(feyu): This mesh object is owned by the DTensorDevice via the
-  // parallel_device_mesh. We really should have used a pointer in Layout
-  // instead of Mesh& to let the compiler to check for accidentally passing
-  // in a temporary Mesh object to a Layout object.
-  const Mesh& target_mesh = (*parallel_device_mesh)->mesh_config();
 
   TF_DataType tf_int64 = TF_INT64;
   // Verify rank and dtype of shapes.
@@ -1152,11 +1148,11 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
   }
 
   // Create the SparseTensorWithLayout.
-  std::unique_ptr<TensorWithLayout> packed_tensor;
+  StatusOr<std::unique_ptr<TensorWithLayout>> packed_tensor;
   if (is_remote_mesh(target_mesh)) {
     // Create a dummy SparseTensorWithLayout.
-    packed_tensor = SparseTensorWithLayout::Dummy(local_shape, target_mesh,
-                                                  target_layout.value());
+    packed_tensor = std::unique_ptr<TensorWithLayout>(
+        SparseTensorWithLayout::Dummy(local_shape, *target_layout));
   } else {
     // Parse the indices, values, and dense_shape tensors and put them into
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
@@ -1208,15 +1204,17 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
 
     if (TF_GetCode(status) != TF_OK) return nullptr;
     packed_tensor = SparseTensorWithLayout::Wrap(
-                        std::move(parallel_indices_tensor),
-                        std::move(parallel_values_tensor),
-                        std::move(parallel_dense_shapes_tensor), target_mesh,
-                        target_layout.value(), local_shape)
-                        .value();
+        std::move(parallel_indices_tensor), std::move(parallel_values_tensor),
+        std::move(parallel_dense_shapes_tensor), *target_layout, local_shape);
+  }
+
+  if (!packed_tensor.ok()) {
+    Set_TF_Status_from_Status(status, packed_tensor.status());
+    return nullptr;
   }
 
   TFE_TensorHandle* output =
-      MakeLayoutTensorHandle(context, std::move(packed_tensor), status);
+      MakeLayoutTensorHandle(context, std::move(*packed_tensor), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   return output;
 }
@@ -2085,8 +2083,7 @@ void DTensorDevice::ExecuteRegularOperation(
         TF_DataType dtype =
             static_cast<TF_DataType>(function.output_dtypes.at(i));
         auto remote_output = CreateDummyTensorWithLayout(
-            local_shape, dtype, parallel_device_mesh->mesh_config(),
-            function.output_layouts[i]);
+            local_shape, dtype, function.output_layouts[i]);
         output_with_layout.push_back(std::move(remote_output));
       }
     } else {
@@ -2116,7 +2113,7 @@ void DTensorDevice::ExecuteRegularOperation(
         ASSIGN_OR_RETURN_C_STATUS(
             auto local_output,
             CreateTensorWithLayout(std::move((*result)[i]),
-                                   parallel_device_mesh->mesh_config(),
+
                                    function.output_layouts[i]),
             status);
         output_with_layout.push_back(std::move(local_output));
