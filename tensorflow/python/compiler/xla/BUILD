@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -118,7 +118,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "pjrt_compile_test",
     srcs = ["pjrt_compile_test.py"],
     env = {
@@ -126,16 +126,17 @@ cuda_py_test(
     },
     python_version = "PY3",
     tags = [
+        "config-cuda-only",
         "gpu",
+        "no_oss",
         "requires-gpu-nvidia",
+        "xla",
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
     deps = [
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:client_testlib",
     ],
 )
