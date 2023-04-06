@@ -1,1 +1,20 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/Process/Utility/RegisterContextLinux_x86.h b/lldb/source/Plugins/Process/Utility/RegisterContextLinux_x86.h
+--- a/lldb/source/Plugins/Process/Utility/RegisterContextLinux_x86.h
++++ b/lldb/source/Plugins/Process/Utility/RegisterContextLinux_x86.h
+@@ -19,15 +19,6 @@
+                            RegisterInfo orig_ax_info)
+       : RegisterInfoInterface(target_arch), m_orig_ax_info(orig_ax_info) {}
+ 
+-  static size_t GetGPRSizeStatic();
+-  size_t GetGPRSize() const override { return GetGPRSizeStatic(); }
+-
+-  const lldb_private::RegisterInfo *GetRegisterInfo() const override;
+-
+-  uint32_t GetRegisterCount() const override;
+-
+-  uint32_t GetUserRegisterCount() const override;
+-
+   const RegisterInfo &GetOrigAxInfo() const { return m_orig_ax_info; }
+ 
+ private:
