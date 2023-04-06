@@ -109,6 +109,7 @@ void addCPUTilingPipeline(OpPassManager& pm,
   // Tile remaining ops by size one and scalarize what we can.
   pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+  pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
 
   pm.addPass(createCanonicalizerPass());
 
