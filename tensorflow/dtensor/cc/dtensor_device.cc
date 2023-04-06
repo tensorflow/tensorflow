@@ -442,6 +442,14 @@ class DTensorDevice {
                                const TFE_OpAttrs* attributes, int* num_outputs,
                                TFE_TensorHandle** outputs, TF_Status* status);
 
+  // Executes special functions for embedding.
+  void ExecuteEPUFunctions(TFE_Context* context,
+                           std::vector<TensorWithLayoutTf*> inputs,
+                           const ExecutionFunctions* execution_functions,
+                           const TFE_OpAttrs* attributes, uint64 step_id,
+                           absl::flat_hash_set<std::string>* executed_fn_names,
+                           TF_Status* status);
+
   // Executes a single device Operation, on a single device.
   void ExecuteSingleDeviceOperation(
       TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
@@ -459,6 +467,33 @@ class DTensorDevice {
   std::optional<Mesh> ChooseBroadcastingMesh(
       const absl::flat_hash_set<Mesh>& input_meshes,
       const std::vector<TF_DataType>& dtypes);
+
+  // Returns the MeshWithParallelDevice object for a given mesh.
+  // If strict is false, return the device for the default mesh if the mesh
+  // doesn't exist.
+  // FIXME(feyu): we probably never need strict == false.
+  StatusOr<MeshWithParallelDevice*> GetMeshWithParallelDevice(const Mesh& mesh,
+                                                              bool strict) {
+    auto iter = mesh_to_device_map_.find(mesh);
+
+    MeshWithParallelDevice* parallel_device_mesh = nullptr;
+    if (iter != mesh_to_device_map_.end()) {
+      parallel_device_mesh = iter->second.get();
+    }
+    if (!strict) {
+      if (parallel_device_mesh == nullptr) {
+        auto default_mesh = GetDefaultMesh();
+        if (default_mesh.has_value()) {
+          parallel_device_mesh = mesh_to_device_map_[*default_mesh].get();
+        }
+      }
+    }
+    if (parallel_device_mesh == nullptr) {
+      return errors::Internal(absl::StrCat("Mesh in Unpack: ", mesh.ToString(),
+                                           "is not registered with DTensor"));
+    }
+    return parallel_device_mesh;
+  }
 
   // Returns whether a given mesh is a remote mesh.
   bool is_remote_mesh(const Mesh& mesh) const;
@@ -696,8 +731,14 @@ std::unique_ptr<TensorWithLayout> DTensorDevice::Broadcast(
       return TensorWithLayoutTf::Wrap(std::move(single_tensor),
                                       *single_device_layout, status);
     }
-    return TensorWithLayoutTf::Broadcast(context, input,
-                                         *mesh_to_device_map_[mesh], status);
+    StatusOr<MeshWithParallelDevice*> parallel_device_mesh =
+        GetMeshWithParallelDevice(mesh, /*strict=*/true);
+    if (!parallel_device_mesh.ok()) {
+      Set_TF_Status_from_Status(status, parallel_device_mesh.status());
+      return nullptr;
+    }
+    return TensorWithLayoutTf::Broadcast(
+        context, input, *(parallel_device_mesh.value()), status);
   }
 
   TF_Tensor* tf_tensor = TFE_TensorHandleResolve(input, status);
@@ -942,19 +983,19 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
                  "Failed to parse layout from string layout");
     return nullptr;
   }
-  const Mesh& target_mesh = target_layout->mesh();
-  const MeshWithParallelDevice* target_parallel_device =
-      mesh_to_device_map_[target_mesh].get();
-  if (target_parallel_device == nullptr) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 absl::StrCat("Required mesh : ", target_mesh.ToString(),
-                              "is not registered with DTensor ")
-                     .c_str());
+  StatusOr<MeshWithParallelDevice*> parallel_device_mesh =
+      GetMeshWithParallelDevice(target_layout->mesh(), /*strict=*/true);
+  // FIXME(feyu): This mesh object is owned by the DTensorDevice via the
+  // parallel_device_mesh. We really should have used a pointer in Layout
+  // instead of Mesh& to let the compiler to check for accidentally passing
+  // in a temporary Mesh object to a Layout object.
+  const Mesh& target_mesh = (*parallel_device_mesh)->mesh_config();
+  if (!parallel_device_mesh.ok()) {
+    Set_TF_Status_from_Status(status, parallel_device_mesh.status());
     return nullptr;
   }
-
   std::unique_ptr<TensorWithLayout> packed_tensor;
-  if (is_remote_mesh(target_parallel_device->mesh_config())) {
+  if (is_remote_mesh(target_mesh)) {
     // Create a dummy output for DTensorPack if inputs are on a remote mesh.
     TF_DataType dtype = TFE_TensorHandleDataType(inputs[0]);
     auto size = TFE_TensorHandleNumDims(inputs[0], status);
@@ -965,15 +1006,14 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       component_shape.push_back(TFE_TensorHandleDim(inputs[0], i, status));
       if (TF_GetCode(status) != TF_OK) return nullptr;
     }
-    packed_tensor = CreateDummyTensorWithLayout(
-        component_shape, dtype, target_parallel_device->mesh_config(),
-        *target_layout);
+    packed_tensor = CreateDummyTensorWithLayout(component_shape, dtype,
+                                                target_mesh, *target_layout);
 
   } else {
-    auto local_devices = target_parallel_device->mesh_config().local_devices();
+    auto local_devices = target_mesh.local_devices();
 
     if (num_inputs !=
-        target_parallel_device->parallel_device().num_underlying_devices()) {
+        (*parallel_device_mesh)->parallel_device().num_underlying_devices()) {
       TF_SetStatus(status, TF_INVALID_ARGUMENT,
                    absl::StrCat("The dtensor device ", name_, " expected ",
                                 local_devices.size(),
@@ -1007,7 +1047,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
 
     std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
         parallel_device::ParallelTensor::FromTensorHandles(
-            target_parallel_device->parallel_device(), std::move(components),
+            (*parallel_device_mesh)->parallel_device(), std::move(components),
             status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
 
@@ -1024,9 +1064,8 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
       return nullptr;
     }
 
-    packed_tensor = CreateTensorWithLayout(
-                        std::move(parallel_tensor),
-                        target_parallel_device->mesh_config(), *target_layout)
+    packed_tensor = CreateTensorWithLayout(std::move(parallel_tensor),
+                                           target_mesh, *target_layout)
                         .value();
   }
 
@@ -1046,16 +1085,18 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
                  "Failed to parse layout from string layout");
     return nullptr;
   }
-  const Mesh& target_mesh = target_layout->mesh();
-  const MeshWithParallelDevice* target_parallel_device =
-      mesh_to_device_map_[target_mesh].get();
-  if (target_parallel_device == nullptr) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 absl::StrCat("Required mesh : ", target_mesh.ToString(),
-                              "is not registered with DTensor ")
-                     .c_str());
+  StatusOr<MeshWithParallelDevice*> parallel_device_mesh =
+      GetMeshWithParallelDevice(target_layout->mesh(), /*strict=*/true);
+  if (!parallel_device_mesh.ok()) {
+    Set_TF_Status_from_Status(status, parallel_device_mesh.status());
     return nullptr;
   }
+
+  // FIXME(feyu): This mesh object is owned by the DTensorDevice via the
+  // parallel_device_mesh. We really should have used a pointer in Layout
+  // instead of Mesh& to let the compiler to check for accidentally passing
+  // in a temporary Mesh object to a Layout object.
+  const Mesh& target_mesh = (*parallel_device_mesh)->mesh_config();
 
   TF_DataType tf_int64 = TF_INT64;
   // Verify rank and dtype of shapes.
@@ -1112,15 +1153,14 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
 
   // Create the SparseTensorWithLayout.
   std::unique_ptr<TensorWithLayout> packed_tensor;
-  if (is_remote_mesh(target_parallel_device->mesh_config())) {
+  if (is_remote_mesh(target_mesh)) {
     // Create a dummy SparseTensorWithLayout.
-    packed_tensor = SparseTensorWithLayout::Dummy(
-        local_shape, target_parallel_device->mesh_config(),
-        target_layout.value());
+    packed_tensor = SparseTensorWithLayout::Dummy(local_shape, target_mesh,
+                                                  target_layout.value());
   } else {
     // Parse the indices, values, and dense_shape tensors and put them into
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
-    auto local_devices = target_parallel_device->mesh_config().local_devices();
+    auto local_devices = target_mesh.local_devices();
 
     std::vector<TensorHandlePtr> indices_components;
     std::vector<TensorHandlePtr> values_components;
@@ -1152,28 +1192,27 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
     }
     std::unique_ptr<parallel_device::ParallelTensor> parallel_indices_tensor =
         parallel_device::ParallelTensor::FromTensorHandles(
-            target_parallel_device->parallel_device(),
+            (*parallel_device_mesh)->parallel_device(),
             std::move(indices_components), status);
 
     std::unique_ptr<parallel_device::ParallelTensor> parallel_values_tensor =
         parallel_device::ParallelTensor::FromTensorHandles(
-            target_parallel_device->parallel_device(),
+            (*parallel_device_mesh)->parallel_device(),
             std::move(values_components), status);
 
     std::unique_ptr<parallel_device::ParallelTensor>
         parallel_dense_shapes_tensor =
             parallel_device::ParallelTensor::FromTensorHandles(
-                target_parallel_device->parallel_device(),
+                (*parallel_device_mesh)->parallel_device(),
                 std::move(dense_shapes_components), status);
 
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    packed_tensor =
-        SparseTensorWithLayout::Wrap(std::move(parallel_indices_tensor),
-                                     std::move(parallel_values_tensor),
-                                     std::move(parallel_dense_shapes_tensor),
-                                     target_parallel_device->mesh_config(),
-                                     target_layout.value(), local_shape)
-            .value();
+    packed_tensor = SparseTensorWithLayout::Wrap(
+                        std::move(parallel_indices_tensor),
+                        std::move(parallel_values_tensor),
+                        std::move(parallel_dense_shapes_tensor), target_mesh,
+                        target_layout.value(), local_shape)
+                        .value();
   }
 
   TFE_TensorHandle* output =
@@ -1262,18 +1301,17 @@ DTensorDevice::Disassemble(TFE_Context* context, TensorWithLayout* t,
   }
   std::vector<std::unique_ptr<tensorflow::dtensor::TensorWithLayout>>
       tensor_with_layouts;
-  const MeshWithParallelDevice* mesh_with_parallel_device =
-      mesh_to_device_map_[t->mesh()].get();
-  if (mesh_with_parallel_device == nullptr) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 absl::StrCat("Mesh in Unpack: ", t->mesh().ToString(),
-                              "is not registered with DTensor")
-                     .c_str());
+
+  StatusOr<MeshWithParallelDevice*> mesh_with_parallel_device =
+      GetMeshWithParallelDevice(t->mesh(), /*strict=*/true);
+  if (!mesh_with_parallel_device.ok()) {
+    Set_TF_Status_from_Status(status, mesh_with_parallel_device.status());
     return tensor_with_layouts;
   }
+
   const int output_size = t->num_tensors();
   const parallel_device::ParallelDevice& parallel_device =
-      mesh_with_parallel_device->parallel_device();
+      (*mesh_with_parallel_device)->parallel_device();
   const int num_underlying_devices = parallel_device.num_underlying_devices();
   if (output_size != num_underlying_devices &&
       output_size != kSparseTensorNum * num_underlying_devices) {
@@ -1781,6 +1819,85 @@ void DTensorDevice::ExecuteSingleDeviceOperation(
   }
 }
 
+void DTensorDevice::ExecuteEPUFunctions(
+    TFE_Context* context, std::vector<TensorWithLayoutTf*> inputs,
+    const ExecutionFunctions* execution_functions,
+    const TFE_OpAttrs* attributes, uint64 step_id,
+    absl::flat_hash_set<std::string>* executed_fn_names, TF_Status* status) {
+  std::unique_ptr<const TranslatedFunction> epu_fn_ptr, load_embedding_ptr;
+
+  for (const TranslatedFunction& function :
+       execution_functions->function_list) {
+    if (function.function_mesh.is_epu_mesh()) {
+      if (epu_fn_ptr != nullptr) {
+        RETURN_STATUS(status, TF_INTERNAL,
+                      "There are more than one function defined on EPU mesh.");
+      }
+      epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
+    }
+    if (absl::StartsWith(function.function_name, kLoadEmbeddingFn)) {
+      if (load_embedding_ptr != nullptr) {
+        RETURN_STATUS(status, TF_INTERNAL,
+                      "There are more than one function defined on EPU mesh.");
+      }
+      load_embedding_ptr = std::make_unique<const TranslatedFunction>(function);
+    }
+  }
+
+  // Execute excluded functions in sequence.
+  if (epu_fn_ptr != nullptr) {
+    StatusOr<Mesh> mesh = epu_fn_ptr->function_mesh;
+    if (mesh->is_epu_mesh()) {
+      mesh = mesh->ToDeviceType("CPU");
+    }
+
+    if (!mesh.ok()) {
+      RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                    absl::StrCat("Failed to convert mesh, get error: ",
+                                 mesh.status().error_message())
+                        .c_str());
+    }
+
+    ASSIGN_OR_RETURN_C_STATUS(
+        const MeshWithParallelDevice* parallel_device_mesh,
+        GetMeshWithParallelDevice(*mesh, /*strict=*/false), status);
+
+    ExecuteFunctionAndWait(context,
+                           /*function_ptr=*/epu_fn_ptr.get(),
+                           /*parallel_device_mesh=*/
+                           parallel_device_mesh,
+                           /*parallel_inputs=*/{}, /*step_id=*/step_id,
+                           /*attributes=*/attributes,
+                           /*status=*/status);
+    executed_fn_names->insert(epu_fn_ptr->translated_function_name);
+  }
+
+  if (load_embedding_ptr != nullptr) {
+    Mesh mesh = load_embedding_ptr->function_mesh;
+
+    StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
+        PrepareEmbeddingInputs(inputs);
+
+    if (!parallel_inputs.ok()) {
+      RETURN_STATUS(status, TF_INTERNAL,
+                    parallel_inputs.status().error_message().c_str());
+    }
+
+    ASSIGN_OR_RETURN_C_STATUS(
+        const MeshWithParallelDevice* parallel_device_mesh,
+        GetMeshWithParallelDevice(mesh, /*strict=*/false), status);
+
+    ExecuteFunctionAndWait(context,
+                           /*function_ptr=*/load_embedding_ptr.get(),
+                           /*parallel_device_mesh=*/
+                           parallel_device_mesh,
+                           /*parallel_inputs=*/*parallel_inputs,
+                           /*step_id=*/step_id,
+                           /*attributes=*/attributes, /*status=*/status);
+    executed_fn_names->insert(load_embedding_ptr->translated_function_name);
+  }
+}
+
 void DTensorDevice::ExecuteRegularOperation(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
@@ -1803,12 +1920,6 @@ void DTensorDevice::ExecuteRegularOperation(
                                     doperation, attributes, num_outputs,
                                     outputs, status);
     return;
-  }
-
-  std::vector<TensorWithLayoutTf*> inputs_tf;
-  inputs_tf.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    inputs_tf.push_back(llvm::cast<TensorWithLayoutTf>(input));
   }
 
   const ExecutionFunctions* execution_functions = nullptr;
@@ -1841,55 +1952,7 @@ void DTensorDevice::ExecuteRegularOperation(
 
   int num_global_outputs = 0;
 
-  std::map<std::string, const MeshWithParallelDevice*>
-      function_name_and_mesh_mapping;
   absl::flat_hash_set<std::string> excluded_fn_names;
-  std::unique_ptr<const TranslatedFunction> epu_fn_ptr, load_embedding_ptr;
-  for (const TranslatedFunction& function :
-       execution_functions->function_list) {
-    StatusOr<Mesh> maybe_converted_mesh = function.function_mesh;
-    if (function.function_mesh.is_epu_mesh()) {
-      maybe_converted_mesh = function.function_mesh.ToDeviceType("CPU");
-    }
-
-    if (!maybe_converted_mesh.ok()) {
-      RETURN_STATUS(status, TF_INVALID_ARGUMENT,
-                    absl::StrCat("Failed to convert mesh, get error: ",
-                                 maybe_converted_mesh.status().error_message())
-                        .c_str());
-    }
-    const Mesh& mesh = *maybe_converted_mesh;
-    const MeshWithParallelDevice* parallel_device_mesh = nullptr;
-    {
-      parallel_device_mesh =
-          mesh_to_device_map_.contains(mesh)
-              ? mesh_to_device_map_[mesh].get()
-              : mesh_to_device_map_[GetDefaultMesh().value()].get();
-    }
-    if (parallel_device_mesh == nullptr) {
-      RETURN_STATUS(status, TF_INTERNAL,
-                    "required mesh is not registered with DTensor device");
-    }
-    function_name_and_mesh_mapping[function.translated_function_name] =
-        parallel_device_mesh;
-
-    if (function.function_mesh.is_epu_mesh()) {
-      if (epu_fn_ptr != nullptr) {
-        RETURN_STATUS(status, TF_INTERNAL,
-                      "There are more than one function defined on EPU mesh.");
-      }
-      epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
-      excluded_fn_names.insert(function.translated_function_name);
-    }
-    if (absl::StartsWith(function.function_name, kLoadEmbeddingFn)) {
-      if (load_embedding_ptr != nullptr) {
-        RETURN_STATUS(status, TF_INTERNAL,
-                      "There are more than one function defined on EPU mesh.");
-      }
-      load_embedding_ptr = std::make_unique<const TranslatedFunction>(function);
-      excluded_fn_names.insert(function.translated_function_name);
-    }
-  }
 
   // Compute the step_id based on the function_mesh_fingerprint and the
   // corresponding function execution counter.
@@ -1906,33 +1969,16 @@ void DTensorDevice::ExecuteRegularOperation(
       function_mesh_fingerprint,
       func_mesh_fingerprint_to_step_counter_.at(function_mesh_fingerprint));
 
-  // Execute excluded functions in sequence.
-  if (epu_fn_ptr != nullptr) {
-    ExecuteFunctionAndWait(
-        context,
-        /*function_ptr=*/epu_fn_ptr.get(),
-        /*parallel_device_mesh=*/
-        function_name_and_mesh_mapping[epu_fn_ptr->translated_function_name],
-        /*parallel_inputs=*/{}, /*step_id=*/step_id, /*attributes=*/attributes,
-        /*status=*/status);
+  std::vector<TensorWithLayoutTf*> inputs_tf;
+  inputs_tf.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    inputs_tf.push_back(llvm::cast<TensorWithLayoutTf>(input));
   }
 
-  if (load_embedding_ptr != nullptr) {
-    StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
-        PrepareEmbeddingInputs(inputs_tf);
-    if (!parallel_inputs.ok()) {
-      RETURN_STATUS(status, TF_INTERNAL,
-                    parallel_inputs.status().error_message().c_str());
-    }
-    ExecuteFunctionAndWait(
-        context,
-        /*function_ptr=*/load_embedding_ptr.get(),
-        /*parallel_device_mesh=*/
-        function_name_and_mesh_mapping[load_embedding_ptr
-                                           ->translated_function_name],
-        /*parallel_inputs=*/*parallel_inputs, /*step_id=*/step_id,
-        /*attributes=*/attributes, /*status=*/status);
-  }
+  ExecuteEPUFunctions(context, inputs_tf, execution_functions, attributes,
+                      step_id, &excluded_fn_names, status);
+
+  if (TF_GetCode(status) != TF_OK) return;
 
   // Extract the global parallel inputs and flatten SparseTensors
   // into the three component tensors.
@@ -1973,8 +2019,9 @@ void DTensorDevice::ExecuteRegularOperation(
       continue;
     }
 
-    const MeshWithParallelDevice* parallel_device_mesh =
-        function_name_and_mesh_mapping[translated_function_name];
+    ASSIGN_OR_RETURN_C_STATUS(
+        const MeshWithParallelDevice* parallel_device_mesh,
+        GetMeshWithParallelDevice(mesh, /*strict=*/false), status);
 
     // Gather the local inputs for this function.
     std::vector<parallel_device::ParallelTensor*> parallel_inputs;
@@ -2021,9 +2068,11 @@ void DTensorDevice::ExecuteRegularOperation(
     if (excluded_fn_names.contains(function.translated_function_name)) {
       continue;
     }
-    const Mesh& mesh = function.function_mesh;
-    const MeshWithParallelDevice* parallel_device_mesh =
-        function_name_and_mesh_mapping[function.translated_function_name];
+    const Mesh mesh = function.function_mesh;
+
+    ASSIGN_OR_RETURN_C_STATUS(
+        const MeshWithParallelDevice* parallel_device_mesh,
+        GetMeshWithParallelDevice(mesh, /*strict=*/false), status);
 
     std::vector<std::unique_ptr<TensorWithLayout>> output_with_layout;
     output_with_layout.reserve(function.output_index_map.size());

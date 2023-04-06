@@ -279,6 +279,10 @@ class TensorWithLayoutTf
 
   Layout layout_;
 
+  // FIXME(feyu): This mesh object shall be owned by the DTensorDevice via the
+  // parallel_device_mesh. We really should have used a pointer in Layout
+  // instead of Mesh& to let the compiler to check for accidentally passing
+  // in a temporary Mesh object to a Layout object.
   const Mesh& mesh_;
 
   // The local shape of tensors placed on each of `tensor_`'s component devices.
