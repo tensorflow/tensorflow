@@ -483,6 +483,7 @@ py_library(
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
+        ":cpp_shape_inference_proto_py",
         ":framework",
         ":function",
         ":ops",

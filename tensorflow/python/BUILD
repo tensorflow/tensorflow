@@ -1830,6 +1830,7 @@ py_library(
     deps = [
         ":protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/types",
         "//tensorflow/python/util:compat",
@@ -2341,6 +2342,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:auto_control_deps_utils",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
@@ -2379,6 +2381,7 @@ py_library(
         ":array_ops",
         ":handle_data_util",
         ":list_ops_gen",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
