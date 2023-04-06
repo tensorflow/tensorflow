@@ -68,6 +68,8 @@ int64_t roundDownToPowerOfTwo(int64_t n) {
   return (n + 1) >> 1;
 }
 
+bool isPowerOfTwo(int64_t n) { return (n & (n - 1)) == 0; }
+
 // Tiling heuristic that was tuned for static power-of-two sized shapes on
 // Skylake.
 MatmulSizes skylakeTilingHeuristic(MatmulSizes sizes) {
@@ -106,6 +108,61 @@ MatmulSizes znver2TilingHeuristic(MatmulSizes sizes) {
   } else {
     result.n = std::min<int64_t>(16, sizes.n);
   }
+  return result;
+}
+
+// Tiling heuristic that was tuned for static sized shapes on generic Haswell.
+MatmulSizes haswellTilingHeuristic(MatmulSizes sizes) {
+  MatmulSizes result;
+  // Dot
+  if (sizes.m == 1 && sizes.n == 1) {
+    // At this point we only have small tensors, dots with bigger tensors are
+    // already turned into reduce(map).
+    return {1, std::min<int64_t>(sizes.n, 32), 1};
+  }
+
+  // Vecmat
+  if (sizes.m == 1) {
+    result.m = 1;
+    constexpr int64_t kVecmatNThreshold = 64;
+    constexpr int64_t kVecmatSizeThreshold = 16 * kVecmatNThreshold;
+    int64_t numElements = sizes.k * sizes.n;
+    if (sizes.n < kVecmatNThreshold) {
+      result.n = sizes.n;
+      if (numElements < kVecmatSizeThreshold) {
+        result.k = sizes.k;
+      } else if (isPowerOfTwo(sizes.n)) {
+        result.k = 2;
+      } else {
+        result.k = std::min<int64_t>(result.k / 2, 64);
+      }
+    } else {
+      result.n = kVecmatNThreshold;
+      if (sizes.k < 16) {
+        result.k = sizes.k;
+      } else {
+        if (sizes.n >= 256) {
+          result.k = isPowerOfTwo(sizes.k) ? 1 : 8;
+        } else {
+          result.k = isPowerOfTwo(sizes.k) ? 8 : 16;
+        }
+      }
+    }
+    return result;
+  }
+
+  result.k = sizes.n == 1 ? 8 : 1;
+  // Matvec
+  if (sizes.n == 1) {
+    if (sizes.k <= 8) {
+      return {1, 1, 1};
+    }
+    return {std::min<int64_t>(8, sizes.m), 1, 4};
+  }
+  // Matmul
+  result.k = sizes.k <= 8 ? 1 : 4;
+  result.n = std::min<int64_t>(8, sizes.n) << (sizes.m <= 16 ? 1 : 0);
+  result.m = std::min<int64_t>(32, sizes.m) << (sizes.n <= 4 ? 1 : 0);
   return result;
 }
 
@@ -499,9 +556,13 @@ createTransformDotForCpuPass(ArrayRef<int64_t> tileSizes, StringRef cpuName) {
     MatmulSizes fixedSizes{tileSizes[0], tileSizes[1], tileSizes[2]};
     tilingHeuristic = [=](MatmulSizes) { return fixedSizes; };
   } else {
-    tilingHeuristic = cpuName.starts_with("znver")
-                          ? wrapHeuristic(znver2TilingHeuristic, {16, 8, 8})
-                          : wrapHeuristic(skylakeTilingHeuristic, {16, 16, 4});
+    if (cpuName.starts_with("znver"))
+      tilingHeuristic = wrapHeuristic(znver2TilingHeuristic, {16, 8, 8});
+    else if (cpuName.contains("skylake"))
+      tilingHeuristic = wrapHeuristic(skylakeTilingHeuristic, {16, 16, 4});
+    else
+      // Default to generic Haswell target.
+      tilingHeuristic = wrapHeuristic(haswellTilingHeuristic, {8, 8, 8});
   }
   return std::make_unique<mlir::gml_st::TransformDotForCpuPass>(
       std::move(tilingHeuristic));
