@@ -909,6 +909,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           (config.epilogue() == GemmBackendConfig::BIAS_RELU ||
            config.epilogue() == GemmBackendConfig::RELU);
       for (int i = 0; i < gemm_users.size(); ++i) {
+        if (!has_relu_epilogue && gemm_users[i]->users().empty()) {
+          continue;
+        }
         HloInstruction *maybe_reduce =
             has_relu_epilogue ? gemm_users[i] : gemm_users[i]->users()[0];
 
