@@ -207,8 +207,5 @@ def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
   return graph.as_graph_element(
       ops.prepend_name_scope(tensor_info.name, import_scope=import_scope))
 
-
-def swap_function_tensor_content(meta_graph_def, from_endiness, to_endiness):
-  bst.swap_tensor_content_in_graph_function(
-      meta_graph_def, from_endiness, to_endiness
-  )
+def swap_tensor_content_in_graph(meta_graph_def, from_endiness, to_endiness):
+  bst.swap_tensor_content_in_graph(meta_graph_def, from_endiness, to_endiness)

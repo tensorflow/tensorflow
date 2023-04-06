@@ -17,7 +17,6 @@
 import collections
 import functools
 import os
-import sys
 
 from absl import logging
 
@@ -53,7 +52,6 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
@@ -1020,12 +1018,6 @@ def load_partial(export_dir, filters, tags=None, options=None):
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     metrics.IncrementReadApi(_LOAD_V2_LABEL)
     meta_graph_def = saved_model_proto.meta_graphs[0]
-    # tensor_content field contains raw bytes in litle endian format
-    # which causes problems when loaded on big-endian systems
-    # requiring byteswap
-    if sys.byteorder == "big":
-      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
-                                                     "big")
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(

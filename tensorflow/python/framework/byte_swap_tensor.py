@@ -17,6 +17,7 @@
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import dtypes
 
 # Based on tensor_bundle/byte_swap.cc
@@ -72,32 +73,29 @@ def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
       )
 
 
-def swap_tensor_content_in_graph_function(
-    graph_def, from_endiness, to_endiness
-):
-  """Fix endiness of tensor contents.
+def swap_tensor_content_in_saved_model(saved_model, from_endiness, to_endiness):
+  if not isinstance(saved_model, saved_model_pb2.SavedModel):
+    return
 
-  Args:
-    graph_def: Target graph_def to change endiness.
-    from_endiness: The original endianness format. "big" or "little"
-    to_endiness: The target endianness format. "big" or "little"
-  """
-  if isinstance(graph_def, meta_graph_pb2.MetaGraphDef):
-    functions = graph_def.graph_def.library.function
-  elif isinstance(graph_def, graph_pb2.GraphDef):
-    functions = graph_def.library.function
+  for meta_graph in saved_model.meta_graphs:
+    swap_tensor_content_in_graph(meta_graph, from_endiness, to_endiness)
+
+def swap_tensor_content_in_graph(graph_or_meta_graph_def,
+                                 from_endiness, to_endiness):
+  if isinstance(graph_or_meta_graph_def, meta_graph_pb2.MetaGraphDef):
+    g = graph_or_meta_graph_def.graph_def
+  elif isinstance(graph_or_meta_graph_def, graph_pb2.GraphDef):
+    g = graph_or_meta_graph_def
   else:
     return
-  for function in functions:
-    node_def = function.node_def
-    for node in node_def:
-      if node.op == "Const":
-        tensor = node.attr["value"].tensor
-        byte_swap_tensor_content(tensor, from_endiness, to_endiness)
 
+  swap_tensor_content_in_nodes(g.node, from_endiness, to_endiness)
 
-def swap_tensor_content_in_graph_node(graph_def, from_endiness, to_endiness):
-  for node in graph_def.node:
+  for function in g.library.function:
+    swap_tensor_content_in_nodes(function.node_def, from_endiness, to_endiness)
+
+def swap_tensor_content_in_nodes(nodes, from_endiness, to_endiness):
+  for node in nodes:
     if node.op == "Const":
       tensor = node.attr["value"].tensor
       byte_swap_tensor_content(tensor, from_endiness, to_endiness)
