@@ -247,7 +247,7 @@ class StructuredFunctionWrapper():
     else:
       defun_kwargs.update({"func_name": func_name})
       defun_kwargs.update({"_tf_data_function": True})
-      if debug_mode.DEBUG_MODE:
+      if debug_mode.DEBUG_MODE and str(dataset.element_spec)[0:16] != 'RaggedTensorSpec':
         fn_factory = trace_py_function(defun_kwargs)
       else:
         if def_function.functions_run_eagerly():
