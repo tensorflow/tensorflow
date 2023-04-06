@@ -132,7 +132,8 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
 
 std::string DebugDataDumper::GetDumpFilename(const std::string& name,
                                              const std::string& tag) {
-  return absl::StrFormat("%s.%04d.%s", name, GetNextDumpId(name), tag);
+  std::string dump_name = name.empty() ? "unknown_graph" : name;
+  return absl::StrFormat("%s.%04d.%s", dump_name, GetNextDumpId(name), tag);
 }
 
 }  // namespace tensorflow
