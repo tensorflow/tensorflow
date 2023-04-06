@@ -93,6 +93,9 @@ test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -/
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
 build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
 
+# For outputting Build Event Protocol files
+build:build_event_export --build_event_json_file=/tf/pkg/bep.json
+
 # For Remote Build Execution.
 build:rbe --google_default_credentials
 build:rbe --bes_backend=buildeventservice.googleapis.com
