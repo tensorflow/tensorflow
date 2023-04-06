@@ -646,7 +646,7 @@ StatusOr<bool> InstructionFusion::Run(
         }
 
         // Saving name to use after the instruction is removed.
-        std::string producer_name = operand->name();
+        std::string producer_name(operand->name());
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;

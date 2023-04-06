@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -99,11 +100,6 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
-  // empty replica groups imply all replicas form a single group.
-  int64_t replica_subgroup_size =
-      hlo->replica_groups().empty()
-          ? 0
-          : hlo->replica_groups()[0].replica_ids_size();
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica:
     case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
@@ -118,7 +114,8 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
       return replica_subgroup_size;
     }
     case CollectiveOpGroupMode::kFlattenedID:
-      return replica_subgroup_size;
+      // Empty replica groups not allowed in this mode.
+      return hlo->replica_groups()[0].replica_ids_size();
     case CollectiveOpGroupMode::kCrossPartition:
       return hlo->replica_groups().empty()
                  ? config.num_partitions()
@@ -150,7 +147,7 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {
     return InternalError(
-        "Called computations specified for non-caller instruction  %s",
+        "Called computations specified for non-caller instruction %s",
         hlo->ToString());
   }
   std::optional<int> arity = HloOpcodeArity(hlo->opcode());
@@ -561,15 +558,15 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-
+  const int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
   if (all_to_all->split_dimension()) {
-    int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
     TF_RET_CHECK(hlo->operand_count() == 1);
     return CheckShape(
         hlo, ShapeInference::InferAllToAllShape(
                  hlo->operand(0)->shape(), *all_to_all->split_dimension(),
                  *all_to_all->split_dimension(), split_count));
   } else {
+    TF_RET_CHECK(hlo->operand_count() == split_count);
     std::vector<const Shape*> operand_shapes;
     for (const HloInstruction* operand : hlo->operands()) {
       operand_shapes.push_back(&operand->shape());
@@ -1353,12 +1350,9 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
-  VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
   auto input_shapes = reduce_window_instr->input_shapes();
-  VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
-  VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";
   TF_RETURN_IF_ERROR(CheckShape(
       reduce_window, ShapeInference::InferReduceWindowShape(
                          input_shapes, init_shapes, reduce_window->window(),
@@ -1418,8 +1412,7 @@ Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
     if (operand0_type != S32) {
       return InvalidArgument(
           "The first operand of indexed conditional must be a scalar of S32. "
-          "Got"
-          " type %s.",
+          "Got type %s.",
           PrimitiveType_Name(operand0_type));
     }
     TF_RET_CHECK(num_branches >= 1);
@@ -1944,7 +1937,7 @@ std::string ComputationsToString(
     absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](std::string* s, const HloComputation* computation) {
-                         s->append(computation->name());
+                         absl::StrAppend(s, computation->name());
                        });
 }
 
@@ -2620,7 +2613,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Preprocess(HloInstruction* instruction) override {
     auto [it, inserted] =
-        instructions_by_name_.insert({instruction->name(), instruction});
+        instructions_by_name_.emplace(instruction->name(), instruction);
     TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
                            << instruction->ToString() << " in computation: "
                            << instruction->parent()->name()
@@ -2772,6 +2765,71 @@ StatusOr<bool> HloVerifier::Run(
   return Status(status_or_changed.status().code(),
                 absl::StrCat("during context [", context_, "]: ",
                              status_or_changed.status().error_message()));
+}
+
+MetadataTracker::MetadataTracker(absl::string_view prefix) : prefix_(prefix) {}
+
+MetadataTracker::~MetadataTracker() {
+  if (instruction_count_ == 0) {
+    return;
+  }
+  const std::map<std::string, double> values = {
+      {"instruction_count", 1.0 * instruction_count_},
+      {"op_type_coverage", 1.0 * has_op_type_count_ / instruction_count_},
+      {"op_name_coverage", 1.0 * has_op_name_count_ / instruction_count_},
+      {"source_file_coverage",
+       1.0 * has_source_file_count_ / instruction_count_},
+      {"source_line_coverage",
+       1.0 * has_source_line_count_ / instruction_count_},
+      {"creation_pass_coverage",
+       1.0 * has_creation_pass_id_count_ / instruction_count_},
+      {"logical_creation_pass_coverage",
+       1.0 * has_logical_creation_pass_id_count_ / instruction_count_},
+      {"size_of_generated_code_in_bytes_coverage",
+       1.0 * has_size_of_generated_code_in_bytes_count_ / instruction_count_},
+      {"size_of_memory_working_set_in_bytes_coverage",
+       1.0 * has_size_of_memory_working_set_in_bytes_count_ /
+           instruction_count_},
+      {"profile_info_coverage",
+       1.0 * has_profile_info_count_ / instruction_count_}};
+  LOG(INFO) << prefix_ << " "
+            << absl::StrJoin(values, ",", absl::PairFormatter("="));
+}
+
+void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
+  ++instruction_count_;
+  if (!metadata.op_type().empty()) {
+    ++has_op_type_count_;
+  }
+  if (!metadata.op_name().empty()) {
+    ++has_op_name_count_;
+  }
+  if (!metadata.source_file().empty()) {
+    ++has_source_file_count_;
+  }
+  if (metadata.source_line() != 0) {
+    ++has_source_line_count_;
+  }
+  if (metadata.creation_pass_id() != 0) {
+    ++has_creation_pass_id_count_;
+  }
+  if (metadata.logical_creation_pass_id() != 0) {
+    ++has_logical_creation_pass_id_count_;
+  }
+  if (metadata.size_of_generated_code_in_bytes() != 0) {
+    ++has_size_of_generated_code_in_bytes_count_;
+  }
+  if (metadata.size_of_memory_working_set_in_bytes() != 0) {
+    ++has_size_of_memory_working_set_in_bytes_count_;
+  }
+  if (metadata.has_profile_info()) {
+    ++has_profile_info_count_;
+  }
+}
+
+Status MetadataTracker::DefaultAction(HloInstruction* instruction) {
+  HandleMetadata(instruction->metadata());
+  return OkStatus();
 }
 
 }  // namespace xla

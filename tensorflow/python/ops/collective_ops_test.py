@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
@@ -193,9 +194,9 @@ class CollectiveOpTest(test.TestCase):
       for device in devices:
         with ops.device(device):
           loop_vars.append(
-              [variables.VariableV1((1 << i) * 1.) for i in range(num_vars)])
+              [variable_v1.VariableV1((1 << i) * 1.) for i in range(num_vars)])
       # This variable controls number of iterations.
-      loop_vars.append(variables.VariableV1(0.))
+      loop_vars.append(variable_v1.VariableV1(0.))
       def loop_body(dev0_tensors, dev1_tensors, loop_tensor):
         return_ops = []
         for i in range(len(devices)):

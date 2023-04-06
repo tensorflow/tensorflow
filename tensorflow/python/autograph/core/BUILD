@@ -36,7 +36,7 @@ py_strict_library(
     srcs = ["unsupported_features_checker.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:errors",
         "@gast_archive//:gast",
     ],
 )
@@ -74,7 +74,11 @@ py_strict_library(
     srcs = ["converter.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:ast_util",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -88,7 +92,10 @@ py_strict_test(
         ":converter",
         ":test_lib",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:loader",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
     ],
 )
 

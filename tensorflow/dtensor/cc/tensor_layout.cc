@@ -406,7 +406,9 @@ std::vector<std::string> Mesh::hosts() const {
 std::string Mesh::device_type() const {
   if (IsEmpty()) return std::string();
   std::string device;
-  if (!global_devices_.empty()) {
+  if (IsSingleDevice()) {
+    device = single_device_;
+  } else if (!global_devices_.empty()) {
     device = global_devices_[0];
   } else {
     device = local_devices_[0];
@@ -615,7 +617,18 @@ StatusOr<Mesh> Mesh::FromString(absl::string_view str) {
 
   std::vector<std::string> mesh_parts = absl::StrSplit(str, '|');
 
-  if (mesh_parts.size() == 1 && !mesh_parts[0].empty()) {
+  // We do not support specifying mesh name in single device mesh, i.e.
+  // the mesh name would always be empty.
+  if (mesh_parts.size() == 1) {
+    std::vector<std::string> single_device_parts =
+        absl::StrSplit(mesh_parts[0], ':');
+    // The single device can be
+    // "/job:localhost/replica:0/task:0/device:CPU:0" or
+    // "/job:localhost/task:0/device:CPU:0".
+    if (single_device_parts.size() != 5 && single_device_parts.size() != 6) {
+      TF_RETURN_WITH_CONTEXT(
+          errors::InvalidArgument("Input string is invalid: ", mesh_parts[0]))
+    }
     Mesh mesh;
     mesh.mesh_type_ = MeshType::kSingleDevice;
     mesh.single_device_ = str;
@@ -1116,7 +1129,7 @@ bool Layout::operator==(const Layout& b) const {
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
     absl::Span<const int64_t> local_shape) const {
-  if (IsFullyReplicated()) {
+  if (IsSingleDevice() || IsFullyReplicated()) {
     return std::vector<int64_t>(local_shape.begin(), local_shape.end());
   }
   std::vector<int64_t> global_shape;

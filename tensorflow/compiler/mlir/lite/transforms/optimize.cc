@@ -401,6 +401,28 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   });
 }
 
+// Returns true if `value` is compile-time constant and its splat value equals
+// to `raw_value`.
+template <typename T>
+bool IsConstantValueOf(mlir::TypedAttr value, T raw_value) {
+  auto element_type = value.getType().cast<ShapedType>().getElementType();
+
+  if (element_type.isa<FloatType>()) {
+    return FloatValueEquals(value, raw_value);
+  } else if (element_type.isa<IntegerType>()) {
+    auto int_attr = value.dyn_cast_or_null<DenseIntElementsAttr>();
+    if (!int_attr) return false;
+
+    if (int_attr.isSplat()) {
+      return int_attr.getSplatValue<APInt>() == raw_value;
+    }
+    return llvm::all_of(int_attr.getValues<APInt>(),
+                        [raw_value](const APInt &f) { return f == raw_value; });
+  }
+
+  return false;
+}
+
 // Returns true if the value's element type is F32.
 bool IsF32Value(Value value) {
   return value.getType().cast<ShapedType>().getElementType().isF32();

@@ -156,8 +156,8 @@ objc_library(
     ],
     module_name = "TestApp",
     tags = TFL_DEFAULT_TAGS + [
-        "manual",
         "builder_default_ios_x86_64",
+        "manual",
     ],
     deps = [
         ":TensorFlowLite",

@@ -57,6 +57,7 @@ typedef struct {
       float input1_scale;
       float input2_scale;
       float output_scale;
+      bool input_quantized;
     } mul;
     struct {
       int32_t num_dims;

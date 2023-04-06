@@ -622,6 +622,8 @@ class TFLiteConverterBase:
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
     self._experimental_full_integer_quantization_bias_type = None
+    # Provides specs for quantization, whether preset or custom.
+    self._experimental_quantization_options = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metdata_fb.ConversionMetadataT()
@@ -773,6 +775,7 @@ class TFLiteConverterBase:
         ),
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
         "disable_fuse_mul_and_fc": self._experimental_disable_fuse_mul_and_fc,
+        "quantization_options": self._experimental_quantization_options,
     }
 
     if self.saved_model_dir:

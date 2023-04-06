@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 class Device;
-class EagerContext;
 }  // namespace tensorflow
 
 namespace tfrt {
@@ -41,12 +40,6 @@ class HostContext;
 
 typedef tensorflow::gtl::InlinedVector<tfrt::DType, 4> TfrtDataTypeVector;
 typedef tensorflow::gtl::ArraySlice<tfrt::DType> TfrtDataTypeSlice;
-
-// TODO(b/161370736): Have a formal method to convert between TF's and TFRT's
-// device name. Currently TFRT adopts the suffix of TF's device name,
-// e.g. CPU:0.
-Expected<const char*> ConvertTfDeviceNameToTfrt(
-    const char* device_name, tensorflow::EagerContext* eager_context);
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);
 

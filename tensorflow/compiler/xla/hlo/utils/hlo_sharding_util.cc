@@ -2099,8 +2099,9 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                                     absl::Span<const int64_t> group_dim_shards,
                                     bool subgroup_manual) {
   CHECK(!sharding.IsTileMaximal());
-  std::vector<int64_t> grouped_tiling_dims =
-      sharding.tile_assignment().dimensions();
+  std::vector<int64_t> grouped_tiling_dims(
+      sharding.tile_assignment().dimensions().begin(),
+      sharding.tile_assignment().dimensions().end());
   std::vector<int64_t> group_dim_sizes(group_dims.size());
   for (int64_t i = 0; i < group_dims.size(); ++i) {
     CHECK_EQ(grouped_tiling_dims[group_dims[i]] % group_dim_shards[i], 0);
@@ -2242,8 +2243,9 @@ PartialReplicatedGroupShardingWithAssignedDeviceGroups(
       [&device_to_index](absl::Span<const int64_t> indices, int64_t device) {
         device_to_index[device].assign(indices.begin(), indices.end());
       });
-  std::vector<int64_t> grouped_tiling_dims =
-      sharding.tile_assignment().dimensions();
+  std::vector<int64_t> grouped_tiling_dims(
+      sharding.tile_assignment().dimensions().begin(),
+      sharding.tile_assignment().dimensions().end());
   grouped_tiling_dims.back() /= device_groups.size();
   std::optional<HloSharding> final_sharding;
   const int64_t shard_size_on_replicated_dim =
@@ -2326,7 +2328,9 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
     subgroup_types = std::vector<OpSharding::Type>(subgroup_dim_size,
                                                    OpSharding::REPLICATED);
     if (!grouped_sharding.sharding.IsTileMaximal()) {
-      tiling_dims = grouped_sharding.sharding.tile_assignment().dimensions();
+      tiling_dims.assign(
+          grouped_sharding.sharding.tile_assignment().dimensions().begin(),
+          grouped_sharding.sharding.tile_assignment().dimensions().end());
     }
     for (int i = 0; i < grouped_sharding.group_dims.size(); i++) {
       subgroup_types[grouped_sharding.group_dims[i] -
@@ -2338,7 +2342,9 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   } else if (!grouped_sharding.sharding.IsTileMaximal()) {
     // Handles tile replicated.
     partial_sharding = grouped_sharding.sharding.ReplicateOnLastTileDim();
-    tiling_dims = grouped_sharding.sharding.tile_assignment().dimensions();
+    tiling_dims.assign(
+        grouped_sharding.sharding.tile_assignment().dimensions().begin(),
+        grouped_sharding.sharding.tile_assignment().dimensions().end());
     if (absl::c_linear_search(grouped_sharding.group_dims,
                               tiling_dims.size())) {
       tiling_dims.push_back(1);
@@ -2419,7 +2425,8 @@ HloSharding SplitShardingDimension(const HloSharding& sharding,
   CHECK_EQ(sharding.tile_assignment().dim(dimension) % new_dim_size, 0)
       << "dim size " << new_dim_size;
   auto new_tile_assignment = sharding.tile_assignment();
-  std::vector<int64_t> dimensions = new_tile_assignment.dimensions();
+  std::vector<int64_t> dimensions(new_tile_assignment.dimensions().begin(),
+                                  new_tile_assignment.dimensions().end());
   int64_t current_dimension = dimensions[dimension];
   dimensions.insert(dimensions.begin() + dimension + 1,
                     current_dimension / new_dim_size);
@@ -2435,7 +2442,8 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
                                    int64_t dimension) {
   CHECK_GT(sharding.TiledDataRank(), dimension);
   auto new_tile_assignment = sharding.tile_assignment();
-  std::vector<int64_t> dimensions = new_tile_assignment.dimensions();
+  std::vector<int64_t> dimensions(new_tile_assignment.dimensions().begin(),
+                                  new_tile_assignment.dimensions().end());
   dimensions[dimension] *= dimensions[dimension + 1];
   dimensions.erase(dimensions.begin() + dimension + 1);
   new_tile_assignment.Reshape(dimensions);

@@ -139,7 +139,8 @@ class WindowsRandomAccessFile : public RandomAccessFile {
         dst += r;
         n -= r;
       } else if (r == 0) {
-        s = Status(error::OUT_OF_RANGE, "Read fewer bytes than requested");
+        s = Status(absl::StatusCode::kOutOfRange,
+                   "Read fewer bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // Retry
       } else {
@@ -647,7 +648,7 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return OkStatus();
   }
-  return Status(tsl::error::FAILED_PRECONDITION, "Not a directory");
+  return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
 Status WindowsFileSystem::RenameFile(const string& src, const string& target,

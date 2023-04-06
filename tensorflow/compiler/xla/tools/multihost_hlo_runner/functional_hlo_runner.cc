@@ -238,6 +238,40 @@ std::string AbslUnparseFlag(
   }
 }
 
+bool AbslParseFlag(absl::string_view text,
+                   FunctionalHloRunner::ModuleOutputMode* output_mode,
+                   std::string* error) {
+  if (text == "return_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kReturnOutputs;
+    return true;
+  }
+  if (text == "not_return_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+    return true;
+  }
+  if (text == "return_device_0_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kReturnDevice0Outputs;
+    return true;
+  }
+  *error =
+      "Unrecognized module output mode specified. Expect \"return_outputs\", "
+      "\"not_return_outputs\", or \"return_device_0_outputs\".";
+  return false;
+}
+
+std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode) {
+  switch (output_mode) {
+    case FunctionalHloRunner::ModuleOutputMode::kReturnOutputs:
+      return "return_outputs";
+    case FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs:
+      return "not_return_outputs";
+    case FunctionalHloRunner::ModuleOutputMode::kReturnDevice0Outputs:
+      return "return_device_0_outputs";
+    default:
+      LOG(FATAL) << "Unexpected output mode.";
+  }
+}
+
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
   return GetStreamExecutorGpuClient(
       /*asynchronous=*/true, GpuAllocatorConfig(),
@@ -284,7 +318,11 @@ StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
   if (task_id == 0) {
-    debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    // Overwrite xla_dump_to only if its not empty, to preserve `xla_dump_to`
+    // from parsed XLA_FLAGS env (already populated in debug_options).
+    if (!raw_options.xla_dump_to.empty()) {
+      debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    }
     debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
                                            XlaTextDumpMode::kDumpAsText);
     debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==

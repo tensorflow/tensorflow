@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,15 +40,19 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr const char* const kChunkFile = "chunk_file";
 constexpr const char* const kCompression = "compression";
+constexpr const char* const kStartIndex = "start_index";
+constexpr const char* const kOutputTypes = "output_types";
+constexpr const char* const kOutputShapes = "output_shapes";
 
-constexpr int64_t kTFRecordReaderOutputBufferSize = 256 << 20;  // 256MB
+constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
 
 // A reader dataset is responsible for reading one chunk file.
 // TODO(b/250921378): Merge this with `snapshot_util::Reader::Dataset`.
-class ReaderDatasetOp : public DatasetOpKernel {
+class SnapshotChunkDatasetOp : public DatasetOpKernel {
  public:
-  explicit ReaderDatasetOp(OpKernelConstruction* ctx);
+  explicit SnapshotChunkDatasetOp(OpKernelConstruction* ctx);
   class Dataset;
 
  protected:
@@ -59,7 +64,7 @@ class ReaderDatasetOp : public DatasetOpKernel {
   std::string compression_;
 };
 
-class ReaderDatasetOp::Dataset : public DatasetBase {
+class SnapshotChunkDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(DatasetContext&& ctx, const std::string& chunk_file,
           const std::string& compression, const DataTypeVector& dtypes,
@@ -76,7 +81,7 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
     return shapes_;
   }
 
-  std::string DebugString() const override { return "SnapshotDatasetReaderV2"; }
+  std::string DebugString() const override { return "SnapshotChunkDataset"; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return OkStatus();
@@ -88,16 +93,19 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
-    std::vector<Node*> inputs;
     Node* chunk_file = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(chunk_file_, &chunk_file));
-    inputs.push_back(chunk_file);
 
-    std::vector<std::pair<StringPiece, AttrValue>> attrs;
     AttrValue compression;
     b->BuildAttrValue(compression_, &compression);
-    attrs.push_back({kCompression, compression});
-    return b->AddDataset(this, inputs, attrs, output);
+
+    return b->AddDataset(this,
+                         /*inputs=*/
+                         {std::make_pair(0, chunk_file)},
+                         /*list_inputs=*/{},
+                         /*attrs=*/
+                         {{kCompression, compression}},
+                         /*use_dataset_name=*/true, output);
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -124,30 +132,47 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = false;
-      Status s = reader_->ReadTensors(out_tensors);
-      if (errors::IsOutOfRange(s)) {
+      Status status = reader_->ReadTensors(out_tensors);
+      if (errors::IsOutOfRange(status)) {
         *end_of_sequence = true;
         return OkStatus();
       }
-      return s;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          status,
+          " Failed to read tf.data snapshot file: ", dataset()->chunk_file_);
+      ++start_index_;
+      return status;
     }
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return errors::Unimplemented(
-          "TODO(b/250921378: Support save/load for tf.data distributed "
-          "snapshot reader.)");
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kStartIndex), start_index_));
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return errors::Unimplemented(
-          "TODO(b/250921378: Support save/load for tf.data distributed "
-          "snapshot reader.)");
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kStartIndex), &start_index_));
+      TF_RETURN_IF_ERROR(Initialize(ctx));
+      return AdvanceToStartIndex(ctx);
     }
 
    private:
+    // TODO(b/250921378): Optimize this to not parse every single element. We
+    // may consider switching the data format to ArrayRecords so we can use the
+    // index to jump straight to the starting record.
+    Status AdvanceToStartIndex(IteratorContext* ctx) {
+      for (int64_t i = 0; i < start_index_; ++i) {
+        std::vector<Tensor> unused;
+        TF_RETURN_IF_ERROR(reader_->ReadTensors(&unused));
+      }
+      return OkStatus();
+    }
+
     std::unique_ptr<snapshot_util::TFRecordReader> reader_;
+    int64_t start_index_ = 0;
   };
 
   const tstring chunk_file_;
@@ -155,6 +180,23 @@ class ReaderDatasetOp::Dataset : public DatasetBase {
   const DataTypeVector dtypes_;
   const std::vector<PartialTensorShape> shapes_;
 };
+
+SnapshotChunkDatasetOp::SnapshotChunkDatasetOp(OpKernelConstruction* ctx)
+    : DatasetOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kCompression, &compression_));
+}
+
+void SnapshotChunkDatasetOp::MakeDataset(OpKernelContext* ctx,
+                                         DatasetBase** output) {
+  tstring chunk_file;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kChunkFile, &chunk_file));
+
+  *output = new SnapshotChunkDatasetOp::Dataset(DatasetContext(ctx), chunk_file,
+                                                compression_, output_types_,
+                                                output_shapes_);
+}
 
 Status MakeNestedDataset(const SnapshotReaderParams& params,
                          DatasetBase** output) {
@@ -167,10 +209,10 @@ Status MakeNestedDataset(const SnapshotReaderParams& params,
   for (int64_t i = 0; i < chunk_files.size(); ++i) {
     std::string chunk_file_path =
         tsl::io::JoinPath(params.CommittedChunksDirectory(), chunk_files[i]);
-    datasets.push_back(new ReaderDatasetOp::Dataset(
+    datasets.push_back(new SnapshotChunkDatasetOp::Dataset(
         DatasetContext(DatasetContext::Params(
-            {"SnapshotDatasetReaderV2",
-             strings::StrCat("SnapshotDatasetReaderV2/_", i)})),
+            {"SnapshotChunkDataset",
+             strings::StrCat("SnapshotChunkDataset/_", i)})),
         chunk_file_path, params.metadata.compression(), params.dtypes,
         params.shapes));
     datasets.back()->Initialize(/*metadata=*/{});
@@ -178,6 +220,9 @@ Status MakeNestedDataset(const SnapshotReaderParams& params,
   snapshot_util::Reader::MakeNestedDataset(datasets, output);
   return OkStatus();
 }
+
+REGISTER_KERNEL_BUILDER(Name("SnapshotChunkDataset").Device(DEVICE_CPU),
+                        SnapshotChunkDatasetOp);
 
 }  // namespace
 

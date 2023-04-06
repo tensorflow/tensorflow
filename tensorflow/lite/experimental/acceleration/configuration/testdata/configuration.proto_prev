@@ -531,6 +531,29 @@ message GoogleEdgeTpuSettings {
 
   // Reserved.
   optional bytes extension_data = 4;
+
+  // A unique identifier of the input model. Creating delegates with different
+  // user model binaries with the same model identifier will overwrite
+  // previously cached entries, saving disk space.
+  // If this field is not set, the model will be treated as a new entry, and
+  // will cost disk space to cache.
+  // This field is different from the model_token in CompilationCachingSettings,
+  // where the users may reuse the same model_identifier for different flavors
+  // of the same model to save disk space, whereas model_token must be unique.
+  // Example usage:
+  // (1) An app only uses one model, and wants to update the model.
+  // For both the existing and new models, set: model_identifier = "my_model"
+  // Creating the delegate with the new entry this way will delete the old
+  // cache entry, and replace it with the new version of "my_model"
+  // (2) An app A/B tests two versions of the same model (e.g. a stable version
+  //  and a testing/staging/beta version), and wants to frequently switch
+  // between them.
+  // The clients should use different model_identifier for the two variants.
+  // Model_A: model_identifier = "my_model_a"
+  // Model_B: model_identifier = "my_model_b"
+  // Both Model A and B will be cached separately, and coexist for efficient
+  // lookups.
+  optional string model_identifier = 5 [default = ""];
 }
 
 // Coral Dev Board / USB accelerator delegate settings.

@@ -26,10 +26,8 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -66,6 +64,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
@@ -83,7 +82,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
@@ -140,7 +138,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
@@ -1179,15 +1176,19 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
                       GetAllocationSlice(matmul.getCScale()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_scale,
                       GetAllocationSlice(matmul.getDScale()));
-  BufferAllocation::Slice d_amax;
+  BufferAllocation::Slice d_amax, bias;
   if (matmul.getDAmax() != nullptr) {
     TF_ASSIGN_OR_RETURN(d_amax, GetAllocationSlice(matmul.getDAmax()));
   }
+  if (matmul.getBias() != nullptr) {
+    TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
+  }
 
-  BufferAllocation::Slice bias, aux;  // Not used.
+  BufferAllocation::Slice aux;  // Not used.
 
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
+
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
       bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
@@ -1810,21 +1811,22 @@ Status IrEmitterUnnested::EmitTritonFusion(
       ir_emitter_context_->name_uniquer()->GetUniqueName(
           llvm_ir::SanitizeFunctionName(
               absl::StrCat(suggested_kernel_name, "_impl")));
-  const std::optional<LaunchDimensions> launch_dimensions = TritonWrapper(
-      impl_fn_name, hlo_computation,
-      ir_emitter_context_->cuda_compute_capability(),
-      ir_emitter_context_->gpu_device_info(), config, module_, &MatMul);
-  TF_RET_CHECK(launch_dimensions.has_value());
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      TritonWrapper(impl_fn_name, hlo_computation,
+                    ir_emitter_context_->cuda_compute_capability(),
+                    ir_emitter_context_->gpu_device_info(), config, module_,
+                    &MatMul));
   llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
   TF_RET_CHECK(impl_fn);
 
   auto [kernel, ir_arrays] = BuildKernelPrototype(
-      suggested_kernel_name, kernel_arguments, launch_dimensions.value());
+      suggested_kernel_name, kernel_arguments, launch_dimensions);
 
   TF_ASSIGN_OR_RETURN(
       KernelThunk * thunk,
       BuildKernelThunkImpl(kernel->getName().str(), kernel_arguments,
-                           GetThunkInfo(fusion_op), launch_dimensions.value()));
+                           GetThunkInfo(fusion_op), launch_dimensions));
   kernel_reuse_cache_[fingerprint] = thunk;
 
   std::vector<llvm::Value*> args;
@@ -2780,7 +2782,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
           // this once we get rid of this function, or don't rely on the op name
           // (which shouldn't be the identity) to generate LLVM symbols.
           instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(
-              module->name() + "_" + instr->name()));
+              absl::StrCat(module->name(), "_", instr->name())));
         }
       }
     }
@@ -3029,7 +3031,8 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   OpT op = mlir::cast<OpT>(untyped_op);
   int64_t replica_count = hlo_module_config_.replica_count();
   int64_t partition_count = hlo_module_config_.num_partitions();
-  VLOG(2) << NcclThunkType::GetName() << "; replica count: " << replica_count
+  VLOG(2) << NcclThunkType::GetHloOpName()
+          << "; replica count: " << replica_count
           << "; partition count: " << partition_count
           << "; operand count: " << op.getOperands().size()
           << "; NCCL is enabled: " << NcclThunkType::NcclIsEnabled();
@@ -3039,8 +3042,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   // and we can just copy the input to the output.
   bool is_degenerate =
       NcclThunkType::IsDegenerate(op, replica_count, partition_count);
-  bool should_use_nccl_thunk =
-      !is_degenerate && NcclThunkType::CanImplement(op);
+  Status implementable_status =
+      NcclThunkType::CheckImplementable(op, replica_count, partition_count);
+  bool should_use_nccl_thunk = !is_degenerate && implementable_status.ok();
 
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
@@ -3073,32 +3077,18 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     return OkStatus();
   }
 
+  if (!is_degenerate) {
+    return implementable_status;
+  }
+
   // Signal that start thunk not created with nullptr.
   if constexpr (NcclThunkType::IsAsync()) {
     async_executors_.insert({untyped_op, nullptr});
   }
 
-  if (!is_degenerate) {
-    CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
-
-    std::string message = absl::StrFormat(
-        "Requested %s not implemented on GPU; replica_count: %d; "
-        "partition_count: %d, group_mode: %s, operand_count: %d; NCCL support: "
-        "%d",
-        NcclThunkType::GetName(), replica_count, partition_count,
-        CollectiveOpGroupModeToString(group_mode), op.getOperands().size(),
-        NcclThunkType::NcclIsEnabled());
-    if (!op.getOperands().empty()) {
-      const Shape shape = GetShape(op.getOperands().front());
-      absl::StrAppendFormat(&message, "; first operand array element-type: %s",
-                            PrimitiveType_Name(shape.element_type()));
-    }
-    return Unimplemented("%s", message);
-  }
-
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
-  // All-gather with one replica is simply the identity function. Buffer
+  // Degenerate collectives are simply identity function. Buffer
   // assignment expects a copy, so that's what we do.
   ThunkSequence thunks;
   for (int64_t i = 0; i < buffers.size(); i++) {
@@ -4129,7 +4119,7 @@ void IrEmitterUnnested::WriteReductionOutput(
     const HloReduceInstruction* reduction, int partial_result_idx,
     const absl::Span<TypedPointer const> values) {
   const HloComputation* reducer = reduction->to_apply();
-  for (auto [oidx, typed_ptr] : llvm::enumerate(values)) {
+  for (const auto& [oidx, typed_ptr] : llvm::enumerate(values)) {
     auto [output_ptr, type] = typed_ptr;
     llvm::Value* output_address = GetOutputAddressForReduction(
         partial_result_idx, index_ty, reduction_codegen_state,
@@ -5868,6 +5858,7 @@ void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
                   mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
                   mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect,
                   mlir::memref::MemRefDialect>();
+  mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);

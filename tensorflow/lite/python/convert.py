@@ -21,8 +21,10 @@ import os as _os
 import platform as _platform
 import subprocess as _subprocess
 import tempfile as _tempfile
+from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.python import wrap_toco
@@ -30,6 +32,7 @@ from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
+from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
@@ -43,7 +46,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 def _is_quantized_input_stats_required(
-    conversion_flags: _conversion_flags_pb2.TocoFlags(),
+    conversion_flags: _conversion_flags_pb2.TocoFlags,
 ) -> bool:
   """Checks if the `quantized_input_stats` flag is required for conversion.
 
@@ -299,24 +302,23 @@ def register_custom_opdefs(custom_opdefs_list):
 
 
 def convert(
-    model_flags_str,
-    conversion_flags_str,
-    input_data_str,
-    debug_info_str=None,
-    enable_mlir_converter=True,
+    model_flags: _model_flags_pb2.ModelFlags,
+    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    input_data_str: Optional[str] = None,
+    debug_info_str: Optional[str] = None,
+    enable_mlir_converter: bool = True,
 ):
   """Converts `input_data_str` to a TFLite model.
 
   Args:
-    model_flags_str: Serialized proto describing model properties, see
-      `model_flags.proto`.
-    conversion_flags_str: Serialized proto describing conversion properties, see
+    model_flags: Proto describing model properties, see `model_flags.proto`.
+    conversion_flags: Proto describing conversion properties, see
       `toco/toco_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common, or
       it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
-      information. (default None)
-    enable_mlir_converter: Enables MLIR-based conversion. (default True)
+      information.
+    enable_mlir_converter: Enables MLIR-based conversion.
 
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
@@ -331,22 +333,44 @@ def convert(
   # pipeline surfaces errors instead, and can be safely run in-process.
   if enable_mlir_converter or not _deprecated_conversion_binary:
     try:
-      model_str = wrap_toco.wrapped_toco_convert(
-          model_flags_str,
-          conversion_flags_str,
+      return wrap_toco.wrapped_toco_convert(
+          model_flags.SerializeToString(),
+          conversion_flags.SerializeToString(),
           input_data_str,
           debug_info_str,
           enable_mlir_converter,
       )
-      return model_str
     except Exception as e:
       converter_error = ConverterError(str(e))
+
       for error_data in _metrics_wrapper.retrieve_collected_errors():
         converter_error.append_error(error_data)
+        # Seldom we encounter the case where an unsupported
+        # `StatefulPartitionedCallOp` is not inlined and remains in the final
+        # IR. If this occurs we can set `guarantee_all_funcs_one_use` and retry.
+        # This makes the converter copy functions definitions called by
+        # multiple StatefulPartitionedCall, thus allowing them to be properly
+        # inlined.
+        if (
+            error_data.error_code
+            == converter_error_data_pb2.ConverterErrorData.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
+            and not conversion_flags.guarantee_all_funcs_one_use
+        ):
+          conversion_flags.guarantee_all_funcs_one_use = True
+          return convert(
+              model_flags,
+              conversion_flags,
+              input_data_str,
+              debug_info_str,
+              enable_mlir_converter,
+          )
       raise converter_error
 
   return _run_deprecated_conversion_binary(
-      model_flags_str, conversion_flags_str, input_data_str, debug_info_str
+      model_flags.SerializeToString(),
+      conversion_flags.SerializeToString(),
+      input_data_str,
+      debug_info_str,
   )
 
 
@@ -554,6 +578,7 @@ def build_conversion_flags(
     guarantee_all_funcs_one_use=False,
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
+    quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -590,7 +615,8 @@ def build_conversion_flags(
       False)
     post_training_quantize: Boolean indicating whether to quantize the weights
       of the converted float model. Model size will be reduced and there will be
-      latency improvements (at the cost of accuracy). (default False)
+      latency improvements (at the cost of accuracy). (default False) If
+      quantization_options is set, all quantization arg will be ignored.
     quantize_to_float16: Boolean indicating whether to convert float buffers to
       float16. (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
@@ -645,6 +671,11 @@ def build_conversion_flags(
       graph.
     disable_fuse_mul_and_fc: Disable fusing input multiplication with
       fullyconnected operations. Useful when quantizing weights.
+    quantization_options: Config to indicate quantization options of each
+      components (ex: weight, bias, activation). This can be a preset method or
+      a custom method, and allows finer, modular control. This option will
+      override any other existing quantization flags. We plan on gradually
+      migrating all quantization-related specs into this option.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -725,6 +756,8 @@ def build_conversion_flags(
       enable_mlir_variable_quantization
   )
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
+  if quantization_options:
+    conversion_flags.quantization_options.CopyFrom(quantization_options)
   return conversion_flags
 
 
@@ -793,8 +826,8 @@ def convert_graphdef_with_arrays(
       model_flags.control_output_arrays.append(name)
 
   data = convert(
-      model_flags.SerializeToString(),
-      conversion_flags.SerializeToString(),
+      model_flags,
+      conversion_flags,
       input_data.SerializeToString(),
       debug_info_str=None,
       enable_mlir_converter=enable_mlir_converter,
@@ -883,8 +916,8 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
       model_flags.output_arrays.append(util.get_tensor_name(output_tensor))
 
   data = convert(
-      model_flags.SerializeToString(),
-      conversion_flags.SerializeToString(),
+      model_flags,
+      conversion_flags,
       input_data.SerializeToString(),
       debug_info_str=debug_info.SerializeToString() if debug_info else None,
       enable_mlir_converter=enable_mlir_converter,
@@ -900,8 +933,8 @@ def convert_saved_model(**kwargs):
   model_flags = build_model_flags(**kwargs)
   conversion_flags = build_conversion_flags(**kwargs)
   data = convert(
-      model_flags.SerializeToString(),
-      conversion_flags.SerializeToString(),
+      model_flags,
+      conversion_flags,
       input_data_str=None,
       debug_info_str=None,
       enable_mlir_converter=True,
@@ -928,8 +961,8 @@ def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
 
   conversion_flags = build_conversion_flags(**kwargs)
   data = convert(
-      model_flags.SerializeToString(),
-      conversion_flags.SerializeToString(),
+      model_flags,
+      conversion_flags,
       input_data_str=input_content,
       debug_info_str=None,
       enable_mlir_converter=True,

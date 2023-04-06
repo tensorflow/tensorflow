@@ -1,4 +1,4 @@
-// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true use-tf2xla-hlo-importer=false" %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -335,6 +335,54 @@ func.func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>
   // CHECK-NOT: tf.ParameterizedTruncatedNormal
   %1 = "tf.ParameterizedTruncatedNormal"(%0, %arg0, %arg1, %arg2, %arg3) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<1xi32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<10000000xf32>
   func.return %1 : tensor<10000000xf32>
+}
+
+// Check XlaSpmdFullToShardShape's conversion from split sharding to manual
+// sharding.
+// The split sharding is:
+//   type: OTHER
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\02\01\22\02\00\01"
+// The manual sharding is:
+//   type: MANUAL
+// Serialized string:
+//   "\08\04"
+
+// CHECK-LABEL: @xla_spmd_full_to_shard_shape
+func.func @xla_spmd_full_to_shard_shape(%arg0: tensor<2x2xi64>) -> (tensor<1x2xi64>) {
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<2x2xi64>) -> tensor<2x2xi64>
+  // CHECK: %[[MANUAL:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  // CHECK: return %[[MANUAL]]
+  %0 = "tf.XlaSpmdFullToShardShape"(%arg0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
+}
+
+// Check XlaSpmdShardToFullShape's conversion from manual sharding to split
+// sharding.
+// The manual sharding is:
+//   type: MANUAL
+// Serialized string:
+//   "\08\04"
+// The split sharding is:
+//   type: OTHER
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//   "\08\03\1A\02\02\01\22\02\00\01"
+
+// CHECK-LABEL: @xla_spmd_shard_to_full_shape
+func.func @xla_spmd_shard_to_full_shape(%arg0: tensor<1x2xi64>) -> (tensor<2x2xi64>) {
+  // CHECK: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\04"} : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  // CHECK: %[[FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[SHARDING]]) {backend_config = "", mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  // CHECK: return %[[FULL]]
+  %0 = "tf.XlaSpmdShardToFullShape"(%arg0) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xi64>) -> tensor<2x2xi64>
+  func.return %0 : tensor<2x2xi64>
 }
 
 // CHECK-LABEL: @xla_svd

@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -38,7 +37,6 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
@@ -640,44 +638,67 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                          num_partitions, rewriter);
   }
 
-  static bool CanImplement(AllGatherOp op) {
-    return NcclAllGatherThunk::CanImplement(op);
+  static Status CheckImplementable(AllGatherOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllGatherThunk::CheckImplementable(op, replica_count,
+                                                  num_partitions);
   }
 
-  static bool CanImplement(AllGatherStartOp op) {
-    return NcclAllGatherStartThunk::CanImplement(op);
+  static Status CheckImplementable(AllGatherStartOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllGatherStartThunk::CheckImplementable(op, replica_count,
+                                                       num_partitions);
   }
 
-  static bool CanImplement(AllReduceOp op) {
-    return NcclAllReduceThunk::CanImplement(op);
+  static Status CheckImplementable(AllReduceOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllReduceThunk::CheckImplementable(op, replica_count,
+                                                  num_partitions);
   }
 
-  static bool CanImplement(AllReduceStartOp op) {
-    return NcclAllReduceStartThunk::CanImplement(op);
+  static Status CheckImplementable(AllReduceStartOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllReduceStartThunk::CheckImplementable(op, replica_count,
+                                                       num_partitions);
   }
 
-  static bool CanImplement(ReduceScatterOp op) {
-    return NcclReduceScatterThunk::CanImplement(op);
+  static Status CheckImplementable(ReduceScatterOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclReduceScatterThunk::CheckImplementable(op, replica_count,
+                                                      num_partitions);
   }
 
-  static bool CanImplement(AllToAllOp op) {
-    return NcclAllToAllThunk::CanImplement(op);
+  static Status CheckImplementable(AllToAllOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllToAllThunk::CheckImplementable(op, replica_count,
+                                                 num_partitions);
   }
 
-  static bool CanImplement(AllToAllStartOp op) {
-    return NcclAllToAllStartThunk::CanImplement(op);
+  static Status CheckImplementable(AllToAllStartOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllToAllStartThunk::CheckImplementable(op, replica_count,
+                                                      num_partitions);
   }
 
-  static bool CanImplement(CollectivePermuteOp op) {
-    return NcclCollectivePermuteThunk::CanImplement(op);
+  static Status CheckImplementable(CollectivePermuteOp op,
+                                   int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclCollectivePermuteThunk::CheckImplementable(op, replica_count,
+                                                          num_partitions);
   }
 
-  static bool CanImplement(CollectivePermuteStartOp op) {
-    return NcclCollectivePermuteStartThunk::CanImplement(op);
+  static Status CheckImplementable(CollectivePermuteStartOp op,
+                                   int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclCollectivePermuteStartThunk::CheckImplementable(
+        op, replica_count, num_partitions);
   }
 
-  static bool CanImplement(ReduceScatterStartOp op) {
-    return NcclReduceScatterStartThunk::CanImplement(op);
+  static Status CheckImplementable(ReduceScatterStartOp op,
+                                   int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclReduceScatterStartThunk::CheckImplementable(op, replica_count,
+                                                           num_partitions);
   }
 
   template <typename OpT>
@@ -698,22 +719,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
 
     return success();
-  }
-
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllReduceOp op,
-                                        func::CallOp call) {
-    auto attr = op->getAttrOfType<BoolAttr>("allow_all_reduce_kernel");
-    call->setAttr(b.getStringAttr("allow_all_reduce_kernel"),
-                  attr ? attr : b.getBoolAttr(false));
-    return SetSpecificAttrs<AllReduceOp>(b, op, call);
-  }
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
-                                        AllReduceStartOp op,
-                                        func::CallOp call) {
-    auto attr = op->getAttrOfType<BoolAttr>("allow_all_reduce_kernel");
-    call->setAttr(b.getStringAttr("allow_all_reduce_kernel"),
-                  attr ? attr : b.getBoolAttr(false));
-    return SetSpecificAttrs<AllReduceStartOp>(b, op, call);
   }
 
   template <typename OpT>
@@ -811,13 +816,10 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       return success();
     }
 
-    if (!CanImplement(op)) {
-      return op.emitOpError()
-             << "Requested " << Target(op)
-             << " not implemented on GPU; replica_count: " << replica_count
-             << ", num_partitions: " << num_partitions << ", group_mode: "
-             << CollectiveOpGroupModeToString(config.group_mode)
-             << ", NCCL support: " << NcclCollectiveThunk::NcclIsEnabled();
+    Status implementable_status =
+        CheckImplementable(op, replica_count, num_partitions);
+    if (!implementable_status.ok()) {
+      return op.emitOpError() << implementable_status.error_message();
     }
 
     // Check that we have and assigned unique collective operation id.

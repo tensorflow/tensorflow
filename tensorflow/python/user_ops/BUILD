@@ -24,7 +24,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":user_ops_gen",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

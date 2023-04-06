@@ -405,8 +405,9 @@ static void InitializeTypedBuffer(se::Stream* stream,
       // Only double gets random values in double.  Other data types get random
       // values in float then cast them to the target data types.
       using RandomFloatingPointType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
-                                    T>::type;
+          typename std::conditional<std::is_same<T, Eigen::half>::value ||
+                                        std::is_same<T, Eigen::bfloat16>::value,
+                                    float, T>::type;
       using RandomType =
           typename std::conditional<std::is_integral<T>::value, float,
                                     RandomFloatingPointType>::type;
@@ -414,7 +415,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
       auto upper_bound =
           RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
       auto rand_val = UniformDistribution(RandomType(0), upper_bound, &gen);
-      // For float or double, it is between [0,1].
+      // For bf16, float or double, it is between [0,1].
       // For fp16, it ranges between [0, 0.1].
       // For integer types, element is either 0 or 1 for less overflows
       // especially for int8_t.
@@ -448,11 +449,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer) {
   switch (buffer_type) {
     case xla::F16:
-    case xla::BF16:
-      // Using F16 for BF16 initialization: it's fine since we only need some
-      // random number there, and random generator is not working for BF16 (not
-      // all required overloads are there).
       return InitializeTypedBuffer<Eigen::half>(stream, buffer, rng_state);
+    case xla::BF16:
+      return InitializeTypedBuffer<Eigen::bfloat16>(stream, buffer, rng_state);
     case xla::F32:
     case xla::C64:
       return InitializeTypedBuffer<float>(stream, buffer, rng_state);

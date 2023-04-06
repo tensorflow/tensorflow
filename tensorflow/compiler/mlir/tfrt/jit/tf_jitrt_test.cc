@@ -29,7 +29,6 @@
 namespace tensorflow {
 
 using ::tfrt::AsyncValue;
-using ::tfrt::DType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 

@@ -156,6 +156,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":ragged_tensor",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:embedding_ops",
     ],
 )

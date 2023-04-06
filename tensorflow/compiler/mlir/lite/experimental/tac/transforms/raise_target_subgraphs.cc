@@ -69,15 +69,23 @@ class RaiseTargetSubgraphsPass
   RaiseTargetSubgraphsPass() = default;
   RaiseTargetSubgraphsPass(const RaiseTargetSubgraphsPass& other) {
     this->skip_raise_cpu_ops_ = other.skip_raise_cpu_ops_;
+    this->ignore_inference_type_ = other.ignore_inference_type_;
   }
-  explicit RaiseTargetSubgraphsPass(bool skip_raise_cpu_ops) {
+  explicit RaiseTargetSubgraphsPass(bool skip_raise_cpu_ops,
+                                    bool ignore_inference_type) {
     skip_raise_cpu_ops_ = skip_raise_cpu_ops;
+    ignore_inference_type_ = ignore_inference_type;
   }
 
  private:
   Option<bool> skip_raise_cpu_ops_{
       *this, "skip-raise-cpu-ops",
       llvm::cl::desc("Whether to cluster and raise CPU ops."),
+      llvm::cl::init(false)};
+
+  Option<bool> ignore_inference_type_{
+      *this, "ignore-inference-type",
+      llvm::cl::desc("Whether to ignore the inference type in clustering."),
       llvm::cl::init(false)};
 
   llvm::StringRef getArgument() const final {
@@ -203,8 +211,11 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(
       return std::string("");
     }
     std::string concat_inference_device_type_string =
-        absl::StrCat(device_type.value().hardware, "_",
-                     GetInferenceString(device_type.value().inference_type));
+        ignore_inference_type_
+            ? device_type.value().hardware
+            : absl::StrCat(
+                  device_type.value().hardware, "_",
+                  GetInferenceString(device_type.value().inference_type));
     return concat_inference_device_type_string;
   };
 
@@ -257,8 +268,9 @@ void RaiseTargetSubgraphsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass(
-    bool skip_raise_cpu_ops) {
-  return std::make_unique<RaiseTargetSubgraphsPass>(skip_raise_cpu_ops);
+    bool skip_raise_cpu_ops, bool ignore_inference_type) {
+  return std::make_unique<RaiseTargetSubgraphsPass>(skip_raise_cpu_ops,
+                                                    ignore_inference_type);
 }
 
 static PassRegistration<RaiseTargetSubgraphsPass> pass;

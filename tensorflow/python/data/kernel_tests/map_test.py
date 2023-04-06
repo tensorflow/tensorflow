@@ -28,7 +28,6 @@ from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
-from tensorflow.python.data.experimental.ops import from_list
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -54,9 +53,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -1240,9 +1241,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session(config=config):
 
       with ops.device("/device:CPU:0"):
-        a = variables.VariableV1(3.0)
+        a = variable_v1.VariableV1(3.0)
       with ops.device("/device:CPU:1"):
-        b = variables.VariableV1(5.0)
+        b = variable_v1.VariableV1(5.0)
 
       def func(_):
         nonlocal a, b
@@ -1343,14 +1344,13 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         pywrap_sanitizers.is_tsan_enabled() or
         pywrap_sanitizers.is_msan_enabled()):
       self.skipTest("Skip to avoid OOM when using sanitizers.")
-    # Tensors of size 512M.
-    dataset = from_list.from_list(
-        [
-            random_ops.random_uniform((128, 1024, 1024), dtype=dtypes.float32)
-            for _ in range(5)
-        ]
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset.map(
+        # Create tensors of size 512M.
+        lambda seed: stateless_random_ops.stateless_random_uniform(
+            (128, 1024, 1024), seed, dtype=dtypes.float32
+        )
     )
-
     # Set parallelism to 5 to exceed the 2GB protobuf limit
     dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)

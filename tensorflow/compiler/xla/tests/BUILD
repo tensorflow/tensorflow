@@ -2083,6 +2083,49 @@ xla_test(
 )
 
 xla_test(
+    name = "collective_ops_test_e2e",
+    srcs = ["collective_ops_test_e2e.cc"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    backend_tags = {
+        # This test is tagged "manual" because it requires multiple GPUs, and
+        # Forge only supports single-GPU tests.  Guitar skips "manual" tests
+        # unless they're also tagged "guitar".
+        "gpu": [
+            "guitar",
+            "manual",
+            "multi_gpu",
+            "no_oss",
+            "notap",
+            "jitrt_executable",
+        ],
+        "cpu": [
+            "notsan",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "replicated_io_feed_test",
     srcs = ["replicated_io_feed_test.cc"],
     backend_tags = {

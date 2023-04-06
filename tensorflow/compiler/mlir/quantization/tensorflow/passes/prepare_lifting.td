@@ -41,6 +41,24 @@ def ConvertArithConstToTfConst : Pat<
   (TF_ConstOp $value),
   [(AnyStaticShapeTensor $res)]>;
 
+
+// Only handles the case where batch_dimension is empty.
+def IsXlaGatherWithoutBatch :
+  Constraint<CPred<"IsXlaGatherWithoutBatch($0, $1)">>;
+
+// Create Slice op from XlaGather op without batch dimension.
+def CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch : NativeCodeCall<
+  "CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch($_builder, $_loc, $0...)">;
+
+// Convert XlaGather op without batch to Slice op with above two functions.
+def ConvertXlaGatherOpWithoutBatch : Pat<
+  (TF_XlaGatherOp:$gather $operand,
+    $start_indices, $slice_sizes, $dimension_numbers, $indices_are_sorted),
+  (CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch $operand,
+    $start_indices, $slice_sizes, $gather, $dimension_numbers),
+  [(IsXlaGatherWithoutBatch $operand, $start_indices)]>;
+
+
 // Converts tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //

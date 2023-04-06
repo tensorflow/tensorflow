@@ -234,8 +234,8 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
-std::string ComparisonPrimitiveTypeToString(PrimitiveType type);
-std::string ComparisonOrderToString(Comparison::Order order);
+absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
+absl::string_view ComparisonOrderToString(Comparison::Order order);
 
 StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);

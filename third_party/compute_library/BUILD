@@ -73,8 +73,8 @@ cc_library(
             "**/*.inl",
         ],
     ) + [
-        "src/core/NEON/kernels/arm_gemm/transform-sve.cpp",
         "src/core/NEON/kernels/arm_gemm/mergeresults-sve.cpp",
+        "src/core/NEON/kernels/arm_gemm/transform-sve.cpp",
     ],
     copts = [
         "-march=armv8.2-a+sve",
@@ -136,11 +136,11 @@ cc_library(
             "src/gpu/**",
         ],
     ) + [
-        "src/core/CPP/CPPTypes.cpp",
         "src/c/operators/AclActivation.cpp",
-        "src/core/NEON/kernels/arm_conv/pooling/kernels/cpp_nhwc_1x1_stride_any_depthfirst/generic.cpp",
-        "src/core/NEON/kernels/arm_conv/depthwise/interleaves/8b_mla.cpp",
+        "src/core/CPP/CPPTypes.cpp",
         "src/core/NEON/kernels/arm_conv/addressing.cpp",
+        "src/core/NEON/kernels/arm_conv/depthwise/interleaves/8b_mla.cpp",
+        "src/core/NEON/kernels/arm_conv/pooling/kernels/cpp_nhwc_1x1_stride_any_depthfirst/generic.cpp",
     ],
     hdrs = glob([
         "src/core/NEON/kernels/**/*.h",

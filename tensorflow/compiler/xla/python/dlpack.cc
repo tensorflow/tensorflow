@@ -284,13 +284,7 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                                                   bool take_ownership) {
-  ifrt::Array* ifrt_array = nullptr;
-  if (PyArray::IsPyArray(py_buffer)) {
-    ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
-  } else {
-    TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(py_buffer));
-    ifrt_array = buffer->ifrt_array();
-  }
+  ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
   auto pack = std::make_unique<DLPackTensor>();
   if (ifrt_array == nullptr) {
     return Unimplemented(

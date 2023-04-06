@@ -224,7 +224,7 @@ void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
   LOG(ERROR) << "This thread has been waiting for " << timeout.count()
              << "ms for and may be stuck: " << desc_fn();
   counter->Wait();
-  LOG(ERROR) << "Thread is unstuck!  Warning above was a false-positive.  "
+  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
                 "Perhaps the timeout is too short: "
              << desc_fn();
 }
@@ -368,7 +368,7 @@ class Rendezvous {
       if (!participants_.empty() &&
           participants_.back().rendezvous_key != participant.rendezvous_key) {
         return InvalidArgument(
-            "Mismatch among all-reduce participants.  Expected same "
+            "Mismatch among all-reduce participants. Expected same "
             "replica-count, element-count, and rendezvous-key but were %s and "
             "%s",
             participants_.back().ToString(), participant.ToString());

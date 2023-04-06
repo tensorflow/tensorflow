@@ -779,8 +779,8 @@ tf_cuda_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = tf_cuda_tests_tags() + [
         "manual",
-        "notap",  # Memory leak due to b/62910646
         "noguitar",  # Memory leak due to b/62910646
+        "notap",  # Memory leak due to b/62910646
     ],
     deps = [
         ":master",

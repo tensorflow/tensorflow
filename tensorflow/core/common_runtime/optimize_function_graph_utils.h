@@ -66,6 +66,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 // optimization or partitioning step fails.
 StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
+    const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,

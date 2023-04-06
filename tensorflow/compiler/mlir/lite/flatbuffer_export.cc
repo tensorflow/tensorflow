@@ -124,7 +124,6 @@ using VectorBufferOffset = flatbuffers::Offset<flatbuffers::Vector<T>>;
 
 using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 
-namespace error = tensorflow::error;
 namespace tfl = mlir::TFL;
 
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";

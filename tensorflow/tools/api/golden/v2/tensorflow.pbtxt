@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "Graph"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "IndexedSlices"
@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "Operation"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "OptionalSpec"

@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -763,12 +765,34 @@ Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
   return OkStatus();
 }
 
-Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                                 const StackTracesMap& stack_traces) {
   // Need a new-enough consumer to support the functions we add to the graph.
   if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
     versions_->set_min_consumer(12);
   }
-  return ops_.AddLibrary(fdef_lib);
+  return ops_.AddLibrary(fdef_lib, stack_traces);
+}
+
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  return AddFunctionLibrary(fdef_lib, /*stack_traces=*/{});
+}
+
+Status Graph::AddFunctionDef(const FunctionDef& fdef,
+                             const StackTracesMap& stack_traces) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddFunctionDef(fdef, stack_traces);
+}
+
+Status Graph::AddGradientDef(const GradientDef& gdef) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddGradientDef(gdef);
 }
 
 namespace {

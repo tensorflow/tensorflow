@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -844,7 +844,9 @@ cc_library(
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
         ":tflite_with_xnnpack_explicit_false": [],
-        "//conditions:default": [],
+        "//conditions:default": [
+            "TFLITE_KERNEL_USE_XNNPACK",
+        ],
     }),
 )
 
@@ -895,13 +897,13 @@ cc_library(
         "//tensorflow/lite/core/c:common",
     ] + select({
         ":tflite_with_xnnpack_explicit_true": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
             ":tflite_with_xnnpack_enabled",
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         ],
         ":tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
             ":tflite_with_xnnpack_default",
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         ],
     }),
 )
@@ -1305,13 +1307,12 @@ tflite_cc_shared_object(
     # Until we have more granular symbol export for the C++ API on Windows,
     # export all symbols.
     features = ["windows_export_all_symbols"],
-    linkopts = select({
+    linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),

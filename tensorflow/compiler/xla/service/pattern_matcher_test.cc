@@ -893,8 +893,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in a = s32[] add(s32[] c, s32[] c)");
 
   EXPECT_DESC_AND_EXPLANATION(
-      constant,
-      m::Op().WithPredicate([](const HloInstruction*) { return false; }),
+      constant, m::Op().WithPredicate(HloPredicateFalse),
       "an HloInstruction which matches a user-specified predicate",
       "HloInstruction does not match user-specified predicate\n"
       "in c = s32[] constant(0)");
@@ -918,7 +917,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
       "    - an HloInstruction named \"b\"\n"
       "    - an HloInstruction named \"bar\"",
       "HloInstruction's operands (ignoring order) did not match second "
-      "matcher.  Specifically,\n"
+      "matcher. Specifically,\n"
       " - an HloInstruction named \"bar\"\n"
       "does not match LHS:\n"
       " - HloInstruction not named \"bar\"\n"
@@ -942,7 +941,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
       " * with two operands in either order:\n"
       "    - an HloInstruction which is a constant scalar\n"
       "    - an HloInstruction with opcode constant",
-      "HloInstruction's LHS operand did not match either of the two matchers.  "
+      "HloInstruction's LHS operand did not match either of the two matchers. "
       "Specifically,\n"
       " - an HloInstruction which is a constant scalar\n"
       "does not match LHS:\n"

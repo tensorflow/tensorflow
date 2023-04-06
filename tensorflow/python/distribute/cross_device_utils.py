@@ -194,12 +194,32 @@ class CollectiveKeys(object):
     self._group_key = group_key_start
     self._instance_key_table = {}
     self._lock = threading.Lock()
+    self._known_groups = {}
 
   def get_group_key(self, devices):
+    """Returns a group key for the list of local devices.
+
+    The same group key is returned if the list of local devices is the same.
+
+    Args:
+      devices: a list of local canonical device strings in a collective group.
+
+    Returns:
+      a group key.
+    """
+    with self._lock:
+      devices_key = ','.join(devices)
+      if devices_key not in self._known_groups:
+        self._known_groups[devices_key] = self._get_new_group_key(devices)
+      return self._known_groups[devices_key]
+
+  def _get_new_group_key(self, devices):
     """Returns a new group key.
 
     The caller should store and reuse the same group key for the same set of
     devices. Calling this method always returns a new group key.
+
+    This method is not thread-safe.
 
     Args:
       devices: a list of canonical device strings in a collective group.
@@ -207,13 +227,12 @@ class CollectiveKeys(object):
     Returns:
       a new group key.
     """
-    with self._lock:
-      new_key = self._group_key
-      self._group_key += 1
-      self._instance_key_table[new_key] = {}
-      for device in devices:
-        self._instance_key_table[new_key][device] = INSTANCE_KEY_START_NUMBER
-      return new_key
+    new_key = self._group_key
+    self._group_key += 1
+    self._instance_key_table[new_key] = {}
+    for device in devices:
+      self._instance_key_table[new_key][device] = INSTANCE_KEY_START_NUMBER
+    return new_key
 
   def get_instance_key(self, group_key, device):
     """Returns a new instance key for use in defining a collective op.

@@ -514,7 +514,17 @@ UNARY_TEST_BF16(Tan, {
 // UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan) { Run(Atan, std::atan); }
 // UNARY_TEST_FLOAT_32_BITS_OR_LESS(Atan2) { Run(Atan2, std::atan2); }
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, { Run(Erf, std::erf); })
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erf, {
+  Run(
+      Erf, std::erf, +[](NativeT x) {
+        NativeT tol =
+            std::max(std::numeric_limits<NativeT>::epsilon(),
+                     NativeT(4 * std::numeric_limits<float>::epsilon()));
+        NativeT abs_tol = std::min(tol, NativeT(1 - std::abs(std::erf(x))));
+        return ErrorSpec(abs_tol, tol);
+      });
+})
+
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Erfc, { Run(Erfc, std::erfc); })
 
 UNARY_TEST_F32(ErfInv, { Run(ErfInv, HostErfInv); })

@@ -33,7 +33,6 @@ limitations under the License.
 
 namespace xla {
 
-class PyBuffer;
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
@@ -144,7 +143,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
-  // Returns a vector of live PyBuffer objects. PyBuffer objects may share
+  // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
   std::vector<pybind11::object> LiveBuffers();
@@ -249,19 +248,16 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<pybind11::object> LiveArrays();
 
  private:
-  friend class PyBuffer;
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
 
-  // Pointers to intrusive doubly-linked lists of buffers and executables, used
+  // Pointers to intrusive doubly-linked lists of arrays and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.
 
-  // buffers_ is a per-device list, indexed by device->id().
-  std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
 };

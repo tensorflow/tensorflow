@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -48,6 +49,8 @@ class BaseRecvTensorCall;
 // until the tensor is received.  Each global unique "step_id"
 // corresponds to one local rendezvous instance managed by a
 // RendezvousMgr.
+// RendezvousMgr holds weak references to rendezvous. When a rendezvous is
+// destructed, it will create a new instance to fulfill the Find.
 //
 // E.g.,
 //   Rendezvous* rendez = worker_env->rendezvous_mgr->Find(0x8935);
@@ -73,7 +76,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   //
   // Note: the caller must guarantee to eventually call Initialize on the
   // returned RemoteRendezvous
-  RemoteRendezvous* Find(int64_t step_id) override;
+  tsl::core::RefCountPtr<RemoteRendezvous> Find(int64_t step_id) override;
 
   // Finds the local rendezvous instance for the "step_id".  Runs
   // "done" when the tensor for "key" is produced or an error occurs.
@@ -96,12 +99,13 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   void CleanupAll() override;
 
  protected:
-  virtual BaseRemoteRendezvous* Create(int64_t step_id,
-                                       const WorkerEnv* worker_env) = 0;
+  virtual tsl::core::RefCountPtr<BaseRemoteRendezvous> Create(
+      int64_t step_id, const WorkerEnv* worker_env) = 0;
 
  private:
   // Maps step_id to rendezvous.
-  typedef absl::flat_hash_map<int64_t, BaseRemoteRendezvous*> Table;
+  typedef absl::flat_hash_map<int64_t, tsl::core::WeakPtr<BaseRemoteRendezvous>>
+      Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
@@ -109,7 +113,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   mutex mu_;
   Table table_ TF_GUARDED_BY(mu_);
 
-  BaseRemoteRendezvous* FindOrCreate(int64_t step_id);
+  tsl::core::RefCountPtr<BaseRemoteRendezvous> FindOrCreate(int64_t step_id);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BaseRendezvousMgr);
 };
@@ -187,7 +191,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
  private:
   int num_shards_;
-  Rendezvous* local_;  // Owns a Ref on this object.
+  LocalRendezvous local_;
   // Indicates whether this remote rendezvous instance is used as the default
   // rendezvous for remote eager op-by-op execution. Errors in eager op-by-op
   // execution should not abort the rendezvous since it is a context-wide
@@ -207,8 +211,10 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   struct DeferredCall {
     const ParsedKey parsed;
     DoneCallback done;
+    tsl::core::RefCountPtr<Rendezvous> rendezvous;
 
-    DeferredCall(const ParsedKey& parsed, DoneCallback done);
+    DeferredCall(const ParsedKey& parsed, DoneCallback done,
+                 tsl::core::RefCountPtr<Rendezvous> rendez);
   };
   std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(mu_);
 

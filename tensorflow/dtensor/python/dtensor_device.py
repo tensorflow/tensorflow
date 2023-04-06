@@ -72,14 +72,14 @@ class DTensorDevice(object):
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
                                                _next_device_number)
       _next_device_number += 1
-    device, device_info = _pywrap_dtensor_device.Allocate(self.name)
+    device, device_info = _pywrap_dtensor_device.Allocate(
+        self.name, is_async, in_flight_nodes_limit
+    )
     context.register_custom_device(device, self.name, device_info)
 
     self._device_info = device_info
     self._current_output_layout = None
     self._current_default_mesh = None
-    self._is_async = is_async
-    self._in_flight_nodes_limit = in_flight_nodes_limit
     self._meshes = set()
     self._mesh_lock = threading.Lock()
     for mesh in meshes:
@@ -136,28 +136,26 @@ class DTensorDevice(object):
     """Idempotently register `mesh` with the dtensor device."""
     with self._mesh_lock:
       if mesh not in self._meshes:
-        _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                       self._is_async, False,
-                                       self._in_flight_nodes_limit)
+        _pywrap_dtensor_device.AddMesh(
+            self._device_info, mesh.to_string(), False
+        )
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
               "Registering virtual 1:1 mapped host mesh %s for mesh %s",
               mesh.host_mesh().to_string(), mesh.to_string())
-          _pywrap_dtensor_device.AddMesh(self._device_info,
-                                         mesh.host_mesh().to_string(),
-                                         self._is_async, True,
-                                         self._in_flight_nodes_limit)
+          _pywrap_dtensor_device.AddMesh(
+              self._device_info, mesh.host_mesh().to_string(), True
+          )
           self._meshes.add(mesh.host_mesh())
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
             logging.info(
                 "Registering embedding host mesh %s on each client for mesh %s",
                 embedding_host_mesh.to_string(), mesh.to_string())
-            _pywrap_dtensor_device.AddMesh(self._device_info,
-                                           embedding_host_mesh.to_string(),
-                                           self._is_async, False,
-                                           self._in_flight_nodes_limit)
+            _pywrap_dtensor_device.AddMesh(
+                self._device_info, embedding_host_mesh.to_string(), False
+            )
             self._meshes.add(embedding_host_mesh)
 
   @property

@@ -1002,7 +1002,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*matmul.*',
@@ -1018,17 +1018,17 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
         # Check the forward and backward function has the correct attributes.
         self.assertEqual(
-            functions[1].definition.attr['backward_function_name'].s,
+            functions[1].cached_definition.attr['backward_function_name'].s,
             functions[2].name)
         self.assertEqual(
-            functions[2].definition.attr['forward_function_name'].s,
+            functions[2].cached_definition.attr['forward_function_name'].s,
             functions[1].name)
 
         self.assertEqual(
-            functions[4].definition.attr['backward_function_name'].s,
+            functions[4].cached_definition.attr['backward_function_name'].s,
             functions[5].name)
         self.assertEqual(
-            functions[5].definition.attr['forward_function_name'].s,
+            functions[5].cached_definition.attr['forward_function_name'].s,
             functions[4].name)
 
         sq = defun_matmul(t, t)
@@ -1041,7 +1041,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         functions = list(graph._functions.values())
         for i in range(len(functions)):
           self.assertEqual(captured_function_names[i],
-                           functions[i].definition.signature.name)
+                           functions[i].cached_definition.signature.name)
 
   def testRegisterConcreteFunction(self):
 
@@ -1075,7 +1075,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
         # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
         captured_function_names = [
-            f.definition.signature.name for f in functions
+            f.cached_definition.signature.name for f in functions
         ]
         expected_func_name_regex = [
             '.*inference.*py_composite.*',
@@ -1945,9 +1945,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testAddFunctionCallback(self):
     functions = []
 
-    def function_callback(f, name, graph, inputs, outputs):
-      del name, graph, inputs, outputs
+    def function_callback(f):
       functions.append(f)
+      return f
 
     @polymorphic_function.function
     def plus_one(x):
@@ -1972,13 +1972,21 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testFunctionCallbackAddOps(self):
     file_name = os.path.join(self.get_temp_dir(), 'test')
 
-    def function_callback(f, name, graph, inputs, outputs):
-      del f, name, inputs
-
-      with graph.as_default():
+    def function_callback(f):
+      with f.graph.as_default():
         printer = logging_ops.print_v2(
-            'hello', output_stream='file://' + file_name)
-        outputs[0].op._add_control_input(printer)
+            'hello', output_stream='file://' + file_name
+        )
+        f._graph_artifacts.outputs[0].op._add_control_input(printer)
+
+        return atomic_function.from_func_graph_no_transforms(
+            f.name,
+            f.graph,
+            f._graph_artifacts.inputs,
+            f._graph_artifacts.outputs,
+            f._graph_artifacts.attrs,
+            overwrite=True,
+        )
 
     @polymorphic_function.function
     def plus_one(x):
@@ -1996,15 +2004,15 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testRemoveFunctionCallback(self):
     functions_1 = []
 
-    def function_callback_1(f, name, graph, inputs, outputs):
-      del name, graph, inputs, outputs
+    def function_callback_1(f):
       functions_1.append(f)
+      return f
 
     functions_2 = []
 
-    def function_callback_2(f, name, graph, inputs, outputs):
-      del name, graph, inputs, outputs
+    def function_callback_2(f):
       functions_2.append(f)
+      return f
 
     @polymorphic_function.function
     def plus_one(x):
@@ -2028,9 +2036,9 @@ class FunctionCallbackTest(test.TestCase, parameterized.TestCase):
   def testClearFunctionCallbacks(self):
     quarantine.add_function_callback(lambda f: None)
     quarantine.add_function_callback(lambda f: None)
-    self.assertLen(atomic_function.function_callbacks, 2)
+    self.assertLen(atomic_function.FUNCTION_TRANSFORMS, 2)
     quarantine.clear_function_callbacks()
-    self.assertEmpty(atomic_function.function_callbacks)
+    self.assertEmpty(atomic_function.FUNCTION_TRANSFORMS)
 
   @test_util.run_in_graph_and_eager_modes
   def testBackwardNoneGradient(self):

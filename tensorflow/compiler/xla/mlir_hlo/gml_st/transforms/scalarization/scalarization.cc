@@ -353,6 +353,8 @@ LogicalResult hoistTensorExtractFromIfOp(scf::IfOp ifOp,
 
 struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *ctx = &getContext();
@@ -361,11 +363,14 @@ struct ScalarizationPass
     patterns.add<ScalarizeLinalgOp, FoldTensorFromElementsIntoInsertSlice>(ctx);
     patterns.add(hoistTensorExtractFromForOp);
     patterns.add(hoistTensorExtractFromIfOp);
-    patterns.add(scalarizeConcatenateOp);
     patterns.add(scalarizeDynamicBroadcastInDimOp);
-    patterns.add(scalarizeGatherOp);
     patterns.add(scalarizeReverseOp);
-    patterns.add(scalarizeScatterOp);
+
+    if (scalarizeAllThlo) {
+      patterns.add(scalarizeConcatenateOp);
+      patterns.add(scalarizeGatherOp);
+      patterns.add(scalarizeScatterOp);
+    }
 
     FromElementsOp::getCanonicalizationPatterns(patterns, ctx);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
@@ -494,6 +499,19 @@ LogicalResult scalarizeGatherOp(thlo::GatherOp gatherOp,
 LogicalResult scalarizeLinalgOp(LinalgOp linalgOp, PatternRewriter &rewriter) {
   // Fail if not every argument is a scalar or a single-element tensor.
   if (!hasSingleElementOperandsAndResults(linalgOp)) return failure();
+
+  // Do not scalarize linalg::FillOp that is only used by DPS ops as init
+  // operands.
+  if (isa<linalg::FillOp>(linalgOp)) {
+    if (llvm::all_of(linalgOp->getUses(), [&](OpOperand &use) {
+          Operation *user = use.getOwner();
+          return isa<DestinationStyleOpInterface>(user) &&
+                 llvm::is_contained(cast<DestinationStyleOpInterface>(user)
+                                        .getDpsInitOperands(),
+                                    &use);
+        }))
+      return failure();
+  }
 
   // Load the data corresponding to the block arguments that
   // represent input operands.
@@ -638,8 +656,11 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
   return rewriteScatterOpAsIfOp(scatterOp, rewriter);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {
-  return std::make_unique<ScalarizationPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
+    bool scalarizeAllThlo) {
+  ScalarizationPassOptions opts;
+  opts.scalarizeAllThlo = scalarizeAllThlo;
+  return std::make_unique<ScalarizationPass>(opts);
 }
 
 }  // namespace gml_st

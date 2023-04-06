@@ -2734,11 +2734,13 @@ LogicalResult TransposeOp::verify() {
       const int64_t y_idx = e.index();
       const int64_t y_dim = y_type.getDimSize(y_idx);
       int64_t x_idx = e.value().getSExtValue();
-      if (x_idx < 0) x_idx += x_type.getRank();
-      if (x_idx < 0) {
+      int64_t x_rank = x_type.getRank();
+      if (x_idx < -x_rank || x_idx >= x_rank) {
         return op.emitOpError(
-            llvm::formatv("perm[{0}] must be in [-rank, rank)", x_idx));
+            llvm::formatv("perm[{0}]={1} must be in range [-{2}, {2})", y_idx,
+                          x_idx, x_rank));
       }
+      if (x_idx < 0) x_idx += x_rank;
       const int64_t x_dim = x_type.getDimSize(x_idx);
       if (!ShapedType::isDynamic(y_dim) && !ShapedType::isDynamic(x_dim) &&
           y_dim != x_dim) {
@@ -4105,6 +4107,15 @@ LogicalResult UniformQuantizedDotOp::verify() {
 //
 
 LogicalResult UniformQuantizedConvolutionOp::verify() {
+  return VerifyLhsRhsBothUniformQuantizedOp(*this);
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedAddOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedAddOp::verify() {
   return VerifyLhsRhsBothUniformQuantizedOp(*this);
 }
 

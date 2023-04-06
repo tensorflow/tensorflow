@@ -345,6 +345,11 @@ absl::string_view AsyncTracker::GetResourceUsageName(
   return GetResourceUsageName(ResourceUsageTypeToIndex(resource_usage_type));
 }
 
+ResourceHazardType AsyncTracker::GetResourceHazardType(
+    int64_t resource_type) const {
+  return ResourceHazardType::kUnshareable;
+}
+
 absl::string_view AsyncTracker::GetResourceUsageName(
     int64_t resource_usage_type) const {
   switch (resource_usage_type) {
@@ -1240,6 +1245,17 @@ std::vector<HloGraphNode*> HloScheduleGraph::FindBottomRoots() const {
   for (const HloInstruction* instr : original_order_) {
     HloGraphNode& node = GetNode(instr);
     if (node.GetOutdegree() == 0) {
+      roots.push_back(&node);
+    }
+  }
+  return roots;
+}
+
+std::vector<HloGraphNode*> HloScheduleGraph::FindTopRoots() const {
+  std::vector<HloGraphNode*> roots;
+  for (const HloInstruction* instr : original_order_) {
+    HloGraphNode& node = GetNode(instr);
+    if (node.GetIndegree() == 0) {
       roots.push_back(&node);
     }
   }

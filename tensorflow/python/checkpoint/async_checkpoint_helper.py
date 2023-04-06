@@ -35,7 +35,6 @@ from tensorflow.python.ops.resource_variable_ops import UninitializedVariable
 from tensorflow.python.ops.variables import Variable
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.tpu.tpu_embedding_v2 import TPUEmbedding
-from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.util import object_identity
 
 # Captures the timestamp of the first Checkpoint instantiation or end of a write
@@ -209,10 +208,9 @@ class AsyncCheckpointHelper:
 
     # Copy for the slot variables.
     for current_trackable in self._original_nodes:
-      if (isinstance(current_trackable, optimizer_v1.Optimizer)
           # Note: dir() is used rather than hasattr() here to avoid triggering
           # custom __getattr__ code, see b/152031870 for context.
-          or "get_slot_names" in dir(current_trackable)):
+      if "get_slot_names" in dir(current_trackable):
         slot_names = current_trackable.get_slot_names()
         for slot_name in slot_names:
           for original_variable in self._original_nodes:

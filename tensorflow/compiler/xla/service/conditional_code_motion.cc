@@ -767,7 +767,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
   *conditional->mutable_shape() = new_root->shape();
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
-  conditional->set_sharding(new_root->sharding_ptr());
+  conditional->copy_sharding(new_root);
   VLOG(2) << "done moving instructions out of branches\n"
           << conditional_parent->ToString(HloPrintOptions::Fingerprint());
   return true;
@@ -912,7 +912,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   *conditional->mutable_shape() = new_root->shape();
   // Keep conditional instruction sharding consistent with the branches. Note
   // that this sharding could be lost after this pass.
-  conditional->set_sharding(new_root->sharding_ptr());
+  conditional->copy_sharding(new_root);
   // Reset shapes of user gtes to the new shape.
   if (use_index != -1) {
     for (auto* user : conditional->users()) {
@@ -1894,7 +1894,7 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
                 << " > " << kMemoryAllowance << "\n";
         benefit = -1;
       } else {
-        VLOG(1) << "Increase memory pressure by  " << move_in_or_out.second
+        VLOG(1) << "Increase memory pressure by " << move_in_or_out.second
                 << "\n";
         memory_increase_ += move_in_or_out.second;
       }

@@ -603,6 +603,8 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:preprocess_xplane",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
     ],
 )

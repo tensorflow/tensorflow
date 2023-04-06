@@ -20,6 +20,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_test_lib
@@ -488,6 +489,33 @@ class TPUStrategyModelParallelismTest(
     self.assertAllEqual(
         (arg + 3) * num_replicas,
         self.evaluate(strategy.reduce("SUM", result, axis=None)))
+
+  # Tests auto_to_manual_spmd_partition and manual_to_auto_spmd_partition.
+  # The internal versions of these ops are XlaSpmdFullToShardShape and
+  # XlaSpmdShardToFullShape.
+  def test_manual_sharding_ops(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    @def_function.function
+    def fn(x):
+      x_split = strategy.experimental_split_to_logical_devices(x, [1, 2])
+      split_sharding = xla_sharding.get_op_sharding(x_split.op)
+      x_manual = xla_sharding.auto_to_manual_spmd_partition(
+          x_split, split_sharding
+      )
+      y_manual = x_manual + 1
+      y_split = xla_sharding.manual_to_auto_spmd_partition(
+          y_manual, split_sharding, (2, 2)
+      )
+      return y_split
+
+    arg = constant_op.constant(0, shape=(2, 2), dtype=dtypes.int64)
+    result = strategy.run(fn, args=(arg,))
+    self.assertAllEqual(
+        (arg + 1) * num_replicas,
+        self.evaluate(strategy.reduce("SUM", result, axis=None)),
+    )
+
 
 if __name__ == "__main__":
   test.main()

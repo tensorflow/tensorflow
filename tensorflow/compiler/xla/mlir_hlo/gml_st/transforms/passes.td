@@ -63,6 +63,11 @@ def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
     "::mlir::vector::VectorDialect",
     "::mlir::tensor::TensorDialect"
   ];
+  let options = [
+    Option<"numElementsThreshold", "num-elements-threshold", "int64_t",
+           /*default=*/"128",
+           "Number of elements max of the tensor operands in order for the op to be vectorized.">,
+  ];
 }
 
 def VectorizeCopyPass :
@@ -99,6 +104,10 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";
+  let options = [
+    Option<"scalarizeAllThlo", "scalarize-all-thlo", "bool", /*default=*/"true",
+           "Enable scalarization of thlo.concatenate/gather/scatter.">,
+  ];
 }
 
 def PackMatmulPass : Pass<"xla-cpu-pack-matmul", "mlir::func::FuncOp"> {
@@ -116,14 +125,7 @@ def TransformScatterForCpuPass :
 def TransformDotForCpuPass :
     Pass<"xla-cpu-transform-dot", "mlir::func::FuncOp"> {
   let summary = "Transform dot ops for running on CPU";
-
   let constructor = "createTransformDotForCpuPass()";
-}
-
-def TransformMatmulForCpuPass :
-    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
-  let summary = "Transform matmul ops for running on CPU";
-  let constructor = "createTransformMatmulForCpuPass()";
 }
 
 def TransformPackForCpuPass :
@@ -144,56 +146,66 @@ def TransformConvForCpuPass :
   let constructor = "createTransformConvForCpuPass()";
 }
 
-def TransformMapForCpuPass :
-    Pass <"gml-st-cpu-transform-map", "mlir::func::FuncOp"> {
-  let summary = "Transform map ops for running on CPU";
-
-  let constructor = "::mlir::gml_st::createTransformMapForCpuPass()";
-
-  let options = [
-    Option<"tileSize", "tile-size", "int64_t", "1",
-           "Tile size for the innermost dimension of `linalg.map`">,
+def RewriteDotAsReducePass
+    : Pass<"gml-st-rewrite-dot-as-reduce", "mlir::func::FuncOp"> {
+  let summary = "Pass to rewrite linalg.dot as linalg.reduce(linalg.map).";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::linalg::LinalgDialect",
+    "::mlir::tensor::TensorDialect"
   ];
+  let constructor = "createRewriteDotAsReducePass()";
 }
 
-def TransformTransposeForCpuPass :
-    Pass<"gml-st-cpu-transform-transpose", "mlir::func::FuncOp"> {
-  let summary = "Transform transpose ops for running on CPU";
+def TransformBatchMatmulForCpuPass :
+    Pass<"xla-cpu-transform-batch-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform batch_matmul ops for running on CPU";
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "scf::SCFDialect",
+    "tensor::TensorDialect"
+  ];
+  let constructor = "createTransformBatchMatmulForCpuPass()";
+}
 
-  let constructor = "createTransformTransposeForCpuPass()";
+def TransformElementwiseForCpuPass :
+    Pass <"xla-cpu-tranform-elementwise", "mlir::func::FuncOp"> {
+  let summary = "Transform elementwise ops for running on CPU";
+  let description = [{
+    Transforms elementwise ops, i.e. map, transpose, broadcast, concat, reverse.
+  }];
+  let constructor = "::mlir::gml_st::createTransformElementwiseForCpuPass()";
 
   let options = [
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.transpose`">,
+    Option<"vectorSize", "vector-size", "int64_t", "8", "Vector size.">,
+    Option<"fuseDegenerateReshapes", "fuse-degenerate-reshapes", "bool",
+           /*default=*/"false",
+           "Fuse through degenerate tensor.expand/collapse_shape">,
   ];
 }
 
 def TransformReduceForCpuPass :
     Pass<"xla-cpu-transform-reduce", "mlir::func::FuncOp"> {
   let summary = "Transform reduce ops for running on CPU";
-
-  let constructor = "createTransformReduceForCpuPass()";
-
   let options = [
-    Option<"vectorSize", "vector-size", "int64_t", "8",
-           "Vector size for a 1D `linalg.reduce`">,
-    Option<"tileSize1D", "tile-size-1d", "int64_t", "32",
-               "Tile size for a 1D `linalg.reduce`">,
-    ListOption<"tileSizes2D", "tile-sizes-2d", "int64_t",
-               "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
-               "dimension and tileSizes[1] is the reduction dimension.">,
+    Option<"enableHeuristic", "enable_heuristic", "bool", "false",
+           "Enable heuristic for tiling sizes. Currently only for 1D.">,
+    Option<"tileSize1D", "reduction-1d-tile-size", "int64_t", "32",
+           "Tile size for a 1D reduction.">,
+    Option<"splitRatio1D", "reduction-1d-split-ratio", "int64_t", "8",
+           "Ratio used to split the reduction dimension, i.e. tiled reduce op "
+           "`reduce(tensor<N>)` will be split into a composition of a "
+           " column reduction `reduce(tensor<N/splitRatio1D x splitRatio1D>)` "
+           "and a row 1D reductionreduce(tensor<splitRatio1D>)`." >,
+    Option<"parallelDimTileSize2D",
+            "reduction-2d-parallel-dim-tile-size", "int64_t", "4",
+           "Tile size for the parallel dimension of a 2D reduction.">,
+    Option<"reductionDimTileSize2D",
+           "reduction-2d-reduction-dim-tile-size", "int64_t", "4",
+           "Tile size for the reduction dimension of a 2D reduction.">,
   ];
+  let constructor = "::mlir::gml_st::createTransformReduceForCpuPass()";
 }
-
-def TransformReverseForCpuPass :
-  Pass<"xla-cpu-transform-reverse", "mlir::func::FuncOp"> {
-    let summary = "Transform reverse ops for running on CPU";
-    let constructor = "createTransformReverseForCpuPass()";
-    let options = [
-      Option<"vectorSize", "vector-size", "int64_t", "8",
-           "Vector size for 'thlo.reverse`">,
-    ];
-  }
 
 def AddDebugInfoPass :
     Pass<"add-debug-info", "mlir::ModuleOp"> {
@@ -206,6 +218,11 @@ def CollectStatsPass :
     Pass<"collect-stats", "mlir::func::FuncOp"> {
   let summary = "Print stats about tileable ops";
   let constructor = "::mlir::gml_st::createCollectStatsPass()";
+}
+
+def RemoveLabelPass : Pass<"remove-label", "mlir::func::FuncOp"> {
+  let summary = "Remove transformed labels from tiled ops";
+  let constructor = "::mlir::gml_st::createRemoveLabelPass()";
 }
 
 def FusionPlanningForCpuPass :

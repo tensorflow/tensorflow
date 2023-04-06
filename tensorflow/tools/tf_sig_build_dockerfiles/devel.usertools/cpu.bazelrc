@@ -29,7 +29,7 @@ build --copt=-mavx --host_copt=-mavx
 build --profile=/tf/pkg/profile.json.gz
 
 # Use the NVCC toolchain to compile for manylinux2014
-build --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
+build --crosstool_top="@sigbuild-r2.13_config_cuda//crosstool:toolchain"
 
 # Test-related settings below this point.
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
@@ -89,14 +89,14 @@ build:rbe --spawn_strategy=remote,worker,standalone,local
 build:rbe --remote_download_toplevel
 build:rbe --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
 build:rbe --linkopt=-lrt --host_linkopt=-lrt --linkopt=-lm --host_linkopt=-lm  # Unclear why this is here
-build:rbe --host_crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
-build:rbe --crosstool_top="@sigbuild-r2.12_config_cuda//crosstool:toolchain"
-build:rbe --extra_toolchains="@sigbuild-r2.12_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe --extra_execution_platforms="@sigbuild-r2.12_config_platform//:platform"
-build:rbe --host_platform="@sigbuild-r2.12_config_platform//:platform"
-build:rbe --platforms="@sigbuild-r2.12_config_platform//:platform"
+build:rbe --host_crosstool_top="@sigbuild-r2.13_config_cuda//crosstool:toolchain"
+build:rbe --crosstool_top="@sigbuild-r2.13_config_cuda//crosstool:toolchain"
+build:rbe --extra_toolchains="@sigbuild-r2.13_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe --extra_execution_platforms="@sigbuild-r2.13_config_platform//:platform"
+build:rbe --host_platform="@sigbuild-r2.13_config_platform//:platform"
+build:rbe --platforms="@sigbuild-r2.13_config_platform//:platform"
 # Python config is the same across all containers because the binary is the same
-build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.12_config_python"
+build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.13_config_python"
 build:rbe --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 build:rbe --project_id="tensorflow-testing"
 

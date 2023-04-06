@@ -204,7 +204,7 @@ struct HostCallbackContext {
 void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   HostCallbackContext* host_ctx = static_cast<HostCallbackContext*>(ctx);
   tsl::Status s = std::move(host_ctx->callback)();
-  Set_TF_Status_from_Status(status, s);
+  tsl::Set_TF_Status_from_Status(status, s);
   delete host_ctx;
 }
 

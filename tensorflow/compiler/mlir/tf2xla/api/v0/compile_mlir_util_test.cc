@@ -27,11 +27,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 
 namespace tensorflow {
 namespace {
 
 using ::mlir::OpPassManager;
+using ::tensorflow::monitoring::testing::CellReader;
 using ::testing::HasSubstr;
 
 static constexpr char kMlirModuleStr[] = R"(
@@ -64,6 +66,8 @@ TEST(LegalizeMlirTest, FailsLegalizesModule) {
       func.return %0 : tensor<1xi32>
     }
   })";
+  CellReader<int64_t> count(
+      "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count");
 
   std::vector<tensorflow::TensorShape> arg_shapes;
   XlaCompilationResult compilation_result;
@@ -73,6 +77,8 @@ TEST(LegalizeMlirTest, FailsLegalizesModule) {
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_FALSE(status.ok());
+  // Once for LegalizeTF and once for LegalizeTFModule
+  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 2);
 }
 
 TEST(CompileMlirUtil, CreatesPipeline) {
@@ -91,7 +97,8 @@ TEST(CompileMlirUtil, HasLegalizationPass) {
   llvm::StringRef device_type = "XLA_CPU_JIT";
   absl::string_view kLegalizeTfPass =
       "xla-legalize-tf{allow-partial-conversion=false device-type=XLA_CPU_JIT "
-      "legalize-chlo=true prefer-tf2xla=true use-tf2xla-fallback=true})";
+      "legalize-chlo=true prefer-tf2xla=true use-tf2xla-fallback=true "
+      "use-tf2xla-hlo-importer=false})";
 
   CreateConvertMlirToXlaHloPipeline(pass_manager, device_type,
                                     /*enable_op_fallback=*/true,

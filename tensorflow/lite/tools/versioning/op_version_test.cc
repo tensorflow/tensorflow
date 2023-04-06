@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -467,6 +468,21 @@ TEST(OpVersionTest, VersioningSubTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   SimpleVersioningTest(BuiltinOperator_SUB);
+}
+
+TEST(OpVersionTest, VersioningMUL7TestInt16) {
+  OpSignature fake_op_sig;
+  fake_op_sig.op = BuiltinOperator_MUL;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  fake_op_sig.ext_options.mul.input_quantized = false;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+}
+
+TEST(OpVersionTest, VersioningMUL7TestUInt32) {
+  OpSignature fake_op_sig;
+  fake_op_sig.op = BuiltinOperator_MUL;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
 }
 
 TEST(OpVersionTest, VersioningMUL6Test) {

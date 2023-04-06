@@ -115,7 +115,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python/summary",
+        "//tensorflow/python/summary:summary_py",
     ],
 )
 
@@ -135,6 +135,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "@absl_py//absl/testing:parameterized",
     ],

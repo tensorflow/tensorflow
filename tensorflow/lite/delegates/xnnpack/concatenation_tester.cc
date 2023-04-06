@@ -170,16 +170,16 @@ std::vector<char> ConcatenationTester::CreateTfLiteModel(
 
   std::vector<flatbuffers::Offset<Tensor>> tensors;
   for (size_t i = 0; i < NumInputs(); i++) {
-    tensors.push_back(
-        CreateTensor(builder,
-                     builder.CreateVector<int32_t>(InputShape(i).data(),
-                                                   InputShape(i).size()),
-                     tensor_type,
-                     /*buffer=*/0, /*name=*/0,
-                     CreateQuantizationParameters(
-                         builder, /*min=*/0, /*max=*/0,
-                         builder.CreateVector<float>({/*scale=*/1.0f}),
-                         builder.CreateVector<int64_t>({/*zero_point=*/0}))));
+    tensors.push_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(InputShape(i).data(),
+                                      InputShape(i).size()),
+        tensor_type,
+        /*buffer=*/0, /*name=*/0,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>({input_scales_[i]}),
+            builder.CreateVector<int64_t>({input_zero_points_[i]}))));
   }
 
   tensors.push_back(CreateTensor(
@@ -189,8 +189,8 @@ std::vector<char> ConcatenationTester::CreateTfLiteModel(
       /*buffer=*/0, /*name=*/0,
       CreateQuantizationParameters(
           builder, /*min=*/0, /*max=*/0,
-          builder.CreateVector<float>({/*scale=*/1.0f}),
-          builder.CreateVector<int64_t>({/*zero_point=*/0}))));
+          builder.CreateVector<float>({output_scale_}),
+          builder.CreateVector<int64_t>({output_zero_point_}))));
 
   std::vector<int32_t> op_inputs;
   for (size_t i = 0; i < NumInputs(); i++) {

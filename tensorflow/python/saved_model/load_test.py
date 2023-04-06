@@ -2622,6 +2622,56 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
+  def test_custom_gradients_with_none_grad_and_partial_shape(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    # https://github.com/google/jax/issues/7123
+
+    @custom_gradient.custom_gradient
+    def f(params, state):
+      def grad_fn(*args):
+        return args
+
+      return (params, state), grad_fn
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def predict(params, state):
+      return f(params, state)
+
+    params = variables.Variable(1.0)
+    # None grads only appear when state is an int.
+    state = constant_op.constant(3, dtype=dtypes.int32)
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = predict(params, state)
+      expected_grads = tape.gradient(y, params)
+
+    root = autotrackable.AutoTrackable()
+    root.fn = predict
+    loaded = cycle(
+        root,
+        cycles,
+        save_option=save_options.SaveOptions(
+            experimental_custom_gradients=True
+        ),
+        use_cpp_bindings=use_cpp_bindings,
+    )
+
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = loaded.fn(params, state)
+      grads = tape.gradient(y, params)
+
+    self.assertAllClose(grads, expected_grads)
+
 
 @parameterized.named_parameters(*_test_params())
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
@@ -2858,11 +2908,11 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         return a
 
     root = ObjWithFunction()
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       loaded = cycle(root, 1, use_cpp_bindings=use_cpp_bindings)
 
     expected_save_message = (
-        "WARNING:absl:Found untraced functions such as foo while saving "
+        "INFO:absl:Found untraced functions such as foo while saving "
         "(showing 1 of 1). These functions will not be directly callable after "
         "loading."
     )
@@ -3003,6 +3053,55 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         18,  # 3 * (1 + 2 + 3)
         loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy(),
     )
+
+  def test_function_aliases(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertEqual(loaded.function_aliases["my_func"](1.0).numpy(), 2.0)
+
+  def test_function_aliases_name_collision(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.function_aliases = variables.Variable(1.0)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    with self.assertRaisesRegex(
+        ValueError, "Could not load with experimental_load_function_aliases"
+    ):
+      test_load(
+          save_dir,
+          use_cpp_bindings=use_cpp_bindings,
+          options=load_options.LoadOptions(
+              experimental_load_function_aliases=True
+          ),
+      )
 
 
 # TODO(b/264882754) Support Cpp bindings DeferredInitModuleVariablesTest

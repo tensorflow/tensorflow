@@ -72,7 +72,8 @@ Status ConvertMLIRToXlaComputation(
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns =
         {},
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {});
+        custom_legalization_passes = {},
+    llvm::StringRef module_name = llvm::StringRef());
 
 // Creates a MLIR pipeline that lowers MLIR module to MHLO dialect. The input
 // module should only contain operations in tf dialect. For example, if the
@@ -144,7 +145,8 @@ Status CompileMlirToXlaHlo(
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes);
+        custom_legalization_passes,
+    llvm::StringRef module_name = llvm::StringRef());
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
@@ -154,7 +156,8 @@ Status CompileSerializedMlirToXlaHlo(
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {});
+        custom_legalization_passes = {},
+    llvm::StringRef module_name = llvm::StringRef());
 
 // Compiles a TensorFlow Graph (already converted to MLIR, imported with
 // tf_executor dialect still present) into XLA HLO, generates all accompanying
