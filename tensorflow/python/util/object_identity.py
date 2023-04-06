@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+from typing import Any, Set
 import weakref
 
 from tensorflow.python.util.compat import collections_abc
@@ -180,6 +181,26 @@ class ObjectIdentitySet(collections_abc.MutableSet):
 
   def __init__(self, *args):
     self._storage = set(self._wrap_key(obj) for obj in list(*args))
+
+  def __le__(self, other: Set[Any]) -> bool:
+    if not isinstance(other, Set):
+      return NotImplemented
+    if len(self) > len(other):
+      return False
+    for item in self._storage:
+      if item not in other:
+        return False
+    return True
+
+  def __ge__(self, other: Set[Any]) -> bool:
+    if not isinstance(other, Set):
+      return NotImplemented
+    if len(self) < len(other):
+      return False
+    for item in other:
+      if item not in self:
+        return False
+    return True
 
   @staticmethod
   def _from_storage(storage):
