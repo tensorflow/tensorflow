@@ -193,6 +193,59 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
 }
 
+XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    a2 = f32[1, 2] convert(a1)
+    allgather = (u32[2, 2], f32[2,2]) all-gather(a1, a2), dimensions={0}
+    gte0 = u32[2,2] get-tuple-element(allgather), index=0
+    gte1 = f32[2,2] get-tuple-element(allgather), index=1
+    out0 = u32[4] reshape(gte0)
+    out1 = f32[4] reshape(gte1)
+    ROOT out = (u32[4], f32[4]) tuple(out0, out1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  const bool enable_async_all_gather = GetParam();
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+  if (enable_async_all_gather) {
+    HloInstruction* all_gather_start =
+        FindInstruction(&executable->module(), HloOpcode::kAllGatherStart);
+    HloInstruction* all_gather_done =
+        FindInstruction(&executable->module(), HloOpcode::kAllGatherDone);
+    EXPECT_THAT(all_gather_start, NotNull());
+    EXPECT_THAT(all_gather_done, NotNull());
+  } else {
+    HloInstruction* all_gather =
+        FindInstruction(&executable->module(), HloOpcode::kAllGather);
+    EXPECT_THAT(all_gather, NotNull());
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (Literal& result : results) {
+    std::vector<Literal> results = result.DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
+    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0}, results[1]);
+  }
+}
+
 XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
