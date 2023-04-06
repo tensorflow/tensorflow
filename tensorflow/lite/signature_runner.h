@@ -98,6 +98,12 @@ class SignatureRunner {
   /// Returns the number of outputs.
   size_t output_size() const { return subgraph_->outputs().size(); }
 
+  /// Returns the number of tensors in the signature.
+  size_t tensors_size() const { return subgraph_->tensors_size(); }
+
+  /// Returns the number of ops in the signature.
+  size_t nodes_size() const { return subgraph_->nodes_size(); }
+
   /// Read-only access to list of signature input names.
   const std::vector<const char*>& input_names() { return input_names_; }
 

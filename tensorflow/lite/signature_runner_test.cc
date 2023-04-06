@@ -49,6 +49,8 @@ TEST(SignatureRunnerTest, TestMultiSignatures) {
       interpreter->GetSignatureRunner(signature_defs[0]->c_str());
   ASSERT_NE(add_runner, nullptr);
   ASSERT_EQ(add_runner->signature_key(), "add");
+  ASSERT_EQ(add_runner->tensors_size(), 3);
+  ASSERT_EQ(add_runner->nodes_size(), 2);
   const std::vector<const char*>& input_names = add_runner->input_names();
   const std::vector<const char*>& output_names = add_runner->output_names();
   ASSERT_EQ(input_names.size(), 1);
@@ -72,6 +74,8 @@ TEST(SignatureRunnerTest, TestMultiSignatures) {
   SignatureRunner* sub_runner = interpreter->GetSignatureRunner("sub");
   ASSERT_NE(sub_runner, nullptr);
   ASSERT_EQ(sub_runner->signature_key(), "sub");
+  ASSERT_EQ(sub_runner->tensors_size(), 3);
+  ASSERT_EQ(sub_runner->nodes_size(), 2);
   const std::vector<const char*>& input_names2 = sub_runner->input_names();
   const std::vector<const char*>& output_names2 = sub_runner->output_names();
   ASSERT_EQ(input_names2.size(), 1);
