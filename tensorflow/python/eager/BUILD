@@ -199,6 +199,7 @@ py_library(
         "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],
     deps = [
+        ":cancellation",
         ":executor",
         ":monitoring",
         "//tensorflow/core:protos_all_py",

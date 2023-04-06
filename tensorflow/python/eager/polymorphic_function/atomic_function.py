@@ -18,9 +18,7 @@ import dataclasses
 from typing import Any
 
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
-from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -30,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.util import compat
-from tensorflow.python.util import function_utils
 
 
 class _InterpolateFunctionError(object):
@@ -63,19 +60,6 @@ class _InterpolateFunctionError(object):
     return False
 
 
-def _set_read_only_resource_inputs_attr(op, func_graph):
-  """Sets the list of resource inputs which are read-only.
-
-  This is used by AutomaticControlDependencies.
-
-  Args:
-    op: PartitionedCall Operation.
-    func_graph: FuncGraph.
-  """
-  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
-  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
-                        read_only_indices)
-
 # TODO(b/232961485): Remove after quarantined `add_function_callback` removed.
 function_callbacks = set()
 
@@ -94,7 +78,7 @@ class GraphArtifacts:
   graph: Any
   stateful_ops: Any
 
-# Maps the name in runtime to the number of associated AtomicFunctions.
+# Maps the scope_id and name in runtime to the number of AtomicFunctions.
 RUNTIME_FUNCTION_REFS = {}
 
 
@@ -119,10 +103,11 @@ class AtomicFunction:
     self._graph_artifacts = graph_artifacts
     self._cached_definition = None
 
-    if self.name not in RUNTIME_FUNCTION_REFS:
-      RUNTIME_FUNCTION_REFS[self.name] = 1
+    ref_key = (self._bound_context.function_scope_id, self.name)
+    if ref_key not in RUNTIME_FUNCTION_REFS:
+      RUNTIME_FUNCTION_REFS[ref_key] = 1
     else:
-      RUNTIME_FUNCTION_REFS[self.name] += 1
+      RUNTIME_FUNCTION_REFS[ref_key] += 1
 
   @property
   def _c_func(self):
@@ -154,7 +139,21 @@ class AtomicFunction:
 
   @property
   def name(self):
+    """Name represented in UTF-8 encoded bytes."""
     return self._name
+
+  @property
+  def graph_call_attrs(self):
+    """Returns a dictionary of attributes needed to add a call in graph."""
+    attrs = {
+        "is_stateful": len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
+        "tout": self._graph_artifacts.output_types,
+        "xla_compile_attr": self.cached_definition.attr.get(
+            attributes_lib.XLA_COMPILE, None
+        ),
+    }
+    attrs.update(self._bound_context.function_call_options.as_attrs())
+    return attrs
 
   def __call__(self, *args):
     """Calls this function with `args` as inputs.
@@ -180,92 +179,47 @@ class AtomicFunction:
           f" got: {len(args)}."
       )
 
-    function_call_options = self._bound_context.function_call_options
-    if function_call_options.config_proto_serialized is None:
-      config = function_utils.get_disabled_rewriter_config()
-    else:
-      config = function_call_options.config_proto_serialized
-    executor_type = function_call_options.executor_type or ""
-
-    executing_eagerly = self._bound_context.executing_eagerly()
-    attrs = ("executor_type", executor_type, "config_proto", config)
-    if executing_eagerly:
-      with _InterpolateFunctionError(self):
-        if cancellation.context() is None:
-          outputs = execute.execute(
-              str(self.cached_definition.signature.name),
-              num_outputs=self._graph_artifacts.num_outputs,
-              inputs=list(args),
-              attrs=attrs,
-              ctx=self._bound_context,
-          )
-        else:
-          outputs = execute.execute_with_cancellation(
-              str(self.cached_definition.signature.name),
-              num_outputs=self._graph_artifacts.num_outputs,
-              inputs=list(args),
-              attrs=attrs,
-              ctx=self._bound_context,
-              cancellation_manager=cancellation.context(),
-          )
-      # Replace empty list with None
-      outputs = outputs or None
-    else:
-      with _InterpolateFunctionError(self):
-        with ops.control_dependencies(self._graph_artifacts.control_captures):
-          # The caller must use record_operation to record this operation in the
-          # eager case, so we enforce the same requirement for the non-eager
-          # case by explicitly pausing recording. We don't have a gradient
-          # registered for PartitionedCall, so recording this operation confuses
-          # forwardprop code (GradientTape manages to ignore it).
-          with tape.stop_recording():
-            graph = ops.get_default_graph()
-            graph._add_function_recursive(self)  # pylint: disable=protected-access
-
-            op = functional_ops.partitioned_call_op(
-                name=self.name,
-                args=list(args),
-                is_stateful=len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
-                tout=self._graph_artifacts.output_types,
-                config=config,
-                executor_type=executor_type,
-                xla_compile_attr=self.cached_definition.attr.get(
-                    attributes_lib.XLA_COMPILE, None
-                ),
+    with _InterpolateFunctionError(self):
+      with ops.control_dependencies(self._graph_artifacts.control_captures):
+        # The caller must use record_operation to record this operation in the
+        # eager case, so we enforce the same requirement for the non-eager
+        # case by explicitly pausing recording. We don't have a gradient
+        # registered for PartitionedCall, so recording this operation confuses
+        # forwardprop code (GradientTape manages to ignore it).
+        with tape.stop_recording():
+          if self._bound_context.executing_eagerly():
+            outputs = self._bound_context.call_function(
+                self.name,
+                list(args),
+                self._graph_artifacts.num_outputs,
             )
-            _set_read_only_resource_inputs_attr(op, self.graph)
-            if hasattr(self.graph, "collective_manager_ids_used"):
-              ops.set_int_list_attr(
-                  op,
-                  acd.COLLECTIVE_MANAGER_IDS,
-                  self.graph.collective_manager_ids_used,
-              )
-            outputs = op.outputs if op.outputs else op
+          else:
+            outputs = make_call_op_in_graph(self, list(args))
 
     for i, func_graph_output in enumerate(
         self._graph_artifacts.func_graph_outputs
     ):
       handle_data_util.copy_handle_data(func_graph_output, outputs[i])
-    if executing_eagerly:
-      return outputs
-    else:
-      # TODO(b/128924522): This additional set_shape should not be
-      # necessary. ShapeRefiner likely needs to inspect handle_data. Remove this
-      # once that's done.
+
+    # TODO(fmuham): Use FunctionType cast here for all cases.
+    if not self._bound_context.executing_eagerly():
       for i, shape in enumerate(self._graph_artifacts.output_shapes):
         outputs[i].set_shape(shape)
-      return outputs
+
+    return outputs
 
   def __del__(self):
-    RUNTIME_FUNCTION_REFS[self.name] -= 1
-    if RUNTIME_FUNCTION_REFS[self.name] < 0:
+    key = (self._bound_context.function_scope_id, self.name)
+    RUNTIME_FUNCTION_REFS[key] -= 1
+    if RUNTIME_FUNCTION_REFS[key] < 0:
       raise RuntimeError(
           f"AtomicFunction Refcounting for {self.name} is invalid."
       )
 
-    if RUNTIME_FUNCTION_REFS[self.name] == 0:
+    if RUNTIME_FUNCTION_REFS[key] == 0:
       try:
         self._bound_context.remove_function(self.name)
+        RUNTIME_FUNCTION_REFS.pop(key)
       except TypeError:
         # Suppress some exceptions, mainly for the case when we're running on
         # module deletion. Things that can go wrong include the context module
@@ -278,6 +232,44 @@ class AtomicFunction:
         pass  # 'NoneType' object has no attribute 'eager_mode' when context has
         # been unloaded. Will catch other module unloads as well.
 
+
+def _set_read_only_resource_inputs_attr(op, func_graph):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: PartitionedCall Operation.
+    func_graph: FuncGraph.
+  """
+  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        read_only_indices)
+
+
+def make_call_op_in_graph(atomic, tensor_inputs):
+  """Adds an AtomicFunction to graph."""
+  graph = ops.get_default_graph()
+  graph._add_function_recursive(atomic)  # pylint: disable=protected-access
+
+  function_call_attrs = atomic.graph_call_attrs
+  op = functional_ops.partitioned_call_op(
+      name=atomic.name,
+      args=tensor_inputs,
+      is_stateful=function_call_attrs["is_stateful"],
+      tout=function_call_attrs["tout"],
+      config=function_call_attrs["config_proto"],
+      executor_type=function_call_attrs["executor_type"],
+      xla_compile_attr=function_call_attrs["xla_compile_attr"],
+  )
+  _set_read_only_resource_inputs_attr(op, atomic.graph)
+  if hasattr(atomic.graph, "collective_manager_ids_used"):
+    ops.set_int_list_attr(
+        op,
+        acd.COLLECTIVE_MANAGER_IDS,
+        atomic.graph.collective_manager_ids_used,
+    )
+  return op.outputs if op.outputs else op
 
 # List of AtomicFunction -> AtomicFunction transformation functions.
 FUNCTION_TRANSFORMS = []
