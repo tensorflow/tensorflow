@@ -1710,7 +1710,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bincount_ops_test",
     size = "small",
     srcs = ["ops/bincount_ops_test.py"],
