@@ -2519,8 +2519,14 @@ tf_cc_test(
 
 cc_library(
     name = "bridge_logger",
-    srcs = ["utils/bridge_logger.cc"],
-    hdrs = ["utils/bridge_logger.h"],
+    srcs = [
+        "utils/bridge_logger.cc",
+        "utils/data_dumper_logger_config.cc",
+    ],
+    hdrs = [
+        "utils/bridge_logger.h",
+        "utils/data_dumper_logger_config.h",
+    ],
     deps = [
         ":dump_mlir_util",
         "@com_google_absl//absl/strings",

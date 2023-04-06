@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -35,43 +36,6 @@ limitations under the License.
 
 namespace mlir {
 namespace {
-
-class DataDumperLoggerConfig : public ::tensorflow::BridgeLoggerConfig {
- public:
-  explicit DataDumperLoggerConfig(llvm::StringRef module_name,
-                                  bool print_module_scope = false,
-                                  bool print_after_only_on_change = true)
-      : ::tensorflow::BridgeLoggerConfig(print_module_scope,
-                                         print_after_only_on_change),
-        module_name_(module_name.str()) {}
-
-  void printBeforeIfEnabled(mlir::Pass *pass, mlir::Operation *op,
-                            PrintCallbackFn print_callback) {
-    std::string pass_name = pass->getName().str();
-
-    if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name_)) {
-      ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(module_name_, "mlir_bridge_before_" + pass_name),
-          op, llvm::StringRef());
-    }
-  }
-
-  void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *op,
-                           PrintCallbackFn print_callback) {
-    std::string pass_name = pass->getName().str();
-
-    if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name_)) {
-      ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(module_name_, "mlir_bridge_after_" + pass_name), op,
-          llvm::StringRef());
-    }
-  }
-
- private:
-  // The name of the module. This is used to in the MLIR dump file name.
-  const std::string module_name_;
-};
-
 // Add logger to bridge passmanager.
 // Enable timing statistics per pass for the bridge passmanager.
 void EnableDetailedLogging(PassManager *pm,
@@ -79,9 +43,12 @@ void EnableDetailedLogging(PassManager *pm,
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
-  pm->enableIRPrinting(
-      std::make_unique<DataDumperLoggerConfig>(module_name,
-                                               /*print_module_scope=*/true));
+  pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
+      [module_name](const std::string &pass_tag_name) {
+        return GET_DUMP_FILENAME(module_name.str(), pass_tag_name);
+      },
+      "bridge_phase_1_",
+      /*print_module_scope=*/true));
   pm->enableTiming();
 }
 }  // namespace

@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -80,7 +81,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
 constexpr absl::string_view kGroupSizeAttrName =
     "tf2xla.collective_info.group_size";
 constexpr absl::string_view kGroupKeyAttrName =
@@ -526,12 +526,17 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
         "", &tf2xla);
   }
 
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name.str())) {
     // Print the whole module after each pass which requires disabling
     // multi-threading as well.
     module_op.getContext()->disableMultithreading();
-    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
-        /*print_module_scope=*/true));
+    tf2xla.enableIRPrinting(
+        std::make_unique<::tensorflow::DataDumperLoggerConfig>(
+            [module_name](const std::string& pass_tag_name) {
+              return GET_DUMP_FILENAME(module_name.str(), pass_tag_name);
+            },
+            "bridge_phase_2_",
+            /*print_module_scope=*/true));
   }
 
   // Make sure we catch any error reported by MLIR and forward it to the TF
