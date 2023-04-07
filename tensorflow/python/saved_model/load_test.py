@@ -1758,11 +1758,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     exported = ObjWithFunction()
 
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       imported = cycle(exported, cycles, use_cpp_bindings=use_cpp_bindings)
 
     expected_message = (
-        "WARNING:absl:Function `foo` contains input name(s) A-b, A/D with "
+        "INFO:absl:Function `foo` contains input name(s) A-b, A/D with "
         "unsupported characters which will be renamed to a_b, a_d in the "
         "SavedModel."
     )
