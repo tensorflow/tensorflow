@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -371,6 +373,62 @@ Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
                                       builder.getStringAttr(einsum_equation));
 }
 
+// Restores the collapsed dimensions to the `tensor_type`. `collapsed_dims`
+// designate the dimension indices that were collapsed to produce `tensor_type`.
+// The restored dimensions' sizes are 1, according to the semantics of
+// `XlaGatherOp (https://www.tensorflow.org/xla/operation_semantics#gather). The
+// resulting type's shape has `tensor_type.size() + collapsed_dims.size()`
+// dimensions.
+RankedTensorType RestoreCollapsedDimensions(
+    const RankedTensorType tensor_type,
+    const absl::flat_hash_set<int64_t>& collapsed_dims) {
+  ArrayRef<int64_t> original_tensor_shape = tensor_type.getShape();
+  const int output_tensor_rank =
+      original_tensor_shape.size() + collapsed_dims.size();
+  auto shape_itr = tensor_type.getShape().begin();
+
+  // Populate the dimensions of the output shape, including the restored
+  // dimensions.
+  SmallVector<int64_t> output_shape(output_tensor_rank);
+  for (int i = 0; i < output_tensor_rank; i++) {
+    if (collapsed_dims.contains(i)) {
+      // The collapsed dimension's size should have been 1, so it restores the
+      // dimension with size 1.
+      output_shape[i] = 1;
+    } else {
+      output_shape[i] = *shape_itr;
+      shape_itr++;
+    }
+  }
+
+  return RankedTensorType::get(output_shape, tensor_type.getElementType());
+}
+
+// Determines the output type of the `SliceOp` when it is being inserted in
+// place of a `XlaGatherOp`. When the dimensions of `xla_gather_op_output_type`
+// is known, the `collapsed_dims` are restored. `xla_gather_op_output_type` is
+// the result of collapsing the `collapsed_dims`, but the `SliceOp`'s output
+// should not have the dimensions collapsed already. Returns
+// `xla_gather_op_output_type` unchanged if the rank is unknown.
+//
+// Examples:
+//   * If `xla_gather_op_output_type` == tensor<*xf32>, then it returns:
+//     tensor<*xf32>.
+//   * If `xla_gather_op_output_type` == tensor<3x5xi32> and `collapsed_dims` ==
+//     {0}, then it returns: tensor<1x3x5xi32>.
+//   * If `xla_gather_op_output_type` == tensor<3x5xf32> and `collapsed_dims` ==
+//     {1, 3}, then it returns: tensor<3x1x5x1xf32>.
+Type GetSliceOpOutputType(Type xla_gather_op_output_type,
+                          const absl::flat_hash_set<int64_t>& collapsed_dims) {
+  if (auto ranked_output_type =
+          xla_gather_op_output_type.dyn_cast<RankedTensorType>();
+      ranked_output_type) {
+    return RestoreCollapsedDimensions(ranked_output_type, collapsed_dims);
+  }
+
+  return xla_gather_op_output_type;
+}
+
 // TODO (b/275225582): Supports Xla Gather op in general case.
 bool IsXlaGatherWithoutBatch(Value operand, Value start_indices) {
   auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
@@ -422,9 +480,13 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
               builder.getI64Type()),
           start_indices));
 
+  absl::flat_hash_set<int64_t> collapsed_dims;
+  collapsed_dims.insert(dimension_numbers.collapsed_slice_dims().begin(),
+                        dimension_numbers.collapsed_slice_dims().end());
+
   // Slice operand by constructed start_indices and slice_sizes.
-  Value slice = builder.create<TF::SliceOp>(
-      loc, output.getType(), operand,
+  auto slice_op = builder.create<TF::SliceOp>(
+      loc, GetSliceOpOutputType(output.getType(), collapsed_dims), operand,
       /*start_indices=*/scattered_start_indices,
       /*slice_sizes=*/
       builder.create<TF::CastOp>(
@@ -435,9 +497,6 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
           slice_sizes));
 
   // Collapses dimensions by reshaping.
-  absl::flat_hash_set<int64_t> collapsed_dims;
-  collapsed_dims.insert(dimension_numbers.collapsed_slice_dims().begin(),
-                        dimension_numbers.collapsed_slice_dims().end());
   SmallVector<int64_t> new_shape(operand_rank - collapsed_dims.size());
   for (int64_t i = 0, j = 0; i < operand_rank; i++) {
     if (!collapsed_dims.contains(i)) {
@@ -446,7 +505,7 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
   }
   if (!new_shape.empty()) new_shape[0] = -1;
   return builder.create<TF::ReshapeOp>(
-      loc, output.getType(), slice,
+      loc, output.getType(), slice_op,
       Create1DConstValue(builder, loc, new_shape));
 }
 
