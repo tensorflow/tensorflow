@@ -343,7 +343,7 @@ bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
 ```
 
 TensorFlow kernels and TensorFlow's dependencies are still not built with
-debugging information with `--config=dbg`, as issues occur on Linux if
+debugging information with `--config=dbg`, as issues occur on GNU/Linux if
 there is too much debug info (see [this GitHub
 issue](https://github.com/tensorflow/tensorflow/issues/48919) for context). If
 you want to debug a kernel, you can compile specific files with `-g` using the
