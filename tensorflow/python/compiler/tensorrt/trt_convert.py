@@ -947,7 +947,7 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
 
   captures = {
       c.internal.name.split(":")[0]: c.external
-      for c in frozen_func.graph._function_captures.by_val_captures.values()  # pylint: disable = protected-access
+      for c in frozen_func.graph.function_captures.by_val_captures.values()
   }
   new_func = wrap_function.function_from_graph_def(
       graph_def, [tensor.name for tensor in frozen_func.inputs],

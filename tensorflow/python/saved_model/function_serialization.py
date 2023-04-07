@@ -127,7 +127,7 @@ def wrap_cached_variables(concrete_function):
   """
   outer_graph = func_graph_module.FuncGraph(
       "{}_no_cache".format(concrete_function.graph.name))
-  captures = concrete_function.graph._function_captures._by_val  # pylint: disable=protected-access
+  captures = concrete_function.graph.function_captures._by_val  # pylint: disable=protected-access
   mapped_captures = None
   remapped_captures = {}
 

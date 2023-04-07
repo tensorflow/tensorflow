@@ -358,7 +358,7 @@ def from_func_graph_no_transforms(
       num_outputs=len(signature.output_arg),
       output_types=[o.type for o in signature.output_arg],
       output_shapes=[o.shape for o in outputs],
-      control_captures=graph._function_captures.control,  # pylint: disable=protected-access
+      control_captures=graph.function_captures.control,
       func_graph_outputs=list(outputs),
       attrs=attrs,
       graph=graph,
