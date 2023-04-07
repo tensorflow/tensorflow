@@ -352,10 +352,10 @@ index fbba93da2cce..000000000000
 -} // namespace test
 -} // namespace mlir
 diff --git a/mlir/tools/mlir-opt/mlir-opt.cpp b/mlir/tools/mlir-opt/mlir-opt.cpp
-index 2ddd83f36f52..855c6a6e0f28 100644
+index 12eee4ba924b..7c2bb319e3b9 100644
 --- a/mlir/tools/mlir-opt/mlir-opt.cpp
 +++ b/mlir/tools/mlir-opt/mlir-opt.cpp
-@@ -99,7 +99,6 @@ void registerTestLinalgGreedyFusion();
+@@ -100,7 +100,6 @@ void registerTestLinalgGreedyFusion();
  void registerTestLinalgTransforms();
  void registerTestLivenessPass();
  void registerTestLoopFusion();
@@ -363,7 +363,7 @@ index 2ddd83f36f52..855c6a6e0f28 100644
  void registerTestLoopMappingPass();
  void registerTestLoopUnrollingPass();
  void registerTestLowerToLLVM();
-@@ -212,7 +211,6 @@ void registerTestPasses() {
+@@ -214,7 +213,6 @@ void registerTestPasses() {
    mlir::test::registerTestLinalgTransforms();
    mlir::test::registerTestLivenessPass();
    mlir::test::registerTestLoopFusion();
@@ -371,3 +371,15 @@ index 2ddd83f36f52..855c6a6e0f28 100644
    mlir::test::registerTestLoopMappingPass();
    mlir::test::registerTestLoopUnrollingPass();
    mlir::test::registerTestLowerToLLVM();
+diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+index c2feffd02695..d1b832aa6e90 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -6732,7 +6732,6 @@ cc_library(
+         ":SideEffectInterfaces",
+         ":Support",
+         ":ViewLikeInterface",
+-        "//llvm:Analysis",
+         "//llvm:Support",
+     ],
+ )
