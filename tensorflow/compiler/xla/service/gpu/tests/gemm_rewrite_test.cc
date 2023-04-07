@@ -5319,11 +5319,13 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   // values instead of F32 intermediate values.
   const char* hlo_text = R"(
     HloModule test
+
     apply {
       a = f16[] parameter(0)
       b = f16[] parameter(1)
       ROOT c = f16[] maximum(a, b)
     }
+
     ENTRY test {
       x = f8e4m3fn[16,32] parameter(0)
       y = f8e4m3fn[32,16] parameter(1)
@@ -5350,6 +5352,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
       dot_a_f8 = f8e4m3fn[16,16] convert(dot_a_clamped)
       ROOT out = (f8e4m3fn[16,16], f16[]) tuple(dot_a_f8, amax)
           }
+
 )";
 
   CheckFp8IfOnHopper(hlo_text);
