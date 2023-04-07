@@ -239,7 +239,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     if placeholder_context.with_none_control_dependencies:
       # Note: setting ops.control_dependencies(None) ensures we always put
       # capturing placeholders outside of any control flow context.
-      with ops.control_dependencies(None):
+      with context_graph.control_dependencies(None):
         placeholder = self._graph_placeholder(context_graph, name=name)
     else:
       placeholder = self._graph_placeholder(context_graph, name=name)
