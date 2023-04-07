@@ -167,6 +167,7 @@ pytype_strict_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:standard_ops",  # build_cleaner: keep
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -294,6 +295,7 @@ pytype_strict_binary(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:standard_ops",  # build_cleaner: keep
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
