@@ -4,7 +4,6 @@ syntax = "proto2";
 
 package tensorflow.profiler;
 
-option cc_api_version = 2;
 option cc_enable_arenas = true;
 
 // 'Task' contains information about a task that profiler traced.
