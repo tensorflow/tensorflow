@@ -3230,7 +3230,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@com_google_benchmark//:__subpackages__",
         "@com_google_googletest//:__subpackages__",
     ]
-    static_deps += if_onednn_v3(["@onednn_v3//:__subpackages__"])
     return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args
