@@ -298,7 +298,7 @@ TEST(FullyConnected, FP16WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8Weights) {
+TEST(FullyConnected, TensorWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -317,11 +317,11 @@ TEST(FullyConnected, INT8Weights) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8Weights()
+      .TensorWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8WeightsNoBias) {
+TEST(FullyConnected, TensorWiseQuantizedInt8WeightsNoBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -340,12 +340,12 @@ TEST(FullyConnected, INT8WeightsNoBias) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8Weights()
+      .TensorWiseQuantizedInt8Weights()
       .NoBias()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8ChannelWiseWeights) {
+TEST(FullyConnected, ChannelWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -364,11 +364,11 @@ TEST(FullyConnected, INT8ChannelWiseWeights) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8ChannelWiseWeights()
+      .ChannelWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8ChannelWiseWeightsNoBias) {
+TEST(FullyConnected, ChannelWiseQuantizedInt8WeightsNoBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -387,7 +387,7 @@ TEST(FullyConnected, INT8ChannelWiseWeightsNoBias) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8ChannelWiseWeights()
+      .ChannelWiseQuantizedInt8Weights()
       .NoBias()
       .Test(xnnpack_delegate.get());
 }

@@ -18,10 +18,14 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/python/framework/kythe_metadata.pb.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
 
 namespace tensorflow {
@@ -485,6 +489,15 @@ TEST(PythonOpGen, InsertCommentsForSourceFileLocation) {
                   "Original C++ source file: some_ops.cc, another_ops.cc");
 }
 
+GeneratedCodeInfo DecodeAnnotation(string anno) {
+  std::vector<string> sp = absl::StrSplit(anno, ':');
+  string gci_str;
+  absl::Base64Unescape(sp[1], &gci_str);
+  GeneratedCodeInfo gci;
+  gci.ParseFromString(gci_str);
+  return gci;
+}
+
 TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   constexpr char kBaseOpDef[] = R"(
   op {
@@ -502,11 +515,63 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   offset->set_name("Baz");
   offset->set_filepath("some_ops.cc");
   offset->set_start(0);
-  offset->set_end(0);
+  offset->set_end(3);
 
   string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
 
-  ExpectHasSubstr(code, "# kythe.proto.metadata.GeneratedCodeInfo:");
+  std::vector<string> sp = absl::StrSplit(code, '\n');
+  string last_line = sp.back();
+  ASSERT_TRUE(absl::StrContains(last_line,
+                                "# kythe.proto.metadata.GeneratedCodeInfo:"));
+  GeneratedCodeInfo gci = DecodeAnnotation(last_line);
+
+  EXPECT_EQ(gci.meta_size(), 1);
+  EXPECT_EQ(gci.meta(0).source_begin(), 0);
+  EXPECT_EQ(gci.meta(0).source_end(), 3);
+  EXPECT_EQ(gci.meta(0).target_begin(), 1212);
+  EXPECT_EQ(gci.meta(0).target_end(), 1215);
+}
+
+TEST(PythonOpGen, GenerateMetadataForMultipleOutputOp) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Baz"
+    output_arg {
+      name: "output1"
+      type: DT_BOOL
+    }
+    output_arg {
+      name: "output2"
+      type: DT_BOOL
+    }
+  }
+  )";
+
+  OpList op_defs;
+  OpRegistry::Global()->Export(false, &op_defs);
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
+  ApiDefMap api_def_map(op_defs);
+
+  OpRegOffsets offsets;
+  auto* offset = offsets.add_offsets();
+  offset->set_name("Baz");
+  offset->set_filepath("some_ops.cc");
+  offset->set_start(0);
+  offset->set_end(3);
+
+  string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
+
+  std::vector<string> sp = absl::StrSplit(code, '\n');
+  string last_line = sp.back();
+  ASSERT_TRUE(absl::StrContains(last_line,
+                                "# kythe.proto.metadata.GeneratedCodeInfo:"));
+  GeneratedCodeInfo gci = DecodeAnnotation(last_line);
+
+  EXPECT_EQ(gci.meta_size(), 1);
+  EXPECT_EQ(gci.meta(0).source_begin(), 0);
+  EXPECT_EQ(gci.meta(0).source_end(), 3);
+  EXPECT_EQ(gci.meta(0).target_begin(), 1289);
+  EXPECT_EQ(gci.meta(0).target_end(), 1292);
 }
 
 TEST(PythonOpGen, NotGenerateMetadataWhenOpRegOffsetsIsEmpty) {

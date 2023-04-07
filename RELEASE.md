@@ -44,9 +44,12 @@
         `equal`
     *   Add 8-bit and 16-bit support for `floor_div` and `floor_mod`.
     *   Add 16-bit and 32-bit int support for the built-in op `bitcast`.
+    *   Add 8-bit/16-bit/32-bit int/uint support for the built-in op `bitwise_xor`
     *   Add int16 indices support for built-in op `gather` and `gather_nd`.
+    *   Add 8-bit/16-bit/32-bit int/uint support for the built-in op `right_shift`
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
+    *   `add_op` supports broadcasting up to 6 dimensions.
 
 *   `tf.keras`
 
@@ -59,6 +62,8 @@
         libraries (like sklearn or pycocotools) into Keras as first-class Keras
         metrics.
     *   Added `tf.keras.optimizers.Lion` optimizer.
+    *   Added `tf.keras.layers.SpectralNormalization` layer wrapper to perform
+        spectral normalization on the weights of a target layer.
     *   The `SidecarEvaluatorModelExport` callback has been added to Keras as
         `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for
         exporting the model the best-scoring model as evaluated by a
@@ -85,6 +90,7 @@
         releases.
     *   Added support for `class_weight` for 3+ dimensional targets (e.g.
         image segmentation masks) in `Model.fit`.
+    *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
 
 *   `tf.function`:
 
@@ -123,6 +129,13 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+*   `tf.Variable`
+
+    *   Changed resource variables to inherit from `tf.compat.v2.Variable`
+        instead of `tf.compat.v1.Variable`. Some checks for 
+        `isinstance(v, tf.compat.v1.Variable)` that previously returned True
+        may now return False.
+
 *   `tf.distribute`
 
     *   Opened an experimental API,
@@ -145,6 +158,10 @@
 
     *   `tf.experimental.ExtensionType` now supports Python `tuple` as
         the type annotation of its fields.
+
+*    `tf.nest`:
+    *   Deprecated API `tf.nest.is_sequence` has now been deleted.
+        Please use `tf.nest.is_nested` instead.
 
 ## Thanks to our Contributors
 

@@ -27,7 +27,7 @@ def SplitAllocTensorsPass :
   let dependentDialects = ["::mlir::bufferization::BufferizationDialect"];
 }
 
-def DeallocatePass : Pass<"hlo-deallocate", "mlir::func::FuncOp"> {
+def DeallocatePass : Pass<"hlo-deallocate", "mlir::ModuleOp"> {
   let summary = "Deallocate buffers by inserting `deallocation.retain` ops.";
   let description = [{
     Inserts deallocations (in the form of `deallocation.retain`) ops. Most
@@ -35,6 +35,13 @@ def DeallocatePass : Pass<"hlo-deallocate", "mlir::func::FuncOp"> {
     canonicalization.
   }];
   let constructor = "::mlir::deallocation::createDeallocatePass()";
+  let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
+}
+
+def DeallocationSimplificationPass : Pass<"hlo-deallocation-simplification",
+    "mlir::func::FuncOp"> {
+  let summary = "Simplifies deallocation.retain ops.";
+  let constructor = "::mlir::deallocation::createDeallocationSimplificationPass()";
   let dependentDialects = ["::mlir::deallocation::DeallocationDialect"];
 }
 

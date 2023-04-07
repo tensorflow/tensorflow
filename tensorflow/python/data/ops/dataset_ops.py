@@ -1712,6 +1712,10 @@ class DatasetV2(
           implementation creates a `tf.train.Checkpoint` object internally, so
           users should not set the `checkpoint` argument in `checkpoint_args`.
 
+    Returns:
+      An operation which when executed performs the save. When writing
+      checkpoints, returns None. The return value is useful in unit tests.
+
     Raises:
       ValueError if `checkpoint` is passed into `checkpoint_args`.
     """
@@ -1719,7 +1723,7 @@ class DatasetV2(
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import save_op
-    save_op._save(self, path, compression, shard_func, checkpoint_args)
+    return save_op._save(self, path, compression, shard_func, checkpoint_args)
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
@@ -4687,6 +4691,14 @@ class _NumpyIterator(tracking_base.Trackable):
   def _restore_from_tensors(self, restored_tensors):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
+
+  def _save(self):
+    # pylint: disable=protected-access
+    return self._iterator._save()
+
+  def _restore(self, state):
+    # pylint: disable=protected-access
+    return self._iterator._restore(state)
 
 
 class _VariantTracker(resource_lib.CapturableResource):

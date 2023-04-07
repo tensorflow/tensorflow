@@ -660,12 +660,12 @@ TF_Buffer* TF_OpKernelConstruction_GetAttrFunction(TF_OpKernelConstruction* ctx,
   tensorflow::NameAttrList function;
   auto cc_status = cc_ctx->GetAttr(attr_name, &function);
   if (!cc_status.ok()) {
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
   TF_Buffer* buffer = TF_NewBuffer();
   cc_status = tensorflow::MessageToBuffer(function, buffer);
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
   if (!cc_status.ok())
     return nullptr;
   else

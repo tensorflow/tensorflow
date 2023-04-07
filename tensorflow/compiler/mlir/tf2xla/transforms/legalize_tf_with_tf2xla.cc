@@ -277,6 +277,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::XlaPadOp>(),
             TypeID::get<TF::XlaSetBoundOp>(),
             TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
+            TypeID::get<TF::XlaSpmdFullToShardShapeOp>(),
+            TypeID::get<TF::XlaSpmdShardToFullShapeOp>(),
             TypeID::get<TF::XlaSvdOp>(),
         };
 
@@ -336,7 +338,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormOp>(),
     TypeID::get<TF::FusedBatchNormGradOp>(),
     TypeID::get<TF::FusedBatchNormGradV2Op>(),
-    TypeID::get<TF::FusedBatchNormGradV3Op>(),
     TypeID::get<TF::FusedBatchNormV2Op>(),
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),

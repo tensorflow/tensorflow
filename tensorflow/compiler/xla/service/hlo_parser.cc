@@ -5623,12 +5623,15 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<std::string> source_file;
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
+  optional<std::string> deduplicated_name;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
   attrs["source_line"] = {/*required=*/false, AttrTy::kInt32, &source_line};
   attrs["profile_type"] = {/*required=*/false, AttrTy::kBracedInt64List,
                            &profile_type};
+  attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
+                                &deduplicated_name};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5651,6 +5654,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
       }
       metadata->add_profile_type(static_cast<ProfileType>(type));
     }
+  }
+  if (deduplicated_name) {
+    metadata->set_deduplicated_name(*deduplicated_name);
   }
   return true;
 }

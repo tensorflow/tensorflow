@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 
 namespace xla {
 namespace runtime {
@@ -142,22 +143,12 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   } else {
     pm.addPass(mlir::xla_framework::CreateLegalizeXLAFrameworkToLLVMPass());
   }
-  pm.addPass(mlir::createConvertLinalgToLLVMPass());
-  pm.addPass(mlir::createConvertSCFToCFPass());
-
-  // Lower math dialect to LLVM/Libm.
-  mlir::ConvertMathToLLVMPassOptions mathOpts;
-  mathOpts.approximateLog1p = false;
-  pm.addPass(mlir::createConvertMathToLLVMPass(mathOpts));
-  pm.addPass(mlir::createConvertMathToLibmPass());
 
   // Convert everything else to LLVM dialect.
-  mlir::ConvertVectorToLLVMPassOptions vector_to_llvm_opts;
-  if (opts.math_avx2) vector_to_llvm_opts.x86Vector = true;
-  pm.addPass(mlir::createConvertVectorToLLVMPass(vector_to_llvm_opts));
-  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(mlir::createConvertFuncToLLVMPass());
-  pm.addPass(mlir::createConvertComplexToLLVMPass());
+  mlir::GenericHostToLLVMPassOptions llvm_options;
+  llvm_options.enableAvx2 = opts.math_avx2;
+  pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
+
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Prepare module for translation to LLVM.

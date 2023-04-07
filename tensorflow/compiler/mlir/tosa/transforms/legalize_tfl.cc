@@ -1269,6 +1269,30 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
   return success();
 }
 
+// Returns a new type based on an input type and slicing information.
+// If the input is quantized per axis, slices the scale and zp arrays.
+// In any other case, returns the original type.
+RankedTensorType getTypeForSlice(RankedTensorType type, int64_t slice_size,
+                                 int64_t offset) {
+  if (auto per_channel_qtype =
+          dyn_cast<quant::UniformQuantizedPerAxisType>(type.getElementType())) {
+    SmallVector<double> output_scale_arr(
+        per_channel_qtype.getScales().begin() + offset,
+        per_channel_qtype.getScales().begin() + offset + slice_size);
+    SmallVector<int64_t> output_zp_arr(
+        per_channel_qtype.getZeroPoints().begin() + offset,
+        per_channel_qtype.getZeroPoints().begin() + offset + slice_size);
+    auto output_per_channel_qtype = quant::UniformQuantizedPerAxisType::get(
+        per_channel_qtype.getFlags(), per_channel_qtype.getStorageType(),
+        per_channel_qtype.getExpressedType(), output_scale_arr, output_zp_arr,
+        per_channel_qtype.getQuantizedDimension(),
+        per_channel_qtype.getStorageTypeMin(),
+        per_channel_qtype.getStorageTypeMax());
+    return RankedTensorType::get(type.getShape(), output_per_channel_qtype);
+  }
+  return type;
+}
+
 Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   auto input_type = dyn_cast<RankedTensorType>(op.getInput().getType());
   auto filter_type = dyn_cast<RankedTensorType>(op.getFilter().getType());
@@ -1308,13 +1332,22 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   auto bias_slice_ty =
       RankedTensorType::get(bias_size_val, bias_type.getElementType());
 
-  auto per_conv_out_type = RankedTensorType::get(
+  auto per_conv_out_ty = RankedTensorType::get(
       {output_type.getDimSize(0), output_type.getDimSize(1),
        output_type.getDimSize(2), output_type.getDimSize(3) / num_groups},
       output_type.getElementType());
 
   // Create a separate convolution for each group
   for (int i = 0; i < num_groups; ++i) {
+    auto verified_input_slice_ty =
+        getTypeForSlice(input_slice_ty, filter_channels, i * filter_channels);
+    auto verified_filter_slice_ty =
+        getTypeForSlice(filter_slice_ty, filter_channels, i * filter_channels);
+    auto verified_bias_slice_ty =
+        getTypeForSlice(bias_slice_ty, filter_channels, i * filter_channels);
+    auto verified_per_conv_out_ty =
+        getTypeForSlice(per_conv_out_ty, filter_channels, i * filter_channels);
+
     // Slice the input
     SmallVector<int64_t, 4> input_start_vals(rank, 0);
     input_start_vals.back() = i * filter_channels;
@@ -1322,7 +1355,8 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
         rewriter.getDenseI64ArrayAttr(input_start_vals);
 
     auto slice_input = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), input_slice_ty, op.getInput(), input_start, input_size);
+        op->getLoc(), verified_input_slice_ty, op.getInput(), input_start,
+        input_size);
 
     // Slice the filter
     SmallVector<int64_t, 4> filter_start_vals(rank, 0);
@@ -1331,19 +1365,20 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
         rewriter.getDenseI64ArrayAttr(filter_start_vals);
 
     auto slice_filter = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), filter_slice_ty, op.getFilter(), filter_start,
+        op->getLoc(), verified_filter_slice_ty, op.getFilter(), filter_start,
         filter_size);
 
     // Slice the bias
     DenseI64ArrayAttr bias_start =
         rewriter.getDenseI64ArrayAttr(i * filter_channels);
     auto slice_bias = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), bias_slice_ty, op.getBias(), bias_start, bias_size);
+        op->getLoc(), verified_bias_slice_ty, op.getBias(), bias_start,
+        bias_size);
 
     // Create a convolution for each set of slices
     auto conv = rewriter.create<TFL::Conv2DOp>(
-        op->getLoc(), per_conv_out_type, slice_input, slice_filter, slice_bias,
-        op.getDilationHFactor(), op.getDilationWFactor(),
+        op->getLoc(), verified_per_conv_out_ty, slice_input, slice_filter,
+        slice_bias, op.getDilationHFactor(), op.getDilationWFactor(),
         op.getFusedActivationFunction(), op.getPadding(), op.getStrideH(),
         op.getStrideW());
 

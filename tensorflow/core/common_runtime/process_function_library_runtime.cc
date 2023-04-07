@@ -571,7 +571,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       optimized_graph_proto == nullptr
           ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
                                   lib_def_, composite_devices, cpu_device,
-                                  default_device, env_)
+                                  default_device, env_,
+                                  OptimizedFunctionGraph::JIT)
           : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
@@ -581,8 +582,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   TF_ASSIGN_OR_RETURN(
       auto subgraphs,
-      PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
-                                  lib_def_, composite_devices, env_));
+      PreprocessAndPartitionGraph(function_name, *optimized_graph_info, options,
+                                  *dev_set, lib_def_, composite_devices, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   const uint64 graph_optimization_duration =
       optimization_end_time_usecs - optimization_start_time_usecs;

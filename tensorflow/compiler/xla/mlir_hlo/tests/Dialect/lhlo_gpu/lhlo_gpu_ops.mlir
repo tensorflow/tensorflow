@@ -141,6 +141,7 @@ func.func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32x
     dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     { activation_mode = #lmhlo_gpu<activation Relu>,
+      leakyrelu_alpha = 0.0 : f64,
       backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 0,
         tensor_ops_enabled = true,
@@ -229,5 +230,17 @@ func.func @ag_start(%arg : memref<10x10xf32>, %out: memref<20x10xf32>) {
       all_gather_dimension = 0
     }
     : (memref<10x10xf32>, memref<20x10xf32>) -> (!mhlo.token)
+  func.return
+}
+
+// CHECK-LABEL: func @ag_start_mixed
+func.func @ag_start_mixed(%arg0 : memref<10x10xf32>, %arg1 : memref<10x10xf16>,
+                    %out0: memref<20x10xf32>, %out1: memref<20x10xf16>) {
+  %0 = "lmhlo_gpu.all_gather_start"(%arg0, %arg1, %out0, %out1)
+    {
+      replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      all_gather_dimension = 0
+    }
+    : (memref<10x10xf32>, memref<10x10xf16>, memref<20x10xf32>, memref<20x10xf16>) -> (!mhlo.token)
   func.return
 }

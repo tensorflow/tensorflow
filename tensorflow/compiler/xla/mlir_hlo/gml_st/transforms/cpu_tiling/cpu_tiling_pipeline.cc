@@ -29,9 +29,15 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
                                                    int64_t statsDetailLevel) {
   GmlStCPUTilingOptions opts;
   opts.vectorSize = 8;
-  opts.reduction1DTileSize = 32;
-  opts.reduction2DTileSizes = {4, 4};
+  opts.reductionEnableHeuristic = false;
+  opts.reduction1DSplitRatio = 8;
+  opts.reduction1DTileSize = 8;
+  opts.reduction2DParallelDimTileSize = 4;
+  opts.reduction2DReductionDimTileSize = 4;
   opts.matmulTileSizes = {};
+  // TODO(vuson): Re-enable or remove this:
+  opts.vectorizationSizeThreshold = 0;
+  opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
   opts.enableFusionClusters = false;
   opts.enableFusionClusterOutlining = false;
@@ -47,6 +53,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(createCollectStatsPass(options.statsDetailLevel));
   pm.addNestedPass<FuncOp>(createScalarizationPass(false));
+  pm.addNestedPass<FuncOp>(
+      createVectorizeForCPUPass(options.vectorizationSizeThreshold));
 
   if (options.enableFusionClusters) {
     pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
@@ -59,19 +67,34 @@ void addCPUTilingPipeline(OpPassManager& pm,
     pm.addPass(createCSEPass());
   }
 
+  pm.addNestedPass<FuncOp>(createRewriteDotAsReducePass());
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
+  pm.addNestedPass<FuncOp>(createTransformBatchMatmulForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
-      options.vectorSize, options.reduction1DTileSize,
-      options.reduction2DTileSizes));
+
+  TransformReduceForCpuPassOptions reductionOpts;
+  reductionOpts.enableHeuristic = options.reductionEnableHeuristic;
+  reductionOpts.tileSize1D = options.reduction1DTileSize;
+  reductionOpts.splitRatio1D = options.reduction1DSplitRatio;
+  reductionOpts.parallelDimTileSize2D = options.reduction2DParallelDimTileSize;
+  reductionOpts.reductionDimTileSize2D =
+      options.reduction2DReductionDimTileSize;
+  pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(reductionOpts));
+
   pm.addNestedPass<FuncOp>(
-      createTransformDotForCpuPass(options.matmulTileSizes));
-  pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
+      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
+  // Upstream generalization of tensor.pack/unpack (i.e. tensor.pack/unpack ->
+  // tensor.pad + linalg.transpose + tensor.insert_slice) does not transfer
+  // transformed labels from tensor.pack/unpack to linalg.transpose and thus
+  // makes the latter being tiled again.
+  // Hence, elementwise ops transformation needs to be run before pack/unpack
+  // transformation.
   pm.addNestedPass<FuncOp>(createTransformElementwiseForCpuPass(
       options.vectorSize, options.fuseDegenerateReshapes));
+  pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
 
   pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
@@ -80,13 +103,18 @@ void addCPUTilingPipeline(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(createRewriteForallOpPass());
   pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
-  pm.addNestedPass<FuncOp>(createVectorizeForCPUPass());
+  pm.addNestedPass<FuncOp>(
+      createVectorizeForCPUPass(options.vectorizationTiledSizeThreshold));
 
   // Tile remaining ops by size one and scalarize what we can.
   pm.addNestedPass<FuncOp>(createTileByOnePass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
+  pm.addNestedPass<FuncOp>(createComposeExtractInsertSlicePass());
 
   pm.addPass(createCanonicalizerPass());
+
+  // Remove transformed labels after tiling all ops.
+  pm.addNestedPass<FuncOp>(createRemoveLabelPass());
 }
 
 void addDefaultCPUTilingPipeline(OpPassManager& pm, StringRef cpuName,

@@ -109,7 +109,6 @@ cc_library(
         ":op_reg_offset_proto_cc",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -311,7 +310,6 @@ py_library(
         ":tensor_spec",
         ":tensor_util",
         ":type_spec",
-        "//third_party/py/numpy",
         "//tensorflow/python:_pywrap_py_exception_registry",
         "//tensorflow/python:_pywrap_quantize_training",
         "//tensorflow/python:_pywrap_utils",
@@ -334,6 +332,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//third_party/py/numpy",
     ] + if_xla_available([
         "//tensorflow/python:_pywrap_tfcompile",
     ]),
@@ -484,6 +483,7 @@ py_library(
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
+        ":cpp_shape_inference_proto_py",
         ":framework",
         ":function",
         ":ops",
@@ -760,15 +760,6 @@ tf_python_pybind_extension(
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "//third_party/py/numpy:headers",
-        "@pybind11",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -776,6 +767,15 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
@@ -846,15 +846,6 @@ tf_python_pybind_extension(
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "//third_party/py/numpy:headers",
-        "@pybind11",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -862,6 +853,15 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
@@ -973,15 +973,6 @@ tf_python_pybind_extension(
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "//third_party/py/numpy:headers",
-        "@pybind11",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -989,6 +980,15 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
@@ -1149,6 +1149,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_array_ops",
@@ -1158,6 +1159,7 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1232,7 +1234,6 @@ cuda_py_test(
         ":ops",
         ":test_lib",
         ":test_ops",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1241,6 +1242,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/util",
+        "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -1260,9 +1262,9 @@ cuda_py_test(
         ":errors",
         ":ops",
         ":test_lib",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -1506,8 +1508,10 @@ py_library(
     srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
+        ":constant_op",
         ":dtypes",
         ":tensor_shape",
+        ":tensor_util",
         ":type_spec",
         ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
@@ -1573,8 +1577,8 @@ py_library(
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     visibility = visibility + [
-        "//third_party/py/keras:__subpackages__",
         "//tensorflow_estimator/python/estimator:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",
@@ -1616,9 +1620,9 @@ py_library(
     srcs = ["is_xla_test_true.py"],
     srcs_version = "PY3",
     visibility = visibility + [
+        "//tensorflow:internal",
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
-        "//tensorflow:internal",
     ],
 )
 
@@ -1709,9 +1713,9 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":constant_op",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -1773,6 +1777,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -1821,6 +1826,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//third_party/py/numpy",
@@ -1947,10 +1953,10 @@ tf_kernel_library(
     hdrs = ["test_ops.h"],
     gpu_srcs = ["test_ops.cu.cc"],
     deps = [
-        "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/time",
     ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
@@ -2237,6 +2243,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:shape_util",
         "//tensorflow/python:state_ops_gen",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )
@@ -2396,7 +2403,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -2415,6 +2422,8 @@ tf_py_test(
         "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ref_variable",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:while_loop",
     ],
 )

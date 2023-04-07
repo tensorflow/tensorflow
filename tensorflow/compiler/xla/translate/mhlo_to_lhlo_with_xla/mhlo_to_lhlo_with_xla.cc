@@ -998,9 +998,18 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       auto const config,
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
-  TF_RET_CHECK(custom_call->operand_count() == 7);
+  int ops_num = custom_call->operand_count();
+  TF_RET_CHECK(ops_num == 7 || ops_num == 8);
 
-  llvm::SmallVector<Value, 9> operands;
+  TF_ASSIGN_OR_RETURN(
+      bool has_vector_bias,
+      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+
+  bool has_damax = custom_call->shape().IsTuple();
+  xla::ShapeIndex output_index =
+      has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  llvm::SmallVector<Value, 10> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
@@ -1008,13 +1017,21 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
-
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  if (has_vector_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(7), &operands));
+  }
+  if (has_damax) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));
+  }
   auto op = CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulF8Op>(custom_call,
                                                                 operands);
 
   SetMatmulAttributes(op, config, builder_);
-
+  int32_t operand_sizes[] = {
+      1, 1, 1, 1, 1, 1, 1, 1, has_vector_bias ? 1 : 0, has_damax ? 1 : 0};
+  op->setAttr(op.getOperandSegmentSizeAttr(),
+              builder_.getDenseI32ArrayAttr(operand_sizes));
   TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
                       AsLhloEpilogue(config.epilogue()));
   op.setEpilogueAttr(lmhlo_gpu::CublasLtMatmulEpilogueAttr::get(
@@ -1048,6 +1065,8 @@ static tsl::StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
       return mlir::lmhlo_gpu::Activation::BandPass;
     case stream_executor::dnn::kElu:
       return mlir::lmhlo_gpu::Activation::Elu;
+    case stream_executor::dnn::kLeakyRelu:
+      return mlir::lmhlo_gpu::Activation::LeakyRelu;
     default:
       return xla::InternalError("Unknown activation");
   }
@@ -1179,6 +1198,8 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
             auto cnn_fused,
             CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardFusedOp>(custom_call));
         TF_RETURN_IF_ERROR(set_activation(cnn_fused));
+        cnn_fused.setLeakyreluAlphaAttr(
+            builder_.getF64FloatAttr(backend_config.leakyrelu_alpha()));
         return set_common_conv_attributes(cnn_fused);
       }
 
@@ -1432,10 +1453,6 @@ tsl::StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_op.getComputation(), &builder_));
-  auto debug_opts = instr->GetModule()->config().debug_options();
-  all_reduce_op->setAttr(
-      "allow_all_reduce_kernel",
-      builder_.getBoolAttr(debug_opts.xla_gpu_allow_all_reduce_kernel()));
   return all_reduce_op;
 }
 
@@ -1461,10 +1478,6 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_start_op.getComputation(), &builder_));
-  auto debug_opts = instr->GetModule()->config().debug_options();
-  all_reduce_start_op->setAttr(
-      "allow_all_reduce_kernel",
-      builder_.getBoolAttr(debug_opts.xla_gpu_allow_all_reduce_kernel()));
 
   auto [_, was_inserted] =
       ret_tokens_.insert({instr, all_reduce_start_op.getToken()});

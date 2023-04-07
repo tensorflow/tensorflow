@@ -41,15 +41,6 @@ cc_library(
 )
 
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
     name = "eigen_third_party_header_files",
     srcs = EIGEN3_THIRD_PARTY_HEADERS,
     visibility = ["//visibility:public"],

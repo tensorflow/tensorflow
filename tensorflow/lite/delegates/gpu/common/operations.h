@@ -626,6 +626,7 @@ struct QuantizeAndDequantizeAttributes {
 
 struct GatherAttributes {
   Axis axis = Axis::UNKNOWN;
+  Tensor<Linear, DataType::INT32> indices;
 };
 
 struct OneHotAttributes {
@@ -636,6 +637,7 @@ struct OneHotAttributes {
 struct SelectV2Attributes {
   bool broadcast_true = false;
   bool broadcast_false = false;
+  bool scalar_cond = false;
 };
 
 struct CumsumAttributes {

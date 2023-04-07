@@ -111,7 +111,21 @@ static bool IsNanSafeGt(HloComputation* comp) {
     return m::Gt(param0, param1);
   };
 
-  auto match_all_compares = [](HloInstruction* root, auto callback) {
+  auto match_default_compare = [](PrimitiveType type) {
+    auto params_with_type = [&](int i, PrimitiveType t) {
+      return m::Parameter(i).WithShape(m::Shape().WithElementType(t));
+    };
+    auto params =
+        std::vector({// Values
+                     params_with_type(0, type), params_with_type(1, type),
+                     // Indices
+                     params_with_type(2, S32), params_with_type(3, S32)});
+    auto const_true = m::Broadcast(m::Constant());
+    auto values_gt = m::Gt(params[0], params[1]);
+    return m::Select(const_true, values_gt, const_true);
+  };
+
+  auto match_all_types = [](HloInstruction* root, auto callback) {
     bool result = false;
     for (auto type : {BF16, F32, S32, U32}) {
       result = result || Match(root, callback(type));
@@ -130,7 +144,8 @@ static bool IsNanSafeGt(HloComputation* comp) {
                m::Gt(match_bitcast_bf16_with_convert(0),
                      match_bitcast_bf16_with_convert(1))) ||
          Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1))) ||
-         match_all_compares(comp->root_instruction(), match_compare);
+         match_all_types(comp->root_instruction(), match_compare) ||
+         match_all_types(comp->root_instruction(), match_default_compare);
 }
 
 // Look for the instructions emitted from: xla/client/lib/sorting.cc

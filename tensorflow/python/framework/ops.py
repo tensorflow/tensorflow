@@ -3032,7 +3032,7 @@ class Graph(pywrap_tf_session.PyGraph):
       if bytesize >= (1 << 31) or bytesize < 0:
         raise ValueError("GraphDef cannot be larger than 2GB.")
       graph_def.library.function.extend([f.cached_definition])
-      if f.grad_func_name:
+      if getattr(f, "grad_func_name", None):
         grad_def = function_pb2.GradientDef()
         grad_def.function_name = f.name
         grad_def.gradient_func = f.grad_func_name
@@ -3218,16 +3218,18 @@ class Graph(pywrap_tf_session.PyGraph):
     self._check_not_finalized()
 
     name = function.name
-    # Sanity checks on gradient definition.
-    if (function.grad_func_name is not None) and (function.python_grad_func is
-                                                  not None):
+    # Sanity checks on gradient definition for deprecated _DefinedFunction.
+    if getattr(function, "grad_func_name", None) and getattr(
+        function, "python_grad_func", None
+    ):
       raise ValueError("Gradient defined twice for function %s" % name)
 
     # Add function to graph
     # pylint: disable=protected-access
     with self._c_graph.get() as c_graph:
       with function._c_func.get() as func:
-        if function._grad_func:
+        if getattr(function, "_grad_func", None):
+          # For deprecated _DefinedFunction.
           with function._grad_func._c_func.get() as gradient:
             pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, gradient)
         else:

@@ -499,7 +499,6 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.device_type = device_type
 
   def test_explicit_device_list(self):
-
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]
     strategy = mirrored_strategy.MirroredStrategy(devices=device_list)
     mesh = strategy._mesh
@@ -512,6 +511,8 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.assertIn(
         f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
         mesh.local_devices()[1])
+    # Also make sure the host mesh works since it is required by dataset
+    self.assertIsNotNone(mesh.host_mesh())
 
   def test_implicit_device_list(self):
     strategy = mirrored_strategy.MirroredStrategy()
@@ -524,6 +525,8 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
     self.assertIn(
         f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
         mesh.local_devices()[1])
+    # Also make sure the host mesh works since it is required by dataset
+    self.assertIsNotNone(mesh.host_mesh())
 
   def test_mesh_with_device_list(self):
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]

@@ -229,6 +229,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   pm->addPass(CreateDTensorAllScatterLoweringPass());
 
+  pm->addPass(CreateDTensorAllToAllLoweringPass());
+
   // Group together multiple device clusters assigned to the same mesh. Repeat
   // this for every mesh to support multi-mesh. Collective lowering may have
   // created multiple CPU mesh clusters for executing collective operations on

@@ -1341,7 +1341,19 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }, execution_thread="main_thread"
 
 )"
-  },
+},
+
+{
+"MetadataFields",
+R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
+
+ENTRY %test (p: f32[100]) -> u32[100] {
+  %p = f32[100]{0} parameter(0)
+  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d"}
+}
+
+)"
+},
 });
   // clang-format on
 }

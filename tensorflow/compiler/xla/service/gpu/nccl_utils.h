@@ -47,12 +47,7 @@ StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
 
 bool IsGlobalNcclConfig();
-bool IsNcclLaunchModeParallel();
 
-#ifndef TENSORFLOW_USE_ROCM
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr);
-#endif
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr);
 

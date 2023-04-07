@@ -255,19 +255,20 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
     return;
   }
 
-  // TODO(iga): Add AddFunctionDef() and AddGradientDef() methods to graph
-  // to avoid the extra copy here.
-  tensorflow::FunctionDefLibrary fdef_lib;
-  *fdef_lib.add_function() = func->record->fdef();
-  if (grad) {
-    *fdef_lib.add_function() = grad->record->fdef();
-    tensorflow::GradientDef* gdef = fdef_lib.add_gradient();
-    gdef->set_function_name(func->record->fdef().signature().name());
-    gdef->set_gradient_func(grad->record->fdef().signature().name());
-  }
-
   tensorflow::mutex_lock l(g->mu);
-  status->status = g->graph.AddFunctionLibrary(fdef_lib);
+  status->status = g->graph.AddFunctionDef(func->record->fdef(),
+                                           func->record->stack_traces());
+  if (TF_GetCode(status) != TF_OK) return;
+  if (!grad) return;
+
+  status->status = g->graph.AddFunctionDef(grad->record->fdef(),
+                                           grad->record->stack_traces());
+  if (TF_GetCode(status) != TF_OK) return;
+
+  tensorflow::GradientDef gdef;
+  gdef.set_function_name(func->record->fdef().signature().name());
+  gdef.set_gradient_func(grad->record->fdef().signature().name());
+  status->status = g->graph.AddGradientDef(std::move(gdef));
 }
 
 int TF_GraphNumFunctions(TF_Graph* g) {

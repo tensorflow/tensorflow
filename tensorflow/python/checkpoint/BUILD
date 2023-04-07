@@ -34,7 +34,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":checkpoint_context",
-        "//tensorflow/python/tpu:tpu_embedding_v2",
         "//tensorflow/python/util:object_identity",
     ],
 )
@@ -80,7 +79,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -125,6 +124,7 @@ tf_py_test(
         "//tensorflow/python:template",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:backprop",

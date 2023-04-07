@@ -21,19 +21,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 
-////////////////////////////////////////////////////////////////////////////////
-// The followings are the interfaces to dump debug data.
-//
-// They are designed in MACRO to avoid expensive operations
-// if no dump is required. For example
-//
-// DUMP_MLIR_MODULE("name", "tag", GetModuleTxt(op), false)
-//
-// In the above code, GetModuleTxt is not called if ShouldDump returns false.
-////////////////////////////////////////////////////////////////////////////////
-
 #define SHOULD_DUMP(name) \
   ::tensorflow::DebugDataDumper::Global()->ShouldDump(name)
+
+#define GET_DUMP_FILENAME(name, tag) \
+  ::tensorflow::DebugDataDumper::Global()->GetDumpFilename(name, tag)
 
 #define DUMP_OP_CREATION_STACKTRACES(name, tag, graph)                    \
   do {                                                                    \
@@ -42,22 +34,17 @@ limitations under the License.
           name, tag, graph);                                              \
   } while (false)
 
-#define DUMP_GRAPH(name, tag, graph)                                        \
-  do {                                                                      \
-    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name))          \
-      ::tensorflow::DebugDataDumper::Global()->DumpGraph(name, tag, graph); \
-  } while (false)
-
-#define DUMP_MLIR_MODULE(name, tag, module_txt, bypass_name_filter)        \
+#define DUMP_GRAPH(name, tag, graph, func_lib_def, bypass_filter)          \
   do {                                                                     \
-    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(               \
-            name, bypass_name_filter))                                     \
-      ::tensorflow::DebugDataDumper::Global()->DumpMLIRModule(name, tag,   \
-                                                              module_txt); \
+    if (::tensorflow::DebugDataDumper::Global()->ShouldDump(name) ||       \
+        bypass_filter)                                                     \
+      ::tensorflow::DebugDataDumper::Global()->DumpGraph(name, tag, graph, \
+                                                         func_lib_def);    \
   } while (false)
 
 namespace tensorflow {
 
+class FunctionLibraryDefinition;
 class Graph;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,9 +87,7 @@ class DebugDataDumper {
   //    2.1. TF_DUMP_GRAPH_NAME_FILTER is set to '*'
   //    2.2. TF_DUMP_GRAPH_NAME_FILTER is set to a name filter
   //         which is a substr of name.
-  //    2.3. bypass_name_filter is true.
-  bool ShouldDump(const std::string& name,
-                  bool bypass_name_filter = false) const;
+  bool ShouldDump(const std::string& name) const;
 
   // Dump op creation callstacks, if ShouldDump returns true.
   void DumpOpCreationStackTraces(const std::string& name,
@@ -110,18 +95,14 @@ class DebugDataDumper {
 
   // Dump a graph, if ShouldDump returns true.
   void DumpGraph(const std::string& name, const std::string& tag,
-                 const Graph* graph);
-
-  // Dump a MLIR module, if ShouldDump returns true.
-  void DumpMLIRModule(const std::string& name, const std::string& tag,
-                      const std::string& module_txt);
+                 const Graph* graph,
+                 const FunctionLibraryDefinition* func_lib_def);
 
   // Get the dump file basename. Dump file basenames are in this format:
   // <name>.<order-id>.<tag>
   //
   // What each field means is explained on the class level comment.
-  std::string GetDumpFileBasename(const std::string& name,
-                                  const std::string& tag);
+  std::string GetDumpFilename(const std::string& name, const std::string& tag);
 
  private:
   // Get next dump id for a name.

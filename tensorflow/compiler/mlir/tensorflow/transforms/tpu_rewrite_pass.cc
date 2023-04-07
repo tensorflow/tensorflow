@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -84,7 +85,12 @@ constexpr char kBadArrayAttrLengthMsg[] =
 
 namespace {
 struct TPURewritePass : public impl::TPURewritePassBase<TPURewritePass> {
+  explicit TPURewritePass(llvm::StringRef _module_name)
+      : module_name(_module_name) {}
+
   void runOnOperation() override;
+
+  llvm::StringRef module_name;
 };
 
 // Creates a missing attribute error message.
@@ -351,12 +357,14 @@ tf_device::LaunchOp WrapOpInLaunch(OpBuilder* builder, Location loc,
 // Create a `tf._TPUCompileMlir` that contains a MLIR module that is
 // functionally equivalent to the function referenced by cluster_func.
 Operation* BuildCompileOp(
-    tf_device::ClusterFuncOp cluster_func, int num_replicas,
-    int num_cores_per_replica, llvm::StringRef compilation_device,
+    llvm::StringRef module_name, tf_device::ClusterFuncOp cluster_func,
+    int num_replicas, int num_cores_per_replica,
+    llvm::StringRef compilation_device,
     std::optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
+  if (!module_name.empty()) metadata.set_module_name(module_name.str());
   if (failed(SetMetadataProtoFromClusterFuncOp(
           cluster_func, num_replicas, num_cores_per_replica,
           std::move(xla_device_assignment), &metadata)))
@@ -730,7 +738,7 @@ int GetNumResultsPreCluster(tf_device::ParallelExecuteOp parallel_execute) {
 }
 
 LogicalResult Rewrite(
-    tf_device::ClusterFuncOp cluster_func,
+    llvm::StringRef module_name, tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
     ArrayRef<TF::TPUCompilationResultOp> compilation_result, OpBuilder* builder,
     bool tpu_compile_metadata_debug) {
@@ -815,11 +823,11 @@ LogicalResult Rewrite(
   // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
   // the parallel_execute.
   builder->setInsertionPoint(old_parallel_execute);
-  Operation* compile_op =
-      BuildCompileOp(cluster_func, num_replicas, num_cores_per_replica,
-                     tpu_device_assignment.compilation_device,
-                     std::move(tpu_device_assignment.xla_device_assignment),
-                     builder, tpu_compile_metadata_debug);
+  Operation* compile_op = BuildCompileOp(
+      module_name, cluster_func, num_replicas, num_cores_per_replica,
+      tpu_device_assignment.compilation_device,
+      std::move(tpu_device_assignment.xla_device_assignment), builder,
+      tpu_compile_metadata_debug);
   if (!compile_op) return failure();
 
   // This replaces _TPUCompileMlir placeholder ops that are required
@@ -955,7 +963,7 @@ void TPURewritePass::runOnOperation() {
     auto cluster_id = op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
-    if (failed(Rewrite(op, devices.device_names(),
+    if (failed(Rewrite(module_name, op, devices.device_names(),
                        compilation_results[cluster_id], &builder,
                        tpu_compile_metadata_debug_)))
       return WalkResult::interrupt();
@@ -985,8 +993,9 @@ void TPURewritePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
-  return std::make_unique<TPURewritePass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass(
+    llvm::StringRef module_name) {
+  return std::make_unique<TPURewritePass>(module_name);
 }
 
 }  // namespace TFTPU

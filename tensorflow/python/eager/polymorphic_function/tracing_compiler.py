@@ -402,7 +402,7 @@ class TracingCompiler:
               args, kwargs, func_graph)
 
           # TODO(b/263520817): Remove access to private attribute.
-          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
+          graph_capture_container = concrete_function.graph.function_captures
           # Maintain the list of all captures
           self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot

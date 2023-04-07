@@ -400,6 +400,137 @@ int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx) {
   }
 }
 
+int64_t MemoryCheckpoint::IdRegistry::Add(const std::string& prefix,
+                                          const std::string& key) {
+  mutex_lock l(mu_);
+  auto pair = std::make_pair(prefix, key);
+  if (string_to_int_.contains(pair)) {
+    return string_to_int_[pair];
+  }
+  int64_t id = next_id_++;
+  int_to_string_[id] = pair;
+  string_to_int_[pair] = id;
+  return id;
+}
+
+std::vector<int64_t> MemoryCheckpoint::IdRegistry::GetMatchingIds(
+    const std::string& prefix_to_match) {
+  mutex_lock l(mu_);
+  std::vector<int64_t> ids;
+  for (const auto& [pair, id] : string_to_int_) {
+    auto [prefix, key] = pair;
+    if (prefix.compare(0, prefix_to_match.length(), prefix_to_match) == 0) {
+      ids.push_back(id);
+    }
+  }
+  return ids;
+}
+
+std::pair<std::string, std::string> MemoryCheckpoint::IdRegistry::Get(
+    int64_t id) {
+  mutex_lock l(mu_);
+  auto result = int_to_string_.find(id);
+  DCHECK(result != int_to_string_.end())
+      << "Failed find id " << id << " in IdRegistry. "
+      << "Max id is: " << next_id_ - 1;
+  return result->second;
+}
+
+void MemoryCheckpoint::IdRegistry::RemoveIds(const std::vector<int64_t>& ids) {
+  mutex_lock l(mu_);
+  for (const auto& id : ids) {
+    string_to_int_.erase(int_to_string_[id]);
+    int_to_string_.erase(id);
+  }
+}
+
+std::string MemoryCheckpoint::DebugString() const {
+  std::string result = absl::StrCat("status=", status_.ToString(),
+                                    ", "
+                                    "root=",
+                                    (is_root_ ? "true" : "false"), "\n");
+  absl::StrAppend(&result, "number of integers: ", int_values_.size(), "\n");
+  for (const auto& [k, v] : int_values_) {
+    absl::StrAppend(&result, "  ", id_registry_->Get(k).first, ":",
+                    id_registry_->Get(k).second, ": ", v, "\n");
+  }
+  absl::StrAppend(&result, "number of strings: ", str_values_.size(), "\n");
+  for (const auto& [k, v] : str_values_) {
+    absl::StrAppend(&result, "  ", id_registry_->Get(k).first, ":",
+                    id_registry_->Get(k).second, ": ", v, "\n");
+  }
+  absl::StrAppend(&result, "number of tensors: ", tensor_values_.size(), "\n");
+
+  absl::StrAppend(
+      &result, "number of expired prefixes: ", expired_prefixes_.size(), "\n");
+  return result;
+}
+
+void MemoryCheckpoint::Merge(MemoryCheckpoint* other) {
+  if (!status_.ok()) {
+    return;
+  }
+
+  if (!other->status_.ok()) {
+    status_ = other->status_;
+    int_values_.clear();
+    str_values_.clear();
+    tensor_values_.clear();
+  }
+
+  for (const auto& [k, v] : other->int_values_) {
+    int_values_[k] = v;
+  }
+  for (const auto& [k, v] : other->str_values_) {
+    str_values_[k] = v;
+  }
+  for (const auto& [k, v] : other->tensor_values_) {
+    tensor_values_[k] = v;
+  }
+
+  // Get the expired prefixes from `other`. Since the info only needs to be
+  // propagated once downstream, we also clean the `expired_prefixes_` of
+  // `other` here.
+  for (const auto& prefix : other->expired_prefixes_) {
+    Purge(prefix);
+  }
+
+  other->expired_prefixes_.clear();
+  VLOG(5) << "MemoryCheckpoint::Merge " << DebugString();
+}
+
+void MemoryCheckpoint::Purge(const std::string& prefix) {
+  std::vector<int64_t> ids = id_registry_->GetMatchingIds(prefix);
+  for (const auto& id : ids) {
+    int_values_.erase(id);
+    str_values_.erase(id);
+    tensor_values_.erase(id);
+  }
+  if (!is_root_) {
+    expired_prefixes_.insert(prefix);
+  } else {
+    // We no longer need the mapping after change has been propagated all the
+    // way to root.
+    id_registry_->RemoveIds(ids);
+  }
+}
+
+Status MemoryCheckpoint::Save(IteratorStateWriter* writer) const {
+  for (const auto& [id, value] : int_values_) {
+    auto [prefix, key] = id_registry_->Get(id);
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix, key, value));
+  }
+  for (const auto& [id, value] : str_values_) {
+    auto [prefix, key] = id_registry_->Get(id);
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix, key, value));
+  }
+  for (const auto& [id, value] : tensor_values_) {
+    auto [prefix, key] = id_registry_->Get(id);
+    TF_RETURN_IF_ERROR(writer->WriteTensor(prefix, key, value));
+  }
+  return OkStatus();
+}
+
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
                                     const IteratorBase* parent) {
   parent_ = parent;
@@ -489,6 +620,22 @@ std::string FullName(const std::string& prefix, const std::string& name) {
   }
 
   return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
+}
+
+Status ExtractIteratorPrefix(StringPiece key, string* prefix) {
+  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
+    return errors::InvalidArgument("Key: ", key,
+                                   " was not generated using full_name.");
+  }
+  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
+  if (split_keys.size() != 2) {
+    return errors::InvalidArgument("Key: ", key,
+                                   " was not generated using full_name.");
+  }
+  string real_key = split_keys[1];
+  const int pos = real_key.rfind(kColon);
+  *prefix = real_key.substr(0, pos);
+  return OkStatus();
 }
 
 Status GetDatasetFromVariantTensor(const Tensor& tensor,

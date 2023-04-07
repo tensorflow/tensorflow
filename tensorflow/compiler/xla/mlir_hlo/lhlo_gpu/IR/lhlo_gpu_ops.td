@@ -100,7 +100,8 @@ def LHLOGPU_ConvForwardFusedOp : LHLOGPU_ConvBaseOp<"conv_forward_fused"> {
        Arg<LHLO_Buffer, "", [MemWrite]>:$output,
        Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
      GpuConvolutionAttributes<(ins
-         ActivationAttr:$activation_mode)>.attributes);
+         ActivationAttr:$activation_mode,
+         F64Attr:$leakyrelu_alpha)>.attributes);
 }
 
 // output = activation(result_scale * conv(input, filter) +
@@ -174,7 +175,7 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     I64Attr:$algorithm);
 }
 
-def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
+def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
@@ -184,6 +185,7 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$c_scale,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_scale,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
     Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_amax,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
@@ -255,7 +257,7 @@ def LHLOGPU_CollectivePermuteDoneOp: LHLOGPU_Op<"collective_permute_done"> {
 }
 
 def LHLOGPU_AllGatherStartOp :
-  LHLOGPU_AsyncCollectiveCommunicationOp<"all_gather_start", [SameOperandsElementType]> {
+  LHLOGPU_AsyncCollectiveCommunicationOp<"all_gather_start"> {
   let summary = "AllGatherStart operator";
   let description = [{
      Performs asynchronous concatenation across replicas.

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
+#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -346,19 +348,21 @@ Status CompileToPjRtLoadedExecutable(
       compilation_result, executable);
 }
 
-}  // namespace
-
-XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
-                                       const std::vector<int>& constants,
-                                       const std::vector<int>& resources,
-                                       const NameAttrList& function,
-                                       bool has_ref_vars)
-    : AsyncOpKernel(ctx),
-      constants_(constants),
-      resources_(resources),
-      function_(function),
-      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
-      has_ref_vars_(has_ref_vars) {}
+Status GetUpdatedVariables(
+    const OpKernelContext* ctx, absl::Span<const Tensor* const> inputs,
+    absl::Span<const int> variable_indices,
+    const XlaCompiler::CompilationResult& compilation_result,
+    std::vector<VariableInfo>* variable_infos) {
+  std::set<int> variables_updated;
+  for (const auto& resource_update : compilation_result.resource_updates) {
+    if (resource_update.modified) {
+      variables_updated.insert(resource_update.input_index);
+    }
+  }
+  return GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                    inputs, variable_indices,
+                                    &variables_updated, variable_infos);
+}
 
 // Get-or-create thread pool for a given collective.
 static thread::ThreadPool* GetOrCreateThreadPoolForCollective(
@@ -379,6 +383,33 @@ static thread::ThreadPool* GetOrCreateThreadPoolForCollective(
   }
   return &it->second;
 }
+
+void RunInThreadPoolIfCollectivesPresent(
+    const XlaCompiler::CompilationResult& compilation_result,
+    std::function<void()> execution_fn) {
+  // If we are using collectives, we need to run in a separate threadpool.
+  if (compilation_result.collective_info.has_value()) {
+    GetOrCreateThreadPoolForCollective(*compilation_result.collective_info)
+        ->Schedule(execution_fn);
+  } else {
+    // Otherwise, just run normally: we merely "pretend" to be asynchronous.
+    execution_fn();
+  }
+}
+
+}  // namespace
+
+XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
+                                       const std::vector<int>& constants,
+                                       const std::vector<int>& resources,
+                                       const NameAttrList& function,
+                                       bool has_ref_vars)
+    : AsyncOpKernel(ctx),
+      constants_(constants),
+      resources_(resources),
+      function_(function),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
+      has_ref_vars_(has_ref_vars) {}
 
 void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
@@ -434,15 +465,44 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     VLOG(2) << "pjrt_executable != nullptr: " << (pjrt_executable != nullptr);
     VLOG(2) << "compilation_result != nullptr: "
             << (compilation_result != nullptr);
-    VLOG(2) << "Execution using PJRT is unimplemented.";
+    VLOG(2) << "Executing using PJRT.";
 
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        errors::Unimplemented(
-            "Execution using Device API (PjRt) is unimplemented."),
-        done);
+    auto run_pjrt_cluster = [ctx, pjrt_client, pjrt_executable,
+                             compilation_result, done, inputs,
+                             resources = resources_]() {
+      auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
+      std::vector<VariableInfo> variable_infos;
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                              &variable_infos),
+          done);
+      OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                           done);
 
-    done();
+      StatusOr<xla::PjRtDevice*> device =
+          pjrt_client->LookupAddressableDevice(GetDeviceOrdinal(ctx->device()));
+      OP_REQUIRES_OK_ASYNC(ctx, device.status(), done);
+
+      const std::vector<xla::PjRtBuffer*> executable_args =
+          PreparePjRtExecutableArguments(compilation_result->input_mapping,
+                                         inputs, variable_infos);
+      // TODO(b/257548614): currently PJRT is compiled as portable (num_replica
+      // = 1 and num_partition = 1). Support multiple partitions case.
+      auto executable_outputs = pjrt_executable->ExecutePortable(
+          executable_args, *device, GetPjRtExecuteOptions());
+      OP_REQUIRES_OK_ASYNC(ctx, executable_outputs.status(), done);
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           PopulateCtxOutputsFromPjRtExecutableOutputs(
+                               inputs, variable_infos, *compilation_result,
+                               *executable_outputs, ctx),
+                           done);
+      VLOG(2) << "Done executing with PJRT.";
+      done();
+    };
+
+    RunInThreadPoolIfCollectivesPresent(*compilation_result, run_pjrt_cluster);
+    return;
   }
 
   Status status = CompileToLocalExecutable(
@@ -457,17 +517,11 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                           inputs, resources = resources_]() {
     auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
     std::vector<VariableInfo> variable_infos;
-    std::set<int> variables_updated;
-    for (const auto& resource_update : compilation_result->resource_updates) {
-      if (resource_update.modified) {
-        variables_updated.insert(resource_update.input_index);
-      }
-    }
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         GetVariableInfosFromInputs(
-                             ctx->resource_manager(), ctx->device(), inputs,
-                             resources, &variables_updated, &variable_infos),
-                         done);
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                            &variable_infos),
+        done);
     OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
                          done);
     std::map<int, const Tensor*> resource_var_ptrs;
@@ -523,14 +577,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     done();
   };
 
-  // If we are using collectives, we need to run in a separate threadpool.
-  if (compilation_result->collective_info.has_value()) {
-    GetOrCreateThreadPoolForCollective(*compilation_result->collective_info)
-        ->Schedule(run_xla_cluster);
-  } else {
-    // Otherwise, just run normally: we merely "pretend" to be asynchronous.
-    run_xla_cluster();
-  }
+  RunInThreadPoolIfCollectivesPresent(*compilation_result, run_xla_cluster);
 }
 
 namespace {

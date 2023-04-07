@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -366,6 +367,8 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
           << "Full type information with TFT_SHAPE_TENSOR for int32 for eager '"
           << tensor_handle->DebugString();
     }
+    TF_RETURN_IF_ERROR(
+        tensorflow::full_type::CheckMemoryType(use_host_memory, ft));
     if (use_host_memory) {
       *result = cpu_device;
     } else {
@@ -2028,14 +2031,16 @@ Status EagerKernelExecute(
 Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
                     int* num_retvals) {
   if (VLOG_IS_ON(1) && op->is_function()) {
-    std::string op_name = op->Name();
-    std::string exec_mode = op->IsLocal() ? "local" : "remote";
-    std::string device_name = op->DeviceName();
+    const std::string& op_name = op->Name();
+    const std::string& exec_mode = op->IsLocal() ? "local" : "remote";
+    const std::string& device_name = op->DeviceName();
 
-    std::string msg =
-        "eager executing " + exec_mode + " operation '" + op_name + "'";
+    auto msg = absl::StrCat("eager executing ", exec_mode, " operation '",
+                            op_name, "'");
 
-    if (!device_name.empty()) msg += " on device '" + device_name + "'";
+    if (!device_name.empty()) {
+      absl::StrAppend(&msg, " on device '", device_name, "'");
+    }
 
     VLOG(1) << "Entering " << msg;
 
@@ -2044,9 +2049,8 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
     VLOG(1) << "Exiting " << msg << ", status code is " << status;
 
     return status;
-  } else {
-    return DoEagerExecute(op, retvals, num_retvals);
   }
+  return DoEagerExecute(op, retvals, num_retvals);
 }
 
 namespace {

@@ -195,7 +195,6 @@ cc_library(
         ":benchmark_multirun_stats_recorder",
         ":benchmark_params",
         ":benchmark_utils",
-        "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -204,6 +203,7 @@ cc_library(
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",

@@ -252,11 +252,6 @@ struct TileElementwisePattern : public OpRewritePattern<OpTy> {
     if (hasSingleElementOperandsAndResults(op)) return failure();
     if (hasLabel(op, kTransformedLabel)) return failure();
 
-    if (isa<scf::ForallOp, scf::ForOp>(op->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          op, "has already been tiled by another pass.");
-    }
-
     // Find the root from which to start tiling and fusion.
     auto fusionFilterFn = [&](Operation *op) {
       if (fuseDegenerateReshapes) {
@@ -328,7 +323,6 @@ struct TransformElementwiseForCpuPass
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    f.walk([](linalg::MapOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

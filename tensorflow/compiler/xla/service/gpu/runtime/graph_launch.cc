@@ -105,36 +105,12 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
     CustomCall::UserData user_data) {
-  // We capture graph on a borrowed stream because we do not want to
-  // accidentally record any concurrent kernel launches from other XLA
-  // executables.
-  se::StreamExecutor* executor = run_options->stream()->parent();
-
   // Initialize (with memoization) BlasSupport here because cublasCreate fails
   // during cuda graph capturing.
   // TODO(b/272559361): The initialization should be conditional.
-  if (!executor->AsBlas()) {
+  if (!run_options->stream()->parent()->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
-
-  StatusOr<StreamPool::Ptr> capture_stream =
-      run_options->BorrowStream(executor->device_ordinal());
-
-  if (!capture_stream.ok())
-    return absl::InternalError(
-        absl::StrFormat("Failed to borrow a stream for graph capture: %s",
-                        capture_stream.status().error_message()));
-
-  // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
-  // via UserData to be able to detect when executing custom call in graph
-  // capture mode. Currently we rely on the fact that we know for sure that
-  // operations in the graph capture function do not need anything except the
-  // main stream (we capture only kernel launches).
-  ExecutableRunOptions capture_run_options;
-  capture_run_options.set_stream(capture_stream->get());
-
-  const ServiceExecutableRunOptions capture_opts(capture_run_options);
-  user_data.insert(&capture_opts);
 
   std::string error;
   runtime::DiagnosticEngine diagnostic_engine;
@@ -175,7 +151,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   }
 
   // Create a graph from running the graph capture function.
-  auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
+  auto captured = se::gpu::CaptureCudaGraph(run_options->stream(), [&]() {
     return FromAbslStatus(function_ref(args, runtime::NoResultConverter{}, opts,
                                        /*verify_arguments=*/InDebugMode())
                               .status());
@@ -233,12 +209,6 @@ static absl::Status RunGraphWithoutCapture(
 // Define the cuda graph launch custom call.
 //===----------------------------------------------------------------------===//
 
-// Only instantiates a CUDA graph after the captured function execution count
-// reaches the threshold. This constant is a heuristic to avoid creating a large
-// number of CUDA graph instances in memory.
-// TODO(b/258036887): Should be configurable by the user.
-constexpr uint64_t kGraphInstantiationThreshold = 2;
-
 static absl::Status LaunchGraph(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, const std::string* ptx,
@@ -281,7 +251,9 @@ static absl::Status LaunchGraph(
           });
   if (!get_count.ok()) return get_count.status();
   uint64_t count = (**get_count)->fetch_add(1);
-  if (count < kGraphInstantiationThreshold) {
+  uint64_t instantiation_threshold =
+      debug_options->xla_gpu_cuda_graph_instantiation_threshold();
+  if (count < instantiation_threshold) {
     // Run captured graph directly.
     absl::Status result = RunGraphWithoutCapture(
         run_options, function_ref, fwd_args, user_data_no_capture());

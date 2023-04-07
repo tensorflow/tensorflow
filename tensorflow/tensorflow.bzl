@@ -2491,11 +2491,11 @@ pywrap_tensorflow_macro = pywrap_tensorflow_macro_opensource
 #    Note that this only works on Windows. See the definition of
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
+def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rule = native.py_test, **kwargs):
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
-    native.py_test(
+    test_rule(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
             "//conditions:default": deps,
@@ -3363,7 +3363,7 @@ def tf_enable_mlir_bridge():
         "//conditions:default": [],
     })
 
-def tfcompile_target_cpu():
+def tfcompile_target_cpu(name = ""):
     return ""
 
 def tfcompile_dfsan_enabled():

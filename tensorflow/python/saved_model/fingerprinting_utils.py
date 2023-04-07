@@ -62,6 +62,28 @@ def write_fingerprint(export_dir, saved_model_serialized):
                                        singleprint=fingerprint.singleprint())
 
 
+def singleprint_from_saved_model(export_dir, saved_model_serialized):
+  """Returns the singleprint of a SavedModel in `export_dir`.
+
+  Args:
+    export_dir: The directory that contains the SavedModel.
+    saved_model_serialized: The serialized SavedModel proto.
+
+  Returns:
+    A string containing the singleprint of the SavedModel.
+
+  Raises:
+    ValueError: If a valid singleprint cannot be constructed from a SavedModel.
+  """
+  try:
+    fingerprint_serialized = fingerprinting_pywrap.CreateFingerprintDef(
+        saved_model_serialized, export_dir)
+  except fingerprinting_pywrap.FingerprintException as e:
+    raise ValueError(e) from None
+  fingerprint = fingerprinting.Fingerprint.from_proto(fingerprint_serialized)
+  return fingerprint.singleprint()
+
+
 def to_proto(fingerprint):
   if not isinstance(fingerprint, fingerprinting.Fingerprint):
     raise TypeError("Supplied value is not a Fingerprint.")

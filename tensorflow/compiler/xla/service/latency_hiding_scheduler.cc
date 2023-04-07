@@ -47,12 +47,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
-
 namespace {
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute
-};
+bool IsNopInstruction(const HloInstruction& hlo) {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         hlo.IsEffectiveBitcast();
+}
+}  // namespace
 
 CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
@@ -75,8 +77,6 @@ CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
       return {hlo.opcode(), hlo.opcode()};
   }
 }
-
-}  // namespace
 
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
@@ -121,6 +121,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
         return true;
       default:
         return false;
@@ -142,6 +143,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
         return true;
       default:
         return false;
@@ -163,6 +165,8 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         return ResourceType::kAllToAll;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
+      case HloOpcode::kReduceScatter:
+        return ResourceType::kReduceScatter;
       default:
         return ResourceType::kNoResource;
     }
@@ -302,6 +306,8 @@ void AsyncTracker::SetConcurrentResourceLimits(
       config_.all_gather_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllReduce)] =
       config_.all_reduce_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kReduceScatter)] =
+      config_.reduce_scatter_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendRecv)] =
       config_.send_recv_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kSendHost)] =
@@ -834,9 +840,7 @@ class ReadySetLt {
     return ready_nodes_if_scheduled;
   }
   static bool IsNop(const HloGraphNode& gn) {
-    return gn.GetInstr().opcode() == HloOpcode::kGetTupleElement ||
-           gn.GetInstr().opcode() == HloOpcode::kBitcast ||
-           gn.GetInstr().IsEffectiveBitcast();
+    return IsNopInstruction(gn.GetInstr());
   }
   bool IsResourceConstrained(
       DefaultSchedulerCore::ScheduleCandidate& cand) const {
@@ -1245,6 +1249,17 @@ std::vector<HloGraphNode*> HloScheduleGraph::FindBottomRoots() const {
   for (const HloInstruction* instr : original_order_) {
     HloGraphNode& node = GetNode(instr);
     if (node.GetOutdegree() == 0) {
+      roots.push_back(&node);
+    }
+  }
+  return roots;
+}
+
+std::vector<HloGraphNode*> HloScheduleGraph::FindTopRoots() const {
+  std::vector<HloGraphNode*> roots;
+  for (const HloInstruction* instr : original_order_) {
+    HloGraphNode& node = GetNode(instr);
+    if (node.GetIndegree() == 0) {
       roots.push_back(&node);
     }
   }

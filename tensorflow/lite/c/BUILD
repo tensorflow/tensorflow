@@ -58,6 +58,7 @@ cc_library_with_tflite_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_without_op_resolver",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -275,9 +276,9 @@ cc_library_with_tflite_with_c_headers_test(
         ":c_api_types",
     ],
     deps = [
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",

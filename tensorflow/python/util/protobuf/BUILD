@@ -45,9 +45,8 @@ tf_py_test(
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
-        "@six_archive//:six",
         "//tensorflow/python:platform_test",
-        #"//tensorflow/python/util",
+        "@six_archive//:six",
     ],
 )
 

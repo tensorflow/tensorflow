@@ -134,8 +134,23 @@ std::string getCompareComparator() {
 })";
 }
 
+std::string getStableComparator() {
+  return R"(
+  %compare {
+    %p.1.lhs.40628 = s32[] parameter(2)
+    %p.1.rhs.40629 = s32[] parameter(3)
+    %constant.40630 = pred[] constant(true)
+    %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
+    %p.0.lhs.40626 = f32[] parameter(0)
+    %p.0.rhs.40627 = f32[] parameter(1)
+    %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, type=TOTALORDER
+    ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
+  })";
+}
+
 TEST_F(TopkRewriterTest, Rewrite) {
-  for (std::string comparator : {getComparator(), getComparator()}) {
+  for (std::string comparator :
+       {getComparator(), getCompareComparator(), getStableComparator()}) {
     const std::string hlo_string = R"(
 HloModule module
 )" + comparator + R"(
@@ -168,7 +183,8 @@ ENTRY cluster {
 }
 
 TEST_F(TopkRewriterTest, RewriteWithBroadcast) {
-  for (std::string comparator : {getComparator(), getComparator()}) {
+  for (std::string comparator :
+       {getComparator(), getCompareComparator(), getStableComparator()}) {
     const std::string hlo_string = R"(
 HloModule module
 )" + comparator + R"(

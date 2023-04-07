@@ -350,6 +350,9 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     LOG(ERROR) << "Failed to start client for default data transfer protocol '"
                << default_protocol << "'; falling back to grpc. "
                << "Original error: " << worker.status();
+    metrics::RecordTFDataServiceDataTransferProtocolFallback(
+        default_protocol, static_cast<error::Code>(worker.status().raw_code()),
+        worker.status().error_message());
   }
   return CreateWorkerClient(kGrpcTransferProtocol, task_info);
 }

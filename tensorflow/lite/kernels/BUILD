@@ -587,6 +587,7 @@ BUILTIN_KERNEL_SRCS = [
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
     "bitcast.cc",
+    "bitwise_xor.cc",
     "broadcast_args.cc",
     "broadcast_to.cc",
     "bucketize.cc",
@@ -655,6 +656,7 @@ BUILTIN_KERNEL_SRCS = [
     "resize_nearest_neighbor.cc",
     "reverse.cc",
     "reverse_sequence.cc",
+    "right_shift.cc",
     "round.cc",
     "scatter_nd.cc",
     "segment_sum.cc",
@@ -1039,8 +1041,9 @@ cc_test(
 
 cc_test(
     name = "add_test",
-    size = "small",
+    size = "medium",
     srcs = ["add_test.cc"],
+    shard_count = 10,
     tags = [
         "tflite_nnapi",
         "tflite_xnnpack",
@@ -2196,7 +2199,6 @@ cc_test(
     size = "small",
     srcs = ["squeeze_test.cc"],
     tags = [
-        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
         "tflite_nnapi",
     ],
     deps = [
@@ -2676,18 +2678,6 @@ cc_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_test(
     name = "mirror_pad_test",
     srcs = ["mirror_pad_test.cc"],
@@ -2992,6 +2982,28 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bitwise_xor_test",
+    size = "small",
+    srcs = ["bitwise_xor_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "right_shift_test",
+    size = "small",
+    srcs = ["right_shift_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

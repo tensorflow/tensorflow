@@ -309,6 +309,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python/eager:backprop",

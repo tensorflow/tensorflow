@@ -76,7 +76,8 @@ TEST(UtilsTest, ReturnIfErrorInImport) {
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
-  EXPECT_STREQ(status.error_message().c_str(), "GraphDef proto -> MLIR: msg");
+  EXPECT_STREQ(status.ToString().c_str(),
+               "CANCELLED: GraphDef proto -> MLIR: msg [a='b']");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
@@ -87,9 +88,10 @@ TEST(UtilsTest, ReturnIfErrorInCompile) {
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
-  EXPECT_STREQ(status.error_message().c_str(),
-               "TF dialect -> TFRT dialect, compiler issue, please contact "
-               "the TFRT team: msg");
+  EXPECT_STREQ(
+      status.ToString().c_str(),
+      "CANCELLED: TF dialect -> TFRT dialect, compiler issue, please contact "
+      "the TFRT team: msg [a='b']");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
@@ -100,7 +102,8 @@ TEST(UtilsTest, ReturnIfErrorInInit) {
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
-  EXPECT_STREQ(status.error_message().c_str(), "Initialize TFRT: msg");
+  EXPECT_STREQ(status.ToString().c_str(),
+               "CANCELLED: Initialize TFRT: msg [a='b']");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
@@ -113,7 +116,8 @@ TEST(UtilsTest, AssignOrReturnInImport) {
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
-  EXPECT_STREQ(status.error_message().c_str(), "GraphDef proto -> MLIR: msg");
+  EXPECT_STREQ(status.ToString().c_str(),
+               "CANCELLED: GraphDef proto -> MLIR: msg [a='b']");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
@@ -126,9 +130,9 @@ TEST(UtilsTest, AssignOrReturnInCompile) {
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
-  EXPECT_STREQ(status.error_message().c_str(),
-               "TF dialect -> TFRT dialect, compiler issue, please contact "
-               "the TFRT team: msg");
+  EXPECT_STREQ(status.ToString().c_str(),
+               "CANCELLED: TF dialect -> TFRT dialect, compiler issue, please "
+               "contact the TFRT team: msg [a='b']");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
@@ -141,7 +145,8 @@ TEST(UtilsTest, AssignOrReturnInInit) {
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
-  EXPECT_STREQ(status.error_message().c_str(), "Initialize TFRT: msg");
+  EXPECT_STREQ(std::string(status.ToString()).c_str(),
+               "CANCELLED: Initialize TFRT: msg [a='b']");
   EXPECT_EQ(status.GetPayload("a"), "b");
 }
 

@@ -27,9 +27,9 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
-from tensorflow.python.util import compat
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 # Utility device function to use for testing
@@ -100,13 +100,13 @@ class GraphUtilTest(test.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
-      var_0 = variables.VariableV1(0)
+      var_0 = variable_v1.VariableV1(0)
       with ops.device(TestDeviceFuncPinVariableToCpu):
-        var_1 = variables.VariableV1(1)
+        var_1 = variable_v1.VariableV1(1)
         with ops.device(lambda op: "/device:GPU:0"):
-          var_2 = variables.VariableV1(2)
+          var_2 = variable_v1.VariableV1(2)
         with ops.device("/device:GPU:0"):  # Implicit merging device function.
-          var_3 = variables.VariableV1(3)
+          var_3 = variable_v1.VariableV1(3)
 
     self.assertDeviceEqual(var_0.device, None)
     self.assertDeviceEqual(var_1.device, "/device:CPU:0")

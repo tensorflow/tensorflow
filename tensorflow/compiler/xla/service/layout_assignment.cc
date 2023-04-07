@@ -87,7 +87,7 @@ BufferLayoutConstraint::BufferLayoutConstraint(const Layout& layout,
 
 std::string BufferLayoutConstraint::ToString() const {
   return absl::StrFormat(
-      "BufferLayoutConstraint (prioity=%d, mandatory=%d, dfs=%d) %s: %s",
+      "BufferLayoutConstraint (priority=%d, mandatory=%d, dfs=%d) %s: %s",
       priority(), mandatory(), dfs(), buffer_->ToString(),
       LayoutUtil::HumanString(layout_[0]));
 }
@@ -209,7 +209,7 @@ bool OperandLayoutConstraint::UpdateLayout(int64_t new_priority,
 
 std::string OperandLayoutConstraint::ToString() const {
   return absl::StrFormat(
-      "OperandLayoutConstraint (prioity=%d) %s, operand %d: %s", priority(),
+      "OperandLayoutConstraint (priority=%d) %s, operand %d: %s", priority(),
       instruction_->name(), operand_no_, shape_layout_[0].ToString());
 }
 

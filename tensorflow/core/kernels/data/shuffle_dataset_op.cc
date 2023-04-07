@@ -192,6 +192,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           params.dataset->buffer_size_);
     }
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
@@ -256,10 +258,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
       // Save input iterator if it hasn't been exhausted else write
       // "end_of_input_sequence".
-      if (!input_impl_) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(this->full_name(kEndOfInputSequence), ""));
-      } else {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(kEndOfInputSequence), static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(this->SaveInput(ctx, writer, input_impl_));
       }
 
@@ -303,7 +304,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       ResetRngs();
 
       // Restore the input iterator if it wasn't already exhausted.
-      if (!reader->Contains(this->full_name(kEndOfInputSequence))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(
+          this->full_name(kEndOfInputSequence), &input_empty));
+      if (static_cast<bool>(!input_empty)) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
             ctx, this, this->prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));

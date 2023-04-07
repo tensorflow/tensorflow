@@ -40,9 +40,7 @@ class AllReduceSimplifierTest : public HloTestBase {
 
   size_t AllReduceCount(std::unique_ptr<HloModule>& module) {
     return absl::c_count_if(module->entry_computation()->instructions(),
-                            [](const HloInstruction* inst) {
-                              return inst->opcode() == HloOpcode::kAllReduce;
-                            });
+                            HloPredicateIsOp<HloOpcode::kAllReduce>);
   }
 };
 

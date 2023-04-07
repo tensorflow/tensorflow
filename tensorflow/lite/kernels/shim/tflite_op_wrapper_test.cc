@@ -35,8 +35,8 @@ namespace shim {
 namespace op_wrapper {
 namespace {
 
-#ifndef ASSERT_OK
-#define ASSERT_OK(x) ASSERT_TRUE(x.ok());
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_TRUE(x.ok());
 #endif
 
 // Tests the created type of the variant is correct.

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -161,7 +162,8 @@ Status SetUpKernelFallbackCompatRequestContext(
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner,
-    tfrt_stub::CostRecorder* cost_recorder) {
+    tfrt_stub::CostRecorder* cost_recorder,
+    tfrt::ResourceContext* client_graph_resource_context) {
   DCHECK(builder);
   DCHECK(device_manager);
   DCHECK(pflr);
@@ -175,6 +177,8 @@ Status SetUpKernelFallbackCompatRequestContext(
           model_metadata, pflr);
 
   fallback_request_state.set_cost_recorder(cost_recorder);
+  fallback_request_state.set_client_graph_resource_context(
+      client_graph_resource_context);
 
   return OkStatus();
 }
