@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -57,6 +56,15 @@ class CollectiveOpsTest : public HloTestBase {
   }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // Disable async->sync collective conversion pass to enable unit testing
+    // of async collectives.
+    debug_options.add_xla_disable_hlo_passes(
+        "convert-async-collectives-to-sync");
+    return debug_options;
+  }
+
   std::unique_ptr<HloModule> MakeCrsModule(
       const Shape& shape, std::vector<std::vector<int64_t>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
