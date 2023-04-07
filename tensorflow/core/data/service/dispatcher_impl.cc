@@ -1252,7 +1252,10 @@ Status DataServiceDispatcherImpl::GcOldIterations()
       state_.ListIterations();
   int64_t now = env_->NowMicros();
   for (const auto& iteration : iterations) {
-    if (iteration->finished || iteration->num_clients > 0 ||
+    if (iteration->job->processing_mode.sharding_policy() ==
+            ProcessingModeDef::DYNAMIC ||  // To preserve visitation guarantees.
+        iteration->finished ||
+        iteration->num_clients > 0 ||
         iteration->last_client_released_micros < 0 ||
         now < iteration->last_client_released_micros +
                   (config_.job_gc_timeout_ms() * 1000)) {

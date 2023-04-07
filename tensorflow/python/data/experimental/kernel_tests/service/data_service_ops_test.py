@@ -538,6 +538,38 @@ class DataServiceOpsTest(
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDontGcJobsWithVisitationGuarantees(self):
+    cluster = self.make_test_cluster(
+        num_workers=1,
+        job_gc_check_interval_ms=50,
+        job_gc_timeout_ms=20,
+    )
+    num_elements = 1000
+    it1 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test1",
+        )
+    )
+    it2 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test2",
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        )
+    )
+    self.assertEqual(cluster.workers[0].num_tasks(), 2)
+    del it1
+    del it2
+    # Check that only the first job is gced. The second job will not be gced
+    # because it has a sharding policy with visitation guarantees.
+    while cluster.workers[0].num_tasks() > 1:
+      time.sleep(0.1)
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testGcAndRecreate(self):
     cluster = self.make_test_cluster(
         num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20
