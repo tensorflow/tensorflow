@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
@@ -343,7 +344,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
-    Device* default_device, Env* env) {
+    Device* default_device, Env* env,
+    OptimizedFunctionGraph::OptimizationSource optimization_source) {
+  const uint64_t graph_optimization_start_time_usecs = env->NowMicros();
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? input_lib_def : options.lib_def;
 
@@ -504,12 +507,15 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
-  return OptimizedFunctionGraphInfo{function_name,
-                                    std::move(graph),
-                                    std::move(reachable_lib_def),
-                                    node_name_to_control_ret,
-                                    std::move(ret_types),
-                                    ret_nodes.size()};
+  return OptimizedFunctionGraphInfo{
+      function_name,
+      std::move(graph),
+      std::move(reachable_lib_def),
+      node_name_to_control_ret,
+      std::move(ret_types),
+      ret_nodes.size(),
+      env->NowMicros() - graph_optimization_start_time_usecs,
+      optimization_source};
 }
 
 StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>

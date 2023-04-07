@@ -148,6 +148,8 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
             ret_types: DT_DOUBLE
             ret_types: DT_BOOL
             num_return_nodes: 2
+            optimization_time_usecs: 15
+            source: 1
           )pb",
           kLibraryPb),
       &proto);
@@ -173,6 +175,8 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
   EXPECT_THAT(test_result->node_name_to_control_ret,
               UnorderedElementsAre(Pair("B", "A")));
   EXPECT_EQ(test_result->num_return_nodes, 2);
+  EXPECT_EQ(test_result->optimization_duration_usecs, 15);
+  EXPECT_EQ(test_result->optimization_source, OptimizedFunctionGraph::AOT);
 }
 
 }  // namespace

@@ -571,7 +571,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       optimized_graph_proto == nullptr
           ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
                                   lib_def_, composite_devices, cpu_device,
-                                  default_device, env_)
+                                  default_device, env_,
+                                  OptimizedFunctionGraph::JIT)
           : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
