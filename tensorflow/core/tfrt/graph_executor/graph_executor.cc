@@ -212,14 +212,24 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   // Create a request context builder.
   tfrt::RequestContextBuilder request_context_builder(
       runtime.core_runtime()->GetHostContext(), resource_context, request_id);
+
   // Set up the request contexts in the builder.
   // Note: if the intra-op thread pool from the request queue is null, the
   // thread pool in `tensorflow::Device` will be used.
-  TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
-      &request_context_builder, &fallback_state.device_manager(),
-      &fallback_state.process_function_library_runtime(), runner_table,
-      resource_array, request_queue->GetIntraOpThreadPool(), model_metadata,
-      &request_info->runner, cost_recorder, client_graph_resource_context));
+  DCHECK(runner_table);
+  DCHECK(resource_array);
+  auto& fallback_request_state =
+      request_context_builder.context_data()
+          .emplace<tfd::KernelFallbackCompatRequestState>(
+              &request_info->runner, &fallback_state.device_manager(),
+              request_context_builder.id(), runner_table, resource_array,
+              request_queue->GetIntraOpThreadPool(), model_metadata,
+              &fallback_state.process_function_library_runtime());
+
+  fallback_request_state.set_cost_recorder(cost_recorder);
+  fallback_request_state.set_client_graph_resource_context(
+      client_graph_resource_context);
+
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
   // Set priority in the builder.
