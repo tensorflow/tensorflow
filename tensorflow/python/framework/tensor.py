@@ -22,6 +22,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
@@ -422,6 +423,44 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
 trace_type.register_serializable(TensorSpec)
 trace_type.register_tensor_type(TensorSpec)
+
+
+class _TensorCodec:
+  """Codec for Tensor."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, ops.Tensor)
+
+  def do_encode(self, tensor_value, encode_fn):
+    """Returns an encoded `TensorProto` for the given `tf.Tensor`."""
+    del encode_fn
+    encoded_tensor = struct_pb2.StructuredValue()
+    if isinstance(tensor_value, ops.EagerTensor):
+      encoded_tensor.tensor_value.CopyFrom(
+          tensor_util.make_tensor_proto(tensor_value.numpy())
+      )
+    else:
+      if tensor_value.op.type == "Const":
+        encoded_tensor.tensor_value.CopyFrom(tensor_value.op.get_attr("value"))
+      else:
+        raise nested_structure_coder.NotEncodableError(
+            f"No encoder for object {str(tensor_value)} of type"
+            f" {type(tensor_value)}."
+        )
+    return encoded_tensor
+
+  def can_decode(self, value):
+    return value.HasField("tensor_value")
+
+  def do_decode(self, value, decode_fn):
+    """Returns the `tf.Tensor` encoded by the proto `value`."""
+    del decode_fn
+    tensor_proto = value.tensor_value
+    tensor = constant_op.constant(tensor_util.MakeNdarray(tensor_proto))
+    return tensor
+
+
+nested_structure_coder.register_codec(_TensorCodec())
 
 
 class _TensorSpecCodec:

@@ -1508,8 +1508,10 @@ py_library(
     srcs = ["tensor.py"],
     deps = [
         ":common_shapes",
+        ":constant_op",
         ":dtypes",
         ":tensor_shape",
+        ":tensor_util",
         ":type_spec",
         ":type_spec_registry",
         "//tensorflow/core:protos_all_py",
