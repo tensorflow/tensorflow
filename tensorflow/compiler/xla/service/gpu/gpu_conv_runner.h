@@ -50,7 +50,6 @@ struct GpuConvConfig {
   struct FusionConfig {
     se::dnn::ActivationMode mode;
     double side_input_scale;
-    double leakyrelu_alpha = 0.0;
   };
 
   PrimitiveType input_type;

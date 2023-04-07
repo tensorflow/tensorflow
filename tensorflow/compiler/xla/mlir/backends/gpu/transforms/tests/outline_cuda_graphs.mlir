@@ -412,7 +412,6 @@ module attributes {gpu.container_module} {
                 reverse = [0, 0]
               }
       { activation_mode = #lmhlo_gpu<activation Relu>,
-        leakyrelu_alpha = 0.0 : f64,
         backend_config = #lmhlo_gpu.convolution_backend_config<
           algorithm = -1,
           is_cudnn_frontend = true,

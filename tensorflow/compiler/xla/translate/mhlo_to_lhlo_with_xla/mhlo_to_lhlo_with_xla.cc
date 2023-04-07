@@ -1065,8 +1065,6 @@ static tsl::StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
       return mlir::lmhlo_gpu::Activation::BandPass;
     case stream_executor::dnn::kElu:
       return mlir::lmhlo_gpu::Activation::Elu;
-    case stream_executor::dnn::kLeakyRelu:
-      return mlir::lmhlo_gpu::Activation::LeakyRelu;
     default:
       return xla::InternalError("Unknown activation");
   }
@@ -1198,8 +1196,6 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
             auto cnn_fused,
             CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardFusedOp>(custom_call));
         TF_RETURN_IF_ERROR(set_activation(cnn_fused));
-        cnn_fused.setLeakyreluAlphaAttr(
-            builder_.getF64FloatAttr(backend_config.leakyrelu_alpha()));
         return set_common_conv_attributes(cnn_fused);
       }
 

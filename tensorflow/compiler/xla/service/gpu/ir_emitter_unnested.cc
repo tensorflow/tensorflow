@@ -1093,8 +1093,6 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.kind = CudnnConvKind::kForwardActivation;
     fill_conv_descriptor(conv);
     TF_RETURN_IF_ERROR(set_activation_mode(conv));
-    descriptor.backend_config.set_leakyrelu_alpha(
-        conv.getLeakyreluAlpha().convertToDouble());
   } else if (auto conv = dyn_cast<ConvForwardFusedSideInputOp>(op)) {
     descriptor.kind = CudnnConvKind::kForwardActivation;
     fill_conv_descriptor(conv);

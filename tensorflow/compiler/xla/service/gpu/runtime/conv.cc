@@ -226,10 +226,6 @@ struct SideInputAttrs {
   double side_input_scale;
 };
 
-struct LeakyReluAlphaAttrs {
-  double leaky_relu_alpha;
-};
-
 }  // namespace
 
 static GpuConvDescriptor GetConvDescriptor(
@@ -241,8 +237,7 @@ static GpuConvDescriptor GetConvDescriptor(
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
     std::optional<FusedConvAttrs> fused = std::nullopt,
-    std::optional<SideInputAttrs> side_input = std::nullopt,
-    std::optional<LeakyReluAlphaAttrs> leakyrelu_alpha = std::nullopt) {
+    std::optional<SideInputAttrs> side_input = std::nullopt) {
   // Build a convolution descriptor from the attributes.
   GpuConvDescriptor descriptor;
   descriptor.kind = kind;
@@ -316,11 +311,6 @@ static GpuConvDescriptor GetConvDescriptor(
   if (fused.has_value())
     descriptor.backend_config.set_activation_mode(fused->activation_mode);
 
-  // Set attributes specific for fused convolutions with leaky_relu_alpha.
-  if (leakyrelu_alpha.has_value())
-    descriptor.backend_config.set_leakyrelu_alpha(
-        leakyrelu_alpha->leaky_relu_alpha);
-
   // Set attributes specific for convolutions with side input.
   if (side_input.has_value())
     descriptor.backend_config.set_side_input_scale(
@@ -352,8 +342,7 @@ static absl::Status ConvImpl(
     int64_t feature_group_count, double result_scale,
     // Optional attributes for fused convolutions.
     std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
-    std::optional<double> side_input_scale = std::nullopt,
-    std::optional<double> leakyrelu_alpha = std::nullopt) {
+    std::optional<double> side_input_scale = std::nullopt) {
   // Build config for optional attributes.
   std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
   if (activation_mode.has_value()) fused_attrs = {*activation_mode};
@@ -369,9 +358,6 @@ static absl::Status ConvImpl(
     runtime_autotuning = true;
   }
 
-  std::optional<LeakyReluAlphaAttrs> leakyrelu_alpha_attrs = std::nullopt;
-  if (leakyrelu_alpha.has_value()) leakyrelu_alpha_attrs = {*leakyrelu_alpha};
-
   // Get or create the convolution runner state.
   absl::StatusOr<ConvRunner*> conv =
       runner.GetOrCreate([&]() -> absl::StatusOr<ConvRunner> {
@@ -380,7 +366,7 @@ static absl::Status ConvImpl(
             {window_strides, padding, lhs_dilation, rhs_dilation,
              window_reversal},
             backend_config, {feature_group_count, result_scale}, fused_attrs,
-            side_input_attrs, leakyrelu_alpha_attrs);
+            side_input_attrs);
 
         StatusOr<GpuConvConfig> conv_config = GetGpuConvConfig(descriptor, "");
         if (!conv_config.ok()) return ToAbslStatus(conv_config.status());
@@ -502,7 +488,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
         )
         .Value(std::optional<se::dnn::ActivationMode>())  // activation_mode
         .Value(std::optional<double>())                   // side_input_scale
-        .Value(std::optional<double>())                   // leaky_relu_alpha
 );
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
@@ -521,8 +506,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
             .Arg<FlatMemrefView>()                      // scratch
         )
         .Attr<se::dnn::ActivationMode>("activation_mode")
-        .Value(std::optional<double>())   // side_input_scale
-        .Attr<double>("leakyrelu_alpha")  // leaky_relu_alpha
+        .Value(std::optional<double>())  // side_input_scale
 );
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
@@ -541,8 +525,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
                            .Arg<FlatMemrefView>()     // scratch
                        )
         .Attr<se::dnn::ActivationMode>("activation_mode")
-        .Attr<double>("side_input_scale")
-        .Value(std::optional<double>()));  // leaky_relu_alpha
+        .Attr<double>("side_input_scale"));
 
 //===----------------------------------------------------------------------===//
 

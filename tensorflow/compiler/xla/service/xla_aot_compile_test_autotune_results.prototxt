@@ -23,7 +23,7 @@ dots {
 }
 convs {
   device: "sm_6.0 with 17071734784B RAM, 56 cores, 1480500KHz clock, 715000KHz mem clock, 4194304B L2$"
-  hlo: "(f32[1,1,2,3]{3,2,1,0}, u8[0]{0}) custom-call(f32[2,1,4,4]{3,2,1,0}, f32[2,1,3,2]{3,2,1,0}), window={size=2x3}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBackwardFilter\", backend_config=\"{\\\"activation_mode\\\":\\\"0\\\",\\\"conv_result_scale\\\":1,\\\"side_input_scale\\\":0,\\\"leakyrelu_alpha\\\":0}\""
+  hlo: "(f32[1,1,2,3]{3,2,1,0}, u8[0]{0}) custom-call(f32[2,1,4,4]{3,2,1,0}, f32[2,1,3,2]{3,2,1,0}), window={size=2x3}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convBackwardFilter\", backend_config=\"{\\\"activation_mode\\\":\\\"0\\\",\\\"conv_result_scale\\\":1,\\\"side_input_scale\\\":0}\""
   result {
     run_time {
       nanos: 45408
