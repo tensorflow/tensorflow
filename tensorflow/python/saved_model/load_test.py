@@ -579,6 +579,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 4)
+
     self.assertAllEqual(
         [0.0, 0.0, 0.0],
         imported.f(constant_op.constant([1, 2, 3]), None).numpy(),
@@ -618,6 +621,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(concrete_functions, 3)
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 3)
 
     self.assertAllEqual(b"ab", imported.f("a", "b"))
     self.assertAllEqual(b"ab", imported.f("a", constant_op.constant("b")))
@@ -1234,6 +1240,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(concrete_functions, 1)
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 1)
 
     with self.assertRaisesRegex(
         TypeError, "Binding inputs to tf.function `f` failed"
