@@ -267,22 +267,20 @@ HloAsyncInstruction::HloAsyncInstruction(
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(*this);
   set_async_execution_thread(async_execution_thread);
+
+  // Drop 'async' from async-{start/update/done} to get the suffix.
+  absl::string_view suffix = HloOpcodeString(opcode).substr(5);
+  absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode());
+  SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
 }
 
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
     absl::string_view async_execution_thread)
-    : HloInstruction(opcode, shape),
-      async_group_id_(async_group_id),
-      async_execution_thread_(async_execution_thread) {
-  AppendOperand(operand);
-  AppendComputation(async_computation);
-  CHECK(!async_computation->IsCustomCallComputation());
-  CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(*this);
-  set_async_execution_thread(async_execution_thread);
-}
+    : HloAsyncInstruction(opcode, shape, absl::MakeConstSpan(&operand, 1),
+                          async_computation, async_group_id,
+                          async_execution_thread) {}
 
 HloAsyncInstruction::~HloAsyncInstruction() {
   ClearAsyncComputationInstruction();
