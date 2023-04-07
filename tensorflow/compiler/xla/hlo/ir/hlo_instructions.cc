@@ -2724,7 +2724,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2740,7 +2740,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     HloComputation* to_apply, absl::string_view custom_call_target,
     std::string opaque, CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands, to_apply),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2759,7 +2759,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands,
                              called_computations),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2779,7 +2779,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::Span<const Shape> operand_shapes_with_layout,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(true),
