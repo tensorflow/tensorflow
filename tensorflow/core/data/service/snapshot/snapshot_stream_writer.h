@@ -188,8 +188,8 @@ class SnapshotStreamWriter {
   // Restores from the last checkpoint.
   Status Restore();
 
-  // Returns the index of the last checkpointed chunk and its element count.
-  StatusOr<std::pair<int64_t, int64_t>> LastCheckpointInfo() const;
+  // Returns the filename of the most recent checkpoint.
+  StatusOr<std::string> LastCheckpointName() const;
 
   // Synchronizes the checkpoint with the committed chunks. This is called when
   // the worker restores the snapshot in case the worker fails after writing the
@@ -202,6 +202,9 @@ class SnapshotStreamWriter {
   // `chunk_num_elements`.
   std::string CheckpointPath(int64_t chunk_index,
                              int64_t chunk_num_elements) const;
+
+  // Returns the path of the checkpoint for `checkpoint_name`.
+  std::string CheckpointPath(const std::string& checkpoint_name) const;
 
   const SnapshotWriterParams params_;
 
