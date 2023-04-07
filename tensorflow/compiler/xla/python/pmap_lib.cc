@@ -296,6 +296,7 @@ class PmapFunction {
   }
 
   int cache_size() const { return executables_.size(); }
+  void cache_clear() { return executables_.clear(); }
   const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
   const std::string& function_name() const { return function_name_; }
@@ -1073,6 +1074,13 @@ void BuildPmapSubmodule(py::module& m) {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return py::cast<int>(fun->cache_size());
       });
+
+  cfun.attr("_cache_clear") = py::cpp_function(
+      [](py::handle self) {
+        PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
+        fun->cache_clear();
+      },
+      py::is_method(cfun));
 
   cfun.attr("_debug_cache_keys") = py::cpp_function(
       [](py::handle self) -> std::string {
