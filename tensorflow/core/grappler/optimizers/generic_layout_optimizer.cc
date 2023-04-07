@@ -87,41 +87,6 @@ inline GpuStats GetNumGPUs(const Cluster& cluster) {
   return gpu_stats;
 }
 
-inline bool NumConvOnDeviceWithDataTypeOverThreshold(
-    const TransposeContext& context, absl::string_view device,
-    const DataType& data_type) {
-  int num_conv_gpu = 0;
-  int num_conv_gpu_expected_dtype = 0;
-
-  for (const auto& node : context.graph_view->GetNodes()) {
-    const auto* node_def = node.node();
-    if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
-      continue;
-    }
-    const string& device_name = GetDeviceName(*node_def);
-    string device_type;
-    string task;
-    if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
-        !absl::StrContains(absl::AsciiStrToLower(device_type),
-                           absl::AsciiStrToLower(device))) {
-      continue;
-    }
-    num_conv_gpu++;
-    const auto* t_attr = node.GetAttr("T");
-    if (t_attr == nullptr) {
-      continue;
-    }
-    if (t_attr->type() == data_type) {
-      num_conv_gpu_expected_dtype++;
-    }
-  }
-
-  if (num_conv_gpu == 0) return false;
-
-  return (static_cast<float>(num_conv_gpu_expected_dtype) /
-          static_cast<float>(num_conv_gpu)) >= kConvGPUExpectedDtypeThreshold;
-}
-
 inline bool ConvBackpropExists(const TransposeContext& context,
                                absl::string_view device,
                                const DataType& data_type) {
@@ -168,15 +133,48 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
       (static_cast<float>(gpu_stats.num_amperes) /
        static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
 
-  // We swap the src_format and dst_format when:
-  //   (1): Volta+ GPUs AND half-dtype conv nodes >= 50% of total conv nodes.
-  //   (2): Ampere+ GPUs AND TF32-dtype conv nodes >= 50% AND no backprop nodes.
+  // We swap the src_format and dst_format when >= 50% of gpu conv nodes are
+  //   (1): half-dtype and we are tuning for Volta+ GPUs
+  //   (2): TF32-dtype with TensorCores enabled and tuning for Ampere+ GPUs
+  //        (but only if no backward conv in fp32 exists)
+  //   (3): blfoat16-dtype and tuning for Ampere+ GPUs
+  int num_conv_gpu = 0;
+  int num_conv_gpu_prefer_swap = 0;
+  bool fp32_backprop = ConvBackpropExists(context, kGPU, DT_FLOAT);
+
+  for (const auto& node : context.graph_view->GetNodes()) {
+    const auto* node_def = node.node();
+    if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
+      continue;
+    }
+    const string& device_name = GetDeviceName(*node_def);
+    string device_type;
+    string task;
+    if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
+        !absl::StrContains(absl::AsciiStrToLower(device_type),
+                           absl::AsciiStrToLower(kGPU))) {
+      continue;
+    }
+    num_conv_gpu++;
+    const auto* t_attr = node.GetAttr("T");
+    if (t_attr == nullptr) {
+      continue;
+    }
+    const DataType dtype = t_attr->type();
+    if ((volta_ready && dtype == DT_HALF) ||
+        (ampere_ready && dtype == DT_BFLOAT16) ||
+        (ampere_ready && dtype == DT_FLOAT &&
+         tsl::tensor_float_32_execution_enabled() && !fp32_backprop)) {
+      num_conv_gpu_prefer_swap++;
+    }
+  }
+
+  // Check ratio of ops preferring swap.
   const bool should_swap =
-      volta_ready &&
-      (NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF) ||
-       (ampere_ready && tensor_float_32_execution_enabled() &&
-        NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_FLOAT) &&
-        !ConvBackpropExists(context, kGPU, DT_FLOAT)));
+      num_conv_gpu > 0 &&
+      (static_cast<float>(num_conv_gpu_prefer_swap) /
+       static_cast<float>(num_conv_gpu)) >= kConvGPUExpectedDtypeThreshold;
+
   // We swap only if NHWC is enforced or no layout is enforced and the devices
   // config meet the thresholds
   if (is_NHWC_enforced || (context.enforced_layout.empty() && should_swap)) {

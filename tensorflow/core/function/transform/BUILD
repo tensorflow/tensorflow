@@ -35,7 +35,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/platform",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
     ],
 )
 

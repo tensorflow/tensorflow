@@ -445,6 +445,7 @@ cc_library(
     hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
     deps = if_cuda_is_configured([
         ":buffer_comparator",
+        ":gemm_rewriter_triton",
         ":gpu_asm_opts_util",
         ":gpu_device_info",
         ":ir_emission_utils",
@@ -466,7 +467,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/util/proto:proto_utils",
-    ]),
+    ]) + ["//tensorflow/compiler/xla/stream_executor:device_memory"],
 )
 
 xla_test(
@@ -630,6 +631,7 @@ tsl_gpu_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation_header",
@@ -1029,11 +1031,15 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service/gpu:gpu_types",  
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -1051,6 +1057,9 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test",
     ],
 )
@@ -1260,8 +1269,8 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
@@ -1964,8 +1973,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
-        "//tensorflow/compiler/xla/service:convert_mover",
         "//tensorflow/compiler/xla/service:convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla/service:convert_mover",
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
         "//tensorflow/compiler/xla/service:convolution_pred_expander",
         "//tensorflow/compiler/xla/service:copy_insertion",
@@ -2946,6 +2955,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service/gpu:gpu_types",  
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
     ],
 )

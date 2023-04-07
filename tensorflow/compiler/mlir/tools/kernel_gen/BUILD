@@ -98,25 +98,25 @@ tf_cc_binary(
     ],
     deps = [
         ":kernel_creator",
-        "@llvm-project//llvm:TargetParser",
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86Disassembler",  # fixdeps: keep
         "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:lib",
     ] + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
@@ -190,13 +190,13 @@ cc_library(
         "-DTENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
-        "@llvm-project//mlir:mlir_runner_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:mlir_runner_utils",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:hash",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",

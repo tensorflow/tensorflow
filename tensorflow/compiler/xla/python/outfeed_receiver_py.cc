@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {

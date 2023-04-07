@@ -14,11 +14,12 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -28,7 +29,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -49,8 +50,9 @@ py_library(
         ":scan_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -70,6 +72,8 @@ py_library(
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -80,8 +84,7 @@ py_library(
     ],
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/util",
+        "//tensorflow/python/saved_model:nested_structure_coder",
     ],
 )
 
@@ -98,6 +101,7 @@ py_library(
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/types",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -108,6 +112,8 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -118,6 +124,8 @@ py_library(
     deps = [
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -127,6 +135,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -135,9 +144,10 @@ py_library(
     srcs = ["get_single_element.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/types",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -153,10 +163,11 @@ py_library(
         "//tensorflow/python:function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -169,10 +180,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -188,6 +199,9 @@ py_library(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:lazy_loader",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -206,6 +220,8 @@ py_library(
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -218,6 +234,7 @@ py_library(
     deps = [
         ":cardinality",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -258,6 +275,8 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -274,6 +293,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -284,6 +304,7 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -296,9 +317,10 @@ py_library(
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -323,11 +345,11 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -337,8 +359,9 @@ py_library(
     srcs = ["resampling.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -347,7 +370,8 @@ py_library(
     srcs = ["scan_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -368,6 +392,8 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -383,6 +409,8 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -391,7 +419,8 @@ py_library(
     srcs = ["take_while_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -414,7 +443,8 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -428,6 +458,8 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/types",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -462,7 +494,6 @@ py_library(
         ":unique",
         ":writers",
         "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:debug_mode",
         "//tensorflow/python/data/util:nest",

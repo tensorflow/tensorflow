@@ -28,6 +28,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
@@ -35,8 +36,7 @@ from tensorflow.python.training import saver as saver_lib
 
 def initialized_value(var):
   return control_flow_ops.cond(
-      variables.is_variable_initialized(var),
-      var.read_value,
+      variable_v1.is_variable_initialized(var), var.read_value,
       lambda: var.initial_value)
 
 

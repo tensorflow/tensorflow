@@ -472,7 +472,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      bool parameter_is_tupled_arguments,
+      bool parameter_is_tupled_arguments, CompileOptions compile_options,
       std::unique_ptr<Executable> cpu_executable,
       BufferAllocation::Index result_buffer_index,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -582,6 +582,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   int num_partitions_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
   bool parameter_is_tupled_arguments_;
+  CompileOptions compile_options_;
 
   std::shared_ptr<Executable> cpu_executable_;
 

@@ -337,11 +337,17 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
     HloXlaRuntimePipelineOptions options;
     options.enable_tiling_and_fusion =
         GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+    options.experimental_deallocation =
+        GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
     options.cpu_name = llvm::sys::getHostCPUName();
-
+    if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+      options.matmul_tile_sizes = {
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+    }
     if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
       options.enable_fusion_outlining = true;
-      options.sparse_bufferization = false;
       options.experimental_deallocation = true;
     }
 
@@ -680,10 +686,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //     accumulation happens in f32.
   if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
     pipeline.AddPass<ChangeOpDataType>(
-        F16, F32, [](const HloInstruction* instr) {
-          return instr->opcode() == HloOpcode::kDot ||
-                 instr->opcode() == HloOpcode::kConvolution;
-        });
+        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
   // Run the following passes to a fixed point.
@@ -1064,10 +1067,23 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
   }
 
+  if (DumpingEnabledForHloModule(*module)) {
+    pm.addInstrumentation(
+        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+            module->config().debug_options().xla_dump_to(), module->unique_id(),
+            module->name()));
+  }
+
   xla::runtime::PassManager xla_pm(&pm);
   HloXlaRuntimePipelineOptions options;
   options.enable_tiling_and_fusion =
       GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+    options.matmul_tile_sizes = {
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+  }
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =

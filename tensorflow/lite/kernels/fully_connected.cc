@@ -558,9 +558,10 @@ TfLiteStatus EvalHybridDense(
   }
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   const int8_t* filter_data = nullptr;
-  const size_t bytes_unpacked = filter->bytes * 2;
-  auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+  std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
   if (filter->type == kTfLiteInt4) {
+    const size_t bytes_unpacked = filter->bytes * 2;
+    unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
     tflite::tensor_utils::UnpackDenseInt4IntoInt8(
         GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
         unpacked_filter_data.get());
@@ -821,10 +822,11 @@ void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
   op_params.rhs_cacheable = IsConstantTensor(input);
 
   const int8_t* filter_data;
-  const size_t bytes_unpacked = filter->bytes * 2;
-  auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+  std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
 
   if (filter->type == kTfLiteInt4) {
+    const size_t bytes_unpacked = filter->bytes * 2;
+    unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
     tflite::tensor_utils::UnpackDenseInt4IntoInt8(
         GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
         unpacked_filter_data.get());

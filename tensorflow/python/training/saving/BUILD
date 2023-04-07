@@ -46,6 +46,7 @@ py_strict_library(
         ":saveable_object",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops_gen",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",

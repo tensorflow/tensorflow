@@ -38,6 +38,10 @@ class FallbackState {
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
+  static StatusOr<std::unique_ptr<FallbackState>> CreateWithCpuDevice(
+      const SessionOptions &session_options,
+      const tensorflow::FunctionDefLibrary &fdef_lib);
+
   FallbackState(const SessionOptions &session_options,
                 std::vector<std::unique_ptr<Device>> devices,
                 const tensorflow::FunctionDefLibrary &fdef_lib);

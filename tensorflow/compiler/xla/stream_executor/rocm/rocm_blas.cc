@@ -764,8 +764,8 @@ tsl::Status ReorganizeMemory(Stream *stream,
       bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
       if (!a_status) {
         return tsl::Status(
-          absl::StatusCode::kInternal,
-          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+            absl::StatusCode::kInternal,
+            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
     }
     i++;

@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -49,6 +51,12 @@ createDeallocationToScfPass();
 // Convert `deallocation` ops to LLVM.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createConvertDeallocationOpsToLLVM();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createDeallocationSimplificationPass();
+
+void populateDeallocationToLLVMConversionPatterns(LLVMTypeConverter& converter,
+                                                  RewritePatternSet& patterns);
 
 #define GEN_PASS_REGISTRATION
 #include "deallocation/transforms/passes.h.inc"

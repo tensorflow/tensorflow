@@ -15,6 +15,15 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    srcs = [
+        "types.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "types",
     hdrs = ["types.h"],

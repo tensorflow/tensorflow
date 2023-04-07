@@ -2490,6 +2490,18 @@ using HloInstructionSet = std::set<HloInstruction*, HloPtrComparator>;
 using ConstHloInstructionSet =
     std::set<const HloInstruction*, HloPtrComparator>;
 
+template <HloOpcode op, HloOpcode... rest>
+bool HloPredicateIsOp(const HloInstruction* instruction) {
+  if (instruction->opcode() == op) {
+    return true;
+  }
+  if constexpr (sizeof...(rest) == 0) {
+    return false;
+  } else {
+    return HloPredicateIsOp<rest...>(instruction);
+  }
+}
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTION_H_

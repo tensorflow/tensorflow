@@ -71,9 +71,14 @@ class NcclAllReduceThunk : public NcclAllReduceThunkBase {
   NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
                      std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "AllReduce"; }
+  static const char* GetHloOpName() { return "all-reduce"; }
 
-  static bool CanImplement(mlir::lmhlo::AllReduceOp op);
+  // Checks whether the given instruction can be implemented using NCCL.
+  // If yes, returns OK, else returns an error indicating why it cannot be
+  // implemented.
+  static Status CheckImplementable(mlir::lmhlo::AllReduceOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64_t replica_count,
                            int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op);
@@ -90,9 +95,11 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
                           mlir::lmhlo_gpu::AllReduceStartOp op,
                           std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "AllReduceStart"; }
+  static const char* GetHloOpName() { return "all-reduce-start"; }
 
-  static bool CanImplement(mlir::lmhlo_gpu::AllReduceStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllReduceStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
@@ -135,11 +142,11 @@ class NcclReduceScatterThunk : public NcclReduceScatterThunkBase {
   NcclReduceScatterThunk(ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
                          std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "ReduceScatter"; }
+  static const char* GetHloOpName() { return "reduce-scatter"; }
 
-  // Returns whether the given instruction can be lowered to a nccl
-  // reduce-scatter call.
-  static bool CanImplement(mlir::lmhlo::ReduceScatterOp op);
+  static Status CheckImplementable(mlir::lmhlo::ReduceScatterOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo::ReduceScatterOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::ReduceScatterOp op);
@@ -156,11 +163,11 @@ class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
                               std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "ReduceScatterStart"; }
+  static const char* GetHloOpName() { return "reduce-scatter-start"; }
 
-  // Returns whether the given instruction can be lowered to a nccl
-  // reduce-scatter call.
-  static bool CanImplement(mlir::lmhlo_gpu::ReduceScatterStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::ReduceScatterStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo_gpu::ReduceScatterStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(

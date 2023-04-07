@@ -30,8 +30,8 @@ inline llvm::orc::SymbolMap CRunnerUtilsSymbolMap(
   llvm::orc::SymbolMap symbol_map;
 
   auto bind = [&](std::string_view name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
 #ifndef _WIN32

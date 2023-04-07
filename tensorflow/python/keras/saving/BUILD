@@ -34,7 +34,6 @@ py_library(
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/checkpoint:graph_view",
@@ -51,6 +50,8 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model",
     ],
 )

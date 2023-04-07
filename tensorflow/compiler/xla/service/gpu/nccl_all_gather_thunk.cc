@@ -43,13 +43,19 @@ NcclAllGatherConfig GetNcclAllGatherConfig(OpT op) {
 }
 
 template <typename OpT>
-bool CanImplement(OpT op) {
-  return absl::c_all_of(op.getInputs(), [&](mlir::Value operand) {
+Status CheckImplementable(OpT op) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  for (mlir::Value operand : op.getInputs()) {
+    TF_RETURN_IF_ERROR(IsValidOperand(operand, Thunk::kNcclAllGather));
     Shape shape = GetShape(operand);
-    return LayoutUtil::IsDenseArray(shape) &&
-           IsTypeSupportedByNccl(shape.element_type(), Thunk::kNcclAllGather) &&
-           LayoutUtil::MinorToMajor(shape).back() == op.getAllGatherDimension();
-  });
+    if (!ShapeUtil::IsEffectivelyMostMajorDimension(
+            shape, op.getAllGatherDimension())) {
+      return tsl::errors::Unimplemented(absl::StrFormat(
+          "all-gather dim %u is not the most major in input shape %s",
+          op.getAllGatherDimension(), shape.ToString(/*print_layout=*/true)));
+    }
+  }
+  return OkStatus();
 }
 }  // namespace impl
 
@@ -79,8 +85,11 @@ NcclAllGatherThunk::NcclAllGatherThunk(
                              impl::GetNcclAllGatherConfig(op),
                              std::move(buffers)) {}
 
-/*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclAllGatherThunk::CheckImplementable(
+    mlir::lmhlo::AllGatherOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclAllGatherThunk>(impl::CheckImplementable(op), op,
+                                              replica_count, partition_count);
 }
 
 /*static*/ bool NcclAllGatherThunk::IsDegenerate(mlir::lmhlo::AllGatherOp op,
@@ -107,9 +116,11 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
                              impl::GetNcclAllGatherConfig(op),
                              std::move(buffers)) {}
 
-/*static*/ bool NcclAllGatherStartThunk::CanImplement(
-    mlir::lmhlo_gpu::AllGatherStartOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclAllGatherStartThunk::CheckImplementable(
+    mlir::lmhlo_gpu::AllGatherStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclAllGatherStartThunk>(
+      impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclAllGatherStartThunk::IsDegenerate(

@@ -8,10 +8,10 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
+        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/lite/...",
-        "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
     ] + internal_visibility_allowlist(),
 )
 

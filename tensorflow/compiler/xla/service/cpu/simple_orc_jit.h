@@ -84,7 +84,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
-  llvm::Expected<llvm::JITEvaluatedSymbol> FindCompiledSymbol(
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> FindCompiledSymbol(
       const std::string& name);
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
@@ -100,7 +100,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   }
 
  private:
-  llvm::JITEvaluatedSymbol ResolveRuntimeSymbol(llvm::StringRef name);
+  llvm::orc::ExecutorSymbolDef ResolveRuntimeSymbol(llvm::StringRef name);
 
   void notifyObjectLoaded(
       llvm::JITEventListener::ObjectKey key,

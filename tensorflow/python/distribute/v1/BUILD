@@ -1,6 +1,5 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -92,6 +91,6 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
     ],
 )

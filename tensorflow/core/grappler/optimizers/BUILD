@@ -885,9 +885,9 @@ tf_kernel_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:graph_view",
+        "//tensorflow/core/grappler/utils:pattern_utils",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
-        "//tensorflow/core/grappler/utils:pattern_utils",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 
@@ -1162,23 +1162,21 @@ cc_library(
         ":generic_layout_optimizer_transposer",
         ":generic_layout_optimizer_transposer_factory",
         ":graph_optimizer",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ] + if_rocm_is_configured([
-        "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/rocm:miopen_plugin"
-    ]) + if_static(
+    ] + if_static(
         ["//tensorflow/core/platform:tensor_float_32_utils"],
         ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
     ) + if_rocm_is_configured([
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/compiler/xla/stream_executor/rocm:miopen_plugin"
     ]),
 )
 

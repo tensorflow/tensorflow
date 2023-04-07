@@ -209,6 +209,7 @@ class HloEdge {
   HloEdge(LatencyEstimator::TimeCost latency, HloGraphNode* target)
       : latency_(latency), target_(target) {}
   LatencyEstimator::TimeCost Latency() const { return latency_; }
+  void SetLatency(LatencyEstimator::TimeCost latency) { latency_ = latency; }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
   std::string ToString() const;

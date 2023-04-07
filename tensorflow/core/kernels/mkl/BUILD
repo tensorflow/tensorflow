@@ -174,6 +174,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_quantized_pooling_ops_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
+        ":mkl_kernel_util",
         ":mkl_pooling_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",

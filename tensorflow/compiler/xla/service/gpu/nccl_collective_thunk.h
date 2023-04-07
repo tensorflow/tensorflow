@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -129,6 +130,7 @@ class NcclCollectiveThunk : public Thunk {
   // When this is false, the ExecuteOnStream() call will simply return a status
   // error.
   static bool NcclIsEnabled();
+  static Status CheckImplementable();
 
   // Logging support.
   static std::string GetDeviceString(const NcclExecuteParams& params);
@@ -157,10 +159,25 @@ class NcclCollectiveDoneThunk : public Thunk {
   NcclCollectiveThunk::AsyncExecutor& async_;
 };
 
-// Returns if the given data type is supported by NCCL.
-// Note: Keep this in sync with ToNcclDataType().
-bool IsTypeSupportedByNccl(PrimitiveType element_type,
-                           Thunk::Kind reduction_op);
+Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
+
+template <typename NcclThunkType, typename OpT>
+Status AddOpDescription(Status status, OpT op, int64_t replica_count,
+                        int64_t partition_count) {
+  if (status.ok()) {
+    return status;
+  }
+  CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
+  return Status(
+      status.code(),
+      absl::StrFormat(
+          "%s\n"
+          "%s with replica_count: %d, partition_count: %d, group_mode: %s, "
+          "operand_count: %d\n%s",
+          status.error_message(), NcclThunkType::GetHloOpName(), replica_count,
+          partition_count, CollectiveOpGroupModeToString(group_mode),
+          op->getNumOperands() / 2, llvm_ir::DumpToString(op.getOperation())));
+}
 
 #if XLA_ENABLE_XCCL
 // TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.

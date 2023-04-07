@@ -24,8 +24,43 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+TEST_F(OpenCLOperationTest, GatherBatch) {
+  auto status = GatherBatchTest(&exec_env_, false);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, GatherBatchConst) {
+  auto status = GatherBatchTest(&exec_env_, true);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, GatherHeight) {
+  auto status = GatherHeightTest(&exec_env_, false);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, GatherHeightConst) {
+  auto status = GatherHeightTest(&exec_env_, true);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
 TEST_F(OpenCLOperationTest, GatherWidth) {
-  auto status = GatherWidthTest(&exec_env_);
+  auto status = GatherWidthTest(&exec_env_, false);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, GatherWidthConst) {
+  auto status = GatherWidthTest(&exec_env_, true);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, GatherChannels) {
+  auto status = GatherChannelsTest(&exec_env_, false);
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, GatherChannelsConst) {
+  auto status = GatherChannelsTest(&exec_env_, true);
   ASSERT_TRUE(status.ok()) << status.message();
 }
 

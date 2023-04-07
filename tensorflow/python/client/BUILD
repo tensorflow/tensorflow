@@ -129,7 +129,6 @@ py_library(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -146,7 +145,7 @@ tf_py_test(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -259,7 +258,9 @@ py_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:stack",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@wrapt",
     ],
@@ -317,7 +318,7 @@ tf_py_test(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:stack",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -348,7 +349,6 @@ tf_py_test(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
 )
@@ -392,7 +392,6 @@ tf_py_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util",
         "@six_archive//:six",
     ],
 )

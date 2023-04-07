@@ -680,6 +680,20 @@ on the quantized input.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_QuantizedMaxPool3D")
+    .Input("input: T")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Output("output: T")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: quantizedtype")
+    .SetShapeFn(shape_inference::Pool3DShape);
+
 REGISTER_OP("_MklQuantizedAvgPool")
     .Input("input:           T")
     .Input("min_input:       float")

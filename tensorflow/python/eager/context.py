@@ -751,7 +751,8 @@ class Context:
                                      cluster_register_timeout_in_ms=0,
                                      heartbeat_timeout_in_ms=0,
                                      shutdown_barrier_timeout_in_ms=0,
-                                     coordinated_jobs=None):
+                                     coordinated_jobs=None,
+                                     allow_new_incarnation_to_reconnect=False):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
@@ -764,6 +765,8 @@ class Context:
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
     config.shutdown_barrier_timeout_in_ms = shutdown_barrier_timeout_in_ms
+    config.allow_new_incarnation_to_reconnect = (
+        allow_new_incarnation_to_reconnect)
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
         config.coordinated_job_list.extend(coordinated_jobs)

@@ -48,11 +48,9 @@ namespace {
 // considered empty.
 bool ComputationIsEmptyWithArrayRoot(const HloComputation* computation) {
   bool empty_operations = absl::c_all_of(
-      computation->MakeInstructionPostOrder(), [](const HloInstruction* inst) {
-        return inst->opcode() == HloOpcode::kTuple ||
-               inst->opcode() == HloOpcode::kGetTupleElement ||
-               inst->opcode() == HloOpcode::kParameter;
-      });
+      computation->MakeInstructionPostOrder(),
+      HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement,
+                       HloOpcode::kParameter>);
   bool contains_array = false;
   ShapeUtil::ForEachSubshape(computation->root_instruction()->shape(),
                              [&](const Shape& shape, const ShapeIndex& index) {

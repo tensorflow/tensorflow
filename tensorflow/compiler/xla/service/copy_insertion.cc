@@ -1723,7 +1723,7 @@ class CopyRemover {
     std::string result = "{";
     auto VisitValueNode = [&](const ValueNode* node) {
       if (result == "{") {
-        result = node->value->ToShortString();
+        StrAppend(&result, node->value->ToShortString());
       } else {
         StrAppend(&result, ", ", node->value->ToShortString());
       }

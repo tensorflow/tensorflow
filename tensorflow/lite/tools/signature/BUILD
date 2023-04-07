@@ -42,6 +42,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
     ],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -92,6 +93,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",
+        "no_oss",
     ],
     visibility = ["//visibility:public"],
     deps = [

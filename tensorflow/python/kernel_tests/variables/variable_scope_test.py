@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -458,11 +459,13 @@ class VariableScopeTest(test.TestCase):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
       variable_scope.enable_resource_variables()
-      self.assertTrue(isinstance(variables_lib.VariableV1(1.0),
-                                 resource_variable_ops.ResourceVariable))
+      self.assertIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
       variable_scope.disable_resource_variables()
-      self.assertFalse(isinstance(variables_lib.VariableV1(1.0),
-                                  resource_variable_ops.ResourceVariable))
+      self.assertNotIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
     finally:
       variable_scope._DEFAULT_USE_RESOURCE = old
 
