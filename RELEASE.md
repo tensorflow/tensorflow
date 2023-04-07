@@ -129,6 +129,13 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+*   `tf.Variable`
+
+    *   Changed resource variables to inherit from `tf.compat.v2.Variable`
+        instead of `tf.compat.v1.Variable`. Some checks for 
+        `isinstance(v, tf.compat.v1.Variable)` that previously returned True
+        may now return False.
+
 *   `tf.distribute`
 
     *   Opened an experimental API,
