@@ -48,12 +48,6 @@ class CollectiveOpsTest : public HloTestBase {
   CollectiveOpsTest() : num_devices_(backend().device_count()) {
     VLOG(1) << "Running with " << num_devices_ << " devices";
   }
-  static void SetUpTestSuite() {
-    // Not needed structly, since this test exercises cross replica collective
-    // permute which does not use NCCL. But keeping it here for testing.
-    tsl::setenv("NCCL_LAUNCH_MODE", "PARALLEL", /*overwrite=*/1);
-    HloTestBase::SetUpTestSuite();
-  }
 
  protected:
   DebugOptions GetDebugOptionsForTest() override {
