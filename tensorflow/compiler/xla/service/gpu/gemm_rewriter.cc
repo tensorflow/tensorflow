@@ -933,7 +933,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           HloInstruction *reduce = gemm_users[i]->users()[0];
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
-          if (reduce->operand(1)->literal().Get<float>({}) <= 0. &&
+          if (reduce->operand(1)->literal().GetAsDouble({}) <= 0. &&
               reduce_comp_root->opcode() == HloOpcode::kMaximum &&
               reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
               reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
