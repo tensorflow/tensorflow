@@ -1,0 +1,373 @@
+diff --git a/mlir/include/mlir/Analysis/CFGLoopInfo.h b/mlir/include/mlir/Analysis/CFGLoopInfo.h
+deleted file mode 100644
+index 4bbae77f7579..000000000000
+--- a/mlir/include/mlir/Analysis/CFGLoopInfo.h
++++ /dev/null
+@@ -1,43 +0,0 @@
+-//===- CFGLoopInfo.h - LoopInfo analysis for region bodies ------*- C++ -*-===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-//
+-// This file defines the CFGLoopInfo analysis for MLIR. The CFGLoopInfo is used
+-// to identify natural loops and determine the loop depth of various nodes of a
+-// CFG.
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#ifndef MLIR_ANALYSIS_LOOPINFO_H
+-#define MLIR_ANALYSIS_LOOPINFO_H
+-
+-#include "mlir/IR/Dominance.h"
+-#include "mlir/IR/RegionGraphTraits.h"
+-#include "llvm/Analysis/LoopInfo.h"
+-#include "llvm/Analysis/LoopInfoImpl.h"
+-
+-namespace mlir {
+-
+-/// Representation of a single loop formed by blocks. The inherited LoopBase
+-/// class provides accessors to the loop analysis.
+-class CFGLoop : public llvm::LoopBase<mlir::Block, mlir::CFGLoop> {
+-private:
+-  explicit CFGLoop(mlir::Block *block);
+-
+-  friend class llvm::LoopBase<mlir::Block, CFGLoop>;
+-  friend class llvm::LoopInfoBase<mlir::Block, CFGLoop>;
+-};
+-
+-/// An LLVM LoopInfo instantiation for MLIR that provides access to CFG loops
+-/// found in the dominator tree.
+-class CFGLoopInfo : public llvm::LoopInfoBase<mlir::Block, mlir::CFGLoop> {
+-public:
+-  CFGLoopInfo(const llvm::DominatorTreeBase<mlir::Block, false> &domTree);
+-};
+-} // namespace mlir
+-
+-#endif // MLIR_ANALYSIS_LOOPINFO_H
+diff --git a/mlir/include/mlir/IR/RegionGraphTraits.h b/mlir/include/mlir/IR/RegionGraphTraits.h
+index d7d80d9b3580..498064e3c11c 100644
+--- a/mlir/include/mlir/IR/RegionGraphTraits.h
++++ b/mlir/include/mlir/IR/RegionGraphTraits.h
+@@ -49,40 +49,6 @@ struct GraphTraits<Inverse<mlir::Block *>> {
+   }
+ };
+ 
+-template <>
+-struct GraphTraits<const mlir::Block *> {
+-  using ChildIteratorType = mlir::Block::succ_iterator;
+-  using Node = const mlir::Block;
+-  using NodeRef = Node *;
+-
+-  static NodeRef getEntryNode(NodeRef node) { return node; }
+-
+-  static ChildIteratorType child_begin(NodeRef node) {
+-    return const_cast<mlir::Block *>(node)->succ_begin();
+-  }
+-  static ChildIteratorType child_end(NodeRef node) {
+-    return const_cast<mlir::Block *>(node)->succ_end();
+-  }
+-};
+-
+-template <>
+-struct GraphTraits<Inverse<const mlir::Block *>> {
+-  using ChildIteratorType = mlir::Block::pred_iterator;
+-  using Node = const mlir::Block;
+-  using NodeRef = Node *;
+-
+-  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
+-    return inverseGraph.Graph;
+-  }
+-
+-  static ChildIteratorType child_begin(NodeRef node) {
+-    return const_cast<mlir::Block *>(node)->pred_begin();
+-  }
+-  static ChildIteratorType child_end(NodeRef node) {
+-    return const_cast<mlir::Block *>(node)->pred_end();
+-  }
+-};
+-
+ template <>
+ struct GraphTraits<mlir::Region *> : public GraphTraits<mlir::Block *> {
+   using GraphType = mlir::Region *;
+diff --git a/mlir/lib/Analysis/CFGLoopInfo.cpp b/mlir/lib/Analysis/CFGLoopInfo.cpp
+deleted file mode 100644
+index 983643f97af5..000000000000
+--- a/mlir/lib/Analysis/CFGLoopInfo.cpp
++++ /dev/null
+@@ -1,19 +0,0 @@
+-//===- CFGLoopInfo.cpp - LoopInfo analysis for region bodies --------------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "mlir/Analysis/CFGLoopInfo.h"
+-
+-using namespace mlir;
+-
+-CFGLoop::CFGLoop(mlir::Block *block)
+-    : llvm::LoopBase<mlir::Block, CFGLoop>(block) {}
+-
+-CFGLoopInfo::CFGLoopInfo(
+-    const llvm::DominatorTreeBase<mlir::Block, false> &domTree) {
+-  analyze(domTree);
+-}
+diff --git a/mlir/lib/Analysis/CMakeLists.txt b/mlir/lib/Analysis/CMakeLists.txt
+index b2fbf70ecc8c..b68e03c5748f 100644
+--- a/mlir/lib/Analysis/CMakeLists.txt
++++ b/mlir/lib/Analysis/CMakeLists.txt
+@@ -4,7 +4,6 @@ set(LLVM_OPTIONAL_SOURCES
+   DataLayoutAnalysis.cpp
+   FlatLinearValueConstraints.cpp
+   Liveness.cpp
+-  CFGLoopInfo.cpp
+   SliceAnalysis.cpp
+ 
+   AliasAnalysis/LocalAliasAnalysis.cpp
+@@ -25,7 +24,6 @@ add_mlir_library(MLIRAnalysis
+   DataLayoutAnalysis.cpp
+   FlatLinearValueConstraints.cpp
+   Liveness.cpp
+-  CFGLoopInfo.cpp
+   SliceAnalysis.cpp
+ 
+   AliasAnalysis/LocalAliasAnalysis.cpp
+diff --git a/mlir/test/Analysis/test-cfg-loop-info.mlir b/mlir/test/Analysis/test-cfg-loop-info.mlir
+deleted file mode 100644
+index cc1a5c39b459..000000000000
+--- a/mlir/test/Analysis/test-cfg-loop-info.mlir
++++ /dev/null
+@@ -1,115 +0,0 @@
+-// RUN: mlir-opt -pass-pipeline="builtin.module(any(test-cfg-loop-info))" --split-input-file %s 2>&1 | FileCheck %s
+-
+-// CHECK-LABEL: Testing : "no_loop_single_block"
+-// CHECK: no loops
+-func.func @no_loop_single_block() {
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: Testing : "no_loop"
+-// CHECK: no loops
+-func.func @no_loop() {
+-  cf.br ^bb1
+-^bb1:
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: Testing : "simple_loop"
+-// CHECK-NEXT: Blocks : ^[[BB0:.*]], ^[[BB1:.*]], ^[[BB2:.*]], ^[[BB3:.*]]
+-// CHECK: Loop at depth 1 containing:
+-// CHECK-SAME: ^[[BB1]]<header><exiting>
+-// CHECK-SAME: ^[[BB2]]<latch>
+-func.func @simple_loop(%c: i1) {
+-  cf.br ^bb1
+-^bb1:
+-  cf.cond_br %c, ^bb2, ^bb3
+-^bb2:
+-  cf.br ^bb1
+-^bb3:
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: Testing : "single_block_loop"
+-// CHECK-NEXT: Blocks : ^[[BB0:.*]], ^[[BB1:.*]], ^[[BB2:.*]]
+-// CHECK: Loop at depth 1 containing:
+-// CHECK-SAME: ^[[BB1]]<header><latch><exiting>
+-func.func @single_block_loop(%c: i1) {
+-  cf.br ^bb1
+-^bb1:
+-  cf.cond_br %c, ^bb1, ^bb2
+-^bb2:
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: Testing : "nested_loop"
+-// CHECK-NEXT: Blocks : ^[[BB0:.*]], ^[[BB1:.*]], ^[[BB2:.*]], ^[[BB3:.*]], ^[[BB4:.*]]
+-// CHECK: Loop at depth 1
+-// CHECK-SAME: ^[[BB1]]<header><exiting>
+-// CHECK-SAME: ^[[BB2]]<latch>
+-// CHECK-SAME: ^[[BB3]]
+-// CHECK: Loop at depth 2
+-// CHECK-SAME: ^[[BB2]]<header><exiting>
+-// CHECK-SAME: ^[[BB3]]<latch>
+-func.func @nested_loop(%c: i1) {
+-  cf.br ^bb1
+-^bb1:
+-  cf.cond_br %c, ^bb2, ^bb4
+-^bb2:
+-  cf.cond_br %c, ^bb1, ^bb3
+-^bb3:
+-  cf.br ^bb2
+-^bb4:
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: Testing : "multi_latch"
+-// CHECK-NEXT: Blocks : ^[[BB0:.*]], ^[[BB1:.*]], ^[[BB2:.*]], ^[[BB3:.*]], ^[[BB4:.*]]
+-// CHECK: Loop at depth 1
+-// CHECK-SAME: ^[[BB1]]<header><exiting>
+-// CHECK-SAME: ^[[BB2]]<latch>
+-// CHECK-SAME: ^[[BB3]]<latch>
+-func.func @multi_latch(%c: i1) {
+-  cf.br ^bb1
+-^bb1:
+-  cf.cond_br %c, ^bb4, ^bb2
+-^bb2:
+-  cf.cond_br %c, ^bb1, ^bb3
+-^bb3:
+-  cf.br ^bb1
+-^bb4:
+-  return
+-}
+-
+-// -----
+-
+-// CHECK-LABEL: Testing : "multiple_loops"
+-// CHECK-NEXT: Blocks : ^[[BB0:.*]], ^[[BB1:.*]], ^[[BB2:.*]], ^[[BB3:.*]], ^[[BB4:.*]], ^[[BB5:.*]]
+-// CHECK: Loop at depth 1
+-// CHECK-SAME: ^[[BB3]]<header><exiting>
+-// CHECK-SAME: ^[[BB4]]<latch>
+-// CHECK: Loop at depth 1
+-// CHECK-SAME: ^[[BB1]]<header>
+-// CHECK-SAME: ^[[BB2]]<latch><exiting>
+-func.func @multiple_loops(%c: i1) {
+-  cf.br ^bb1
+-^bb1:
+-  cf.br ^bb2
+-^bb2:
+-  cf.cond_br %c, ^bb3, ^bb1
+-^bb3:
+-  cf.cond_br %c, ^bb5, ^bb4
+-^bb4:
+-  cf.br ^bb3
+-^bb5:
+-  return
+-}
+diff --git a/mlir/test/lib/Analysis/CMakeLists.txt b/mlir/test/lib/Analysis/CMakeLists.txt
+index 00e77e858e7f..d83a8d5c070b 100644
+--- a/mlir/test/lib/Analysis/CMakeLists.txt
++++ b/mlir/test/lib/Analysis/CMakeLists.txt
+@@ -4,7 +4,6 @@ add_mlir_library(MLIRTestAnalysis
+   TestCallGraph.cpp
+   TestDataFlowFramework.cpp
+   TestLiveness.cpp
+-  TestCFGLoopInfo.cpp
+   TestMatchReduction.cpp
+   TestMemRefBoundCheck.cpp
+   TestMemRefDependenceCheck.cpp
+diff --git a/mlir/test/lib/Analysis/TestCFGLoopInfo.cpp b/mlir/test/lib/Analysis/TestCFGLoopInfo.cpp
+deleted file mode 100644
+index fbba93da2cce..000000000000
+--- a/mlir/test/lib/Analysis/TestCFGLoopInfo.cpp
++++ /dev/null
+@@ -1,75 +0,0 @@
+-//===- TestCFGLoopInfo.cpp - Test CFG loop info analysis ------------------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-//
+-// This file implements logic for testing the CFGLoopInfo analysis.
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "mlir/Analysis/CFGLoopInfo.h"
+-#include "mlir/IR/FunctionInterfaces.h"
+-#include "mlir/Pass/Pass.h"
+-
+-using namespace mlir;
+-
+-namespace {
+-/// A testing pass that applies the CFGLoopInfo analysis on a region and prints
+-/// the information it collected to llvm::errs().
+-struct TestCFGLoopInfo
+-    : public PassWrapper<TestCFGLoopInfo, InterfacePass<FunctionOpInterface>> {
+-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestCFGLoopInfo)
+-
+-  StringRef getArgument() const final { return "test-cfg-loop-info"; }
+-  StringRef getDescription() const final {
+-    return "Test the loop info analysis.";
+-  }
+-
+-  void runOnOperation() override;
+-};
+-} // namespace
+-
+-void TestCFGLoopInfo::runOnOperation() {
+-  auto func = getOperation();
+-  DominanceInfo &domInfo = getAnalysis<DominanceInfo>();
+-  Region &region = func.getFunctionBody();
+-
+-  // Prints the label of the test.
+-  llvm::errs() << "Testing : " << func.getNameAttr() << "\n";
+-  if (region.empty()) {
+-    llvm::errs() << "empty region\n";
+-    return;
+-  }
+-
+-  // Print all the block identifiers first such that the tests can match them.
+-  llvm::errs() << "Blocks : ";
+-  region.front().printAsOperand(llvm::errs());
+-  for (auto &block : region.getBlocks()) {
+-    llvm::errs() << ", ";
+-    block.printAsOperand(llvm::errs());
+-  }
+-  llvm::errs() << "\n";
+-
+-  if (region.getBlocks().size() == 1) {
+-    llvm::errs() << "no loops\n";
+-    return;
+-  }
+-
+-  llvm::DominatorTreeBase<mlir::Block, false> &domTree =
+-      domInfo.getDomTree(&region);
+-  mlir::CFGLoopInfo loopInfo(domTree);
+-
+-  if (loopInfo.getTopLevelLoops().empty())
+-    llvm::errs() << "no loops\n";
+-  else
+-    loopInfo.print(llvm::errs());
+-}
+-
+-namespace mlir {
+-namespace test {
+-void registerTestCFGLoopInfoPass() { PassRegistration<TestCFGLoopInfo>(); }
+-} // namespace test
+-} // namespace mlir
+diff --git a/mlir/tools/mlir-opt/mlir-opt.cpp b/mlir/tools/mlir-opt/mlir-opt.cpp
+index 2ddd83f36f52..855c6a6e0f28 100644
+--- a/mlir/tools/mlir-opt/mlir-opt.cpp
++++ b/mlir/tools/mlir-opt/mlir-opt.cpp
+@@ -99,7 +99,6 @@ void registerTestLinalgGreedyFusion();
+ void registerTestLinalgTransforms();
+ void registerTestLivenessPass();
+ void registerTestLoopFusion();
+-void registerTestCFGLoopInfoPass();
+ void registerTestLoopMappingPass();
+ void registerTestLoopUnrollingPass();
+ void registerTestLowerToLLVM();
+@@ -212,7 +211,6 @@ void registerTestPasses() {
+   mlir::test::registerTestLinalgTransforms();
+   mlir::test::registerTestLivenessPass();
+   mlir::test::registerTestLoopFusion();
+-  mlir::test::registerTestCFGLoopInfoPass();
+   mlir::test::registerTestLoopMappingPass();
+   mlir::test::registerTestLoopUnrollingPass();
+   mlir::test::registerTestLowerToLLVM();
