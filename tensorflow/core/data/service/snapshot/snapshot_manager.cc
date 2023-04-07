@@ -262,7 +262,8 @@ Status SnapshotManager::HandleStreamCompletion(
   return OkStatus();
 }
 
-Status SnapshotManager::HandleStreamError(const StatusProto& status_proto) {
+Status SnapshotManager::HandleStreamError(absl::string_view worker_address,
+                                          const StatusProto& status_proto) {
   // This method returns an OkStatus as the RPC status if the worker reports an
   // error. The errors are communicated back to the workers with a proper RPC
   // response, instead of with a error status.
@@ -275,7 +276,7 @@ Status SnapshotManager::HandleStreamError(const StatusProto& status_proto) {
   TF_RETURN_IF_ERROR(AtomicallyWriteTextProto(SnapshotErrorFilePath(path_),
                                               status_proto, env_));
   LOG(ERROR) << "Failed to write tf.data distributed snapshot at " << path_
-             << ". Status: " << status_.ToString();
+             << ". Worker " << worker_address << " reported error: " << status_;
   return OkStatus();
 }
 
@@ -344,7 +345,8 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
       assigned_stream_index.reset();
     }
     if (snapshot_progress->status().code() != error::OK) {
-      TF_RETURN_IF_ERROR(HandleStreamError(snapshot_progress->status()));
+      TF_RETURN_IF_ERROR(
+          HandleStreamError(worker_address, snapshot_progress->status()));
       return std::optional<int64_t>();
     }
   }

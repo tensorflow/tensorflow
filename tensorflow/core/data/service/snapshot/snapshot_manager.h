@@ -121,7 +121,8 @@ class SnapshotManager {
       absl::string_view worker_address);
   tsl::StatusOr<int64_t> CreateAndAssignNewStream(
       absl::string_view worker_address);
-  Status HandleStreamError(const StatusProto& status_proto);
+  Status HandleStreamError(absl::string_view worker_address,
+                           const StatusProto& status_proto);
 
   // The filepath of the on-disk state.
   const std::string path_;
