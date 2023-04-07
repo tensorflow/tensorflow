@@ -247,4 +247,11 @@ tf_proto_library(
 #     visibility = ["//visibility:public"],
 #     deps = [":op_profile_proto"],
 # )
+#
 # copybara:uncomment_end
+tf_proto_library(
+    name = "task_proto",
+    srcs = ["task.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
