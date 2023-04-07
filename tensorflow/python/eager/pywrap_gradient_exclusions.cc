@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 366> a = {{
+  static std::array<OpIndexInfo, 367> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -113,6 +113,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"Diag"},
       {"DiagPart"},
       {"DrawBoundingBoxes"},
+      {"Dropout", 4, {0, 2, 3, 4}},
       {"EditDistance"},
       {"Elu"},
       {"EncodeBase64"},
@@ -429,7 +430,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 484> a = {{
+  static std::array<OpIndexInfo, 491> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -527,6 +528,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Div"},
       {"DivNoNan"},
       {"DrawBoundingBoxes"},
+      {"Dropout", 1, {0}},
       {"DynamicPartition"},
       {"EditDistance"},
       {"Einsum"},
@@ -566,6 +568,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Gather"},
       {"GatherNd"},
       {"GatherV2"},
+      {"Gelu"},
       {"GenerateBoundingBoxProposals"},
       {"GenerateVocabRemapping"},
       {"GetSessionHandle"},
@@ -913,6 +916,11 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"ZerosLike"},
       {"Zeta"},
       {"_EagerConst"},
+      {"_FusedMulAdd"},
+      {"_FusedMulAdd2"},
+      {"_FusedMulSub"},
+      {"_FusedMulSub2"},
+      {"_FusedMulSubRev"},
       {"VarHandleOp"},
   }};
   static const auto &m = *OpGradientInfoInit(a);
