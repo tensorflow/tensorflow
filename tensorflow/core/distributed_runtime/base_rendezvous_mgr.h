@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -90,28 +92,20 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
                    Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
-  //
-  // TODO(zhifengc): Have a background thread in worker that
-  // periodically calls CleanupAll().
-  void Cleanup(int64_t step_id) override;
+  void Cleanup(int64_t step_id) override { cache_.Remove(step_id); }
 
   // Remove all rendezvous instances owned by the rendezvous_mgr.
-  void CleanupAll() override;
+  void CleanupAll() override { cache_.RemoveAll(); }
 
  protected:
   virtual tsl::core::RefCountPtr<BaseRemoteRendezvous> Create(
       int64_t step_id, const WorkerEnv* worker_env) = 0;
 
  private:
-  // Maps step_id to rendezvous.
-  typedef absl::flat_hash_map<int64_t, tsl::core::WeakPtr<BaseRemoteRendezvous>>
-      Table;
+  RendezvousCache<BaseRemoteRendezvous> cache_;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
-
-  mutex mu_;
-  Table table_ TF_GUARDED_BY(mu_);
 
   tsl::core::RefCountPtr<BaseRemoteRendezvous> FindOrCreate(int64_t step_id);
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -577,27 +578,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // The class for caching Rendezvous instances per step_id.
   // If the Rendezvous object is destroyed for the step, a new one will be
   // created on demand.
-  class LocalRendezvousCache {
+  class LocalRendezvousCache
+      : protected RendezvousCache<IntraProcessRendezvous> {
    public:
-    LocalRendezvousCache() = default;
-    ~LocalRendezvousCache();
-
-    // Returns a new Reference.
     tsl::core::RefCountPtr<IntraProcessRendezvous> FindOrCreate(
         int64_t step_id, DeviceMgr* device_mgr);
-    // Returns a new Reference.
-    tsl::core::RefCountPtr<IntraProcessRendezvous> Find(int64_t step_id);
-    // Removes a Rendezvous weak reference from table.
-    void Remove(int64_t step_id);
-    // Returns a list of active step ids. This result is only informative
-    // at time of the call. The returned vector may contain step ids that have
-    // been invalidated after the call.
-    std::vector<int64_t> GetActiveStepIds();
 
-   private:
-    mutable mutex table_lock_;
-    absl::flat_hash_map<int64_t, tsl::core::WeakPtr<IntraProcessRendezvous>>
-        table_ TF_GUARDED_BY(table_lock_);
+    using RendezvousCache<IntraProcessRendezvous>::Find;
+    using RendezvousCache<IntraProcessRendezvous>::Remove;
+    using RendezvousCache<IntraProcessRendezvous>::GetActiveStepIds;
   };
 
   Rendezvous::Factory CreateRendezvousFactory() const {

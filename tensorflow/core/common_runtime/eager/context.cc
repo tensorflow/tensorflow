@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -102,58 +103,11 @@ const int64_t EagerContext::kGlobalRendezvousId = -1;
 tsl::core::RefCountPtr<IntraProcessRendezvous>
 EagerContext::LocalRendezvousCache::FindOrCreate(int64_t step_id,
                                                  DeviceMgr* device_mgr) {
-  mutex_lock l(table_lock_);
-  tsl::core::RefCountPtr<IntraProcessRendezvous> rendz = nullptr;
-  auto iter = table_.find(step_id);
-  if (iter != table_.end()) {
-    rendz = iter->second.GetNewRef();
-    VLOG(5) << "step_id:" << step_id << " "
-            << "WeakPtr returned:" << rendz.get();
-    if (!rendz) {
-      table_.erase(iter);
-    }
-  }
-  if (!rendz) {  // Deleted or not found
-    rendz.reset(new IntraProcessRendezvous(device_mgr));
-    VLOG(5) << "step_id:" << step_id << " "
-            << "Rendezvous not found, inserting a new one." << rendz.get();
-    // TODO(b/274793840): The WeakPtr still leaks, albeit slower than
-    // leaking entire Rendezvous objects.
-    table_.insert(
-        {step_id, tsl::core::WeakPtr<IntraProcessRendezvous>{rendz.get()}});
-  }
-  return rendz;
+  return RendezvousCache<IntraProcessRendezvous>::FindOrCreate(step_id, [&]() {
+    return tsl::core::RefCountPtr<IntraProcessRendezvous>(
+        new IntraProcessRendezvous(device_mgr));
+  });
 }
-
-tsl::core::RefCountPtr<IntraProcessRendezvous>
-EagerContext::LocalRendezvousCache::Find(int64_t step_id) {
-  mutex_lock l(table_lock_);
-  auto iter = table_.find(step_id);
-  if (iter == table_.end()) return nullptr;
-  return iter->second.GetNewRef();
-}
-
-std::vector<int64_t> EagerContext::LocalRendezvousCache::GetActiveStepIds() {
-  mutex_lock l(table_lock_);
-  std::vector<int64_t> list;
-  list.reserve(table_.size());
-  for (const auto& iter : table_) {
-    if (iter.second.GetNewRef()) {
-      list.push_back(iter.first);
-    }
-  }
-  return list;
-}
-
-void EagerContext::LocalRendezvousCache::Remove(int64_t step_id) {
-  mutex_lock l(table_lock_);
-  auto iter = table_.find(step_id);
-  if (iter != table_.end()) {
-    table_.erase(iter);
-  }
-}
-
-EagerContext::LocalRendezvousCache::~LocalRendezvousCache() = default;
 
 EagerContext::EagerContext(
     const SessionOptions& opts,

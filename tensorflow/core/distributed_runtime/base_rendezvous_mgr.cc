@@ -33,22 +33,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void StartAbortRendevous(tsl::core::RefCountPtr<Rendezvous> rendez,
-                                const Status& s) {
-  rendez->StartAbort(s);
-}
-
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
     : worker_env_(worker_env) {}
 
-BaseRendezvousMgr::~BaseRendezvousMgr() {
-  for (auto& p : table_) {
-    auto rendez = p.second.GetNewRef();
-    if (rendez) {
-      StartAbortRendevous(std::move(rendez), errors::Aborted("Shutdown"));
-    }
-  }
-}
+BaseRendezvousMgr::~BaseRendezvousMgr() = default;
 
 tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
     int64_t step_id) {
@@ -57,27 +45,8 @@ tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
 
 tsl::core::RefCountPtr<BaseRemoteRendezvous> BaseRendezvousMgr::FindOrCreate(
     int64_t step_id) {
-  mutex_lock l(mu_);
-  tsl::core::RefCountPtr<BaseRemoteRendezvous> rendez = nullptr;
-  auto iter = table_.find(step_id);
-  if (iter != table_.end()) {
-    rendez = iter->second.GetNewRef();
-    VLOG(5) << this << " step_id:" << step_id << " "
-            << "WeakPtr returned:" << rendez.get();
-    if (!rendez) {
-      table_.erase(iter);
-    }
-  }
-  if (!rendez) {  // Deleted or not found
-    rendez = Create(step_id, worker_env_);
-    VLOG(5) << this << " step_id:" << step_id << " "
-            << "Rendezvous not found, inserting a new one." << rendez.get();
-    // TODO(b/274793840): The WeakPtr still leaks, albeit slower than
-    // leaking entire Rendezvous objects.
-    table_.insert(
-        {step_id, tsl::core::WeakPtr<BaseRemoteRendezvous>{rendez.get()}});
-  }
-  return rendez;
+  return cache_.FindOrCreate(
+      step_id, [this, step_id]() { return Create(step_id, worker_env_); });
 }
 
 void BaseRendezvousMgr::RecvLocalAsync(int64_t step_id,
@@ -103,27 +72,6 @@ Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
                  });
   n.WaitForNotification();
   return ret;
-}
-
-void BaseRendezvousMgr::Cleanup(int64_t step_id) {
-  tsl::core::RefCountPtr<BaseRemoteRendezvous> rendez = nullptr;
-  {
-    mutex_lock l(mu_);
-    auto iter = table_.find(step_id);
-    if (iter != table_.end()) {
-      rendez = iter->second.GetNewRef();
-      table_.erase(iter);
-    }
-  }
-  if (rendez) {
-    StartAbortRendevous(std::move(rendez),
-                        errors::Aborted("Cleanup ", step_id));
-  }
-}
-
-void BaseRendezvousMgr::CleanupAll() {
-  mutex_lock l(mu_);
-  table_.clear();
 }
 
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
