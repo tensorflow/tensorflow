@@ -115,6 +115,8 @@ xla_cc_test(
         ":async_collective_creator",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
