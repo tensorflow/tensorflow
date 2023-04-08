@@ -57,6 +57,13 @@ class HasRank<int n> : Constraint<
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
+def HasSameStaticShapes : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
+          "$1.getType().cast<ShapedType>().hasStaticShape() && "
+          "$0.getType().cast<ShapedType>().getShape() =="
+          "$1.getType().cast<ShapedType>().getShape()">,
+    "have the same static shape">;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -627,11 +634,21 @@ def ConvertExpandDimsToReshape : Pat<
 class FloatValueEquals<string val> : Constraint<CPred<
   "FloatValueEquals($0, " # val # ")">>;
 
+// Here, the element type can be any integer or float type.
+class IsConstantValueOf<int value> : Constraint<CPred<
+  "TFL::IsConstantValueOf($0," # value # ")">>;
+
 // ReLU patterns
 def MatchReluPattern : Pat<
   (TFL_MaximumOp $input, (Arith_ConstantOp $Zero)),
   (TFL_ReluOp $input),
   [(FloatValueEquals<"0"> $Zero)]>;
+
+// Optimize Minimum of tf.Relu and constant six to tf.Relu6
+def MinimumOfReluAnd6ToRelu6 :
+  Pat<(TFL_MinimumOp (TFL_ReluOp $x), (Arith_ConstantOp $y)),
+      (TFL_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;
 
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (Arith_ConstantOp $NegOne)),
@@ -862,6 +879,23 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   def Optimize#SelectOp#Not : Pat<
     (SelectOp (TFL_LogicalNotOp $condition), $input1, $input2),
     (SelectOp $condition, $input2, $input1)>;
+
+  // Fuse select(broadcast_to(input, shape), x, y) -> selectV2(input, x, y)
+  // Also, fuse selectv2(broadcast_to(input, shape), x, y) -> selectV2(input, x, y)
+  // It is safe to perform this transform here because-
+  // the shapes of `pre_broadcast` and `dim` must be broadcast
+  // compatible for the `broadcast_to` op to be valid.
+  // And considering, `shape(post_broadcast)` == `shape(%input1)`,
+  // `post_broadcast` is broadcast compatible with `input1`.
+  def FuseBroadcastInto#SelectOp : Pat<
+    (SelectOp
+      (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim),
+      AnyStaticShapeTensor:$input1, AnyStaticShapeTensor:$input2),
+    (TFL_SelectV2Op $pre_broadcast, $input1, $input2),
+    [(HasSameStaticShapes $post_broadcast, $input1),
+     (HasRankAtMost<4> $post_broadcast),
+     (HasRankAtMost<4> $input1),
+     (HasRankAtMost<4> $input2)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<
@@ -1011,7 +1045,7 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
       (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
       ConstantAttr<I32Attr, "-1">),
-    AnyStaticShapeTensor:$filter,
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,

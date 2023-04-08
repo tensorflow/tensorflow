@@ -30,6 +30,9 @@ namespace hlo_query {
 // Returns whether the given opcode is a collective communications operation.
 bool IsCollectiveCommunicationOp(HloOpcode op);
 
+bool IsAsyncCollectiveStartOp(HloOpcode op);
+bool IsAsyncCollectiveDoneOp(HloOpcode op);
+
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.
 // Precondition: out != nullptr

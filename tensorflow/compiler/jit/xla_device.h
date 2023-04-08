@@ -27,7 +27,6 @@ limitations under the License.
 #include <set>
 
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"

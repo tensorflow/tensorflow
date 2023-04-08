@@ -216,6 +216,7 @@ def multi_client_main():
 
   # No GPU visible to the flock controller.
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
+  os.environ['HIP_VISIBLE_DEVICES'] = ''
 
   # Python multiprocess module in OSS.
   mp_context = test_backend_util.get_mp_context()
@@ -260,7 +261,7 @@ def run_client(idx, server_ports, additional_ports, num_devices):
   Virtual devices are configured before test.main() is called.
 
   Each client is configured to only have access to the physical GPU device
-  corresponding to its client id via CUDA_VISIBLE_DEVICES.
+  corresponding to its client id via CUDA_VISIBLE_DEVICES/HIP_VISIBLE_DEVICES.
 
   Each client is configured to only have access to some TPU cores
   corresponding to its client id via flags.

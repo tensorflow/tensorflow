@@ -24,6 +24,14 @@ from tensorflow.python.util import nest
 
 def _serialize_function_spec(function_spec):
   """Serialize a FunctionSpec object into its proto representation."""
+  if (
+      function_spec.fullargspec.args
+      and function_spec.fullargspec.args[0] == "self"
+  ):
+    raise TypeError(
+        "Can not serialize tf.function with unbound 'self' parameter."
+    )
+
   proto = saved_object_graph_pb2.FunctionSpec()
 
   # Intentionally skip encoding annotations of a function because function
@@ -119,7 +127,7 @@ def wrap_cached_variables(concrete_function):
   """
   outer_graph = func_graph_module.FuncGraph(
       "{}_no_cache".format(concrete_function.graph.name))
-  captures = concrete_function.graph._function_captures._by_val  # pylint: disable=protected-access
+  captures = concrete_function.graph.function_captures._by_val  # pylint: disable=protected-access
   mapped_captures = None
   remapped_captures = {}
 

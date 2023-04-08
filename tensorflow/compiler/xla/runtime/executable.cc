@@ -93,17 +93,16 @@ ExecutionEngine::SymbolsBinding ToSymbolsBinding(
     using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
     custom_call_registry.ForEach([&](std::string_view name,
                                      DirectCustomCall custom_call) {
-      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-          llvm::pointerToJITTargetAddress(custom_call), llvm::JITSymbolFlags());
+      symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(custom_call),
+                                  llvm::JITSymbolFlags()};
     });
 
     // Register type id symbols.
     type_registry.ForEach([&](std::string_view name, TypeID type_id) {
       auto type_id_ptr =
           reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
-      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-          static_cast<llvm::JITTargetAddress>(type_id_ptr),
-          llvm::JITSymbolFlags());
+      symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr(type_id_ptr),
+                                  llvm::JITSymbolFlags()};
     });
 
     return symbol_map;
@@ -531,8 +530,8 @@ llvm::orc::SymbolMap RuntimeApiSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
 
   auto bind = [&](std::string_view name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
   bind("runtimeGetResultStorage", &GetResultStorage);

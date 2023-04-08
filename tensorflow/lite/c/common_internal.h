@@ -49,6 +49,11 @@ typedef struct TfLiteRegistrationExternal {
   // node->outputs).
   TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
+  // Retrieves the async kernel. The functor is nullptr if the node / backend
+  // does not support asynchronous execution.
+  struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                            TfLiteOpaqueNode* node);
+
   // Builtin op code.
   // The values stored in this field should be enum constants from the
   // TfLiteBuiltinOperator enum.

@@ -689,10 +689,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
 
   // We use conversion to LLVM type to lower all runtime operands to LLVM types.
-  // TODO(b/267828330): Migrate to opaque pointers.
-  LowerToLLVMOptions options(&getContext());
-  options.useOpaquePointers = false;
-  LLVMTypeConverter llvm_converter(ctx, options);
+  LLVMTypeConverter llvm_converter(ctx);
   llvm_converter.addConversion(
       RuntimeTypeConverter::ConvertExecutionContextType);
   llvm_converter.addConversion(RuntimeTypeConverter::ConvertStatusType);
@@ -705,8 +702,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // Convert all async types to opaque pointers.
   llvm_converter.addConversion([&](Type type) -> std::optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      return llvm_converter.getPointerType(
-          IntegerType::get(type.getContext(), 8));
+      return LLVM::LLVMPointerType::get(ctx);
     return std::nullopt;
   });
 

@@ -236,7 +236,6 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_add_v2_kernels",
         ":gpu_atan2_kernels",
         ":gpu_bitwise_and_kernels",
         ":gpu_bitwise_or_kernels",
@@ -265,13 +264,21 @@ tf_kernel_library(
         ":gpu_right_shift_kernels",
         ":gpu_select_v2_kernels",
         ":gpu_squared_difference_kernels",
-        ":gpu_sub_kernels",
         ":gpu_xdivy_kernels",
         ":gpu_xlog1py_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
-    ]),
+    ]) + if_mlir_generated_experimental_kernels_enabled(
+        [
+            ":gpu_add_v2_kernels_experimental",
+            ":gpu_sub_kernels_experimental",
+        ],
+        [
+            ":gpu_add_v2_kernels",
+            ":gpu_sub_kernels",
+        ],
+    ),
 )
 
 tf_kernel_library(
@@ -475,8 +482,8 @@ tf_cuda_cc_test(
     ),
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171341759): re-enable.
         "no_cuda",  # TODO(b/196608406): re-enable
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
         ":base_ops_test",
@@ -496,8 +503,8 @@ tf_cuda_cc_test(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171341759): re-enable.
         "no_cuda",  # TODO(b/196608406): re-enable
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
         ":base_ops_test",
@@ -555,8 +562,28 @@ tf_cuda_cc_test(
     ],
 )
 
-# Trigonometric kernels
+tf_cuda_cc_test(
+    name = "gpu_binary_ops_large_tensor_test",
+    size = "large",
+    srcs = ["gpu_binary_ops_large_tensor_test.cc"],
+    extra_copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda",  # TODO(b/196608406): re-enable
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
+    ],
+    deps = [
+        ":base_binary_ops_test",
+        ":base_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
 
+# Trigonometric kernels.
 gpu_kernel_library(
     name = "gpu_acos_kernels",
     op = "acos",
@@ -1276,6 +1303,25 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_add_v2_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    op = "add_v2",
+    tile_size = "1024",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_div_kernels",
     jit_types = [
         "i8",
@@ -1504,6 +1550,29 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_sub_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
+    op = "sub",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 

@@ -619,8 +619,27 @@ class Graph {
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
   // imported function differs from an existing function or op with the same
-  // name.
+  // name. This overload adds the function definitions with no stack traces.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                            const StackTracesMap& stack_traces);
+
+  // Adds the function definition and its stacktraces to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionDef(const FunctionDef& fdef,
+                        const StackTracesMap& stack_traces);
+
+  // Adds the gradient definition to this graph's op registry. Ignores duplicate
+  // gradients of the same function, and returns a bad status if an imported
+  // gradient differs from an existing gradient of the same function name.
+  Status AddGradientDef(const GradientDef& gdef);
 
   // The number of live nodes in the graph.
   //

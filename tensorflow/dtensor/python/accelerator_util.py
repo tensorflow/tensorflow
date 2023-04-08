@@ -178,12 +178,13 @@ def initialize_accelerator_system(
         "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
 
   if experimental_reset_context:
-    logging.warn(
-        "experimental_reset_context is True. "
-        "Resetting TensorFlow context. Existing TensorFlow objects "
-        "(e.g. Tensors and resources) are invalidated."
-    )
-    context.context().ensure_uninitialized()  # pylint: disable=protected-access
+    if context.context()._initialized:    # pylint: disable=protected-access
+      logging.warn(
+          "experimental_reset_context is True. "
+          "Resetting TensorFlow context. Existing TensorFlow objects "
+          "(e.g. Tensors and resources) are invalidated."
+      )
+      context.context().ensure_uninitialized()
 
   if context.context()._initialized:  # pylint: disable=protected-access
     raise ValueError(

@@ -129,7 +129,7 @@ class TensorWithLayout
   virtual std::string DebugString() const = 0;
 
   // Gets the mesh for the tensors.
-  virtual const Mesh& mesh() const = 0;
+  const Mesh& mesh() const { return layout().mesh(); }
 
   // Computes global shape from layout & local tensor shape.
   //

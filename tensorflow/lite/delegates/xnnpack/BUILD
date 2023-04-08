@@ -162,7 +162,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK",
+        "@XNNPACK//:XNNPACK_test_mode",
     ],
 )
 
@@ -2360,8 +2360,8 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )

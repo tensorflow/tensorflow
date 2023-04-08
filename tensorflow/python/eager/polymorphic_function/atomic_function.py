@@ -14,17 +14,20 @@
 # ==============================================================================
 """Implementation for AtomicFunction."""
 
+import dataclasses
+from typing import Any
+
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.util import compat
-from tensorflow.python.util import function_utils
 
 
 class _InterpolateFunctionError(object):
@@ -50,8 +53,7 @@ class _InterpolateFunctionError(object):
         g = self._func.graph
       elif g:
         next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
-        if next_func is not None and isinstance(next_func,
-                                                EagerDefinedFunction):
+        if next_func is not None and isinstance(next_func, AtomicFunction):
           g = next_func.graph
     if g:
       exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
@@ -62,167 +64,105 @@ class _InterpolateFunctionError(object):
 function_callbacks = set()
 
 
-# TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
-# so it doesn't have the definition-generating logic and is just a container for
-# an already-defined function.
-class EagerDefinedFunction(object):
-  """Callable with the interface of `framework.function._DefinedFunction`.
+# TODO(fmuham): Lower to FunctionRecord or remove otherwise.
+@dataclasses.dataclass(frozen=True)
+class GraphArtifacts:
+  inputs: Any
+  outputs: Any
+  num_outputs: Any
+  output_types: Any
+  output_shapes: Any
+  control_captures: Any
+  func_graph_outputs: Any
+  attrs: Any
+  graph: Any
+  stateful_ops: Any
 
-  `_EagerDefinedFunction` encapsulates a function definition and its properties,
-  and it provides a method for calling the encapsulated function. Some Ops
-  take functions as attributes, which have type `func`; an instance of this
-  class may be provided as the value of these `func` attributes.
+# Maps the scope_id and name in runtime to the number of AtomicFunctions.
+RUNTIME_FUNCTION_REFS = {}
+
+
+class AtomicFunction:
+  """A Python callable for functions in the TF Runtime.
+
+  Supports tf.function features such as structured value inputs and outputs,
+  captures and control dependencies.
+
+  Lowest level abstraction in the Python tf.function implementation.
   """
+  __slots__ = [
+      "_name",
+      "_bound_context",
+      "_graph_artifacts",
+      "_cached_definition",
+  ]
 
-  def __init__(self, name, graph, inputs, outputs, attrs):
-    """Initializes an eager defined function.
-
-    Args:
-      name: str, the name for the created function.
-      graph: Graph, the graph containing the operations in the function
-      inputs: the tensors in the graph to be used as inputs to the function
-      outputs: the tensors in the graph which will be outputs from the function
-      attrs: dict mapping names of attributes to their AttrValue values
-    """
-    for function_callback in function_callbacks:
-      function_callback(self, name, graph, tuple(inputs), tuple(outputs))
-
-    input_ops = set(arg.op for arg in inputs)
-    operations = [op for op in graph.get_operations() if op not in input_ops]
-
-    graph_output_names = graph._output_names  # pylint: disable=protected-access
-    if (graph_output_names is not None and
-        all(ops.tensor_id(t) in graph_output_names for t in outputs)):
-      output_names = [
-          compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
-      ]
-      if len(set(output_names)) != len(output_names):
-        # There are duplicate names for some reason, probably an invalid
-        # signature. Revert to auto-naming.
-        output_names = []
-    else:
-      output_names = []
-    with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-      fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
-          c_graph,
-          compat.as_str(name),
-          False,
-          [o._c_op for o in operations],  # pylint: disable=protected-access
-          [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
-          [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-          output_names,
-          [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
-          [],  # control_output_names
-          None,
-          compat.as_str(""))
-
-    for attr_name, attr_value in attrs.items():
-      serialized = attr_value.SerializeToString()
-      # TODO(iga): this creates and deletes a new TF_Status for every attr.
-      # It might be worth creating a convenient way to re-use status.
-      pywrap_tf_session.TF_FunctionSetAttrValueProto(
-          fn, compat.as_str(attr_name), serialized
-      )
-
+  def __init__(self, name, bound_context, graph_artifacts):
     self._name = compat.as_bytes(name)
-    self._bound_context = context.context()
-    self._bound_context.add_c_function(fn)
-    pywrap_tf_session.TF_DeleteFunction(fn)
+    self._bound_context = bound_context
+    self._graph_artifacts = graph_artifacts
+    self._cached_definition = None
 
-    # NOTE(feyu): Do not cache signature and definition at initialization to
-    # save memory usage of concrete functions never called through Python. We
-    # cache them on the first call of .definition and .signature.
-    signature = self._get_definition().signature
-
-    self._num_outputs = len(signature.output_arg)
-    self._output_types = [o.type for o in signature.output_arg]
-    self._output_shapes = [o.shape for o in outputs]
-    self._control_captures = graph._function_captures.control  # pylint: disable=protected-access
-    # Shallow copy outputs since ConcreteFunction may mutate it.
-    self._func_graph_outputs = list(outputs)
-    self.grad_func_name = None
-    self.python_grad_func = None
-    self._grad_func = None
-    self.graph = graph
-    self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
+    ref_key = (self._bound_context.function_scope_id, self.name)
+    if ref_key not in RUNTIME_FUNCTION_REFS:
+      RUNTIME_FUNCTION_REFS[ref_key] = 1
+    else:
+      RUNTIME_FUNCTION_REFS[ref_key] += 1
 
   @property
   def _c_func(self):
     return context.get_c_function(self.name)
 
+  # TODO(fmuham): Remove this property.
   @property
-  def signature(self):
-    try:
-      return self._signature
-    except AttributeError:
-      self._signature = self.definition.signature
-    return self._signature
+  def graph(self):
+    return self._graph_artifacts.graph
+
+  # TODO(fmuham): Remove this property.
+  @property
+  def stateful_ops(self):
+    return self._graph_artifacts.stateful_ops
 
   @property
   def definition(self):
-    try:
-      return self._definition
-    except AttributeError:
-      self._definition = self._get_definition()
-    return self._definition
-
-  def _get_definition(self):
+    """Current FunctionDef in the Runtime."""
     return self._bound_context.get_function_def(self.name)
 
-  def add_to_graph(self, g=None, overwrite=False):
-    """Add the function to the current context or a graph, if supplied.
+  # TODO(fmuham): Move caching to dependent code and remove method.
+  @property
+  def cached_definition(self):
+    """Cached FunctionDef (not guaranteed to be fresh)."""
+    if self._cached_definition is None:
+      self._cached_definition = self.definition
 
-    Args:
-      g: the graph to add the function to. If not supplied, the function will
-        be added to the current context.
-      overwrite: A bool. If True, this function will overwrite any existing
-        function of the same signature name in the graph `g` or context.
-    """
-    # pylint: disable=protected-access
-    if not g and self._bound_context.executing_eagerly():
-      ctx = self._bound_context
-      if ctx.has_function(self.name):
-        if overwrite:
-          ctx.remove_function(self.name)
-          ctx.add_function_def(self.definition)
-      else:
-        ctx.add_function_def(self.definition)
-    else:
-      if g._is_function(self.name):
-        if overwrite:
-          g._remove_function(self.name)
-          g._add_function(self)
-      else:
-        g._add_function(self)
-
-      for f in self.graph._functions.values():
-        if g._is_function(f.name):
-          if overwrite:
-            g._remove_function(f.name)
-            g._add_function(f)
-        else:
-          g._add_function(f)
-    # pylint: enable=protected-access
+    return self._cached_definition
 
   @property
   def name(self):
+    """Name represented in UTF-8 encoded bytes."""
     return self._name
 
   @property
-  def stateful_ops(self):
-    return self._stateful_ops
+  def graph_call_attrs(self):
+    """Returns a dictionary of attributes needed to add a call in graph."""
+    attrs = {
+        "is_stateful": len(self.stateful_ops) > 0,  # pylint: disable=g-explicit-length-test
+        "tout": self._graph_artifacts.output_types,
+        "xla_compile_attr": self.cached_definition.attr.get(
+            attributes_lib.XLA_COMPILE, None
+        ),
+    }
+    attrs.update(self._bound_context.function_call_options.as_attrs())
+    return attrs
 
-  def call(self, ctx, args, cancellation_manager=None):
+  def __call__(self, *args):
     """Calls this function with `args` as inputs.
 
     `ConcreteFunction` execution respects device annotations only if the
     function won't be compiled with xla.
 
     Args:
-      ctx: a Context object
-      args: a list of arguments to supply this function with.
-      cancellation_manager: a `CancellationManager` object that can be used to
-        cancel function execution.
+      *args: arguments to call this function with.
 
     Returns:
       The outputs of the function call.
@@ -232,82 +172,197 @@ class EagerDefinedFunction(object):
       FunctionAlreadyGarbageCollectedError: if the function is no longer
         available to be called because it has been garbage collected.
     """
-    if len(args) != len(self.signature.input_arg):
+    if len(args) != len(self.cached_definition.signature.input_arg):
       raise ValueError(
-          f"Signature specifies {len(list(self.signature.input_arg))} "
-          f"arguments, got: {len(args)}.")
+          "Signature specifies"
+          f" {len(list(self.cached_definition.signature.input_arg))} arguments,"
+          f" got: {len(args)}."
+      )
 
-    function_call_options = ctx.function_call_options
-    if function_call_options.config_proto_serialized is None:
-      config = function_utils.get_disabled_rewriter_config()
-    else:
-      config = function_call_options.config_proto_serialized
-    executor_type = function_call_options.executor_type or ""
+    with _InterpolateFunctionError(self):
+      with ops.control_dependencies(self._graph_artifacts.control_captures):
+        # The caller must use record_operation to record this operation in the
+        # eager case, so we enforce the same requirement for the non-eager
+        # case by explicitly pausing recording. We don't have a gradient
+        # registered for PartitionedCall, so recording this operation confuses
+        # forwardprop code (GradientTape manages to ignore it).
+        with tape.stop_recording():
+          if self._bound_context.executing_eagerly():
+            outputs = self._bound_context.call_function(
+                self.name,
+                list(args),
+                self._graph_artifacts.num_outputs,
+            )
+          else:
+            outputs = make_call_op_in_graph(self, list(args))
 
-    executing_eagerly = ctx.executing_eagerly()
-    attrs = ("executor_type", executor_type, "config_proto", config)
-    if executing_eagerly:
-      with _InterpolateFunctionError(self):
-        if cancellation_manager is None:
-          outputs = execute.execute(
-              str(self.signature.name),
-              num_outputs=self._num_outputs,
-              inputs=args,
-              attrs=attrs,
-              ctx=ctx)
-        else:
-          outputs = execute.execute_with_cancellation(
-              str(self.signature.name),
-              num_outputs=self._num_outputs,
-              inputs=args,
-              attrs=attrs,
-              ctx=ctx,
-              cancellation_manager=cancellation_manager)
-      # Replace empty list with None
-      outputs = outputs or None
-    else:
-      # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
-      # creates `PartitionedCallOp` kernels by default, or remove the previous
-      # branch if a TPU kernel is registered for `PartitionedCall`.
-      with _InterpolateFunctionError(self):
-        with ops.control_dependencies(self._control_captures):
-          # The caller must use record_operation to record this operation in the
-          # eager case, so we enforce the same requirement for the non-eager
-          # case by explicitly pausing recording. We don't have a gradient
-          # registered for PartitionedCall, so recording this operation confuses
-          # forwardprop code (GradientTape manages to ignore it).
-          with tape.stop_recording():
-            outputs = functional_ops.partitioned_call(
-                args=args,
-                f=self,
-                tout=self._output_types,
-                executing_eagerly=executing_eagerly,
-                config=config,
-                executor_type=executor_type)
-
-    for i, func_graph_output in enumerate(self._func_graph_outputs):
+    for i, func_graph_output in enumerate(
+        self._graph_artifacts.func_graph_outputs
+    ):
       handle_data_util.copy_handle_data(func_graph_output, outputs[i])
-    if executing_eagerly:
-      return outputs
-    else:
-      # TODO(b/128924522): This additional set_shape should not be
-      # necessary. ShapeRefiner likely needs to inspect handle_data. Remove this
-      # once that's done.
-      for i, shape in enumerate(self._output_shapes):
+
+    # TODO(fmuham): Use FunctionType cast here for all cases.
+    if not self._bound_context.executing_eagerly():
+      for i, shape in enumerate(self._graph_artifacts.output_shapes):
         outputs[i].set_shape(shape)
-      return outputs
+
+    return outputs
 
   def __del__(self):
-    try:
-      self._bound_context.remove_function(self.name)
-    except TypeError:
-      # Suppress some exceptions, mainly for the case when we're running on
-      # module deletion. Things that can go wrong include the context module
-      # already being unloaded, self._handle._handle_data no longer being
-      # valid, and so on. Printing warnings in these cases is silly
-      # (exceptions raised from __del__ are printed as warnings to stderr).
-      pass  # 'NoneType' object is not callable when the handle has been
-      # partially unloaded.
-    except AttributeError:
-      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
-      # been unloaded. Will catch other module unloads as well.
+    key = (self._bound_context.function_scope_id, self.name)
+    RUNTIME_FUNCTION_REFS[key] -= 1
+    if RUNTIME_FUNCTION_REFS[key] < 0:
+      raise RuntimeError(
+          f"AtomicFunction Refcounting for {self.name} is invalid."
+      )
+
+    if RUNTIME_FUNCTION_REFS[key] == 0:
+      try:
+        self._bound_context.remove_function(self.name)
+        RUNTIME_FUNCTION_REFS.pop(key)
+      except TypeError:
+        # Suppress some exceptions, mainly for the case when we're running on
+        # module deletion. Things that can go wrong include the context module
+        # already being unloaded, self._handle._handle_data no longer being
+        # valid, and so on. Printing warnings in these cases is silly
+        # (exceptions raised from __del__ are printed as warnings to stderr).
+        pass  # 'NoneType' object is not callable when the handle has been
+        # partially unloaded.
+      except AttributeError:
+        pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+        # been unloaded. Will catch other module unloads as well.
+
+
+def _set_read_only_resource_inputs_attr(op, func_graph):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: PartitionedCall Operation.
+    func_graph: FuncGraph.
+  """
+  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        read_only_indices)
+
+
+def make_call_op_in_graph(atomic, tensor_inputs):
+  """Adds an AtomicFunction to graph."""
+  graph = ops.get_default_graph()
+  graph._add_function_recursive(atomic)  # pylint: disable=protected-access
+
+  function_call_attrs = atomic.graph_call_attrs
+  op = functional_ops.partitioned_call_op(
+      name=atomic.name,
+      args=tensor_inputs,
+      is_stateful=function_call_attrs["is_stateful"],
+      tout=function_call_attrs["tout"],
+      config=function_call_attrs["config_proto"],
+      executor_type=function_call_attrs["executor_type"],
+      xla_compile_attr=function_call_attrs["xla_compile_attr"],
+  )
+  _set_read_only_resource_inputs_attr(op, atomic.graph)
+  if hasattr(atomic.graph, "collective_manager_ids_used"):
+    ops.set_int_list_attr(
+        op,
+        acd.COLLECTIVE_MANAGER_IDS,
+        atomic.graph.collective_manager_ids_used,
+    )
+  return op.outputs if op.outputs else op
+
+# List of AtomicFunction -> AtomicFunction transformation functions.
+FUNCTION_TRANSFORMS = []
+
+
+def from_func_graph(name, graph, inputs, outputs, attrs):
+  """Initializes an AtomicFunction from FuncGraph with transforms."""
+
+  atomic = from_func_graph_no_transforms(name, graph, inputs, outputs, attrs)
+  for transform in FUNCTION_TRANSFORMS:
+    atomic = transform(atomic)
+    if not isinstance(atomic, AtomicFunction):
+      raise TypeError(
+          f"Transformation {transform} did not return an AtomicFunction."
+      )
+
+  return atomic
+
+
+def from_func_graph_no_transforms(
+    name, graph, inputs, outputs, attrs, overwrite=False
+):
+  """Initializes an AtomicFunction from FuncGraph.
+
+  Args:
+    name: str, the name for the created function.
+    graph: Graph, the graph containing the operations in the function
+    inputs: the tensors in the graph to be used as inputs to the function
+    outputs: the tensors in the graph which will be outputs from the function
+    attrs: dict mapping names of attributes to their AttrValue values
+    overwrite: overwrites function definition in the current context if needed
+
+  Returns:
+    An AtomicFunction instance.
+  """
+  input_ops = set(arg.op for arg in inputs)
+  operations = [op for op in graph.get_operations() if op not in input_ops]
+
+  graph_output_names = graph._output_names  # pylint: disable=protected-access
+  if graph_output_names is not None and all(
+      ops.tensor_id(t) in graph_output_names for t in outputs
+  ):
+    output_names = [
+        compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
+    ]
+    if len(set(output_names)) != len(output_names):
+      # There are duplicate names for some reason, probably an invalid
+      # signature. Revert to auto-naming.
+      output_names = []
+  else:
+    output_names = []
+  with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
+        c_graph,
+        compat.as_str(name),
+        False,
+        [o._c_op for o in operations],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+        output_names,
+        [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
+        [],  # control_output_names
+        None,
+        compat.as_str(""),
+    )
+
+  for attr_name, attr_value in attrs.items():
+    serialized = attr_value.SerializeToString()
+    pywrap_tf_session.TF_FunctionSetAttrValueProto(
+        fn, compat.as_str(attr_name), serialized
+    )
+
+  name = compat.as_bytes(name)
+  bound_context = context.context()
+
+  if overwrite and bound_context.has_function(name):
+    bound_context.remove_function(name)
+
+  bound_context.add_c_function(fn)
+  pywrap_tf_session.TF_DeleteFunction(fn)
+
+  signature = bound_context.get_function_def(name).signature
+  graph_artifacts = GraphArtifacts(
+      inputs=inputs,
+      outputs=outputs,
+      num_outputs=len(signature.output_arg),
+      output_types=[o.type for o in signature.output_arg],
+      output_shapes=[o.shape for o in outputs],
+      control_captures=graph.function_captures.control,
+      func_graph_outputs=list(outputs),
+      attrs=attrs,
+      graph=graph,
+      stateful_ops=tuple(op for op in operations if op._is_stateful),  # pylint: disable=protected-access
+  )
+
+  return AtomicFunction(name, bound_context, graph_artifacts)

@@ -48,7 +48,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import path_helpers
@@ -494,7 +494,7 @@ def _default_getter(name,
                                           shape_list,
                                           dtype=dtype)
 
-    return variables.VariableV1(
+    return variable_v1.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
@@ -1412,7 +1412,6 @@ class TrackableSaver:
     global _ASYNC_CHECKPOINT_THREAD
     if _ASYNC_CHECKPOINT_THREAD is not None:
       _ASYNC_CHECKPOINT_THREAD.join()
-
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
     if graph_building:
@@ -2336,20 +2335,21 @@ class Checkpoint(autotrackable.AutoTrackable):
 
     end_time = time.time()
 
-    # This records the time checkpoint._write() blocks on the main thread.
-    metrics.AddCheckpointWriteDuration(
-        api_label=_CHECKPOINT_V2,
-        microseconds=_get_duration_microseconds(start_time, end_time),
-    )
+    if not checkpoint_context.in_async_metrics_context():
+      # This records the time checkpoint._write() blocks on the main thread.
+      metrics.AddCheckpointWriteDuration(
+          api_label=_CHECKPOINT_V2,
+          microseconds=_get_duration_microseconds(start_time, end_time),
+      )
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      metrics.AddTrainingTimeSaved(
-          api_label=_CHECKPOINT_V2,
-          microseconds=_get_duration_microseconds(
-              _END_TIME_OF_LAST_WRITE, end_time
-          ),
-      )
+      if not checkpoint_context.in_async_metrics_context():
+        metrics.AddTrainingTimeSaved(
+            api_label=_CHECKPOINT_V2,
+            microseconds=_get_duration_microseconds(
+                _END_TIME_OF_LAST_WRITE, end_time)
+        )
       if checkpoint_context.in_preemption_save_context():
         _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
             _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
@@ -2372,6 +2372,11 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     self._maybe_create_save_counter()
     return self._save_counter
+
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    if self._async_checkpointer_impl is not None:
+      self._async_checkpointer_impl.sync()
 
   def save(self, file_prefix, options=None):
     # pylint:disable=line-too-long

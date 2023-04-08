@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -300,7 +301,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     // Remove the global rendezvous instance from the local rendezvous table
     // if it uses local rendezvous type, which forces EagerContext to create a
     // new local rendezvous instance in the table.
-    local_rendezvous_table_->Remove(-1);
+    local_rendezvous_cache_->Remove(-1);
     Rendezvous* rendezvous;
     TF_CHECK_OK(CreateRendezvousFactory()(-1, nullptr, &rendezvous));
     global_rendezvous_for_functions_ =
@@ -308,7 +309,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   }
 
   // Returns the global_rendezvous_for_functions' underlying LocalRendezvous'
-  // status. If the underlying Rendezvous is not in the local_rendezvous_table_
+  // status. If the underlying Rendezvous is not in the local_rendezvous_cache_
   // returns OK.
   Status GetGlobalRendezvousForFunctionLocalRendezvousStatus();
 
@@ -574,22 +575,18 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   static const int64_t kGlobalRendezvousId;
 
  private:
-  // The class for wrapping a map of step_id to local rendezvous instances.
-  class LocalRendezvousTable {
+  // The class for caching Rendezvous instances per step_id.
+  // If the Rendezvous object is destroyed for the step, a new one will be
+  // created on demand.
+  class LocalRendezvousCache
+      : protected RendezvousCache<IntraProcessRendezvous> {
    public:
-    LocalRendezvousTable() = default;
-    ~LocalRendezvousTable();
+    tsl::core::RefCountPtr<IntraProcessRendezvous> FindOrCreate(
+        int64_t step_id, DeviceMgr* device_mgr);
 
-    IntraProcessRendezvous* FindOrCreate(int64_t step_id,
-                                         DeviceMgr* device_mgr);
-    IntraProcessRendezvous* Find(int64_t step_id);
-    void Remove(int64_t step_id);
-    void CleanUpAll();
-
-   private:
-    mutable mutex table_lock_;
-    absl::flat_hash_map<int64_t, IntraProcessRendezvous*> table_
-        TF_GUARDED_BY(table_lock_);
+    using RendezvousCache<IntraProcessRendezvous>::Find;
+    using RendezvousCache<IntraProcessRendezvous>::Remove;
+    using RendezvousCache<IntraProcessRendezvous>::GetActiveStepIds;
   };
 
   Rendezvous::Factory CreateRendezvousFactory() const {
@@ -611,9 +608,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
             VLOG(6)
                 << "Creating rendezvous using the worker_env's rendezvous_mgr.";
             // TODO(hhb): Add a Create method and use it here.
-            auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
+            auto remote_r = worker_env_->rendezvous_mgr->Find(step_id);
             remote_r->Initialize(worker_session_.get()).IgnoreError();
-            *r = remote_r;
+            *r = remote_r.release();
             return OkStatus();
           },
           [this](const int64_t step_id) {
@@ -630,13 +627,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
           [this](const int64_t step_id, const DeviceMgr* device_mgr,
                  Rendezvous** r) {
             VLOG(6) << "Creating rendezvous using local_device_mgr.";
-            *r = local_rendezvous_table_->FindOrCreate(step_id,
-                                                       local_device_mgr());
+            *r = local_rendezvous_cache_
+                     ->FindOrCreate(step_id, local_device_mgr())
+                     .release();
             return OkStatus();
           },
           [this](const int64_t step_id) {
             VLOG(6) << "Cleaning up rendezvous from local_device_mgr.";
-            local_rendezvous_table_->Remove(step_id);
+            local_rendezvous_cache_->Remove(step_id);
             return OkStatus();
           }};
     }
@@ -790,11 +788,13 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // The table of local rendezvous instances for intra-process communication.
   // This make sures only one local rendezvous instance exists per step id.
-  std::unique_ptr<LocalRendezvousTable> local_rendezvous_table_;
+  std::unique_ptr<LocalRendezvousCache> local_rendezvous_cache_;
 
   // Whether to use same rendezvous instance across function/eager executions.
   std::atomic<bool> reuse_rendezvous_for_functions_{false};
   mutable mutex global_rendezvous_mu_;
+
+  // Keeps alive the global rendezvous object.
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);
   mutex reuse_rendezvous_for_functions_mu_;

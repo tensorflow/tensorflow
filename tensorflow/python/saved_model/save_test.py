@@ -307,11 +307,11 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root = ObjWithFunction()
     root.bar(1)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       save.save(root, save_dir)
 
     expected_message = (
-        "WARNING:absl:Found untraced functions such as foo while saving "
+        "INFO:absl:Found untraced functions such as foo while saving "
         "(showing 1 of 1). These functions will not be directly callable after "
         "loading.")
     self.assertIn(expected_message, logs.output)
@@ -928,9 +928,11 @@ class SavingOptionsTest(test.TestCase):
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    options = save_options.SaveOptions(function_aliases={
-        "my_func": root.f,
-    })
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": root.f,
+        }
+    )
     save.save(root, save_dir, root.f, options=options)
     function_cache = root.f._variable_creation_fn._list_all_concrete_functions()
     function_aliases = loader_impl.parse_saved_model(
@@ -938,6 +940,39 @@ class SavingOptionsTest(test.TestCase):
     self.assertLen(function_cache, 1)
     self.assertEqual(function_cache[0].name.decode("utf-8"),
                      list(function_aliases.keys())[0])
+
+  def test_concrete_function_aliases(self):
+    root = autotrackable.AutoTrackable()
+    f = def_function.function(
+        lambda x: 2.0 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    ).get_concrete_function()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    save.save(root, save_dir, f, options=options)
+    function_aliases = loader_impl.parse_saved_model(
+        save_dir).meta_graphs[0].meta_info_def.function_aliases
+    self.assertEqual(f.name.decode("utf-8"),
+                     list(function_aliases.keys())[0])
+
+  def test_function_aliases_incorrect_type(self):
+    root = autotrackable.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    f = lambda x: 2.0 * x
+    root.f = def_function.function(
+        f, input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    with self.assertRaisesRegex(TypeError, "Unsupported type"):
+      save.save(root, save_dir, root.f, options=options)
 
   def test_accepts_io_device(self):
     options = save_options.SaveOptions()

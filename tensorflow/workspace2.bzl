@@ -143,9 +143,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "4d047b1ba16e00740aa32f95cc80b40329524bfa175844f9fc61891acc912982",
-        strip_prefix = "XNNPACK-06b2705f1b3e1ba0f161dd2979e2901ce93014e3",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/06b2705f1b3e1ba0f161dd2979e2901ce93014e3.zip"),
+        sha256 = "5de2d0d3dc9b4d23e93f51c1e441d2cc245e590e698bc186ed98f677bf39aef5",
+        strip_prefix = "XNNPACK-7adae8e6ded8fff33d92212ca1028d2419cd34d4",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/7adae8e6ded8fff33d92212ca1028d2419cd34d4.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -180,14 +180,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "mkl_dnn",
-        build_file = "//third_party/mkl_dnn:mkldnn.BUILD",
-        sha256 = "a0211aeb5e7dad50b97fa5dffc1a2fe2fe732572d4164e1ee8750a2ede43fbec",
-        strip_prefix = "oneDNN-0.21.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
@@ -214,7 +206,11 @@ def _tf_repositories():
         sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
         strip_prefix = "ComputeLibrary-22.11",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_openmp_fix.patch"],
+        patch_file = [
+            "//third_party/compute_library:compute_library.patch",
+            "//third_party/compute_library:acl_fixed_format_kernels_striding.patch",
+            "//third_party/compute_library:acl_openmp_fix.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
     )
 

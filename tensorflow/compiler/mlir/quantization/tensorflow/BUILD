@@ -8,8 +8,8 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
-        "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/compiler/mlir/quantization/...",
     ] + internal_visibility_allowlist(),
 )
 
@@ -442,6 +442,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/tsl/platform:str_util",

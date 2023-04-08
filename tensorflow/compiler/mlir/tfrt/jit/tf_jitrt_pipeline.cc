@@ -170,6 +170,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
         mlir::gml_st::getDefaultCPUPipelineOptions(llvm::sys::getHostCPUName());
     gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
     gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
+    gml_st_opts.reductionEnableHeuristic = true;
     mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
     pm.addNestedPass<FuncOp>(CreateFusionPass());

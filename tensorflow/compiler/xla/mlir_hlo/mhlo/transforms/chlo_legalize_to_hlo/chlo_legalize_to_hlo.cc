@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -261,11 +262,14 @@ template <typename FTy>
 Value materializePolynomialApproximation(ConversionPatternRewriter &rewriter,
                                          Location loc, Value x,
                                          ArrayRef<FTy> coefficients) {
-  Value poly = chlo::getConstantLike(rewriter, loc, 0.0, x);
-  for (FTy c : coefficients) {
+  if (coefficients.empty()) return chlo::getConstantLike(rewriter, loc, 0.0, x);
+
+  Value poly = chlo::getConstantLike(rewriter, loc, coefficients[0], x);
+  for (size_t i = 1; i < coefficients.size(); ++i) {
     poly = rewriter.create<mhlo::MulOp>(loc, x.getType(), poly, x);
     poly = rewriter.create<mhlo::AddOp>(
-        loc, x.getType(), poly, chlo::getConstantLike(rewriter, loc, c, x));
+        loc, x.getType(), poly,
+        chlo::getConstantLike(rewriter, loc, coefficients[i], x));
   }
   return poly;
 }
@@ -505,7 +509,7 @@ Value materializeErfcApproximationF32ForMagnitudeGeOne(
 
 // Precondition is |x| <= 1. Use erfc approximation, otherwise.
 // This implementation is based on Cephes.
-Value materializeErfApproximationF32ForMagnitudeLeOneCephes(
+Value materializeErfApproximationF32ForMagnitudeLeOne(
     ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
@@ -525,8 +529,8 @@ Value materializeErfApproximationF32ForMagnitudeLeOneCephes(
 }
 
 // This is the same approximation as used in Eigen.
-Value materializeErfApproximationF32ForMagnitudeLeOne(
-    ConversionPatternRewriter &rewriter, Location loc, ValueRange args) {
+Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
+                                     Location loc, ValueRange args) {
   Value x = args.front();
   assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
          "expect f32 element type");
@@ -553,7 +557,10 @@ Value materializeErfApproximationF32ForMagnitudeLeOne(
   Value betaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
                                                       llvm::ArrayRef(kBeta));
   Value xMulAlphaPoly = rewriter.create<mhlo::MulOp>(loc, x, alphaPoly);
-  return rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value erf = rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value lbErf = chlo::getConstantLike(rewriter, loc, -1.0, x);
+  Value ubErf = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  return rewriter.create<mhlo::ClampOp>(loc, erf.getType(), lbErf, erf, ubErf);
 }
 
 Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
@@ -571,7 +578,7 @@ Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
   //   erfc(x) = 1 - erf_approx(x)
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
   Value erfApprox =
-      materializeErfApproximationF32ForMagnitudeLeOneCephes(rewriter, loc, x);
+      materializeErfApproximationF32ForMagnitudeLeOne(rewriter, loc, x);
   Value erfBasedApprox = rewriter.create<mhlo::SubtractOp>(loc, one, erfApprox);
 
   // Materialize approximation selection based on argument.
@@ -580,33 +587,6 @@ Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
       loc, absX, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfBasedApprox,
                                          erfcApprox);
-}
-
-Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
-                                     Location loc, ValueRange args) {
-  Value x = args.front();
-  assert(x.getType().cast<ShapedType>().getElementType().isF32() &&
-         "expect f32 element type");
-
-  // Rely on erf approximation for |x| < 1
-  //   erf(x) = erf_approx(x)
-  Value erfApprox =
-      materializeErfApproximationF32ForMagnitudeLeOne(rewriter, loc, x);
-
-  // Rely on erfc approximation for |x| >= 1 and materialize erf as
-  //   erf(x) = 1 - erfc_approx(x)
-  Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value erfcApprox =
-      materializeErfcApproximationF32ForMagnitudeGeOne(rewriter, loc, x);
-  Value erfcBasedApprox =
-      rewriter.create<mhlo::SubtractOp>(loc, one, erfcApprox);
-
-  // Materialize approximation selection based on argument.
-  Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value absXLtOne = rewriter.create<mhlo::CompareOp>(
-      loc, absX, one, mhlo::ComparisonDirection::LT);
-  return rewriter.create<mhlo::SelectOp>(loc, absXLtOne, erfApprox,
-                                         erfcBasedApprox);
 }
 
 struct ConvertErfOp : public OpConversionPattern<ErfOp> {
@@ -1583,13 +1563,34 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
-    assert(lastDimSize != ShapedType::kDynamic);
+    int64_t isDynamic = !operandType.hasStaticShape();
+    Value shape;
+    if (isDynamic) {
+      SmallVector<Value> sizesI32x1;
+      for (auto i = 0; i < operandType.getRank(); ++i) {
+        auto sizeI32 = rewriter.create<mhlo::GetDimensionSizeOp>(
+            op.getLoc(), op.getOperand(), i);
+        auto sizeI32x1 = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(), RankedTensorType::get({1}, rewriter.getI32Type()),
+            sizeI32);
+        sizesI32x1.push_back(sizeI32x1);
+      }
+      shape = rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
+                                                   /*dimension=*/0);
+    }
 
     // Create an Iota op for indices.
     auto i32Type = rewriter.getIntegerType(32);
     Type iotaType = RankedTensorType::get(operandType.getShape(), i32Type);
-    Value iotaOp = rewriter.create<mhlo::IotaOp>(
-        op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+    Value iotaOp;
+    if (isDynamic) {
+      iotaOp = rewriter.create<mhlo::DynamicIotaOp>(
+          op.getLoc(), iotaType, shape,
+          rewriter.getI64IntegerAttr(lastDimIndex));
+    } else {
+      iotaOp = rewriter.create<mhlo::IotaOp>(
+          op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+    }
 
     // Create the sort op. It takes two inputs, one for the original input, the
     // other for the indices. Use TOTALORDER comparison type instead of the
@@ -1612,16 +1613,42 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
 
     // Get the slice for the top K elements.
     auto indicesTy = RankedTensorType::get(operandRank, rewriter.getI64Type());
-    Value values = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tupleFirstElement,
-        DenseIntElementsAttr::get(indicesTy, beginIndices),
-        DenseIntElementsAttr::get(indicesTy, endIndices),
-        DenseIntElementsAttr::get(indicesTy, strides));
-    Value indices = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tupleSecondElement,
-        DenseIntElementsAttr::get(indicesTy, beginIndices),
-        DenseIntElementsAttr::get(indicesTy, endIndices),
-        DenseIntElementsAttr::get(indicesTy, strides));
+    Value values, indices;
+    if (isDynamic) {
+      Value startIndices = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get(indicesTy, beginIndices));
+      Value lastIndices = rewriter.create<mhlo::ConvertOp>(
+          op.getLoc(), shape, rewriter.getI64Type());
+      Value stridesOp = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get(indicesTy, strides));
+
+      SmallVector<int64_t, 4> resultShape =
+          llvm::to_vector<4>(operandType.getShape());
+      resultShape.back() =
+          std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+      RankedTensorType resultType = RankedTensorType::get(
+          resultShape, elementType, operandType.getEncoding());
+      RankedTensorType indexResultType =
+          RankedTensorType::get(resultShape, i32Type);
+
+      values = rewriter.create<mhlo::RealDynamicSliceOp>(
+          op.getLoc(), resultType, tupleFirstElement, startIndices, lastIndices,
+          stridesOp);
+      indices = rewriter.create<mhlo::RealDynamicSliceOp>(
+          op.getLoc(), indexResultType, tupleSecondElement, startIndices,
+          lastIndices, stridesOp);
+    } else {
+      values = rewriter.create<mhlo::SliceOp>(
+          op.getLoc(), tupleFirstElement,
+          DenseIntElementsAttr::get(indicesTy, beginIndices),
+          DenseIntElementsAttr::get(indicesTy, endIndices),
+          DenseIntElementsAttr::get(indicesTy, strides));
+      indices = rewriter.create<mhlo::SliceOp>(
+          op.getLoc(), tupleSecondElement,
+          DenseIntElementsAttr::get(indicesTy, beginIndices),
+          DenseIntElementsAttr::get(indicesTy, endIndices),
+          DenseIntElementsAttr::get(indicesTy, strides));
+    }
 
     rewriter.replaceOp(op, {values, indices});
     return success();

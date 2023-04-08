@@ -101,10 +101,9 @@ bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
 }
 
 template <typename OpT>
-bool CanImplement(OpT op) {
-  const Shape shape = GetShape(op.getOperand());
-  return IsTypeSupportedByNccl(shape.element_type(),
-                               Thunk::kNcclCollectivePermute);
+Status CheckImplementable(OpT op) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
 }
 
 }  // namespace impl
@@ -152,9 +151,11 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
                                               partition_count);
 }
 
-/*static*/ bool NcclCollectivePermuteThunk::CanImplement(
-    mlir::lmhlo::CollectivePermuteOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclCollectivePermuteThunk::CheckImplementable(
+    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclCollectivePermuteThunk>(
+      impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
@@ -189,9 +190,11 @@ NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
                                               partition_count);
 }
 
-/*static*/ bool NcclCollectivePermuteStartThunk::CanImplement(
-    mlir::lmhlo_gpu::CollectivePermuteStartOp op) {
-  return impl::CanImplement(op);
+/*static*/ Status NcclCollectivePermuteStartThunk::CheckImplementable(
+    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclCollectivePermuteStartThunk>(
+      impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(

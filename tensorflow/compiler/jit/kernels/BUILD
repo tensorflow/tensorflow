@@ -57,6 +57,7 @@ cc_library(
         "//tensorflow/compiler/jit:tf_graph_to_hlo_compiler",
         "//tensorflow/compiler/jit:tf_to_hlo_compiler",
         "//tensorflow/compiler/jit:xla_compile_util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:refcount",
     ],
     alwayslink = 1,

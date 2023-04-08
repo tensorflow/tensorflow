@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -210,6 +211,12 @@ class HloTestBase : public ManifestCheckingTest {
 
   Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                              absl::Span<Literal* const> arguments);
+
+  // Compile the given module to an executable.
+  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) {
+    return runner_->CreateExecutable(std::move(module), run_hlo_passes);
+  }
 
   // Executes the given module on multiple replicas.
   //

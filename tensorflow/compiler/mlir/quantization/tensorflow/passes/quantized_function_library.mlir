@@ -421,20 +421,49 @@ module {
   // Weight-only functions.
   //===----------------------------------------------------------------------===//
 
+  func.func private @internal_dequantize_i8_in_f32_fn(
+                           %input : tensor<*xi8>, %weight_scale : tensor<*xf32>) -> tensor<*xf32> {
+    %input_f32 = "tf.Cast"(%input) : (tensor<*xi8>) -> tensor<*xf32>
+    %mul = "tf.Mul"(%input_f32, %weight_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    func.return %mul : tensor<*xf32>
+  }
+
   // Note that input i64 type is also supported by this.
+  // As the output is quantized type, output scale/zp is required for the arguments.
   parameters[
-    {"quantized_ops": ["Gather"], "output_type": "i8"}
+    {"quantized_ops": ["Gather"], "act_func": "internal_identity_fn", "output_type": "i8"}
   ]
-  func.func @GenerateQuantizedFunctionName(${quantized_ops})(
+  func.func @GenerateQuantizedFunctionName(${quantized_ops}, "${output_type}")(
                          %weight : tensor<*xi8>, %input : tensor<*xi32>, %axis : tensor<i32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
-      attributes {tf_quant.quantized_ops = ${quantized_ops}}
-  {
+      attributes {tf_quant.quantized_ops = ${quantized_ops}} {
+
+    %out = "tf.GatherV2"(%weight, %input, %axis) {
+      batch_dims = 0 : i64, attr_map = "batch_dims:0"} : (tensor<*xi8>, tensor<*xi32>, tensor<i32>) -> tensor<*xi8>
+
+    func.return %out : tensor<*x${output_type}>
+  }
+
+  // Note that input i64 type is also supported by this.
+  // The dequantization is merged to the quantized function.
+  // As the output type is specified to f32, the quantized function has "_float_output_fn" tag at the end.
+  parameters[
+    {"quantized_ops": ["Gather"], "act_func": "internal_dequantize_i8_in_f32_fn", "output_type": "f32"}
+  ]
+  func.func @GenerateQuantizedFunctionName(${quantized_ops}, "${output_type}")(
+                         %weight : tensor<*xi8>, %input : tensor<*xi32>, %axis : tensor<i32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*x${output_type}>
+      attributes {tf_quant.quantized_ops = ${quantized_ops}} {
+
     %accum_out = "tf.GatherV2"(%weight, %input, %axis) {
       batch_dims = 0 : i64, attr_map = "batch_dims:0"} : (tensor<*xi8>, tensor<*xi32>, tensor<i32>) -> tensor<*xi8>
 
-    func.return %accum_out : tensor<*x${output_type}>
+    %out = "tf.PartitionedCall"(%accum_out, %weight_scale) {
+        config = "", config_proto = "", executor_type = "", f=@${act_func}
+      } : (tensor<*xi8>, tensor<*xf32>) -> tensor<*x${output_type}>
+
+    func.return %out : tensor<*x${output_type}>
   }
 
 }

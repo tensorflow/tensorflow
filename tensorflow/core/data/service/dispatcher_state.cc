@@ -177,7 +177,8 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
   DCHECK(iteration->distributed_epoch_state.has_value());
   DistributedEpochState& state = iteration->distributed_epoch_state.value();
   int64_t provider_index = produce_split.split_provider_index();
-  DCHECK_EQ(produce_split.repetition(), state.repetitions[provider_index]);
+  DCHECK_GE(produce_split.repetition(), state.repetitions[provider_index]);
+  state.repetitions[provider_index] = produce_split.repetition();
   if (produce_split.finished()) {
     state.repetitions[provider_index]++;
     state.indices[provider_index] = 0;

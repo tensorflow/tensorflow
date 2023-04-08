@@ -708,7 +708,7 @@ class MklConcatOp : public OpKernel {
           // When memory::format_tag::nc, dst_dims are already in oneDNN order
           dst_md = memory::desc(dst_dims, MklDnnType<T>(), mkl_common_format);
         } else {
-          TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
+          TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
                              "Unsupported tensor dimension or"
                              "oneDNN memory format"));
         }

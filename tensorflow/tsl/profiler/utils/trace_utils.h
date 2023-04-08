@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_UTILS_TRACE_UTILS_H_
 #define TENSORFLOW_TSL_PROFILER_UTILS_TRACE_UTILS_H_
 
+#include <optional>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {
@@ -43,6 +46,23 @@ constexpr int kThreadIdDerivedMax = kThreadIdSource;
 
 static inline bool IsDerivedThreadId(int thread_id) {
   return thread_id >= kThreadIdDerivedMin && thread_id <= kThreadIdDerivedMax;
+}
+
+// Parses the device ordinal (N) from device names that use TensorFlow
+// convention: "hostname /device:xPU:N".
+static inline std::optional<uint32_t> ParseDeviceOrdinal(
+    absl::string_view device_name) {
+  if (auto pos = device_name.find_last_of(':');
+      pos != absl::string_view::npos) {
+    device_name.remove_prefix(pos + 1);
+  }
+  if (auto pos = device_name.find_first_of(' ');
+      pos != absl::string_view::npos) {
+    device_name.remove_suffix(device_name.size() - pos);
+  }
+  uint32_t device_id;
+  if (absl::SimpleAtoi(device_name, &device_id)) return device_id;
+  return std::nullopt;
 }
 
 }  // namespace profiler

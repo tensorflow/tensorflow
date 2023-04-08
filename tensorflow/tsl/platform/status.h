@@ -104,14 +104,6 @@ class Status {
   /// human-readable string containing more detailed information.
   Status(absl::StatusCode code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
-  // Deprecated constructor using the Tensorflow protobuf enum error code.
-#ifndef SWIG
-  ABSL_DEPRECATED(
-      "Use `Status(absl::StatusCode, ...) instead of Status(tsl::errors::Code, "
-      "...).")
-#endif
-  Status(tsl::error::Code code, absl::string_view msg,
-         SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -132,6 +124,13 @@ class Status {
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
+  // Status::message()
+  //
+  // Returns the error message associated with this error code, if available.
+  // Note that this message rarely describes the error code.  It is not unusual
+  // for the error message to be the empty string. As a result, prefer
+  // `operator<<` or `Status::ToString()` for debug logging.
+  absl::string_view message() const;
 
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;

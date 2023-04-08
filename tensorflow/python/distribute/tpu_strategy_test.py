@@ -766,6 +766,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           synchronization=variables.VariableSynchronization.ON_READ,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
 
+    self.assertFalse(w._is_mirrored())
+
     @def_function.function
     def run(iterator):
 

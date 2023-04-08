@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision import loss_scale as keras_loss_scale_module
@@ -64,8 +65,13 @@ class _UnwrapPreventer(object):
 
 def _is_all_finite(grads):
   """Returns a scalar boolean tensor indicating if all gradients are finite."""
+  def raw_values(g):
+    return g.values if isinstance(g, indexed_slices.IndexedSlices) else g
+
   is_finite_per_grad = [
-      math_ops.reduce_all(math_ops.is_finite(g)) for g in grads if g is not None
+      math_ops.reduce_all(math_ops.is_finite(raw_values(g)))
+      for g in grads
+      if g is not None
   ]
   return math_ops.reduce_all(is_finite_per_grad)
 
@@ -208,7 +214,9 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self._current_loss_scale
+    )
 
   def update(self, grads):
     """Updates the value of the loss scale.
@@ -459,10 +467,13 @@ class LossScaleOptimizer(base_delegate.DelegatingTrackableMixin,
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor_v2_with_dispatch(
-          self._loss_scale.current_loss_scale)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale
+      )
     else:
-      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale
+      )
 
   @property
   def dynamic_counter(self):

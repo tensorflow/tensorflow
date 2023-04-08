@@ -16,7 +16,7 @@
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
-from tensorflow.python.framework import auto_control_deps_utils as acd
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -1124,66 +1124,38 @@ def For(start,
 # pylint: enable=invalid-name,protected-access
 
 
-def partitioned_call(args,
-                     f,
-                     tout=None,
-                     executing_eagerly=None,
-                     config=None,
-                     executor_type=None):
-  """Executes a function while respecting device annotations.
-
-  Currently, only those functions that execute within the same address space
-  can be executed.
+def partitioned_call_op(
+    name,
+    args,
+    is_stateful,
+    tout,
+    config=None,
+    executor_type=None,
+    xla_compile_attr=None,
+):
+  """Generates a function call op respecting device annotations.
 
   Args:
+    name: Name of the function to call.
     args: The arguments of the function, including captured inputs.
-    f: The function to execute; an instance of `_DefinedFunction` or
-      `_EagerDefinedFunction`.
-    tout: a list containing the output dtypes enums; if `None`, inferred from
-      the signature of `f`.
-    executing_eagerly: (Optional) A boolean indicating whether the context is
-      executing eagerly. If `None`, fetched from the global context.
+    is_stateful: If the function is stateful.
+    tout: a list containing the output dtypes enums
     config: (Optional) A `tensorflow::ConfigProto` proto, serialized. If `None`,
       all optimizations are disabled. Currently only handled for eager defined
       functions.
     executor_type: (Optional) A string for the name of the executor to be used
       in the function call. If not set, or set to an empty string, the default
       tensorflow executor will be used.
+    xla_compile_attr: (Optional) value of the XLA compilation attribute.
 
   Returns:
-    The list of `Tensor`s returned by invoking `f(args)`. If the function does
-    not return anything, then returns `None` if eager execution is enabled, or
-    the `Operation` if not.
+    Returns the operation.
   """
-
-  if tout is None:
-    tout = tuple(x.type for x in f.definition.signature.output_arg)
-
-  if executing_eagerly is None:
-    executing_eagerly = context.executing_eagerly()
-
   if config is None:
     config = function_utils.get_disabled_rewriter_config()
 
   if executor_type is None:
     executor_type = ""
-
-  if executing_eagerly:
-    if f.stateful_ops:
-      outputs = gen_functional_ops.stateful_partitioned_call(
-          args=args,
-          Tout=tout,
-          f=f,
-          config_proto=config,
-          executor_type=executor_type)
-    else:
-      outputs = gen_functional_ops.partitioned_call(
-          args=args,
-          Tout=tout,
-          f=f,
-          config_proto=config,
-          executor_type=executor_type)
-    return outputs if outputs else None
 
   # The generated binding returns an empty list for functions that don't
   # return any Tensors, hence the need to use `create_op` directly.
@@ -1194,7 +1166,7 @@ def partitioned_call(args,
   tout_attr = attr_value_pb2.AttrValue(
       list=attr_value_pb2.AttrValue.ListValue(type=tout))
   func_attr = attr_value_pb2.AttrValue(
-      func=attr_value_pb2.NameAttrList(name=f.name))
+      func=attr_value_pb2.NameAttrList(name=name))
   executor_type_attr = attr_value_pb2.AttrValue(
       s=compat.as_bytes(executor_type))
 
@@ -1203,13 +1175,10 @@ def partitioned_call(args,
   # eager-specific rewriting.
   config_proto = attr_value_pb2.AttrValue(s=config)
 
-  graph = ops.get_default_graph()
-  f.add_to_graph(graph)
-  op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
+  op_name = "StatefulPartitionedCall" if is_stateful else "PartitionedCall"
 
   # Propagate the attribute indicating the need to compile from function to the
   # call itself.
-  xla_compile_attr = "_XlaMustCompile"
   op_attrs = {
       "Tin": tin_attr,
       "Tout": tout_attr,
@@ -1217,27 +1186,10 @@ def partitioned_call(args,
       "config_proto": config_proto,
       "executor_type": executor_type_attr,
   }
-  if xla_compile_attr in f.definition.attr:
-    op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
-  op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
-  outputs = op.outputs
-  if hasattr(f, "graph"):
-    _set_read_only_resource_inputs_attr(op, f.graph)
-    if hasattr(f.graph, "collective_manager_ids_used"):
-      ops.set_int_list_attr(op, acd.COLLECTIVE_MANAGER_IDS,
-                            f.graph.collective_manager_ids_used)
-  return outputs if outputs else op
+  if xla_compile_attr is not None:
+    op_attrs[attributes_lib.XLA_COMPILE] = xla_compile_attr
 
-
-def _set_read_only_resource_inputs_attr(op, func_graph):
-  """Sets the list of resource inputs which are read-only.
-
-  This is used by AutomaticControlDependencies.
-
-  Args:
-    op: PartitionedCall Operation.
-    func_graph: FuncGraph.
-  """
-  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
-  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
-                        read_only_indices)
+  op = ops.get_default_graph().create_op(
+      op_name, args, tout, name=op_name, attrs=op_attrs
+  )
+  return op

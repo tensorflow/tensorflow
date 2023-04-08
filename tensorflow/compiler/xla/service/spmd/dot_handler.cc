@@ -2038,13 +2038,18 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
   auto lhs_sharding_dims_adjusted_to_output =
       lhs.sharding().IsReplicated()
           ? std::vector<int64_t>(lhs.base_shape().rank(), 1)
-          : lhs.sharding().tile_assignment().dimensions();
+          : std::vector<int64_t>(
+                lhs.sharding().tile_assignment().dimensions().begin(),
+                lhs.sharding().tile_assignment().dimensions().end());
   auto rhs_sharding_dims_adjusted_to_output =
       rhs.sharding().IsReplicated()
           ? std::vector<int64_t>(rhs.base_shape().rank(), 1)
-          : rhs.sharding().tile_assignment().dimensions();
-  auto output_sharding_dims_adjusted_to_lhs =
-      output_sharding.tile_assignment().dimensions();
+          : std::vector<int64_t>(
+                rhs.sharding().tile_assignment().dimensions().begin(),
+                rhs.sharding().tile_assignment().dimensions().end());
+  std::vector<int64_t> output_sharding_dims_adjusted_to_lhs(
+      output_sharding.tile_assignment().dimensions().begin(),
+      output_sharding.tile_assignment().dimensions().end());
   bool lhs_rhs_dims_matching = true;
   for (const auto& dim : dims_mapping.batch_dims) {
     lhs_dims.push_back(dim.lhs);
@@ -2252,8 +2257,9 @@ GroupedSharding GetNonContractingPartitionGroupedShardingForMatchedOperand(
     bool lhs_matching, const HloSharding& matching_sharding,
     const HloSharding& output_sharding,
     absl::Span<const DotConvDimsMapping::DimsMapping> partitioned_dims) {
-  std::vector<int64_t> matching_sharding_dims =
-      matching_sharding.tile_assignment().dimensions();
+  std::vector<int64_t> matching_sharding_dims(
+      matching_sharding.tile_assignment().dimensions().begin(),
+      matching_sharding.tile_assignment().dimensions().end());
   std::vector<int64_t> matching_dims;
   std::vector<int64_t> output_dims;
   // Make sure the partitioning on matching's non-contracting dimensions
@@ -2565,10 +2571,12 @@ GetDotGroupPartitionContractingLhsRhsShardings(
         partitioned_contracting_dims) {
   HloSharding lhs_sharding = lhs.sharding();
   HloSharding rhs_sharding = rhs.sharding();
-  std::vector<int64_t> lhs_tile_shape =
-      lhs_sharding.tile_assignment().dimensions();
-  std::vector<int64_t> rhs_tile_shape =
-      rhs_sharding.tile_assignment().dimensions();
+  std::vector<int64_t> lhs_tile_shape(
+      lhs_sharding.tile_assignment().dimensions().begin(),
+      lhs_sharding.tile_assignment().dimensions().end());
+  std::vector<int64_t> rhs_tile_shape(
+      rhs_sharding.tile_assignment().dimensions().begin(),
+      rhs_sharding.tile_assignment().dimensions().end());
   if (ShapeUtil::ByteSizeOf(lhs.hlo()->shape()) >
       ShapeUtil::ByteSizeOf(rhs.hlo()->shape())) {
     for (const auto& dim : partitioned_contracting_dims) {
@@ -3393,7 +3401,7 @@ StatusOr<HloInstruction*> PartitionDot(
   if (lhs.hlo() == rhs.hlo()) {
     auto copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
         rhs.hlo()->shape(), HloOpcode::kCopy, rhs.hlo()));
-    copy_hlo->set_sharding(rhs.sharding());
+    copy_hlo->copy_sharding(rhs.hlo());
     rhs = PartitionedHlo(copy_hlo, rhs.base_shape(), rhs.state());
   }
 

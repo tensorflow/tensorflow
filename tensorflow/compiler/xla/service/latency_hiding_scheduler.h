@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -41,10 +42,11 @@ enum class ResourceType {
   kAllGather = 2,
   kAllReduce = 3,
   kCollectivePermute = 4,
-  kSendRecv = 5,
-  kSendHost = 6,
-  kRecvHost = 7,
-  kNumResources = 8,
+  kReduceScatter = 5,
+  kSendRecv = 6,
+  kSendHost = 7,
+  kRecvHost = 8,
+  kNumResources = 9,
   kTargetDefinedResourcesBound = 10000,
 };
 
@@ -54,8 +56,18 @@ enum class ResourceUsageType {
   kResourceRelease,
 };
 
+enum class ResourceHazardType {
+  kShareable = 0,
+  kUnshareable = 1,
+};
+
 constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
   return static_cast<int64_t>(resource_type);
+}
+
+constexpr int64_t ResourceUsageTypeToIndex(
+    ResourceUsageType resource_usage_type) {
+  return static_cast<int64_t>(resource_usage_type);
 }
 
 using ResourcePair = std::pair<int64_t, ResourceUsageType>;
@@ -69,6 +81,7 @@ struct SchedulerConfig {
   int64_t all_to_all_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
   int64_t all_reduce_overlap_limit = 1;
+  int64_t reduce_scatter_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;
   int64_t send_recv_host_overlap_limit = 1;
   bool schedule_send_recvs = false;
@@ -94,6 +107,8 @@ class LatencyEstimator {
   // Returns the core frequency used in latency estimation.
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
+
+  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
@@ -152,6 +167,11 @@ class AsyncTracker {
   // Returns the name of the given resource
   virtual absl::string_view GetResourceName(int64_t resource_type) const;
 
+  // Returns the name of the given resource usage
+  absl::string_view GetResourceUsageName(int64_t resource_usage_type) const;
+  absl::string_view GetResourceUsageName(
+      ResourceUsageType resource_usage_type) const;
+
   // Returns the first target defined resource's id, regardless of if it exits
   static int64_t GetFirstTargetDefinedResource() {
     return static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
@@ -162,6 +182,11 @@ class AsyncTracker {
 
   // Returns how many instructions using the given resource_type we can overlap
   virtual int64_t GetNumAvailableResources(int64_t resource_type) const;
+
+  // Returns the hazard type that describes how to resolve the conflicts when
+  // multiple instructions attempt to use the given resource type concurrently.
+  // Default resources have a hazard type of kUnshareable.
+  virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
 
@@ -188,6 +213,7 @@ class HloEdge {
   HloEdge(LatencyEstimator::TimeCost latency, HloGraphNode* target)
       : latency_(latency), target_(target) {}
   LatencyEstimator::TimeCost Latency() const { return latency_; }
+  void SetLatency(LatencyEstimator::TimeCost latency) { latency_ = latency; }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
   std::string ToString() const;
@@ -270,7 +296,7 @@ class HloGraphNode {
   }
   void AddSuccessor(const HloEdge& e) { successors_.push_back(e); }
   int64_t GetOriginalPosition() const { return original_position_; }
-  std::string ToString() const {
+  std::string ToString(const AsyncTracker* async_tracker = nullptr) const {
     std::string result;
     absl::StrAppend(&result, "Instr: ", instr_->ToShortString(), "\n");
     absl::StrAppend(&result, "ReadyTime: ", ready_time_, "\n");
@@ -286,6 +312,14 @@ class HloGraphNode {
     absl::StrAppend(&result, "Successors:\n");
     for (const HloEdge& e : successors_) {
       absl::StrAppend(&result, e.ToString());
+    }
+    if (async_tracker != nullptr) {
+      absl::StrAppend(&result, "Resources:\n");
+      for (const auto& [resource, usage] : resources_) {
+        absl::StrAppend(
+            &result, "\tResource: ", async_tracker->GetResourceName(resource),
+            " usage: ", async_tracker->GetResourceUsageName(usage), "\n");
+      }
     }
     return result;
   }
@@ -335,7 +369,7 @@ class HloScheduleGraph {
                    const LatencyEstimator* latency_estimator,
                    const AsyncTracker* async_tracker);
 
-  std::string ToString() const;
+  std::string ToString(const AsyncTracker* async_tracker = nullptr) const;
 
   HloGraphNode& GetNode(const HloInstruction* instr) const;
 
@@ -746,6 +780,14 @@ class LatencyHidingScheduler : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
 };
+
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
+                    // or kReduceScatter
+};
+
+CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo);
 
 }  // namespace xla
 

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -55,8 +54,10 @@ class NcclAllGatherThunk : public NcclAllGatherThunkBase {
 
   // Returns whether the given instruction can be lowered to a nccl all-gather
   // call.
-  static bool CanImplement(mlir::lmhlo::AllGatherOp op);
-  static const char* GetName() { return "AllGather"; }
+  static Status CheckImplementable(mlir::lmhlo::AllGatherOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
+  static const char* GetHloOpName() { return "all-gather"; }
   static bool IsDegenerate(mlir::lmhlo::AllGatherOp op, int64_t replica_count,
                            int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllGatherOp op);
@@ -73,9 +74,11 @@ class NcclAllGatherStartThunk : public NcclAllGatherThunkBase {
                           mlir::lmhlo_gpu::AllGatherStartOp op,
                           std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "AllGatherStart"; }
+  static const char* GetHloOpName() { return "all-gather-start"; }
 
-  static bool CanImplement(mlir::lmhlo_gpu::AllGatherStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo_gpu::AllGatherStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(

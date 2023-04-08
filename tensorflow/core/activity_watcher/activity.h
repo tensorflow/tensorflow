@@ -86,7 +86,7 @@ void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent);
 
 namespace tfw_internal {
 
-#if !defined(IS_MOBILE_PLATFORM)
+#if defined(TF_ENABLE_ACTIVITY_WATCHER)
 
 // Records an activity start without checking whether the watcher is enabled.
 ActivityId RecordActivityStart(std::unique_ptr<Activity> activity);
@@ -132,7 +132,7 @@ template <
     typename ActivityGenerator,
     std::enable_if_t<is_activity_generator<ActivityGenerator>, bool> = true>
 inline ActivityId ActivityStart(ActivityGenerator&& gen, int level = 1) {
-#if !defined(IS_MOBILE_PLATFORM)
+#if defined(TF_ENABLE_ACTIVITY_WATCHER)
   if (TF_PREDICT_FALSE(tfw_internal::WatcherEnabled(level))) {
     return tfw_internal::RecordActivityStart(
         std::forward<ActivityGenerator>(gen)());
@@ -142,7 +142,7 @@ inline ActivityId ActivityStart(ActivityGenerator&& gen, int level = 1) {
 }
 
 inline void ActivityEnd(ActivityId id) {
-#if !defined(IS_MOBILE_PLATFORM)
+#if defined(TF_ENABLE_ACTIVITY_WATCHER)
   if (TF_PREDICT_FALSE(id != kActivityNotRecorded)) {
     tfw_internal::RecordActivityEnd(id);
   }

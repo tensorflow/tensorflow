@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
 
 #include <string>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -279,6 +283,27 @@ TEST(LayoutToXLAShardingTest, PartiallyShardedPermutedLayout3D_2) {
   EXPECT_EQ("{devices=[2,1,2,2]0,4,1,5,2,6,3,7 last_tile_dim_replicate}",
             sharding);
 }
+
+void BM_65536Devices(benchmark::State& state) {
+  std::vector<int64_t> device_ids(65536);
+  absl::c_iota(device_ids, 0);
+  std::vector<std::string> devices_str(65536);
+  absl::c_generate(devices_str, [n = 0]() mutable {
+    return absl::StrCat("/job:localhost/task:0/device:CPU:", n++);
+  });
+  auto mesh = Mesh::CreateMesh(/*mesh_name=*/"", /*dim_names=*/{"x", "y", "z"},
+                               /*mesh_shape=*/{8, 128, 64},
+                               /*global_device_ids=*/device_ids,
+                               /*global_devices_str=*/{},
+                               /*local_device_ids=*/device_ids,
+                               /*local_devices_str=*/devices_str);
+  TF_ASSERT_OK_AND_ASSIGN(auto layout,
+                          Layout::GetLayout({"x", "y", "z"}, mesh));
+  for (auto s : state) {
+    TF_EXPECT_OK(ConvertLayoutToXlaOpSharding(layout).status());
+  }
+}
+BENCHMARK(BM_65536Devices);
 
 }  // namespace
 }  // namespace dtensor

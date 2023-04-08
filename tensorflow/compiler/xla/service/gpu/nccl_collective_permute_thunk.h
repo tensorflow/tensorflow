@@ -80,12 +80,14 @@ class NcclCollectivePermuteThunk : public NcclCollectivePermuteThunkBase {
       mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
       int64_t partition_count);
 
-  static bool CanImplement(mlir::lmhlo::CollectivePermuteOp op);
+  static Status CheckImplementable(mlir::lmhlo::CollectivePermuteOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo::CollectivePermuteOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op);
-  static const char* GetName() { return "CollectivePermute"; }
+  static const char* GetHloOpName() { return "collective-permute"; }
   static constexpr bool IsAsync() { return false; }
 
   NcclCollectivePermuteThunk(ThunkInfo thunk_info,
@@ -104,12 +106,14 @@ class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
       mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
       int64_t partition_count);
 
-  static bool CanImplement(mlir::lmhlo_gpu::CollectivePermuteStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op);
-  static const char* GetName() { return "CollectivePermuteStart"; }
+  static const char* GetHloOpName() { return "collective-permute-start"; }
   static constexpr bool IsAsync() { return true; }
 
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,

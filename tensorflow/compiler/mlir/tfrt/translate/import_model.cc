@@ -210,6 +210,8 @@ Status ConvertTfMlirToRuntimeExecutable(
   pass_options.tpu_allow_unpadded_batch = options.tpu_allow_unpadded_batch;
   pass_options.sink_in_invariant_ops = options.sink_in_invariant_ops;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
+  pass_options.fuse_get_resource_ops_in_hoisting =
+      options.fuse_get_resource_ops_in_hoisting;
   pass_options.func_use_fallback_tensor = true;
   pass_options.enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;

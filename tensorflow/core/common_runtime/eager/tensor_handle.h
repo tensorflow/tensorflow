@@ -275,6 +275,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   tensorflow::FullTypeDef FullType() const override { return full_type_; }
 
+  void SetFullType(FullTypeDef& full_type) { full_type_ = full_type; }
+
  private:
   friend class PackedTensorHandleTest;
 

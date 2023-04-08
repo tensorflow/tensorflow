@@ -248,6 +248,7 @@ class _DefinedFunction(object):
   Attributes:
     name: The function name.
     definition: The definition of this function. A FunctionDef proto.
+    cached_definition: Same as definition. Needed to match AtomicFunction API.
     grad_func_name: If not None, the name of this function's gradient function.
     python_grad_func: A python callable implementing the gradient of
       the function python-side.
@@ -338,6 +339,10 @@ class _DefinedFunction(object):
     """Function name."""
     self._create_definition_if_needed()
     return self._func_name
+
+  @property
+  def cached_definition(self):
+    return self.definition
 
   @property
   def definition(self):
@@ -582,7 +587,7 @@ class _DefinedFunction(object):
 
     # Ensures related sub-routines are defined in 'g', too.
     for f in self._sub_functions.values():
-      f.add_to_graph(g)
+      g._add_function_recursive(f)  # pylint: disable=protected-access
 
     # Adds its gradient function, too.
     if self._grad_func:

@@ -366,8 +366,13 @@ Status MaybeRewriteWhileNode(
     string new_name =
         fld->UniqueFunctionName(absl::StrCat(attr_value.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-    TF_RETURN_IF_ERROR(
-        fld->AddFunctionDef(new_fdef, *fld->GetStackTraces(attr_value.name())));
+
+    const StackTracesMap* stack_traces = fld->GetStackTraces(attr_value.name());
+    if (stack_traces != nullptr) {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, *stack_traces));
+    } else {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, {}));
+    }
 
     // Change node to use rewritten function.
     attr_value.set_name(new_name);

@@ -687,7 +687,7 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     logging.warning(
         "`tf.distribute.experimental.TPUStrategy` is deprecated, please use "
-        " the non experimental symbol `tf.distribute.TPUStrategy` instead.")
+        "the non-experimental symbol `tf.distribute.TPUStrategy` instead.")
 
     super(TPUStrategy, self).__init__(
         TPUExtended(

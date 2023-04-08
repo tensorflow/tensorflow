@@ -185,6 +185,13 @@ auto* tf_data_service_data_transfer_protocol_used =
         "data transfer protocol.",
         "data_transfer_protocol");
 
+auto* tf_data_service_data_transfer_protocol_fallback =
+    tsl::monitoring::Counter<3>::New(
+        "/tensorflow/data/service/data_transfer_protocol_fallback",
+        "The number of tf.data service worker clients created that fell back "
+        "from using this data transfer protocol for this reason.",
+        "data_transfer_protocol", "error_type", "error_message");
+
 auto* tf_data_service_data_transfer_protocol_error =
     tsl::monitoring::Counter<3>::New(
         "/tensorflow/data/service/data_transfer_protocol_error",
@@ -432,6 +439,14 @@ void RecordTFDataServiceClientIterators(
 void RecordTFDataServiceDataTransferProtocolUsed(
     const string& data_transfer_protocol) {
   tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message) {
+  tf_data_service_data_transfer_protocol_fallback
+      ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
 }
 

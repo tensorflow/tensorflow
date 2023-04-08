@@ -656,17 +656,37 @@ mlir::LogicalResult UpdateLayoutsForOp(
         const bool exempt_restore_unknown_rank =
             ValueRank(value) == -1 && value.getDefiningOp() &&
             llvm::isa<mlir::TF::RestoreV2Op>(value.getDefiningOp());
-        if (!exempt_restore_unknown_rank &&
-            input_layout->second.rank() != ValueRank(value))
-          return op->emitOpError()
-                 << "Rank for input " << i << " layout is "
-                 << input_layout->second.rank() << " but actual rank is "
-                 << ValueRank(value);
+        bool producer_is_resource =
+            value.getDefiningOp() &&
+            llvm::isa<mlir::TF::VarHandleOp>(value.getDefiningOp());
+        if (producer_is_resource) {
+          // If producer is a VarHandleOp, the input layout could be empty,
+          // In this case  ComputeBackward method for Assign op will derive a
+          // replicated layout for the resource based on the rank of value.
+          // This block will update resource layout.
+          // Read and Assign ops.
+          //
+          // If resource has a non-empty value, the existing layout will be
+          // returned from ComputeBackward and Forward methods for Assign and
+          // Read variable ops.
+          //
+          // Thus, it is safe to update the producer layout here for the
+          // resource.
+          producer_request[value] = input_layout->second;
+          is_updated.insert(value);
+        } else {
+          if (!exempt_restore_unknown_rank &&
+              input_layout->second.rank() != ValueRank(value))
+            return op->emitOpError()
+                   << "Rank for input " << i << " layout is "
+                   << input_layout->second.rank() << " but actual rank is "
+                   << ValueRank(value);
 
-        // If there was a layout returned and either no previous request or the
-        // request changed, insert and mark as updated.
-        consumer_request[operand] = input_layout->second;
-        is_updated.insert(value);
+          // If there was a layout returned and either no previous request or
+          // the request changed, insert and mark as updated.
+          consumer_request[operand] = input_layout->second;
+          is_updated.insert(value);
+        }
       } else if (input_layout == new_input_layouts.end() &&
                  consumer_request_from_op_operand != consumer_request.end()) {
         // If no layout was returned and there is previous request, erase the
@@ -683,6 +703,12 @@ mlir::LogicalResult UpdateLayoutsForOp(
   for (int i = 0; i < op->getNumResults(); ++i) {
     const auto output_layout = new_output_layouts.find(i);
     if (output_layout == new_output_layouts.end()) continue;
+    if (output_layout->second.IsEmpty()) {
+      // Empty layout is derived from var handle op, bypass the check for update
+      // layout and let the next passes propagate layout update for producer to
+      // handle it.
+      continue;
+    }
     const auto& result = op->getOpResult(i);
     if (producer_request[result] != output_layout->second) {
       if (output_layout->second.rank() != ValueRank(result))
@@ -690,6 +716,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
                                  << output_layout->second.rank()
                                  << " but actual rank is " << ValueRank(result);
       producer_request[result] = output_layout->second;
+
       is_updated.insert(result);
     }
   }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
-#define TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES
+#ifndef MLIR_HLO_TRANSFORMS_PASSES
+#define MLIR_HLO_TRANSFORMS_PASSES
 
 include "mlir/Pass/PassBase.td"
 
@@ -125,6 +125,27 @@ def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleO
   let options = [
       Option<"ptr_type_opt", "convert_pointer_args", "std::string",
              /*default=*/"", "Pointer type to convert pointer arguments to">,
+  ];
+}
+
+def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
+  let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
+  let constructor = "hlo::createGenericHostToLLVMPass()";
+  let options = [
+      Option<"enableAvx2", "enable-avx2", "bool",
+             /*default=*/"false", "Whether to enable avx2">,
+  ];
+  let dependentDialects = [
+    "::mlir::LLVM::LLVMDialect",
+    "::mlir::arith::ArithDialect",
+    "::mlir::cf::ControlFlowDialect",
+    "::mlir::complex::ComplexDialect",
+    "::mlir::deallocation::DeallocationDialect",
+    "::mlir::func::FuncDialect",
+    "::mlir::math::MathDialect",
+    "::mlir::memref::MemRefDialect",
+    "::mlir::scf::SCFDialect",
+    "::mlir::x86vector::X86VectorDialect",
   ];
 }
 

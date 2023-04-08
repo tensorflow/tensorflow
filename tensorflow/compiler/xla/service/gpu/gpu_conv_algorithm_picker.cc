@@ -29,18 +29,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
@@ -48,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/numbers.h"
-#include "tensorflow/tsl/util/env_var.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -1143,14 +1139,14 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
 StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloInstruction*> convs;
-  for (auto* instr : computation->instructions()) {
-    if (IsCustomCallToDnnConvolution(*instr)) {
+  for (HloInstruction* instr : computation->instructions()) {
+    if (IsCandidate(instr)) {
       convs.push_back(instr);
     }
   }
 
   bool changed = false;
-  for (auto* instr : convs) {
+  for (HloInstruction* instr : convs) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr));
     changed |= result;
   }
@@ -1163,7 +1159,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::Run(
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrCat("GpuConvAlgorithmPicker for ", module->name()));
 
-  if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
+  if (!IsEnabled(module)) {
     VLOG(3) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
                "returning early.";
     return false;

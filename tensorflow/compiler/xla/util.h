@@ -676,9 +676,14 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 std::pair<float, float> SplitF64ToF32(double x);
 
 class HloInstruction;
+class HloModule;
 
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
+using HloModulePredicate = std::function<bool(const HloModule*)>;
+
+inline bool HloPredicateTrue(const HloInstruction*) { return true; }
+inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;

@@ -439,7 +439,7 @@ LogicalResult AsyncStartOp::verify() {
   if (calleeThreadName != getExecutionThread()) {
     return emitOpError()
            << "execution_thread does not match the execution_thread of "
-           << getCalledComputation() << ".  Got: \"" << getExecutionThread()
+           << getCalledComputation() << ". Got: \"" << getExecutionThread()
            << "\", but expected " << calleeThreadName << ".";
   }
 
@@ -494,7 +494,7 @@ LogicalResult AsyncUpdateOp::verify() {
     return emitOpError() << "callee must have execution_thread attribute.";
   if (calleeThreadName != getExecutionThread()) {
     return emitOpError() << "execution_thread does not match name of "
-                         << getCalledComputation() << ".  Got: \""
+                         << getCalledComputation() << ". Got: \""
                          << getExecutionThread() << "\", but expected "
                          << calleeThreadName << ".";
   }
@@ -542,7 +542,7 @@ LogicalResult AsyncDoneOp::verify() {
     return emitOpError() << "callee must have execution_thread attribute.";
   if (calleeThreadName != getExecutionThread()) {
     return emitOpError() << "execution_thread does not match name of "
-                         << getCalledComputation() << ".  Got: \""
+                         << getCalledComputation() << ". Got: \""
                          << getExecutionThread() << "\", but expected "
                          << calleeThreadName << ".";
   }
@@ -1597,8 +1597,8 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
   using OpRewritePattern<mhlo::ConvolutionOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
                                 PatternRewriter& rewriter) const override {
-    auto lhs = op.getLhs();
-    auto rhs = op.getRhs();
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
     auto lhsTy = lhs.getType().cast<RankedTensorType>();
     auto rhsTy = rhs.getType().cast<RankedTensorType>();
     auto resultTy = op.getType().cast<RankedTensorType>();

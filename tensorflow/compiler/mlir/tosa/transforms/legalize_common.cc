@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -1396,9 +1397,11 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   // softmax = exp(logits - max(logits)) / reduce_sum(exp(logits -
   // max(logits)), -1)
   //
-  // We'll use first version for direct fp lowering, and second version for
-  // quantized lowering since second one we can restrict input to exp() be
-  // negative, and thus LUT can always be within [0.0, 1.0].
+  // Second equation is used for both quantized and fp lowering.
+  // For quantized case, we can restrict input to exp() be negative,
+  // and thus LUT can always be within [0.0, 1.0].
+  // For fp case, the normalization in the equation is required to prevent
+  // float overflow in softmax's intermediate calculations.
   RankedTensorType output_type =
       result_value.getType().dyn_cast<RankedTensorType>();
   RankedTensorType input_type =
@@ -1777,28 +1780,42 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     rsum_shape_v[input_rank - 1] = 1;
     ArrayRef<int64_t> rsum_shape(rsum_shape_v);
 
-    // Floating-point loewring is more direct:
+    // Floating-point lowering is more direct:
     //
-    // op1 = exp(logits)
-    // op2 = reduce_sum(op1, -1)
-    // op3 = reciprocal(op2)
-    // op4 = mul(op1, op3)
-    auto op1_exp_in = CreateOpAndInfer<tosa::ExpOp>(rewriter, op->getLoc(),
-                                                    output_type, logits_value);
+    // op1 = reducemax(logits)
+    // op2 = sub(logits, op1)
+    // op3 = exp(op2)
+    // op4 = reduce_sum(op3, -1)
+    // op5 = reciprocal(op4)
+    // op6 = mul(op3, op5)
     RankedTensorType rsum_type = tensorflow::GetTypeFromTFTensorShape(
         rsum_shape, output_type.getElementType());
+    RankedTensorType logits_type = tensorflow::GetTypeFromTFTensorShape(
+        logits_shape, output_type.getElementType());
 
-    // Keep dims so we don't need to reshape later
-    auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
-        rewriter, op->getLoc(), rsum_type, op1_exp_in.getResult(),
+    // Step 1. get x - max(x)
+    auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
+        rewriter, op->getLoc(), rsum_type, logits_value,
         rewriter.getI64IntegerAttr(input_rank - 1));
-    auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
-        rewriter, op->getLoc(), op2_reducesum_op1.getType(),
-        op2_reducesum_op1.getResult());
+    auto normalized_logits =
+        CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
+                                      logits_value, max_logits.getResult());
+
+    // Step 2. get exp(x - max(x))
+    auto exp_norm_logits = CreateOpAndInfer<tosa::ExpOp>(
+        rewriter, op->getLoc(), output_type, normalized_logits);
+
+    // Step 3. reuse softmax numerator to obtain denominator
+    // Keep dims so we don't need to reshape later
+    auto reducesum = CreateOpAndInfer<tosa::ReduceSumOp>(
+        rewriter, op->getLoc(), rsum_type, exp_norm_logits.getResult(),
+        rewriter.getI64IntegerAttr(input_rank - 1));
+    auto denominator = CreateOpAndInfer<tosa::ReciprocalOp>(
+        rewriter, op->getLoc(), reducesum.getType(), reducesum.getResult());
 
     return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                         op1_exp_in.getResult(),
-                                         op3_reciprocal_op2.getResult(), 0)
+                                         exp_norm_logits.getResult(),
+                                         denominator.getResult(), 0)
         .getResult();
   }
 }
@@ -3096,7 +3113,7 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                        int& border) {
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
-      n = 1;
+      n = output;
       d = 1;
       offset = 0;
       border = output - 1;
@@ -4460,6 +4477,46 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
                                  output_scale, rewriter.getI32IntegerAttr(0))
+      .getResult();
+}
+
+// Lowers Sign operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                    Value input, RankedTensorType output_type) {
+  auto output_elem_type = output_type.getElementType();
+  if (output_elem_type.isa<mlir::quant::QuantizedType>()) {
+    (void)rewriter.notifyMatchFailure(op, "tfl quantization not yet supported");
+    return llvm::None;
+  }
+
+  // TOSA greater and select can both broadcast, so simply create a tensor with
+  // one element.
+  Value pos_one, neg_one, zero;
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  if (output_elem_type.isa<FloatType>()) {
+    pos_one = getTosaConstTensorSingleF32(rewriter, op, 1.0f);
+    neg_one = getTosaConstTensorSingleF32(rewriter, op, -1.0f);
+    zero = getTosaConstTensorSingleF32(rewriter, op, 0.0f);
+  } else {
+    pos_one = getTosaConstTensorScalarInt(builder, output_elem_type, 1);
+    neg_one = getTosaConstTensorScalarInt(builder, output_elem_type, -1);
+    zero = getTosaConstTensorScalarInt(builder, output_elem_type, 0);
+  }
+
+  ShapedType const_type = output_type.clone(rewriter.getIntegerType(1));
+
+  auto gt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, input, zero);
+
+  auto lt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, zero, input);
+
+  auto select_neg_op = CreateOpAndInfer<tosa::SelectOp>(
+      builder, output_type, lt_zero_op, neg_one, zero);
+
+  // Select positive one based on the condition tensor.
+  return CreateOpAndInfer<tosa::SelectOp>(builder, output_type, gt_zero_op,
+                                          pos_one, select_neg_op)
       .getResult();
 }
 

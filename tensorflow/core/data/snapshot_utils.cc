@@ -723,13 +723,17 @@ Status Reader::MakeNestedDataset(Env* env,
                 datasets.begin() + (start_index % shard_dirs.size()),
                 datasets.end());
   }
+  MakeNestedDataset(datasets, output);
+  return OkStatus();
+}
 
+void Reader::MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
+                               DatasetBase** output) {
   *output = new NestedDataset(
       DatasetContext(DatasetContext::Params(
           {"SnapshotNestedDatasetReader", "SnapshotNestedDatasetReader"})),
       datasets);
   (*output)->Initialize(/*metadata=*/{});
-  return OkStatus();
 }
 
 TFRecordReaderImpl::TFRecordReaderImpl(

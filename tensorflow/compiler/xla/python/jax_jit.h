@@ -55,7 +55,6 @@ struct JitState {
 
   std::optional<bool> disable_jit;
   std::optional<bool> enable_x64;
-  std::optional<bool> jax_array;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
@@ -81,7 +80,6 @@ JitState& ThreadLocalJitState();
 // fallback to global state.
 bool GetDisableJit();
 bool GetEnableX64();
-bool GetEnableJaxArray();
 // TODO(skyewm): return a C++ type when all JAX backends support a single C++
 // device interface
 std::optional<pybind11::object> GetDefaultDevice();
@@ -129,7 +127,6 @@ struct CallSignature {
   // This is not the case for PMAP, and is set to `nullptr`.
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
-  bool jax_array = false;
 
   // For JIT on PJIT, we need to fallback to python whenever default_device
   // changes.

@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/protobuf/config.pb.h"
+
 namespace tensorflow {
 
 enum class TfrtDeviceInfraTarget {
@@ -46,6 +48,10 @@ struct TfrtCompileOptions {
 
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
+
+  // Graph rewrite options that will be applied on GraphDef before converting to
+  // MLIR.
+  GraphOptions graph_options;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting
@@ -96,6 +102,9 @@ struct TfrtCompileOptions {
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, get_resource_op will be fused during hoisting.
+  bool fuse_get_resource_ops_in_hoisting = true;
 
   // If true, the compiler will try to sink in the invariant ops (e.g. const
   // ops, var handle ops, etc.) to the nested function (e.g. batch function) to

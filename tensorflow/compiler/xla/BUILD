@@ -206,6 +206,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

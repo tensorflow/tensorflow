@@ -42,24 +42,6 @@ constexpr char kIsDataset[] = ".is_dataset";
 constexpr char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 constexpr char kOutputNode[] = ".output_node";
 
-// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
-// the iterator name by getting rid of everything post the final colon.
-Status GetIteratorName(StringPiece key, string* name) {
-  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
-  if (split_keys.size() != 2) {
-    return errors::InvalidArgument("Save key: ", key,
-                                   " not generated using full_name.");
-  }
-  string real_key = split_keys[1];
-  const int pos = real_key.rfind(kColon);
-  *name = real_key.substr(0, pos);
-  return OkStatus();
-}
-
 Status FromGraphDef(FunctionLibraryRuntime* flr, const GraphDef& graph_def,
                     const std::vector<std::pair<string, Tensor>>& input_list,
                     const string& output_node, Tensor* result) {
@@ -170,9 +152,9 @@ VariantTensorDataReader::VariantTensorDataReader(
 
 Status VariantTensorDataReader::ReadScalar(StringPiece key,
                                            int64_t* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadScalar(prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
@@ -182,9 +164,9 @@ Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
 
 Status VariantTensorDataReader::ReadScalar(StringPiece key,
                                            tstring* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadScalar(prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
@@ -193,16 +175,16 @@ Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
 }
 
 Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadTensor(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadTensor(prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
                                            StringPiece key, Tensor* val) const {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return ReadTensorInternal(flr, name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return ReadTensorInternal(flr, prefix, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
@@ -217,11 +199,11 @@ Status VariantTensorDataReader::ReadTensor(FunctionLibraryRuntime* flr,
 }
 
 bool VariantTensorDataReader::Contains(StringPiece key) const {
-  string name;
-  if (!GetIteratorName(key, &name).ok()) {
+  string prefix;
+  if (!ExtractIteratorPrefix(key, &prefix).ok()) {
     return false;
   }
-  return Contains(name, key);
+  return Contains(prefix, key);
 }
 
 bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) const {
@@ -294,9 +276,9 @@ Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
                                             const int64_t val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return WriteScalar(prefix, key, val);
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
@@ -306,9 +288,9 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
                                             const tstring& val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteScalar(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return WriteScalar(prefix, key, val);
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
@@ -318,9 +300,9 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
 
 Status VariantTensorDataWriter::WriteTensor(StringPiece key,
                                             const Tensor& val) {
-  string name;
-  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
-  return WriteTensor(name, key, val);
+  string prefix;
+  TF_RETURN_IF_ERROR(ExtractIteratorPrefix(key, &prefix));
+  return WriteTensor(prefix, key, val);
 }
 
 Status VariantTensorDataWriter::WriteTensor(StringPiece name, StringPiece key,

@@ -696,7 +696,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
               : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
       if (!a_status) {
         return tsl::Status(
-            tsl::error::INTERNAL,
+            absl::StatusCode::kInternal,
             "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
       src_ptr = reinterpret_cast<char *>(raw_ptrs[i]);
@@ -712,7 +712,7 @@ tsl::Status ReorganizeMemory(Stream *stream,
              : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
   if (!a_status)
     return tsl::Status(
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
   return tsl::OkStatus();
 }
@@ -875,7 +875,7 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
                         batch_stride_c, batch_count);
   }
   if (!ok)
-    return tsl::Status(tsl::error::INTERNAL,
+    return tsl::Status(absl::StatusCode::kInternal,
                        "failed BLAS call, see log for details");
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,

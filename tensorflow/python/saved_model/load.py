@@ -45,6 +45,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
@@ -120,7 +121,7 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
 
     def get_handle(x):
       return x.handle if distribute_utils.is_distributed_variable(x) else x
@@ -142,8 +143,7 @@ class _WrapperFunction(function.ConcreteFunction):
       captured_inputs = list(map(get_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(map(get_unused_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
-                                                    cancellation_manager)
+    return super()._call_flat(args, captured_inputs)
 
 
 class Loader(object):
@@ -167,6 +167,12 @@ class Loader(object):
     self._restored_concrete_functions = set()
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
+
+    # Metagraph has a mapping from FunctionDef name to aliases
+    self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
+    # Create a mapping from alias to Function, which can be used with
+    # SaveOptions
+    self.function_aliases = {}
 
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
@@ -681,6 +687,18 @@ class Loader(object):
         proto, self._concrete_functions)
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
+
+    if self._save_options.experimental_load_function_aliases:
+      for name in proto.concrete_functions:
+        if name in self._concrete_function_aliases:
+          alias = self._concrete_function_aliases[name]
+          self.function_aliases[alias] = fn
+          # We only need to save the mapping from alias to a tf.Function
+          # once even though it can appear multiple times in
+          # self._concrete_function_aliases due to one-to-many mapping from
+          # tf.Function to concrete functions.
+          break
+
     return fn, setattr
 
   def _recreate_bare_concrete_function(self, proto, dependencies):
@@ -995,12 +1013,24 @@ def load_partial(export_dir, filters, tags=None, options=None):
   # Read and log SavedModel checksum, if it is nonzero.
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
-    if fingerprint.saved_model_checksum != 0:
-      metrics.SetReadFingerprint(
-          saved_model_checksum=str(fingerprint.saved_model_checksum))
   except FileNotFoundError:
-    logging.error("Unable to load fingerprint when loading saved model.",
-                  exc_info=True)
+    logging.exception("Unable to load fingerprint when loading saved model.")
+    singleprint = ""
+  else:
+    metrics.SetReadFingerprint(
+        fingerprint=fingerprinting_utils.to_proto(
+            fingerprint).SerializeToString())
+    singleprint = fingerprint.singleprint()
+  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+
+  if options.experimental_load_function_aliases:
+    if hasattr(root, "function_aliases"):
+      raise ValueError(
+          "Could not load with experimental_load_function_aliases option"
+          " because the top-level object already has an attributed with name"
+          " 'function_aliases'"
+      )
+    root.function_aliases = loader.function_aliases
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

@@ -143,7 +143,7 @@ def canonicalize_signatures(signatures):
       signature_name_changes = _get_signature_name_changes(signature_function)
       if signature_name_changes:
         num_normalized_signatures_counter += 1
-        logging.warning(
+        logging.info(
             "Function `%s` contains input name(s) %s with unsupported "
             "characters which will be renamed to %s in the SavedModel.",
             compat.as_str(signature_function.graph.name),
@@ -152,11 +152,13 @@ def canonicalize_signatures(signatures):
     # Re-wrap the function so that it returns a dictionary of Tensors. This
     # matches the format of 1.x-style signatures.
     # pylint: disable=cell-var-from-loop
-    @def_function.function
     def signature_wrapper(**kwargs):
       structured_outputs = signature_function(**kwargs)
       return _normalize_outputs(
           structured_outputs, signature_function.name, signature_key)
+    if hasattr(function, "__name__"):
+      signature_wrapper.__name__ = "signature_wrapper_" + function.__name__
+    wrapped_function = def_function.function(signature_wrapper)
     tensor_spec_signature = {}
     if signature_function.structured_input_signature is not None:
       # The structured input signature may contain other non-tensor arguments.
@@ -177,7 +179,7 @@ def canonicalize_signatures(signatures):
       else:
         spec = tensor_spec.TensorSpec.from_tensor(inp, name=keyword)
       tensor_spec_signature[keyword] = spec
-    final_concrete = signature_wrapper._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+    final_concrete = wrapped_function._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
         **tensor_spec_signature)
     # pylint: disable=protected-access
     if len(final_concrete._arg_keywords) == 1:

@@ -56,7 +56,7 @@ void TF_CreatePluginResource(TF_OpKernelContext* ctx,
   auto cc_status =
       cc_ctx->resource_manager()->Create<tensorflow::PluginResource>(
           container_name, plugin_resource_name, cc_resource_ptr);
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
 void TF_LookupOrCreatePluginResource(
@@ -86,7 +86,7 @@ void TF_LookupOrCreatePluginResource(
   } else {
     *result_plugin_resource = nullptr;
   }
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
 // -------------------------  VariableInfo  ------------------------------------
@@ -113,7 +113,7 @@ TF_VariableInfo* TF_CreateVariableInfoFromContext(TF_OpKernelContext* ctx,
     cc_status = tsl::errors::InvalidArgument(
         "Trying to obtain resource handle from Input[", index,
         "], which is not type DT_RESOURCE.");
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
   const tensorflow::ResourceHandle& handle =
@@ -141,20 +141,20 @@ void TF_AllocateTempForVariableInfo(TF_OpKernelContext* ctx,
   tsl::Status cc_status;
   if (var_info == nullptr) {
     cc_status = tsl::errors::InvalidArgument("TF_VariableInfo is NULL.");
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return;
   }
   if (var_info->var_info.var() == nullptr) {
     cc_status = tsl::errors::InvalidArgument(
         "VariableInfo does not track a resource variable.");
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return;
   }
 
   cc_status = cc_ctx->allocate_temp(var_info->var_info.var()->tensor()->dtype(),
                                     var_info->var_info.var()->tensor()->shape(),
                                     var_info->var_info.var()->tensor());
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
 TF_Tensor* TF_GetTensorFromVariableInfo(TF_VariableInfo* var_info,
@@ -162,20 +162,20 @@ TF_Tensor* TF_GetTensorFromVariableInfo(TF_VariableInfo* var_info,
   tsl::Status cc_status;
   if (var_info == nullptr) {
     cc_status = tsl::errors::InvalidArgument("TF_VariableInfo is NULL.");
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
   if (var_info->var_info.var() == nullptr) {
     cc_status = tsl::errors::InvalidArgument(
         "VariableInfo does not track a resource variable.");
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
 
   tensorflow::Tensor* tensor = var_info->var_info.var()->tensor();
   TF_Tensor* result_tensor =
       tensorflow::TF_TensorFromTensor(*tensor, &cc_status);
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
   return result_tensor;
 }
 

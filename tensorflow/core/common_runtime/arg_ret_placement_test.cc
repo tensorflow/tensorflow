@@ -250,7 +250,6 @@ TEST_F(FullTypeGraphUtilsTest, WeakAllocAttrsRetIgnore) {
 
 TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithFTSingleDevice) {
   std::vector<std::pair<Node *, FunctionArgIndex>> arg_nodes;
-  DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
@@ -258,16 +257,14 @@ TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithFTSingleDevice) {
   AddArgFullType(arg, TFT_TENSOR, TFT_INT32);  // numeric INT32
 
   arg_nodes.push_back(std::make_pair(arg, FunctionArgIndex(0, 0)));
-  dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::SingleDeviceSetAllocAttrsForArgs(
-      arg_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
+      arg_nodes, /*ints_on_device=*/true, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_FALSE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithUnsetFTSingleDevice) {
   std::vector<std::pair<Node *, FunctionArgIndex>> arg_nodes;
-  DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
@@ -275,17 +272,14 @@ TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithUnsetFTSingleDevice) {
   AddArgFullType(arg, TFT_UNSET, TFT_UNSET);  // numeric INT32
 
   arg_nodes.push_back(std::make_pair(arg, FunctionArgIndex(0, 0)));
-  dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::SingleDeviceSetAllocAttrsForArgs(
-      arg_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
+      arg_nodes, /*ints_on_device=*/true, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_FALSE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, WeakAllocatorAttrsArgWithFTSingleDevice) {
   std::vector<std::pair<Node *, FunctionArgIndex>> arg_nodes;
-  gtl::InlinedVector<Node *, 4> nodes;
-  DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
@@ -293,16 +287,14 @@ TEST_F(FullTypeGraphUtilsTest, WeakAllocatorAttrsArgWithFTSingleDevice) {
   AddArgFullType(arg, TFT_SHAPE_TENSOR, TFT_INT32);
 
   arg_nodes.push_back(std::make_pair(arg, FunctionArgIndex(0, 0)));
-  dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::WeakSingleDeviceSetAllocAttrsForArgs(
-      arg_nodes, dtypes, /*ints_on_device=*/false, alloc_attrs));
+      arg_nodes, /*ints_on_device=*/false, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_TRUE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsRetError) {
   std::vector<std::pair<Node *, int>> ret_nodes;
-  DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
@@ -310,39 +302,34 @@ TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsRetError) {
   // test TFT_SHAPE_TENSOR and ints_on_device=true mismatch
   AddArgFullType(arg, TFT_SHAPE_TENSOR, TFT_INT32);
   ret_nodes.push_back(std::make_pair(ret, 0));
-  dtypes.push_back(DT_INT32);
   Status status = full_type::SingleDeviceSetAllocAttrsForRets(
-      ret_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs);
+      ret_nodes, /*ints_on_device=*/true, alloc_attrs);
   EXPECT_FALSE(status.ok());
 }
 
 TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsNotInt32) {
   std::vector<std::pair<Node *, int>> ret_nodes;
-  DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_STRING));
   // If dtype is not DT_UINT32, then OK to not have full type information
   ret_nodes.push_back(std::make_pair(ret, 0));
-  dtypes.push_back(DT_STRING);
   TF_ASSERT_OK(full_type::SingleDeviceSetAllocAttrsForRets(
-      ret_nodes, dtypes, /*ints_on_device=*/false, alloc_attrs));
+      ret_nodes, /*ints_on_device=*/false, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_TRUE(alloc_attrs[0].on_host());
 }
 
 TEST_F(FullTypeGraphUtilsTest, SingleDeviceWeakAllocAttrsRetIgnore) {
   std::vector<std::pair<Node *, int>> ret_nodes;
-  DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
   Node *arg, *ret;
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
   ret_nodes.push_back(std::make_pair(ret, 0));
-  dtypes.push_back(DT_INT32);
   TF_ASSERT_OK(full_type::WeakSingleDeviceSetAllocAttrsForRets(
-      ret_nodes, dtypes, /*ints_on_device=*/true, alloc_attrs));
+      ret_nodes, /*ints_on_device=*/true, alloc_attrs));
   ASSERT_EQ(alloc_attrs.size(), 1);
   ASSERT_FALSE(alloc_attrs[0].on_host());
 }

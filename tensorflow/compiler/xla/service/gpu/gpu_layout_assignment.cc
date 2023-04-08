@@ -235,9 +235,13 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
   // If we are able to construct a `MatrixLayout` then the dot can support
   // this layout.
   return MatrixLayout::For(shape, dot_dims.lhs_batch_dimensions().size(),
-                           dot_dims.lhs_contracting_dimensions().size(),
+                           dot->operand(0)->shape().rank() -
+                               dot_dims.lhs_contracting_dimensions().size() -
+                               dot_dims.lhs_batch_dimensions().size(),
                            dot_dims.rhs_batch_dimensions().size(),
-                           dot_dims.rhs_contracting_dimensions().size())
+                           dot->operand(1)->shape().rank() -
+                               dot_dims.rhs_contracting_dimensions().size() -
+                               dot_dims.rhs_batch_dimensions().size())
       .ok();
 }
 

@@ -194,7 +194,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
   CHECK(!sharding.IsTileMaximal());
   auto dimensions = sharding.tile_assignment().dimensions();
   if (sharding.ReplicateOnLastTileDim()) {
-    dimensions.pop_back();
+    dimensions.remove_suffix(1);
   }
   auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
   return MakePartitionOffsets(table_shape, sharding, partition_id, b);
@@ -368,7 +368,9 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
     num_target_replication =
         target_sharding.tile_assignment().dimensions().back();
   }
-  auto reshape_dimensions = partial_sharding.tile_assignment().dimensions();
+  std::vector<int64_t> reshape_dimensions(
+      partial_sharding.tile_assignment().dimensions().begin(),
+      partial_sharding.tile_assignment().dimensions().end());
   int64_t num_replication = reshape_dimensions.back();
   if (num_replication / num_target_replication != Product(expand_tile_sizes) ||
       num_replication % num_target_replication != 0) {
@@ -1792,7 +1794,9 @@ GatherScatterOperandsShardedAcrossParallelDims(
     if (!to_adjust->ReplicateOnLastTileDim()) {
       return std::nullopt;
     }
-    auto new_tile_assignment_dims = to_adjust->tile_assignment().dimensions();
+    std::vector<int64_t> new_tile_assignment_dims(
+        to_adjust->tile_assignment().dimensions().begin(),
+        to_adjust->tile_assignment().dimensions().end());
     for (int i = 0; i < to_adjust_dims.size(); ++i) {
       int64_t target_dim = target->tile_assignment().dim(target_dims[i]);
       int64_t to_adjust_dim =
@@ -1829,8 +1833,9 @@ GatherScatterOperandsShardedAcrossParallelDims(
     }
   }
   // Make sure that the parallel dimensions are aligned.
-  auto operand_shard_tile_dims =
-      new_operand_shard.tile_assignment().dimensions();
+  std::vector<int64_t> operand_shard_tile_dims(
+      new_operand_shard.tile_assignment().dimensions().begin(),
+      new_operand_shard.tile_assignment().dimensions().end());
   for (int i = 0; i < indices_parallel_dims_ordered_as_operand.size(); ++i) {
     operand_shard_tile_dims[operand_parallel_dims[i]] =
         new_index_shard.tile_assignment().dim(

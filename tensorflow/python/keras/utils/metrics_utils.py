@@ -15,17 +15,16 @@
 # pylint: disable=protected-access
 """Utils related to keras metrics."""
 
+from enum import Enum
 import functools
 import weakref
-
-from enum import Enum
-
 import numpy as np
 
 from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -595,8 +594,9 @@ def update_confusion_matrix_variables(variables_to_update,
     # details.
     thresholds_with_epsilon = thresholds[0] < 0.0 or thresholds[-1] > 1.0
 
-  thresholds = ops.convert_to_tensor_v2_with_dispatch(
-      thresholds, dtype=variable_dtype)
+  thresholds = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      thresholds, dtype=variable_dtype
+  )
   num_thresholds = thresholds.shape.as_list()[0]
 
   if multi_label:

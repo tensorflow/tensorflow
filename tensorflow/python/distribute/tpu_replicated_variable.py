@@ -180,25 +180,6 @@ class TPUReplicatedVariable(variables_lib.Variable):
     resource_list.append(self)
     return resource_list
 
-  def _export_to_saved_model_graph(self, object_map=None,
-                                   tensor_map=None,
-                                   options=None,
-                                   **kwargs):
-    """For implementing `Trackable`."""
-    first_var = self._vars[0]
-    resource_list = first_var._export_to_saved_model_graph(  # pylint:disable=protected-access
-        object_map=object_map,
-        tensor_map=tensor_map,
-        options=options)
-    for v in self._vars[1:]:
-      object_map[v] = object_map[first_var]
-      tensor_map[v.handle] = tensor_map[first_var.handle]
-      resource_list.append(v.handle)
-    object_map[self] = object_map[first_var]
-    tensor_map[self] = tensor_map[first_var.handle]
-    resource_list.append(self)
-    return resource_list
-
   def _gather_saveables_for_saved_model(self):
     return {trackable.VARIABLE_VALUE_KEY: self._vars[0]}
 
