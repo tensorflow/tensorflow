@@ -37,6 +37,11 @@ class TransposeConvTester {
     kTensorWiseQuantizedInt8,
     kChannelWiseQuantizedInt8,
   };
+  enum class BiasType {
+    kNone,
+    kFP32,
+    kFP16,
+  };
 
   TransposeConvTester() = default;
   TransposeConvTester(const TransposeConvTester&) = delete;
@@ -116,16 +121,21 @@ class TransposeConvTester {
 
   inline TransposeConvTester& FP16Weights() {
     weights_type_ = WeightsType::kFP16;
+    bias_type_ = BiasType::kFP16;
     return *this;
   }
 
   inline TransposeConvTester& TensorWiseQuantizedInt8Weights() {
     weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
   inline TransposeConvTester& ChannelWiseQuantizedInt8Weights() {
     weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
@@ -165,12 +175,7 @@ class TransposeConvTester {
   }
 
   inline TransposeConvTester& NoBias() {
-    has_bias_ = false;
-    return *this;
-  }
-
-  inline TransposeConvTester& WithBias() {
-    has_bias_ = true;
+    bias_type_ = BiasType::kNone;
     return *this;
   }
 
@@ -213,9 +218,11 @@ class TransposeConvTester {
  private:
   std::vector<char> CreateTfLiteModel() const;
 
-  inline bool HasBias() const { return has_bias_; }
+  inline bool HasBias() const { return bias_type_ != BiasType::kNone; }
 
   inline WeightsType WeightsType() const { return weights_type_; }
+
+  inline BiasType BiasType() const { return bias_type_; }
 
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
@@ -228,7 +235,7 @@ class TransposeConvTester {
   int32_t stride_width_ = 1;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   enum WeightsType weights_type_ { WeightsType::kFP32 };
-  bool has_bias_ = true;
+  enum BiasType bias_type_ { BiasType::kFP32 };
   bool sparse_weights_ = false;
   TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };

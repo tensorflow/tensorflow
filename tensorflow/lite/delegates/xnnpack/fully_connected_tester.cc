@@ -235,33 +235,30 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
   }
   tflite::TensorType quantized_bias_type = TensorType_FLOAT32;
   int bias_buffer_id = 0, quantized_bias_buffer_id = 0;
-  if (HasBias()) {
-    switch (WeightsType()) {
-      case WeightsType::kFP32:
-      case WeightsType::kTensorWiseQuantizedInt8:
-      case WeightsType::kChannelWiseQuantizedInt8:
-        // Bias is stored in FP32 even when filter is quantized to INT8
-        bias_buffer_id = buffers.size();
-        buffers.emplace_back(CreateBuffer(
-            builder, builder.CreateVector(
-                         reinterpret_cast<const uint8_t*>(bias_data.data()),
-                         sizeof(float) * bias_data.size())));
-        break;
-      case WeightsType::kFP16: {
-        std::vector<uint16_t> quantized_bias_data(bias_data.size());
-        std::transform(bias_data.begin(), bias_data.end(),
-                       quantized_bias_data.begin(), fp16_ieee_from_fp32_value);
+  switch (BiasType()) {
+    case BiasType::kNone:
+      break;
+    case BiasType::kFP32:
+      bias_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(float) * bias_data.size())));
+      break;
+    case BiasType::kFP16: {
+      std::vector<uint16_t> quantized_bias_data(bias_data.size());
+      std::transform(bias_data.begin(), bias_data.end(),
+                     quantized_bias_data.begin(), fp16_ieee_from_fp32_value);
 
-        quantized_bias_buffer_id = buffers.size();
-        buffers.emplace_back(CreateBuffer(
-            builder,
-            builder.CreateVector(
-                reinterpret_cast<const uint8_t*>(quantized_bias_data.data()),
-                sizeof(uint16_t) * quantized_bias_data.size())));
+      quantized_bias_buffer_id = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_bias_data.data()),
+              sizeof(uint16_t) * quantized_bias_data.size())));
 
-        quantized_bias_type = TensorType_FLOAT16;
-        break;
-      }
+      quantized_bias_type = TensorType_FLOAT16;
+      break;
     }
   }
 

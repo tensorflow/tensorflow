@@ -273,18 +273,15 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   }
   tflite::TensorType quantized_bias_type = TensorType_FLOAT32;
   int bias_buffer_id = 0, quantized_bias_buffer_id = 0;
-  switch (WeightsType()) {
-    case WeightsType::kFP32:
-    case WeightsType::kTensorWiseQuantizedInt8:
-    case WeightsType::kChannelWiseQuantizedInt8:
-      // Bias is stored in FP32 even when filter is quantized to INT8
+  switch (BiasType()) {
+    case BiasType::kFP32:
       bias_buffer_id = buffers.size();
       buffers.emplace_back(CreateBuffer(
           builder, builder.CreateVector(
                        reinterpret_cast<const uint8_t*>(bias_data.data()),
                        sizeof(float) * bias_data.size())));
       break;
-    case WeightsType::kFP16: {
+    case BiasType::kFP16: {
       std::vector<uint16_t> quantized_bias_data(bias_data.size());
       std::transform(bias_data.begin(), bias_data.end(),
                      quantized_bias_data.begin(), fp16_ieee_from_fp32_value);
