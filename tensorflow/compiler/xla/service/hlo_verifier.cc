@@ -2694,7 +2694,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kConvolution &&
         instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kBitcast) {
+        instruction->opcode() != HloOpcode::kBitcast &&
+        instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTuple) {
       return InvalidArgument(
           "S4/U4 is currently only supported in matmul and convolution, but "
           "got instruction with S4/U4 input: %s",
