@@ -45,16 +45,14 @@ void QuantizedConv2DTester::Test(Interpreter* delegate_interpreter,
                                              std::numeric_limits<T>::max()),
       std::ref(rng));
   T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
-  std::generate(default_input_data,
-                default_input_data + BatchSize() * InputHeight() *
-                                         InputWidth() * InputChannels(),
-                input_rng);
+  std::generate_n(default_input_data,
+                  BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+                  input_rng);
 
   T* delegate_input_data = delegate_interpreter->typed_input_tensor<T>(0);
-  std::copy(default_input_data,
-            default_input_data +
-                BatchSize() * InputHeight() * InputWidth() * InputChannels(),
-            delegate_input_data);
+  std::copy_n(default_input_data,
+              BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+              delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);

@@ -83,13 +83,11 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
   const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data, default_input_data + input_data_size,
-                std::ref(f32rng));
+  std::generate_n(default_input_data, input_data_size, std::ref(f32rng));
 
   float* xnnpack_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data, default_input_data + input_data_size,
-            xnnpack_input_data);
+  std::copy_n(default_input_data, input_data_size, xnnpack_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);

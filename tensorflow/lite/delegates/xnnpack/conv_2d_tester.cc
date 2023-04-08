@@ -80,17 +80,15 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) const {
   auto input_rng =
       std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input_data,
-                default_input_data + BatchSize() * InputHeight() *
-                                         InputWidth() * InputChannels(),
-                input_rng);
+  std::generate_n(default_input_data,
+                  BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+                  input_rng);
 
   float* delegate_input_data =
       delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input_data,
-            default_input_data +
-                BatchSize() * InputHeight() * InputWidth() * InputChannels(),
-            delegate_input_data);
+  std::copy_n(default_input_data,
+              BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+              delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
