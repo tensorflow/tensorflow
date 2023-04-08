@@ -78,17 +78,22 @@ CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
+/*static*/ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
+                                              const HloGraphNode& target) {
+  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
+  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
+  return from_op.outer == HloOpcode::kAsyncStart &&
+         target_op.outer == HloOpcode::kAsyncDone &&
+         from_op.inner == target_op.inner;
+}
+
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   // These values are empirically derived to obtain an overlap of one output
   // fusion/convolution with 1 async op or 5 loop fusions with an async op.
   static constexpr TimeCost kLowLatency = 1.0;
   static constexpr TimeCost kHighLatency = 5000.0;
-  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
-  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
-  if (from_op.outer == HloOpcode::kAsyncStart &&
-      target_op.outer == HloOpcode::kAsyncDone &&
-      from_op.inner == target_op.inner) {
+  if (IsAsyncPair(from, target)) {
     return kHighLatency;
   }
   // Every other instruction we consider synchronous, which means the

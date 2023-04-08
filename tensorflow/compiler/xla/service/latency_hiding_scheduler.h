@@ -107,6 +107,8 @@ class LatencyEstimator {
   // Returns the core frequency used in latency estimation.
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
+
+  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
