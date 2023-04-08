@@ -324,11 +324,14 @@ cuda_py_test(
         "no_windows",  # TODO(b/184424727): Re-enable this.
     ],
     deps = [
+        ":profiler",
         ":test",
-        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python/profiler:profiler_v2",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler:trace",
+        "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 

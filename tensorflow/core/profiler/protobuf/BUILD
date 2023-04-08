@@ -172,19 +172,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "trace_events_proto",
-    srcs = ["trace_events.proto"],
-    cc_api_version = 2,
-    protodeps = [
-        "//tensorflow/tsl/profiler/protobuf:trace_events_proto",
-    ],
-    visibility = [":friends"],
-    exports = [
-        "//tensorflow/tsl/profiler/protobuf:trace_events_proto",
-    ],
-)
-
-tf_proto_library(
     name = "hardware_types_proto",
     srcs = ["hardware_types.proto"],
     cc_api_version = 2,
@@ -225,13 +212,6 @@ tf_proto_library(
 #     api_version = 2,
 #     visibility = [":friends"],
 #     deps = [":xplane_proto"],
-# )
-#
-# py_proto_library(
-#     name = "trace_events_py_pb2",
-#     api_version = 2,
-#     visibility = ["//visibility:public"],
-#     deps = [":trace_events_proto"],
 # )
 #
 # py_proto_library(
