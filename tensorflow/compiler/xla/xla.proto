@@ -385,6 +385,9 @@ message DebugOptions {
   // Enable hoisting of reduce-scatter out of while loops.
   bool xla_gpu_enable_while_loop_reduce_scatter_code_motion = 203;
 
+  // Inflate collective cost by running each collective multiple times.
+  int32 xla_gpu_collective_inflation_factor = 205;
+
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
@@ -493,7 +496,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 205
+  // Next id: 206
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

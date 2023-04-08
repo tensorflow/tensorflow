@@ -124,6 +124,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Moving reduce-scatter out of while loops can incrase memory footprint, so
   // turning it off by default.
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
+
+  opts.set_xla_gpu_collective_inflation_factor(1);
   return opts;
 }
 
@@ -781,6 +783,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_enable_while_loop_reduce_scatter_code_motion),
       debug_options->xla_gpu_enable_while_loop_reduce_scatter_code_motion(),
       "Enable hoisting of reduce-scatter outside while loops."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_collective_inflation_factor",
+      int32_setter_for(&DebugOptions::set_xla_gpu_collective_inflation_factor),
+      debug_options->xla_gpu_collective_inflation_factor(),
+      "Inflation factor for collectives. If set to > 1, each XLA/GPU "
+      "collective will execute multiple times (will yield incorrect results)"));
 
   flag_list->push_back(
       tsl::Flag("xla_gpu_dump_llvmir",
