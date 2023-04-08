@@ -3374,6 +3374,8 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
+    case S4:
+      return SetValueInLiteralHelper<s4>(loc, value, index, literal);
     case S8:
       return SetValueInLiteralHelper<int8_t>(loc, value, index, literal);
     case S16:
@@ -3382,6 +3384,8 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
       return SetValueInLiteralHelper<int32_t>(loc, value, index, literal);
     case S64:
       return SetValueInLiteralHelper<int64_t>(loc, value, index, literal);
+    case U4:
+      return SetValueInLiteralHelper<u4>(loc, value, index, literal);
     case U8:
       return SetValueInLiteralHelper<uint8_t>(loc, value, index, literal);
     case U16:
@@ -3945,14 +3949,20 @@ bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
                                PrimitiveType_Name(literal_ty), " namely [0, ",
                                upper_bound, "]."));
     }
-  } else if (value > MinMaxFiniteValue<LiteralNativeT>::max() ||
-             value < MinMaxFiniteValue<LiteralNativeT>::min()) {
+  } else if (value > static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::max()) ||
+             value < static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::min())) {
     // Value is out of range for LiteralNativeT.
-    return Error(loc, StrCat("value ", value,
-                             " is out of range for literal's primitive type ",
-                             PrimitiveType_Name(literal_ty), " namely [",
-                             MinMaxFiniteValue<LiteralNativeT>::min(), ", ",
-                             MinMaxFiniteValue<LiteralNativeT>::max(), "]."));
+    return Error(
+        loc,
+        StrCat(
+            "value ", value, " is out of range for literal's primitive type ",
+            PrimitiveType_Name(literal_ty), " namely [",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::min()),
+            ", ",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::max()),
+            "]."));
   }
   return true;
 }
