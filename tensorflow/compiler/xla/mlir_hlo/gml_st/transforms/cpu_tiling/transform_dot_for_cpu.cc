@@ -28,6 +28,7 @@ limitations under the License.
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
+#include "gml_st/utils/linalg_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -170,7 +171,8 @@ std::function<MatmulSizes(MatmulSizes)> wrapHeuristic(
     const std::function<MatmulSizes(MatmulSizes)> &heuristic,
     MatmulSizes dynamicDefault) {
   return [=](MatmulSizes sizes) {
-    if (sizes.n < 0 || sizes.m < 0 || sizes.k < 0) {
+    if (ShapedType::isDynamic(sizes.n) || ShapedType::isDynamic(sizes.m) ||
+        ShapedType::isDynamic(sizes.k)) {
       return dynamicDefault;
     }
 
@@ -184,8 +186,8 @@ std::function<MatmulSizes(MatmulSizes)> wrapHeuristic(
 
 MatmulSizes getMatmulSizes(linalg::MatmulOp op) {
   // [m, k] x [k, n]
-  ShapedType lhsTy = op->getOperand(0).getType().cast<ShapedType>();
-  ShapedType rhsTy = op->getOperand(1).getType().cast<ShapedType>();
+  auto lhsTy = op->getOperand(0).getType().cast<ShapedType>();
+  auto rhsTy = op->getOperand(1).getType().cast<ShapedType>();
   MatmulSizes sizes;
   sizes.m = lhsTy.getDimSize(0);
   sizes.k = rhsTy.getDimSize(0);
@@ -195,7 +197,7 @@ MatmulSizes getMatmulSizes(linalg::MatmulOp op) {
 
 MatmulSizes getMatmulSizes(linalg::VecmatOp op) {
   // [1, k] x [k, n]
-  ShapedType ty = op->getOperand(1).getType().cast<ShapedType>();
+  auto ty = op->getOperand(1).getType().cast<ShapedType>();
   MatmulSizes sizes;
   sizes.m = 1;
   sizes.k = ty.getDimSize(0);
@@ -205,7 +207,7 @@ MatmulSizes getMatmulSizes(linalg::VecmatOp op) {
 
 MatmulSizes getMatmulSizes(linalg::MatvecOp op) {
   // [m, k] x [k, 1]
-  ShapedType ty = op->getOperand(0).getType().cast<ShapedType>();
+  auto ty = op->getOperand(0).getType().cast<ShapedType>();
   MatmulSizes sizes;
   sizes.m = ty.getDimSize(0);
   sizes.k = ty.getDimSize(1);
@@ -215,7 +217,7 @@ MatmulSizes getMatmulSizes(linalg::MatvecOp op) {
 
 MatmulSizes getMatmulSizes(linalg::DotOp op) {
   // [1, k] x [k, 1]
-  ShapedType ty = op->getOperand(0).getType().cast<ShapedType>();
+  auto ty = op->getOperand(0).getType().cast<ShapedType>();
   MatmulSizes sizes;
   sizes.m = 1;
   sizes.k = ty.getDimSize(0);
@@ -228,11 +230,10 @@ SmallVector<int64_t> dropZeros(ArrayRef<int64_t> tileSizes) {
       tileSizes, [](int64_t size) { return size != 0; }));
 }
 
-struct DotAddTransformPattern : public OpRewritePattern<linalg::MapOp> {
+struct DotAddPattern : public OpRewritePattern<linalg::MapOp> {
   using OpRewritePattern<linalg::MapOp>::OpRewritePattern;
 
-  explicit DotAddTransformPattern(MLIRContext *context,
-                                  PatternBenefit benefit = 1)
+  explicit DotAddPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::MapOp>(context, benefit) {}
 
   LogicalResult matchAndRewrite(linalg::MapOp mapOp,
@@ -374,22 +375,60 @@ LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
   return success();
 }
 
-struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
+// Tile linalg.conv_2d_nhwc_hwcf to convert it to linalg.matmul..
+struct Conv2DNhwcHwcfOpPattern
+    : public OpRewritePattern<linalg::Conv2DNhwcHwcfOp> {
+  using OpRewritePattern<linalg::Conv2DNhwcHwcfOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::Conv2DNhwcHwcfOp convOp,
+                                PatternRewriter &rewriter) const override {
+    if (!isTransformableIntoMatmul(convOp)) return failure();
+    FailureOr<scf::SCFTilingResult> tilingResult =
+        scf::tileUsingSCFForOp(rewriter, convOp.getOperation(),
+                               getSCFTilingOptions({0, 0, 0, 0, 1, 0, 0}));
+    if (failed(tilingResult)) return failure();
+    rewriter.replaceOp(convOp, tilingResult->replacements);
+
+    auto tiledConv =
+        cast<linalg::Conv2DNhwcHwcfOp>(tilingResult->tiledOps.front());
+    return convertConvToMatmul(tiledConv, rewriter);
+  }
+};
+
+// Tile linalg.batch_matmul to 1 in the outermost dimension, then transform a
+// unit linalg.batch_matmul into a matmul using reshape ops.
+struct BatchMatmulOpPattern : public OpRewritePattern<linalg::BatchMatmulOp> {
+  using OpRewritePattern<linalg::BatchMatmulOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::BatchMatmulOp batchMatmulOp,
+                                PatternRewriter &rewriter) const override {
+    // Tile and fuse fillOp into the loop nest.
+    auto tilingResult = tileUsingSCFForallOpAndFuseGreedily(
+        rewriter, batchMatmulOp.getOperation(),
+        getSCFTilingOptions({1, 0, 0, 0}));
+    if (failed(tilingResult)) return failure();
+
+    auto tiledBatchMatmulOp =
+        cast<linalg::BatchMatmulOp>(tilingResult->tiledOps.front());
+    return convertBatchMatmulToMatmul(tiledBatchMatmulOp, rewriter);
+  }
+};
+
+struct MatmulPattern : public OpRewritePattern<linalg::MatmulOp> {
   using OpRewritePattern<linalg::MatmulOp>::OpRewritePattern;
 
-  MatmulTransformPattern(MLIRContext *context,
-                         MatmulTileSizeComputationFn tileSizeFn,
-                         PatternBenefit benefit = 1)
+  MatmulPattern(MLIRContext *context, MatmulTileSizeComputationFn tileSizeFn,
+                PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::MatmulOp>(context, benefit),
         tileSizeFn(std::move(tileSizeFn)) {}
 
-  LogicalResult matchAndRewrite(linalg::MatmulOp dotOp,
+  LogicalResult matchAndRewrite(linalg::MatmulOp matmulOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(dotOp, kTransformedLabel))
-      return rewriter.notifyMatchFailure(dotOp, "already transformed");
+    if (hasLabel(matmulOp, kTransformedLabel))
+      return rewriter.notifyMatchFailure(matmulOp, "already transformed");
 
-    MatmulSizes tileSizes = tileSizeFn(getMatmulSizes(dotOp));
-    return tileAndPeelMatmulOp(rewriter, dotOp,
+    MatmulSizes tileSizes = tileSizeFn(getMatmulSizes(matmulOp));
+    return tileAndPeelMatmulOp(rewriter, matmulOp,
                                {tileSizes.m, tileSizes.n, tileSizes.k});
   }
 
@@ -397,34 +436,32 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
   MatmulTileSizeComputationFn tileSizeFn;
 };
 
-struct MatvecTransformPattern : public OpRewritePattern<linalg::MatvecOp> {
+struct MatvecPattern : public OpRewritePattern<linalg::MatvecOp> {
   using OpRewritePattern<linalg::MatvecOp>::OpRewritePattern;
 
-  MatvecTransformPattern(MLIRContext *context,
-                         MatmulTileSizeComputationFn tileSizeFn,
-                         PatternBenefit benefit = 1)
+  MatvecPattern(MLIRContext *context, MatmulTileSizeComputationFn tileSizeFn,
+                PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::MatvecOp>(context, benefit),
         tileSizeFn(std::move(tileSizeFn)) {}
 
-  LogicalResult matchAndRewrite(linalg::MatvecOp dotOp,
+  LogicalResult matchAndRewrite(linalg::MatvecOp matvecOp,
                                 PatternRewriter &rewriter) const override {
-    if (hasLabel(dotOp, kTransformedLabel))
-      return rewriter.notifyMatchFailure(dotOp, "already transformed");
+    if (hasLabel(matvecOp, kTransformedLabel))
+      return rewriter.notifyMatchFailure(matvecOp, "already transformed");
 
-    MatmulSizes tileSizes = tileSizeFn(getMatmulSizes(dotOp));
-    return tileAndPeelMatmulOp(rewriter, dotOp, {tileSizes.m, tileSizes.k});
+    MatmulSizes tileSizes = tileSizeFn(getMatmulSizes(matvecOp));
+    return tileAndPeelMatmulOp(rewriter, matvecOp, {tileSizes.m, tileSizes.k});
   }
 
  private:
   MatmulTileSizeComputationFn tileSizeFn;
 };
 
-struct VecmatTransformPattern : public OpRewritePattern<linalg::VecmatOp> {
+struct VecmatPattern : public OpRewritePattern<linalg::VecmatOp> {
   using OpRewritePattern<linalg::VecmatOp>::OpRewritePattern;
 
-  VecmatTransformPattern(MLIRContext *context,
-                         MatmulTileSizeComputationFn tileSizeFn,
-                         PatternBenefit benefit = 1)
+  VecmatPattern(MLIRContext *context, MatmulTileSizeComputationFn tileSizeFn,
+                PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::VecmatOp>(context, benefit),
         tileSizeFn(std::move(tileSizeFn)) {}
 
@@ -441,12 +478,11 @@ struct VecmatTransformPattern : public OpRewritePattern<linalg::VecmatOp> {
   MatmulTileSizeComputationFn tileSizeFn;
 };
 
-struct DotTransformPattern : public OpRewritePattern<linalg::DotOp> {
+struct DotPattern : public OpRewritePattern<linalg::DotOp> {
   using OpRewritePattern<linalg::DotOp>::OpRewritePattern;
 
-  DotTransformPattern(MLIRContext *context,
-                      MatmulTileSizeComputationFn tileSizeFn,
-                      PatternBenefit benefit = 1)
+  DotPattern(MLIRContext *context, MatmulTileSizeComputationFn tileSizeFn,
+             PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::DotOp>(context, benefit),
         tileSizeFn(std::move(tileSizeFn)) {}
 
@@ -455,7 +491,13 @@ struct DotTransformPattern : public OpRewritePattern<linalg::DotOp> {
     if (hasLabel(dotOp, kTransformedLabel))
       return rewriter.notifyMatchFailure(dotOp, "already transformed");
 
-    MatmulSizes tileSizes = tileSizeFn(getMatmulSizes(dotOp));
+    MatmulSizes matmulSizes = getMatmulSizes(dotOp);
+    constexpr int64_t kReductionDimSizeThreshold = 32;
+    if (!ShapedType::isDynamic(matmulSizes.k) &&
+        matmulSizes.k > kReductionDimSizeThreshold) {
+      return convertDotOpToReduce(dotOp, rewriter);
+    }
+    MatmulSizes tileSizes = tileSizeFn(matmulSizes);
     return tileAndPeelMatmulOp(rewriter, dotOp, {tileSizes.k});
   }
 
@@ -528,16 +570,17 @@ struct TransformDotForCpuPass
     // Peephole optimization of dot followed by add.
     {
       RewritePatternSet patterns(ctx);
-      patterns.add<DotAddTransformPattern>(ctx);
+      patterns.add<DotAddPattern>(ctx);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
     }
 
     RewritePatternSet patterns(ctx);
-    patterns.add<MatVecToVecMatPattern>(ctx, 2);
-    patterns.add<MatmulTransformPattern, MatvecTransformPattern,
-                 VecmatTransformPattern, DotTransformPattern>(ctx, tileSizeFn);
+    patterns.add<BatchMatmulOpPattern, Conv2DNhwcHwcfOpPattern,
+                 MatVecToVecMatPattern>(ctx, 2);
+    patterns.add<MatmulPattern, MatvecPattern, VecmatPattern, DotPattern>(
+        ctx, tileSizeFn);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();

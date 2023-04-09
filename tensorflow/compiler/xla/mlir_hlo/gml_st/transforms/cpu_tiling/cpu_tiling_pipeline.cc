@@ -67,13 +67,12 @@ void addCPUTilingPipeline(OpPassManager& pm,
     pm.addPass(createCSEPass());
   }
 
-  pm.addNestedPass<FuncOp>(createRewriteDotAsReducePass());
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
-  pm.addNestedPass<FuncOp>(createTransformBatchMatmulForCpuPass());
-  pm.addNestedPass<FuncOp>(createTransformConvForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
 
+  pm.addNestedPass<FuncOp>(
+      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
   TransformReduceForCpuPassOptions reductionOpts;
   reductionOpts.enableHeuristic = options.reductionEnableHeuristic;
   reductionOpts.tileSize1D = options.reduction1DTileSize;
@@ -83,8 +82,6 @@ void addCPUTilingPipeline(OpPassManager& pm,
       options.reduction2DReductionDimTileSize;
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(reductionOpts));
 
-  pm.addNestedPass<FuncOp>(
-      createTransformDotForCpuPass(options.matmulTileSizes, options.cpuName));
   // Upstream generalization of tensor.pack/unpack (i.e. tensor.pack/unpack ->
   // tensor.pad + linalg.transpose + tensor.insert_slice) does not transfer
   // transformed labels from tensor.pack/unpack to linalg.transpose and thus
