@@ -16,7 +16,7 @@
 # TODO(b/264234648): Refactor and cleanup this file.
 import itertools
 import os
-from typing import List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Mapping, Optional, Sequence, Tuple, Union
 
 from absl.testing import parameterized
 import numpy as np
@@ -352,6 +352,56 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         threshold=0.3,
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_force_graph_mode_calibration(self):
+    input_type = dtypes.int32
+    input_placeholder = self._create_and_save_tf1_gather_model(
+        self._input_saved_model_path,
+        signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+        tags={tag_constants.SERVING},
+        input_key='x',
+        output_key='output',
+        input_type=input_type,
+    )
+
+    data_gen = self._create_data_generator(
+        input_key='x',
+        shape=input_placeholder.shape,
+        minval=0,
+        maxval=10,
+        dtype=input_type,
+    )
+
+    options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        force_graph_mode_calibration=True,
+    )
+
+    with self.assertLogs(level='INFO') as info_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.INFO)
+
+      try:
+        quantize_model.quantize(
+            self._input_saved_model_path,
+            quantization_options=options,
+            representative_dataset=data_gen,
+        )
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(info_logs.records)
+      self.assertTrue(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+
 
 class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
 
@@ -494,24 +544,6 @@ class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
 
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
-
-  def _any_warning_contains(
-      self, substring: str, warnings_list: List['LogRecord']
-  ) -> bool:
-    """Returns True if any of the warnings contains a given substring.
-
-    Args:
-      substring: A piece of string to check whether it exists in the warning
-        message.
-      warnings_list: A list of `absl.logging.LogRecord`s.
-
-    Returns:
-      True if and only if the substring exists in any of the warnings in
-      `warnings_list`.
-    """
-    return any(
-        map(lambda warning: substring in str(warning.message), warnings_list)
-    )
 
   @parameterized.parameters(
       parameter_combinations([{
@@ -1132,7 +1164,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ['serving_default'],
         tags,
         self._output_saved_model_path,
-        quantization_options
+        quantization_options,
     )
     self.assertIsNotNone(converted_model)
     self.assertSizeRatioLessThan(
@@ -2703,11 +2735,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name.
+      self.assertTrue(self._any_log_contains('matmul', warning_logs.records))
       self.assertTrue(
-          self._any_warning_contains('matmul', warning_logs.records)
-      )
-      self.assertTrue(
-          self._any_warning_contains(
+          self._any_log_contains(
               'does not have min or max values', warning_logs.records
           )
       )
@@ -2804,14 +2834,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       # Warning message should contain the function name. The uncalibrated path
       # is when the condition is true, so 'cond_true' function must be part of
       # the warning message.
-      self.assertTrue(
-          self._any_warning_contains('cond_true', warning_logs.records)
-      )
+      self.assertTrue(self._any_log_contains('cond_true', warning_logs.records))
       self.assertFalse(
-          self._any_warning_contains('cond_false', warning_logs.records)
+          self._any_log_contains('cond_false', warning_logs.records)
       )
       self.assertTrue(
-          self._any_warning_contains(
+          self._any_log_contains(
               'does not have min or max values', warning_logs.records
           )
       )
