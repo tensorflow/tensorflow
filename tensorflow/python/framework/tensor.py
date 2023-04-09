@@ -22,6 +22,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
@@ -235,7 +236,14 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
-    placeholder = self._graph_placeholder(context_graph, name=name)
+    if placeholder_context.with_none_control_dependencies:
+      # Note: setting ops.control_dependencies(None) ensures we always put
+      # capturing placeholders outside of any control flow context.
+      with context_graph.control_dependencies(None):
+        placeholder = self._graph_placeholder(context_graph, name=name)
+    else:
+      placeholder = self._graph_placeholder(context_graph, name=name)
+
     if name is not None:
       # Record the requested/user-specified name in case it's different than
       # the uniquified name, for validation when exporting signatures.
@@ -251,6 +259,16 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
           and handle_data.is_set
           and handle_data.shape_and_type):
         handle_data_util.set_handle_data(placeholder, handle_data)
+
+    # Record the composite device as an attribute to the placeholder.
+    # This attribute would be propagated into the arg_attr of the FunctionDef.
+    # Currently, a packed eager tensor is always placed on a CompositeDevice.
+    if placeholder_context.composite_device_name is not None:
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_composite_device",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(
+              placeholder_context.composite_device_name)))
+
     return placeholder
 
   def _graph_placeholder(self, graph, name=None):
@@ -405,6 +423,44 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
 trace_type.register_serializable(TensorSpec)
 trace_type.register_tensor_type(TensorSpec)
+
+
+class _TensorCodec:
+  """Codec for Tensor."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, ops.Tensor)
+
+  def do_encode(self, tensor_value, encode_fn):
+    """Returns an encoded `TensorProto` for the given `tf.Tensor`."""
+    del encode_fn
+    encoded_tensor = struct_pb2.StructuredValue()
+    if isinstance(tensor_value, ops.EagerTensor):
+      encoded_tensor.tensor_value.CopyFrom(
+          tensor_util.make_tensor_proto(tensor_value.numpy())
+      )
+    else:
+      if tensor_value.op.type == "Const":
+        encoded_tensor.tensor_value.CopyFrom(tensor_value.op.get_attr("value"))
+      else:
+        raise nested_structure_coder.NotEncodableError(
+            f"No encoder for object {str(tensor_value)} of type"
+            f" {type(tensor_value)}."
+        )
+    return encoded_tensor
+
+  def can_decode(self, value):
+    return value.HasField("tensor_value")
+
+  def do_decode(self, value, decode_fn):
+    """Returns the `tf.Tensor` encoded by the proto `value`."""
+    del decode_fn
+    tensor_proto = value.tensor_value
+    tensor = constant_op.constant(tensor_util.MakeNdarray(tensor_proto))
+    return tensor
+
+
+nested_structure_coder.register_codec(_TensorCodec())
 
 
 class _TensorSpecCodec:

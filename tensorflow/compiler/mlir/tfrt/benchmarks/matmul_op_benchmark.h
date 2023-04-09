@@ -65,7 +65,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
 
   TfJitRtPipelineOptions tf_jitrt_opts;
-  tf_jitrt_opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
+  tf_jitrt_opts.vectorize = true;
   tf_jitrt_opts.lower_to_mmt4d = state.range(3);
 
   auto mlir_input =

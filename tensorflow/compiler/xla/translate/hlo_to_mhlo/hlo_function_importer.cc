@@ -303,6 +303,16 @@ mlir::Attribute GetShardingAttribute(mlir::Builder& b,
   return b.getStringAttr(sharding.ToString(/*include_metadata=*/true));
 }
 
+mlir::Attribute GetFrontendAttributes(
+    mlir::Builder& b, const xla::FrontendAttributes& attributes) {
+  llvm::SmallVector<mlir::NamedAttribute> attrs;
+  attrs.reserve(attributes.map_size());
+  for (const auto& [k, v] : attributes.map()) {
+    attrs.push_back(b.getNamedAttr(k, b.getStringAttr(v)));
+  }
+  return b.getDictionaryAttr(attrs);
+}
+
 void HloFunctionImporter::FlattenTupleType(
     Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
   auto tuple_type = type.dyn_cast<mlir::TupleType>();
@@ -395,13 +405,19 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                                                : FuncOp::Visibility::Private;
   function.setVisibility(visibility);
 
-  for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
+  for (const auto& entry :
+       llvm::enumerate(computation.parameter_instructions())) {
     HloParameterInstruction* parameter =
         Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {
       function.setArgAttr(
           entry.index(), kShardingAttr,
           GetShardingAttribute(*builder_, parameter->sharding()));
+    }
+    if (parameter->frontend_attributes().map_size() > 0) {
+      function.setArgAttr(
+          entry.index(), kFrontendAttributesAttr,
+          GetFrontendAttributes(*builder_, parameter->frontend_attributes()));
     }
     if (parameter->parameter_replicated_at_leaf_buffers().has_value()) {
       bool nontrival = false;
@@ -808,6 +824,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ImportAsFunc(*instruction->to_apply(), /*is_main=*/false));
       mlir::Operation* new_operation =
           func_builder->create<mlir::func::CallOp>(loc, function, operands);
+      for (auto attr : attributes) {
+        new_operation->setAttr(attr.getName(), attr.getValue());
+      }
       return new_operation;
     }
     case HloOpcode::kCollectivePermute: {

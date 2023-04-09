@@ -20,19 +20,30 @@ on:
 
 jobs:
   close-issues:
+    # Don't do this in forks
+    if: github.repository == 'tensorflow/tensorflow'
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
     steps:
       - name: Awaiting response issues
-        uses: actions/stale@v5
+        uses: actions/stale@v7
         with:
+          #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
+          exempt-issue-labels: 'override-stale'
+          #Comma separated list of labels that can be assigned to PRs to exclude them from being marked as stale
+          exempt-pr-labels: "override-stale"
+          #Limit the No. of API calls in one run default value is 30.
+          operations-per-run: 1000
+          #Prevent to remove stale label when PRs or issues are updated.
+          remove-stale-when-updated: false
           days-before-issue-stale: 7
           days-before-issue-close: 7
           stale-issue-label: "stale"
-          only-issue-labels: 
-           - stat:awaiting response
+          # reason for closed the issue default value is not_planned
+          close-issue-reason: completed
+          only-labels: "stat:awaiting response"
           stale-issue-message: > 
             This issue is stale because it has been open for 7 days with no activity.
             It will be closed if no further activity occurs. Thank you.
@@ -41,17 +52,26 @@ jobs:
             Please reopen if you'd like to work on this further.
           days-before-pr-stale: 14
           days-before-pr-close: 14
-          stale-pr-message: "This PR is stale because it has been open for 28 days with no activity."
+          stale-pr-message: "This PR is stale because it has been open for 14 days with no activity. It will be closed if no further activity occurs. Thank you."
+          close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale. Please reopen if you'd like to work on this further."
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Contribution issues
-        uses: actions/stale@v5
+        uses: actions/stale@v7
         with:
+          #Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
+          exempt-issue-labels: 'override-stale'
+          #Comma separated list of labels that can be assigned to PRs to exclude them from being marked as stale
+          exempt-pr-labels: "override-stale"
+          #Limit the No. of API calls in one run default value is 30.
+          operations-per-run: 1000
+          #Prevent to remove stale label when PRs or issues are updated.
+          remove-stale-when-updated: false
           days-before-issue-stale: 180
           days-before-issue-close: 365
           stale-issue-label: "stale"
-          any-of-labels: 
-           - stat:contribution welcome
-           - stat:good first issue
+          # reason for closed the issue default value is not_planned
+          close-issue-reason: completed
+          any-of-labels: "stat:contribution welcome,stat:good first issue"
           stale-issue-message: > 
             This issue is stale because it has been open for 180 days with no activity.
             It will be closed if no further activity occurs. Thank you.

@@ -15,20 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
-#include <cstddef>
 #include <deque>
-#include <iostream>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
@@ -187,6 +182,89 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
   return config;
 }
 
+// GPU specific resources for latency hiding scheduler.
+enum class GpuResourceType {
+  kGpuAsyncStream = 0,  // The async stream for collectives.
+  kNumTargetResources = 1,
+};
+
+// GPU async tracker maps all collectives onto a async stream resource.
+class GpuAsyncTracker : public AsyncTracker {
+ public:
+  explicit GpuAsyncTracker(const SchedulerConfig& config)
+      : AsyncTracker(config) {}
+
+  ResourcesVector GetResourcesFromInstruction(
+      const HloInstruction& instr) const override {
+    CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
+    if (op.outer == HloOpcode::kAsyncStart ||
+        op.outer == HloOpcode::kAsyncDone) {
+      ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
+                                    ? ResourceUsageType::kResourceRelease
+                                    : ResourceUsageType::kResourceOccupy;
+
+      const int64_t gpu_stream_resource =
+          GetFirstTargetDefinedResource() +
+          static_cast<int64_t>(GpuResourceType::kGpuAsyncStream);
+      return {std::make_pair(gpu_stream_resource, usage)};
+    }
+    return AsyncTracker::GetResourcesFromInstruction(instr);
+  }
+
+  int64_t GetNumTargetDefinedResources() const override {
+    return static_cast<int64_t>(GpuResourceType::kNumTargetResources);
+  };
+
+  // Returns how many instructions using the given resource_type we can overlap
+  int64_t GetNumAvailableResources(int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return AsyncTracker::GetNumAvailableResources(resource_type);
+    }
+    CHECK_EQ(resource_type,
+             first_target_resource +
+                 static_cast<int64_t>(GpuResourceType::kGpuAsyncStream));
+
+    // We will allow upto 1 outstanding collective on the async stream. This
+    // controls the number of collectives in flight in the schedule (a
+    // collective is in flight if the start is issued but not done). As an
+    // example, with 1, LHS will generate the schedule: s0,e0,s1,e1, i.e., s1
+    // is not scheduled until e0 is scheduled. With 2, the scheduler can
+    // schedule s0,s1,e0,e1, because it assumes that the 2 instances of the
+    // resources do not interfere with each other. If we do want to support > 1
+    // async stream, we can increase this number and then do a post-pass on the
+    // scheduled code to assign async stream-id to collectives (and actually
+    // support > 1 async stream in the runtime).
+    return 1;
+  }
+
+  absl::string_view GetResourceName(int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return AsyncTracker::GetResourceName(resource_type);
+    }
+    CHECK_LE(resource_type,
+             first_target_resource + GetNumTargetDefinedResources());
+    switch (resource_type - first_target_resource) {
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStream):
+        return "kGpuAsyncStream";
+      default:
+        return "kUnsupportedResource";
+    }
+  }
+
+  ResourceHazardType GetResourceHazardType(
+      int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return AsyncTracker::GetResourceHazardType(resource_type);
+    }
+    CHECK_LE(resource_type,
+             first_target_resource + GetNumTargetDefinedResources());
+    return ResourceHazardType::kUnshareable;
+  }
+};
+
 class GpuLatencyEstimator : public ApproximateLatencyEstimator {
  public:
   TimeCost NodeCost(const HloInstruction* instr) const override {
@@ -235,7 +313,13 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   }
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
   auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
-  auto async_tracker = std::make_unique<AsyncTracker>(config);
+  auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
+    return module->config()
+                   .debug_options()
+                   .xla_gpu_lhs_enable_gpu_async_tracker()
+               ? std::make_unique<GpuAsyncTracker>(config)
+               : std::make_unique<AsyncTracker>(config);
+  }();
 
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
     return GetSizeOfShape(shape, pointer_size);

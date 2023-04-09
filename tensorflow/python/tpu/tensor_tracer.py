@@ -34,6 +34,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -561,7 +563,7 @@ class TensorTracer:
     """
     self._replica_id = None
     self._tt_config = tensor_tracer_report.TensorTracerConfig()
-    self._parameters = None
+    self._parameters = tensor_tracer_flags.TTParameters()
     self._host_call_fn = {}
     # _cache_variables is a dict (key = graph, value = dicts
     # (key = name, value = tensors))
@@ -805,7 +807,7 @@ class TensorTracer:
       for _, val in sorted(signatures.items(),
                            key=lambda item: signature_indices[item[0]]):
         sorted_update.append(val)
-      updates = array_ops.stack(
+      updates = array_ops_stack.stack(
           sorted_update, axis=0, name='merge_single_op_signatures')
     elif self._num_signature_dimensions() == 1:
       # Avoid stack operation if there is only a single signature.
@@ -891,7 +893,7 @@ class TensorTracer:
         mask = math_ops.reduce_any(
             gen_math_ops.logical_or(
                 gen_math_ops.is_nan(tensor), gen_math_ops.is_inf(tensor)))
-        output_tensor = control_flow_ops.cond(
+        output_tensor = cond.cond(
             mask,
             lambda: constant_op.constant([1.0]),
             lambda: constant_op.constant([0.0]))
@@ -1477,7 +1479,7 @@ class TensorTracer:
       """Returns the text to be printed for inspection output."""
       if (self._parameters.trace_mode ==
           tensor_tracer_flags.TRACE_MODE_NAN_INF):
-        return control_flow_ops.cond(
+        return cond.cond(
             math_ops.greater(tensor, 0.0),
             lambda: 'has NaNs/Infs!',
             lambda: 'has no NaNs or Infs.')
@@ -1500,7 +1502,7 @@ class TensorTracer:
               gen_math_ops.is_nan(cache), gen_math_ops.is_inf(cache)))
 
     # Summarizing message for each step.
-    step_error_message = control_flow_ops.cond(
+    step_error_message = cond.cond(
         step_has_nan_or_inf,
         lambda: 'NaNs or Infs in the step!',
         lambda: 'No numerical issues have been found for the step.')
@@ -1572,10 +1574,10 @@ class TensorTracer:
           '\n', 'core:', replica_id, ',', 'step:', step_num, ',',
           tensor_name, '-->', old_value, new_value_from_var, delta])
 
-    diff_stack = array_ops.stack(diffs)
+    diff_stack = array_ops_stack.stack(diffs)
     step_max = math_ops.reduce_max(diff_stack)
 
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.greater(step_max, tensor_tracer_flags.DELTA_THRESHOLD.value),
         lambda: logging_ops.print_v2(*stats, summarize=-1),
         lambda: control_flow_ops.no_op())  # pylint: disable=unnecessary-lambda
@@ -1852,7 +1854,7 @@ class TensorTracer:
       aggregation_result.append(agg_tensor)
     # Merge results corresponding to different signatures
 
-    merged_signatures = array_ops.stack(aggregation_result)
+    merged_signatures = array_ops_stack.stack(aggregation_result)
     # merged_signatures has dimensions
     # num_signatures x num_traced_tensors, transpose it so that it
     # will match with the original structure
@@ -2151,7 +2153,7 @@ class TensorTracer:
         graph_cache_var = self._cache_variable_for_graph(graph)
         if graph not in self._temp_cache_var:
           raise RuntimeError('graph is not in self._temp_cache_var')
-        graph_cache_var[_TT_SUMMARY_TAG] = array_ops.stack(
+        graph_cache_var[_TT_SUMMARY_TAG] = array_ops_stack.stack(
             self._temp_cache_var[graph], axis=0, name='stack_all_op_signatures')
       if self._create_host_call():
         self._prepare_host_call_fn(processed_t_fetches, op_fetches, graph,
@@ -2173,7 +2175,7 @@ class TensorTracer:
 
             def write_if_core_0(step, replica_id, tt_summary):
 
-              return control_flow_ops.cond(
+              return cond.cond(
                   math_ops.equal(replica_id, 0),
                   lambda: write_cache(step=step, event_file_suffix=None,  # pylint: disable=g-long-lambda
                                       tensor_tracer_summary=tt_summary),

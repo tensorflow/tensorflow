@@ -63,9 +63,12 @@ int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
-StatusOr<Tensor> StandaloneTaskIterator::Save() { return iterator_->Save(); }
+StatusOr<std::vector<Tensor>> StandaloneTaskIterator::Save() {
+  return iterator_->Save();
+}
 
-Status StandaloneTaskIterator::Restore(const Tensor& saved_iterator) {
+Status StandaloneTaskIterator::Restore(
+    const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(saved_iterator);
 }
 

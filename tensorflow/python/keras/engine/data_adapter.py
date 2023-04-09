@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
@@ -1035,7 +1036,9 @@ def _process_tensorlike(inputs):
       dtype = None
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
-      return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          x, dtype=dtype
+      )
     elif _is_scipy_sparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
@@ -1417,8 +1420,9 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
-      [class_weight[int(c)] for c in class_ids])
+  class_weight_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      [class_weight[int(c)] for c in class_ids]
+  )
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""

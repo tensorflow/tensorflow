@@ -25,12 +25,14 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/TargetParser/Host.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/gml_st_passes/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
@@ -65,6 +67,8 @@ struct AddTensorflowProducerVersion
 };
 
 void AddBufferizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
+  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   // Rewrite tensor.empty ops to bufferization.alloc_tensor ops.
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
@@ -162,9 +166,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Add passes to perform fusion, tiling, peeling and vectorization.
   if (options.vectorize) {
-    auto gml_st_opts = mlir::gml_st::getDefaultCPUPipelineOptions();
+    auto gml_st_opts =
+        mlir::gml_st::getDefaultCPUPipelineOptions(llvm::sys::getHostCPUName());
     gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
     gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
+    gml_st_opts.reductionEnableHeuristic = true;
     mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
     pm.addNestedPass<FuncOp>(CreateFusionPass());
@@ -184,7 +190,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createNaiveCopyRemovalPass());
   }
 
   // Deallocate all temporary buffers.
@@ -195,9 +201,6 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Remove trivial copy operations.
   pm.addNestedPass<FuncOp>(CreateLinalgTrivialCopyRemovalPass());
-
-  if (options.vectorize)
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());

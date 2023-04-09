@@ -79,6 +79,7 @@ DECL_CONVERT_OP(Sub);
 DECL_CONVERT_OP(Mul);
 DECL_CONVERT_OP(Square);
 DECL_CONVERT_OP(SquaredDifference);
+DECL_CONVERT_OP(Sign);
 DECL_CONVERT_OP(Round);
 DECL_CONVERT_OP(FloorDiv);
 DECL_CONVERT_OP(FloorMod);
@@ -247,6 +248,21 @@ LogicalResult ConvertTFGreaterEqualOp::matchAndRewrite(
   CreateReplaceOpAndInfer<tosa::GreaterEqualOp>(rewriter, op, output_type,
                                                 tf_greater_equal_op.getX(),
                                                 tf_greater_equal_op.getY());
+  return success();
+}
+
+LogicalResult ConvertTFSignOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_sign_op = cast<TF::SignOp>(op);
+
+  RankedTensorType output_type =
+      tf_sign_op.getResult().getType().cast<RankedTensorType>();
+
+  llvm::Optional<Value> result =
+      convertSignOp(rewriter, op, tf_sign_op.getX(), output_type);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
@@ -2428,6 +2444,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFMulOp>(ctx);
   patterns.add<ConvertTFSquareOp>(ctx);
   patterns.add<ConvertTFSquaredDifferenceOp>(ctx);
+  patterns.add<ConvertTFSignOp>(ctx);
   patterns.add<ConvertTFRoundOp>(ctx);
   patterns.add<ConvertTFFloorDivOp>(ctx);
   patterns.add<ConvertTFFloorModOp>(ctx);

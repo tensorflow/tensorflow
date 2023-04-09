@@ -39,6 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -59,10 +60,8 @@ from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
-# A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
-
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -78,6 +77,8 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+# A module that only depends on `keras.layers` import these from here.
 
 # pylint: disable=g-inconsistent-quotes
 metrics_mod = generic_utils.LazyLoader(
@@ -1063,7 +1064,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2_with_dispatch(x)
+          return tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
         return x
 
       inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1484,8 +1485,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tf_type(loss):
-        loss = ops.convert_to_tensor_v2_with_dispatch(
-            loss, dtype=backend.floatx())
+        loss = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx()
+        )
       loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
@@ -1502,8 +1504,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if not tensor_util.is_tf_type(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
-        loss = ops.convert_to_tensor_v2_with_dispatch(
-            loss, dtype=backend.floatx())
+        loss = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx()
+        )
       # TF Functions should take the eager path.
       if ((tf_utils.is_symbolic_tensor(loss) or
            isinstance(loss, keras_tensor.KerasTensor)) and
@@ -3261,7 +3264,7 @@ def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  
 
 def _convert_numpy_or_python_types(x):
   if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-    return ops.convert_to_tensor_v2_with_dispatch(x)
+    return tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
   return x
 
 

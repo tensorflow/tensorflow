@@ -49,7 +49,6 @@ using tfrt::HostBuffer;
 using tfrt::HostContext;
 using tfrt::RCReference;
 using tfrt::StringHostTensor;
-using tfrt::Tensor;
 using tfrt::TensorMetadata;
 using tfrt::TensorShape;
 

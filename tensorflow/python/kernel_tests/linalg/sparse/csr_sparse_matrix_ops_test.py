@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -77,7 +78,8 @@ def twist_matrix(matrix, permutation_indices):
     for _ in range(2):
       matrix = array_ops.gather_nd(
           matrix,
-          array_ops.stack([batch_indices, permutation_indices_inv], axis=-1))
+          array_ops_stack.stack([batch_indices, permutation_indices_inv],
+                                axis=-1))
       # Transpose the matrix, or equivalently, swap dimensions 1 and 2.
       matrix = array_ops.transpose(matrix, perm=[0, 2, 1])
   else:

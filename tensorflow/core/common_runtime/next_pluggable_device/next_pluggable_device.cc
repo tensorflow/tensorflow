@@ -55,7 +55,12 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
   if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
     pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
     allocator_ = pjrt_allocator_.get();
-    device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext());
+    // TODO(b/262472386) Support shape_determination_fns through
+    // TFNPD_XlaShapeToDeviceShapeRepresentation.
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
+        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+    device_context_ = core::RefCountPtr<DeviceContext>(
+        new PjRtDeviceContext(shape_representation_fns));
   } else {
     tfnpd_allocator_ =
         std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);

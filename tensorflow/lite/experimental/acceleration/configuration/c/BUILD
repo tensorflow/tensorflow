@@ -33,6 +33,7 @@ cc_library_with_tflite_with_c_headers_test(
     hdrs = ["delegate_plugin.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    generate_opaque_delegate_target = True,
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite/core/experimental/acceleration/configuration/c:delegate_plugin"],
 )

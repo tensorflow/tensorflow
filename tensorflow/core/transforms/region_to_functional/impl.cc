@@ -474,7 +474,7 @@ FailureOr<std::vector<Value>> BasePattern::CollectValuesDefinedAboveAll(
   if (!force_control_capture_ && !ctl_only.empty()) return failure();
 
   Operation *parent = regions.front()->getParentOp();
-  for (auto &ctl : llvm::enumerate(ctl_only.takeVector())) {
+  for (const auto &ctl : llvm::enumerate(ctl_only.takeVector())) {
     Operation *const_op =
         MakeChainConstant(parent, ctl.value(), ctl.index(), rewriter);
     for (Region *region : regions)
@@ -529,11 +529,11 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
     return attrs.getDictionary(ctx_);
   };
 
-  for (auto &it : llvm::enumerate(arguments)) {
+  for (const auto &it : llvm::enumerate(arguments)) {
     arg_attrs.append({build_attrs(preserved_arg_attrs, it, {}),
                       DictionaryAttr::get(ctx_, {})});
   }
-  for (auto &it : llvm::enumerate(results))
+  for (const auto &it : llvm::enumerate(results))
     res_attrs.push_back(build_attrs(preserved_res_attrs, it, arguments));
 
   std::optional<RegisteredOperationName> name =
@@ -734,7 +734,7 @@ static bool RegionEqualTo(Region &region, GraphFuncOp func) {
 
   // Compare the non-control block arguments.
   if (region.getNumArguments() != func.getNumArguments()) return false;
-  for (auto &it : llvm::enumerate(GetLoopRegionDataArgs(region))) {
+  for (const auto &it : llvm::enumerate(GetLoopRegionDataArgs(region))) {
     Value rhs = GraphFuncOp::getDataValue(func.getBody(), it.index());
     if (!map_value(it.value(), rhs)) return false;
   }
@@ -900,7 +900,7 @@ LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
   // Outline the regions.
   ArrayAttr branch_func_attrs = op.getBranchAttrsAttr();
   SmallVector<BasePattern::RegionFunction> branch_regions;
-  for (auto &it : llvm::enumerate(op.getBranches())) {
+  for (const auto &it : llvm::enumerate(op.getBranches())) {
     unsigned idx = it.index();
     // Get the preserved attributes, if there are any.
     RegionAttr preserved =

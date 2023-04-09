@@ -16,6 +16,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -50,6 +51,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
@@ -69,10 +71,10 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python/ops/linalg",
         "//third_party/py/numpy",
     ],
 )
@@ -86,10 +88,11 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linalg_impl",
         "//third_party/py/numpy",
     ],
 )
@@ -124,6 +127,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_addition",
         "//third_party/py/numpy",
     ],
 )
@@ -145,6 +149,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_adjoint",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//third_party/py/numpy",
     ],
 )
@@ -160,7 +166,11 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:cholesky_registrations",
+        "//tensorflow/python/ops/linalg:linear_operator",
+        "//tensorflow/python/ops/linalg:linear_operator_algebra",
+        "//tensorflow/python/ops/linalg:matmul_registrations",
+        "//tensorflow/python/ops/linalg:solve_registrations",
         "//third_party/py/numpy",
     ],
 )
@@ -180,6 +190,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_block_diag",
+        "//tensorflow/python/ops/linalg:linear_operator_lower_triangular",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
+        "//tensorflow/python/ops/linalg:linear_operator_util",
         "//third_party/py/numpy",
     ],
 )
@@ -199,6 +213,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_block_lower_triangular",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
+        "//tensorflow/python/ops/linalg:linear_operator_util",
         "//third_party/py/numpy",
     ],
 )
@@ -220,6 +237,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//third_party/py/numpy",
     ],
 )
@@ -242,6 +260,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_circulant",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
     ],
@@ -263,6 +283,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -280,6 +301,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -299,6 +321,8 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_householder",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -317,6 +341,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -337,6 +362,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_inversion",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//third_party/py/numpy",
     ],
 )
@@ -357,6 +384,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_kronecker",
+        "//tensorflow/python/ops/linalg:linear_operator_lower_triangular",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
+        "//tensorflow/python/ops/linalg:linear_operator_util",
         "//third_party/py/numpy",
     ],
 )
@@ -375,6 +406,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -392,6 +424,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -412,6 +445,8 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_permutation",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -450,6 +485,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
+        "//tensorflow/python/ops/linalg:linear_operator_toeplitz",
         "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
     ],
@@ -475,6 +512,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -492,6 +530,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_util",
     ],
 )
 
@@ -510,6 +549,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
     ],
 )
 
@@ -527,7 +567,6 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python/ops/linalg",
         "//third_party/py/numpy",
     ],
 )
@@ -542,6 +581,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
         "//third_party/py/numpy",
     ],
 )
@@ -568,6 +608,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
         "//third_party/py/numpy",
     ],
 )
@@ -667,6 +708,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
@@ -686,6 +728,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
@@ -706,6 +749,8 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg:linear_operator_test_util",
+        "//tensorflow/python/ops/linalg:slicing",
         "//third_party/py/numpy",
     ],
 )
@@ -725,6 +770,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
@@ -742,7 +788,9 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
         "//third_party/py/numpy",
     ],
 )
@@ -759,6 +807,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
         "//third_party/py/numpy",
     ],
 )

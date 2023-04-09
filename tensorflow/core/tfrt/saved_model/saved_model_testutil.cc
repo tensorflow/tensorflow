@@ -238,7 +238,9 @@ void ProcessPredictRequestsAndMaybeProfile(
     const tensorflow::serving::PredictRequest& request = requests.at(i);
     const auto& input_map = request.inputs();
     std::vector<tensorflow::Tensor> inputs;
-    const std::string& signature = request.model_spec().signature_name();
+    const std::string& signature = request.model_spec().signature_name().empty()
+                                       ? "serving_default"
+                                       : request.model_spec().signature_name();
     auto func_metadata = saved_model->GetFunctionMetadata(signature);
     if (func_metadata.has_value()) {
       LOG(INFO) << "Running requests for model signature " << signature;

@@ -19,6 +19,7 @@ any potential feature gaps between the current API and the need.
 """
 import functools
 
+from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import config as d_config
 from tensorflow.dtensor.python import d_variable
@@ -33,7 +34,10 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
+from tensorflow.python.eager import context
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -91,6 +95,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   @classmethod
   def _build_mesh_from_device_list(cls, devices):
     if devices:
+      device_type = tf_device.DeviceSpec.from_string(devices[0]).device_type
+      cls._initialize_accelerator_system_once(device_type)
       mesh = mesh_util.create_mesh(
           mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           devices=devices)
@@ -98,10 +104,23 @@ class MirroredStrategy(distribute_lib.Strategy):
       # Trying to detect if there is any GPU/TPUs attached.
       device_type = d_config.preferred_device_type()
       devices = d_config.local_devices(device_type)
+      cls._initialize_accelerator_system_once(device_type)
       mesh = mesh_util.create_mesh(
           mesh_dims=[(_DEFAULT_BATCH_MESH_DIM_NAME, len(devices))],
           device_type=device_type)
     return mesh
+
+  @classmethod
+  def _initialize_accelerator_system_once(cls, device_type):
+    # Initialize the GPU/TPU before creating the mesh.
+    # Note that this method will also trigger the creation of the pairing
+    # virtual host CPUs, which is needed by dataset and checkpoint.
+    if not accelerator_util.is_initialized():
+      # TODO(feyu): Add a method in accelerator_util to check the initialized
+      # mesh device types.
+      accelerator_util.initialize_accelerator_system(
+          device_type,
+          experimental_reset_context=True)
 
   def reduce(self, reduce_op, value, axis):
     # Due to the limitation of using scalar in DTensor (e.g. the rank 0 tensor
@@ -182,6 +201,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # strategy.extended.colocate_vars_with(variable)
     kwargs.pop('colocate_with', None)
 
+    # Ignore expected_shape, which is from the v1 Variable. Keras was somehow
+    # using the v1 Variable, but didn't specify that value particularly.
+    kwargs.pop('expected_shape', None)
+
     # Make sure to call DVariable initializer under the scope so that it will
     # have the proper replicated layout. The initial_value is multi-typed,
     # eg it can be a tensor, or a python/numpy type, or a callable that
@@ -192,11 +215,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     # TODO(scottzhu): The layout information should be injected via kwargs, or
     # lazily set later.
     initial_value = kwargs.pop('initial_value')
+    dtype = kwargs.get('dtype', None)
     def new_initial_value():
       if callable(initial_value):
-        init_var = ops.convert_to_tensor(initial_value())
+        init_var = ops.convert_to_tensor(initial_value(), dtype=dtype)
       else:
-        init_var = ops.convert_to_tensor(initial_value)
+        init_var = ops.convert_to_tensor(initial_value, dtype=dtype)
       rank = init_var.shape.rank
       return d_api.copy_to_mesh(
           init_var, layout.Layout.replicated(self._mesh, rank))
@@ -369,7 +393,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     d_args = nest.map_structure(map_fn, args)
     d_kwargs = nest.map_structure(map_fn, kwargs)
 
-    with d_api.run_on(self._mesh):
+    with d_api.default_mesh(self._mesh):
       with self._container_strategy().scope():
         with dtensor_util.DTensorReplicaContext(self._container_strategy()):
           dtensor_result = fn(*d_args, **d_kwargs)
@@ -390,23 +414,47 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     components = d_api.unpack(value)
     return array_ops.concat(components, axis=axis)
 
+  def _use_merge_call(self):
+    # This is method for V1 StrategyExtended by still used by
+    # tf.__internal__.distribute.strategy_supports_no_merge_call
+    return False
+
 
 def _convert_inputs_to_dtensor(inputs, mesh):
   """Convert any input types to DTensor instance."""
-  if d_api.is_dtensor(inputs):
-    return inputs
-  elif isinstance(inputs, dtensor_util.DTensorDistributedValue):
+  if isinstance(inputs, dtensor_util.DTensorDistributedValue):
     return inputs.get_dtensor()
   elif isinstance(inputs, values_lib.DistributedValues):
     return _convert_per_replica_to_dtensor(inputs, mesh)
+  elif isinstance(inputs, input_util._DTensorIterator):   # pylint: disable=protected-access
+    return inputs
+  elif tensor_util.is_tensor(inputs):
+    if context.executing_eagerly():
+      if d_api.is_dtensor(inputs):
+        return inputs
+      else:
+        # For a non-dtensor input in eager context, we could choose to replica
+        # them into per-replica and then pack them into dtensor. However, this
+        # will cause an eager/graph discrepancy since we can't do this check in
+        # the graph context. For now, we will ask user to provide a distributed
+        # value for inputs.
+        _raise_unsupported_input_type_error(inputs)
+    else:
+      # For graph context, since we can't check if they are dtensor or not. We
+      # will assume the value is already distributed. This is a critical use
+      # case for keras, where all the inputs are pre-distributed via strategy,
+      # and the train function execute within graph context.
+      return inputs
   else:
-    # For the rest of the types, we will convert it to dtensor.
-    # Any of the inputs will be replicate to all the devices.
-    # we infer the num_replica_in_sync from the mesh size, and this is only
-    # going to apply for the data parallel training
-    num_replica_in_sync = mesh.dim_size(_DEFAULT_BATCH_MESH_DIM_NAME)
-    values = [inputs for _ in range(num_replica_in_sync)]
-    return _convert_per_replica_to_dtensor(values_lib.PerReplica(values), mesh)
+    # For any other types.
+    _raise_unsupported_input_type_error(inputs)
+
+
+def _raise_unsupported_input_type_error(inputs):
+  raise ValueError('Unsupported input types for MirroredStrategy. '
+                   'Please use `strategy.distribute_dataset` or '
+                   '`strategy.distribute_values_from_function` to '
+                   f'distribute inputs. Received input type: {type(inputs)}')
 
 
 def _is_distributed_value(value):

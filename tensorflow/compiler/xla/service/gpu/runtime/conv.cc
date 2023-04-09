@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
+#include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -36,10 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#endif
 
 namespace xla {
 
@@ -322,43 +319,11 @@ static GpuConvDescriptor GetConvDescriptor(
   return descriptor;
 }
 
-#if GOOGLE_CUDA
-// Do runtime autotuning and set the picked algorithm to ConvRunner.
-StatusOr<AutotuneResult> DoRuntimeAutotuning(
-    ConvRunner* conv, se::DeviceMemoryBase& scratch_buffer,
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options,
-    const std::vector<se::DeviceMemoryBase> buffers,
-    const se::DeviceMemoryBase result_buffer) {
-  GpuConvConfig conv_config = conv->config;
-  Shape output_shape = conv_config.output_shape;
-  HloModuleConfig hlo_module_config;
-  se::Stream* stream = run_options->stream();
-  se::StreamExecutor* stream_exec = stream->parent();
-  se::DeviceMemoryAllocator* allocator = stream->parent()->GetAllocator();
-  se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromDebugOptions(*debug_options),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      se::RedzoneAllocator::kDefaultRedzoneSize);
-
-  DeviceConfig device_config = {stream_exec, allocator};
-  GpuConvAlgorithmPicker conv_algorithm_picker(device_config);
-
-  GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
-      {output_shape,  hlo_module_config,       buffers,
-       result_buffer, &input_output_allocator, conv_config,
-       std::nullopt};
-
-  return conv_algorithm_picker.PickBestAlgorithmNoCacheCuda(
-      /* instr */ nullptr, allocator, stream,
-      /* instruction_info */ std::nullopt, autotune_runtime_arguments);
-}
-#endif
-
 template <CudnnConvKind kind>
 static absl::Status ConvImpl(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, State<ConvRunner> runner,
+    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
+    State<ConvRunner> runner,
     // Arguments
     StridedMemrefView operand0, StridedMemrefView operand1,
     std::optional<FlatMemrefView> bias,
@@ -422,11 +387,21 @@ static absl::Status ConvImpl(
   int64_t scratch_buffer_size = scratch_buffer.size();
 
   // Do runtime conv autotuning.
-#if GOOGLE_CUDA
   if (runtime_autotuning) {
+    // Don't run autotuning concurrently on the same GPU.
+    NonAtomicallyUpgradeableRWLock::WriterLock writer_lock =
+        gpu_lock->UpgradeToWriterMutexLock();
+
+    auto stream_exec = run_options->stream()->parent();
+    auto allocator = run_options->allocator();
+    DeviceConfig device_config = {stream_exec, allocator};
+    GpuConvAlgorithmPicker conv_algorithm_picker(device_config);
+
+    GpuConvConfig gpu_conv_config = conv.value()->config;
     auto autotune_result =
-        DoRuntimeAutotuning(conv.value(), scratch_buffer, run_options,
-                            debug_options, buffers, result_buffer);
+        conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
+            gpu_conv_config, run_options, debug_options, buffers,
+            result_buffer);
     if (!autotune_result.ok()) return ToAbslStatus(autotune_result.status());
 
     // Set algorithm in the convolution runner state.
@@ -438,17 +413,15 @@ static absl::Status ConvImpl(
     // Set scratch buffer size according to the selected algorithm.
     scratch_buffer_size = best_algo.scratch_bytes();
   }
-#endif
 
   RunConvOptions opts;
   opts.runner_cache = &(*conv)->runner;
 
   if (scratch_buffer_size > scratch_buffer.size()) {
     // Need to reallocate scratch buffer.
-    auto stream_exec = run_options->stream()->parent();
-    auto allocator = stream_exec->GetAllocator();
+    se::DeviceMemoryAllocator* allocator = run_options->allocator();
     StatusOr<se::OwningDeviceMemory> allocated_buffer =
-        allocator->Allocate(stream_exec->device_ordinal(), scratch_buffer_size);
+        allocator->Allocate(run_options->device_ordinal(), scratch_buffer_size);
     if (!allocated_buffer.ok()) return ToAbslStatus(allocated_buffer.status());
     se::DeviceMemoryBase new_scratch_buffer(allocated_buffer->ptr(),
                                             scratch_buffer_size);
@@ -504,6 +477,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
         CustomCall::Bind("xla.gpu.conv")
             .UserData<const ServiceExecutableRunOptions*>()
             .UserData<const DebugOptions*>()
+            .UserData<NonAtomicallyUpgradeableRWLock*>()
             .State<ConvRunner>("uid")                   // runner
             .Arg<StridedMemrefView>()                   // operand0
             .Arg<StridedMemrefView>()                   // operand1
@@ -522,6 +496,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         CustomCall::Bind("xla.gpu.conv.fused")
             .UserData<const ServiceExecutableRunOptions*>()
             .UserData<const DebugOptions*>()
+            .UserData<NonAtomicallyUpgradeableRWLock*>()
             .State<ConvRunner>("uid")                   // runner
             .Arg<StridedMemrefView>()                   // operand0
             .Arg<StridedMemrefView>()                   // operand1
@@ -540,6 +515,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
                            .UserData<const ServiceExecutableRunOptions*>()
                            .UserData<const DebugOptions*>()
+                           .UserData<NonAtomicallyUpgradeableRWLock*>()
                            .State<ConvRunner>("uid")  // runner
                            .Arg<StridedMemrefView>()  // operand0
                            .Arg<StridedMemrefView>()  // operand1

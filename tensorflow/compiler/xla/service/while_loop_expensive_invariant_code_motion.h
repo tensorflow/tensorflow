@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_EXPENSIVE_INVARIANT_CODE_MOTION_H_
 
+#include <functional>
+#include <utility>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -31,7 +34,7 @@ class WhileLoopExpensiveInvariantCodeMotion : public HloModulePass {
  public:
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
   explicit WhileLoopExpensiveInvariantCodeMotion(
-      std::function<bool(const HloInstruction&)> worth_hoisting_individually,
+      HloPredicate worth_hoisting_individually,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
       : shape_size_function_(std::move(shape_size_function)),
         worth_hoisting_individually_(std::move(worth_hoisting_individually)) {}
@@ -50,7 +53,7 @@ class WhileLoopExpensiveInvariantCodeMotion : public HloModulePass {
       HloInstruction* while_instr);
 
   ShapeSizeFunction shape_size_function_;
-  std::function<bool(const HloInstruction&)> worth_hoisting_individually_;
+  HloPredicate worth_hoisting_individually_;
 };
 }  // namespace xla
 

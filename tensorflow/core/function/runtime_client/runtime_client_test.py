@@ -183,7 +183,7 @@ class RuntimeClientTest(test.TestCase):
 
     self.assertAllEqual(self.evaluate(f()), 2)
 
-  def test_concrete_function_editing_via_mlir_pass(self):
+  def test_concrete_function_editing_via_mlir_pass_tfg_dialect(self):
     if not tf2.enabled():
       self.skipTest("TF2 test")
 
@@ -200,6 +200,53 @@ class RuntimeClientTest(test.TestCase):
 
     # 1 + 1 = 2. But the pass changes it to 1 * 1.
     self.assertAllEqual(self.evaluate(f(one, one)), 1)
+
+  def test_concrete_function_editing_via_mlir_pass_tf_dialect(self):
+    if not tf2.enabled():
+      self.skipTest("TF2 test")
+
+    @def_function.function
+    def f(x, y):
+      return math_ops.multiply(x, y, name="x_times_y")
+
+    one = constant_op.constant(1)
+    cf = f.get_concrete_function(one, one)
+    fname = cf.function_def.signature.name
+    ctx = runtime_client.GlobalPythonEagerContext()
+    rt = runtime_client.Runtime(ctx)
+
+    # 1 * 1 = 1 -> 1 + 1 = 2
+    rt.TransformFunction(
+        fname, "test-pass-tf-dialect", runtime_client.Runtime.Dialect.TF
+    )
+
+    self.assertAllEqual(f(one, one), 2)
+
+  def test_concrete_function_editing_via_mlir_pass_mixed_dialects(self):
+    if not tf2.enabled():
+      self.skipTest("TF2 test")
+
+    @def_function.function
+    def f(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    one = constant_op.constant(1)
+    cf = f.get_concrete_function(one, one)
+    ctx = runtime_client.GlobalPythonEagerContext()
+    rt = runtime_client.Runtime(ctx)
+    fname = cf.function_def.signature.name
+
+    # 1 + 1 = 2 -> 1 * 1 = 1
+    rt.TransformFunction(fname, "test-pass")
+
+    self.assertAllEqual(f(one, one), 1)
+
+    # 1 * 1 = 1 -> 1 + 1 = 2
+    rt.TransformFunction(
+        fname, "test-pass-tf-dialect", runtime_client.Runtime.Dialect.TF
+    )
+
+    self.assertAllEqual(f(one, one), 2)
 
 
 class RuntimeClientMultiWorkersTest(test.TestCase):

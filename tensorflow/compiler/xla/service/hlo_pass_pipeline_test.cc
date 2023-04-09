@@ -79,7 +79,7 @@ class ReverseStringModulePass : public HloModulePass {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       HloInstruction* root = computation->root_instruction();
-      std::string name = root->name();
+      std::string name(root->name());
       std::reverse(name.begin(), name.end());
       root->SetAndSanitizeName(name);
       changed = true;

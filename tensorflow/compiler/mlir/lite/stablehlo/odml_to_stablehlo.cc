@@ -232,7 +232,10 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
 tensorflow::Status ConvertTFToStableHLO(
     ModuleOp tf_module, const PassPipelineCLParser& pass_pipeline) {
   PassManager pm(tf_module.getContext());
-  applyPassManagerCLOptions(pm);
+  if (failed(applyPassManagerCLOptions(pm))) {
+    return tensorflow::errors::Aborted(
+        "Failed to apply MLIR pass manager CL options.");
+  }
 
   auto error_handler = [&](const Twine& msg) {
     emitError(UnknownLoc::get(pm.getContext())) << msg;
@@ -383,7 +386,7 @@ int main(int argc, char* argv[]) {
 
   if (!status.ok()) {
     LOG(ERROR) << status;
-    return status.code();
+    return status.raw_code();
   }
   return 0;
 }

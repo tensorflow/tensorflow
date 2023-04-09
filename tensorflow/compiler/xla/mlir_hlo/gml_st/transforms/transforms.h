@@ -24,20 +24,13 @@ namespace gml_st {
 constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
     "__perfectly_tiled_loop_label__";
 
-bool isZero(Value v);
-bool isOne(Value v);
+static constexpr llvm::StringRef kTransformedLabel = "__transformed_label__";
 
 template <typename ShapedTy>
 bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
 }
 bool hasSingleElementOperandsAndResults(Operation *op);
-
-/// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
-bool isIdentitySlice(ValueRange offsets, ValueRange strides);
-
-/// Returns true if `lhs` and `rhs` are of same static shape.
-bool haveSameStaticShape(Value lhs, Value rhs);
 
 // Sets the attribute to the `op` that indicates that the op was transformed.
 void setLabel(Operation *op, StringRef name);
@@ -47,9 +40,6 @@ void removeLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the attribute that indicates that it was transformed.
 bool hasLabel(Operation *op, StringRef name);
-
-// Checks if `op` has the matching label attribute.
-bool hasMatchingLabel(Operation *op, StringRef label);
 
 }  // namespace gml_st
 }  // namespace mlir

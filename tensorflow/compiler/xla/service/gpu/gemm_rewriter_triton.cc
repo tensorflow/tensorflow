@@ -16,39 +16,70 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <stack>
 #include <string>
-#include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-int FirstBatchDimensionIndex(const DotDimensionNumbers& dimension_numbers,
-                             const int operand_number) {
+// Batch dimensions of an operand of a dot instruction.
+// Just an unified accessor to lhs_batch_dimensions and rhs_batch_dimensions.
+const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
+    const HloInstruction& dot, const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   if (operand_number == 0) {
-    return dimension_numbers.lhs_batch_dimensions_size()
-               ? dimension_numbers.lhs_batch_dimensions(0)
-               : -1;
+    return dimension_numbers.lhs_batch_dimensions();
   }
-  return dimension_numbers.rhs_batch_dimensions_size()
-             ? dimension_numbers.rhs_batch_dimensions(0)
-             : -1;
+  return dimension_numbers.rhs_batch_dimensions();
+}
+
+// Index of first batch dimension of dot instruction operand; -1 if none exist.
+int64_t FirstBatchDimensionForOperand(const HloInstruction& dot,
+                                      const int operand_number) {
+  tsl::protobuf::RepeatedField<int64_t> dimensions =
+      BatchDimensionsForOperand(dot, operand_number);
+  return dimensions.empty() ? -1 : dimensions[0];
+}
+
+// Index of first contracting dimension of dot instruction operand.
+int64_t FirstContractingDimensionIndex(const HloInstruction& dot,
+                                       const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (operand_number == 0) {
+    return dimension_numbers.lhs_contracting_dimensions(0);
+  }
+  return dimension_numbers.rhs_contracting_dimensions(0);
 }
 
 // Data types that are tested to work in the triton GEMM emitter.
@@ -119,6 +150,11 @@ class DimensionOrder {
     }
   }
 
+  // Create dimension order describing a dot operand according to
+  // the currently supported configurations.
+  static DimensionOrder FromDotOperand(const HloInstruction& dot,
+                                       int operand_number, int64_t split_k = 1);
+
   // Transforms the DimensionOrder so that from a description of the output
   // of `hlo` it becomes a description of the input of `hlo`.
   Status HandleInstruction(const HloInstruction* hlo) {
@@ -160,86 +196,107 @@ class DimensionOrder {
   int64_t splittable_dimension_index_;
 };
 
+DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
+                                              const int operand_number,
+                                              const int64_t split_k) {
+  const HloInstruction* operand = dot.operand(operand_number);
+  // There can be either none or one split-K batch dimension.
+  const int num_split_k_batch_dims = split_k > 1;
+  // LHS non-contracting dimension can be split if non-splitK batch is absent.
+  if (operand_number == 0 &&
+      dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
+              num_split_k_batch_dims ==
+          0) {
+    return DimensionOrder(
+        operand, /*batch_dimension_index=*/-1,
+        GetNonContractingDims(operand->shape(), /*batch_dims=*/{},
+                              {FirstContractingDimensionIndex(dot, 0)})
+            .value()[0]);
+  }
+  return DimensionOrder(operand,
+                        FirstBatchDimensionForOperand(dot, operand_number),
+                        /*splittable_dimension_index=*/-1);
+}
+
 Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   const Shape& operand_shape = hlo->operand(0)->shape();
   DimOrderVector operand_dim_order;
-  operand_dim_order.reserve(operand_shape.rank());
-  // Subdimension index tracking dimension splits.
-  int subdim_index = 0;
-  // Iterate in parallel over output and operand dimensions
+  operand_dim_order.reserve(dim_order_.size());
+  // Size of not yet assigned part of current operand dimension.
+  int64_t operand_remaining_size = 1;
+  // Iterate in parallel over output dimension order and operand dimensions
   // in minor_to_major order. Find groups of dimensions of equal size
   // and project the output dimension order onto the operand.
   auto operand_dim_iter = operand_shape.layout().minor_to_major().cbegin();
-  for (int64_t out_dim_index = 0; out_dim_index < hlo->shape().rank();
-       ++out_dim_index) {
-    int64_t out_dim_size = hlo->shape().dimensions_minor(out_dim_index);
-    if (operand_dim_iter == operand_shape.layout().minor_to_major().cend()) {
-      // Out of dimensions of the operand -> output should only have
-      // degenerate dimensions from here.
-      if (out_dim_size == 1) {
-        continue;
+  for (auto out_dim = dim_order_.cbegin(); out_dim != dim_order_.cend();
+       ++out_dim) {
+    if (operand_remaining_size >= out_dim->size) {
+      if (operand_remaining_size % out_dim->size) {
+        return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
       }
-      // Otherwise this is an arbitrary transformation like
-      // [2, 3] -> [3, 2] which is not supported yet
-      return Unimplemented("general bitcast");
-    }
-    int64_t operand_dim_size = operand_shape.dimensions(*operand_dim_iter);
-    VLOG(9) << hlo->shape().layout().minor_to_major(out_dim_index) << " "
-            << *operand_dim_iter;
-    VLOG(9) << out_dim_size << " " << operand_dim_size;
-    subdim_index = 0;
-    if (out_dim_size == operand_dim_size) {
-      // 1:1 matching dimensions.
-      operand_dim_order.push_back(dim_order_[out_dim_index]);
-    } else if (out_dim_size < operand_dim_size) {
-      // Multiple output dimensions <- one operand dimension:
-      //  just keep their order.
-      do {
-        operand_dim_order.push_back(dim_order_[out_dim_index]);
-        ++out_dim_index;
-        if (out_dim_index == hlo->shape().rank()) {
-          return Unimplemented("general bitcast");
-        }
-        out_dim_size *= hlo->shape().dimensions_minor(out_dim_index);
-      } while (out_dim_size != operand_dim_size);
-      operand_dim_order.push_back(dim_order_[out_dim_index]);
+      // Output dimension fragment completely fits into the operand one:
+      // just copy it as is.
+      operand_dim_order.push_back(*out_dim);
+      // Update the size of the remaining part of the operand that is
+      // carried over to next output dimensions.
+      operand_remaining_size /= out_dim->size;
     } else {
-      // One output dimension <- multiple operand dimensions:
-      //  create new sub-dimensions.
-      do {
-        if (dim_order_[out_dim_index].subdim_number != 0) {
-          return Unimplemented("split of subdimension");
+      // Output is larger than input. Assign further operand dimensions.
+      // Size of the not yet assigned part of the output dimension.
+      int64_t out_remaining_size = out_dim->size;
+      // Subdimension index tracking dimension splits.
+      int subdim_index = out_dim->subdim_number;
+      if (operand_remaining_size > 1) {
+        // If there is a remaining fragment of a previous operand dimension
+        // assign it first.
+        if (out_remaining_size % operand_remaining_size) {
+          return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
         }
         operand_dim_order.push_back(
-            {dim_order_[out_dim_index].target_dim_number, subdim_index,
-             operand_shape.dimensions(*operand_dim_iter)});
+            {out_dim->target_dim_number, subdim_index, operand_remaining_size});
         ++subdim_index;
-        ++operand_dim_iter;
-        if (operand_dim_iter ==
-            operand_shape.layout().minor_to_major().cend()) {
-          return Unimplemented("general bitcast");
+        // Update the size of the fragment remaining to assign.
+        out_remaining_size /= operand_remaining_size;
+        operand_remaining_size = 1;
+      }
+      while (out_remaining_size > 1) {
+        // Assign operand dimensions until the output remainder is covered.
+        int64_t operand_dim_size = operand_shape.dimensions(*operand_dim_iter);
+        int64_t new_fragment_size = operand_dim_size;
+        if (operand_dim_size > out_remaining_size) {
+          // If adding the next operand dimension exceeds output fragment size
+          // assign the remainder of the output and carry over the remainder
+          // of the operand.
+          if (operand_dim_size % out_remaining_size) {
+            return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
+          }
+          operand_remaining_size = operand_dim_size / out_remaining_size;
+          new_fragment_size = out_remaining_size;
         }
-        operand_dim_size *= operand_shape.dimensions(*operand_dim_iter);
-      } while (out_dim_size != operand_dim_size);
-      operand_dim_order.push_back(
-          {dim_order_[out_dim_index].target_dim_number, subdim_index,
-           operand_shape.dimensions(*operand_dim_iter)});
+        operand_dim_order.push_back(
+            {out_dim->target_dim_number, subdim_index, new_fragment_size});
+        out_remaining_size /= new_fragment_size;
+        ++operand_dim_iter;
+        ++subdim_index;
+      }
     }
-    ++operand_dim_iter;
   }
+  CHECK_EQ(operand_remaining_size, 1);
+
   // Handle remaining major dimensions of the operand. Call all degenerate
   // ones subdimensions of the most-major non-degenerate one. Otherwise
   // give up.
+  int subdim_index = operand_dim_order.back().subdim_number + 1;
   while (operand_dim_iter != operand_shape.layout().minor_to_major().cend()) {
-    ++subdim_index;
     if (operand_shape.dimensions(*operand_dim_iter) != 1) {
-      return Unimplemented("general bitcast");
+      return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
     }
     operand_dim_order.push_back(
-        {dim_order_[hlo->shape().rank() - 1].target_dim_number, subdim_index,
-         1});
+        {operand_dim_order.back().target_dim_number, subdim_index, 1});
+    ++subdim_index;
     ++operand_dim_iter;
   }
+
   dim_order_ = operand_dim_order;
   return OkStatus();
 }
@@ -301,22 +358,23 @@ Status DimensionOrder::HandleCopyOrTranspose(const HloInstruction* hlo) {
 // physically once by other dimensions. Other ones can be only split logically.
 // All subdimensions within a dimension have to be ordered.
 Status RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
-  std::array<int, 3> subdim_counters = {-1, -1, -1};
-  std::array<int, 3> split_counters = {0, 0, 0};
-  int previous_dim_number = -1;
-  for (int i = 0; i < order.GetDimOrderVector().size(); i++) {
-    const auto [dim_number, subdim_number, size] = order.GetDimOrderVector()[i];
-    VLOG(8) << dim_number << " " << subdim_number << " " << size;
-    if (dim_number == order.BatchDimensionIndex() &&
-        i != order.GetDimOrderVector().size() - 1) {
-      return Unimplemented("non-major-most batch dimension");
-    }
+  // At most: contracting, non-contracting, split-K, another batch.
+  std::array<int, 4> subdim_counters = {-1, -1, -1, -1};
+  std::array<int, 4> split_counters = {-1, -1, -1, -1};
+  const DimensionOrder::DimOrderVector& dim_order_vector =
+      order.GetDimOrderVector();
+  for (int i = 0; i < dim_order_vector.size(); i++) {
+    const auto [dim_number, subdim_number, size] = dim_order_vector[i];
+    VLOG(8) << dim_number << "\t" << subdim_number << "\t" << size;
     if (subdim_counters[dim_number] != subdim_number - 1) {
       return Unimplemented("transpose within a dimension");
     }
     ++subdim_counters[dim_number];
-    if (previous_dim_number >= 0 && previous_dim_number != dim_number) {
-      ++split_counters[previous_dim_number];
+    if (size == 1) {
+      continue;
+    }
+    if (i == 0 || dim_order_vector[i - 1].target_dim_number != dim_number) {
+      ++split_counters[dim_number];
       if (dim_number == order.SplittableDimensionIndex()) {
         if (split_counters[dim_number] > 1) {
           return Unimplemented("2nd split of a splittable dimension");
@@ -325,7 +383,6 @@ Status RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
         return Unimplemented("split of a non-splittable dimension");
       }
     }
-    previous_dim_number = dim_number;
   }
   return OkStatus();
 }
@@ -358,7 +415,8 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
 
     // TODO(b/266857789): also fuse convert(dot()) at output if present:
     // seen on s8xf32->bf16
-    HloComputation::Builder builder(absl::StrCat("triton_gemm_", dot->name()));
+    std::string suggested_name = absl::StrCat("triton_gemm_", dot->name());
+    HloComputation::Builder builder(suggested_name);
     // Original instruction -> fused one.
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>
         old_to_new_mapping;
@@ -379,24 +437,9 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
           DimensionOrder operand_dim_order = [&] {
             // Direct dot inputs are described by default dimension orders.
             if (operand == dot->operand(0)) {
-              if (dot->dot_dimension_numbers().lhs_batch_dimensions_size()) {
-                return DimensionOrder(
-                    operand,
-                    dot->dot_dimension_numbers().lhs_batch_dimensions_size(),
-                    -1);
-              }
-              // Non-contracting dimension can be split if batch is absent.
-              return DimensionOrder(
-                  operand, -1,
-                  NoncontractingDimensionIndex(
-                      dot->dot_dimension_numbers().lhs_contracting_dimensions(
-                          0),
-                      -1));
+              return DimensionOrder::FromDotOperand(*dot, 0);
             } else if (operand == dot->operand(1)) {
-              return DimensionOrder(
-                  operand,
-                  FirstBatchDimensionIndex(dot->dot_dimension_numbers(), 1),
-                  -1);
+              return DimensionOrder::FromDotOperand(*dot, 1);
             }
             // Otherwise operand's output is described by its consumer's input.
             return DimensionOrder(dim_orders.at(hlo));
@@ -448,6 +491,8 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
         dot->parent()->AddInstruction(HloInstruction::CreateFusion(
             dot->shape(), HloInstruction::FusionKind::kCustom, call_operands,
             computation));
+    dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion,
+                                                     suggested_name);
     dot_fusion->set_raw_backend_config_string(
         std::string(kTritonGemmBackendConfig));
     if (dot->IsRoot()) {
@@ -474,20 +519,152 @@ StatusOr<bool> RunOnComputation(
   return visitor.changed();
 }
 
-}  // anonymous namespace
-
-int NoncontractingDimensionIndex(const int contracting_dimension_index,
-                                 const int batch_dimension_index) {
-  // Sum of all indices is 0 + 1 = 1 if only two dimensions are present.
-  int ret = 1 - contracting_dimension_index;
-  if (batch_dimension_index >= 0) {
-    // Sum of all indices is 0 + 1 + 2 = 3 if three dimensions are present.
-    ret += (2 - batch_dimension_index);
+// Copy source values into destination incrementing those >= threshold by 1.
+void CopyIncrementingAboveThreshold(
+    const tsl::protobuf::RepeatedField<int64_t>& source,
+    tsl::protobuf::RepeatedField<int64_t>& destination, const int threshold) {
+  destination.Reserve(source.size());
+  for (int64_t x : source) {
+    if (x >= threshold) {
+      ++x;
+    }
+    destination.Add(x);
   }
-  return ret;
 }
 
-DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
+StatusOr<HloInstruction*> MakeSplitKOperand(
+    HloInstruction& dot,
+    const tensorflow::AutotuneResult::TritonGemmKey& tiling,
+    const int64_t contracting_dim_idx, const int operand_number) {
+  const Shape& shape = dot.operand(operand_number)->shape();
+  Shape new_shape(shape.element_type(), {}, {}, {});
+
+  // TODO(b/274775195): implement split-K with padding.
+  if (tiling.split_k() > shape.dimensions(contracting_dim_idx)) {
+    return Cancelled("Too small total contracting dimension size.");
+  }
+  const DotFusionAnalysis analysis(&dot);
+  int64_t size_to_split = tiling.split_k();
+  auto fragment = analysis.IterSpec(operand_number, contracting_dim_idx)[0]
+                      .subfragments.crbegin();
+  while (size_to_split > *fragment) {
+    if (size_to_split % *fragment) {
+      return Cancelled("Contracting dimension is too fragmented.");
+    }
+    size_to_split /= *fragment;
+    ++fragment;
+  }
+  if (*fragment % size_to_split) {
+    return Cancelled("Contracting dimension is too fragmented.");
+  }
+  if (tiling.split_k() >
+      ceil(1.0 *
+           analysis.IterSpec(operand_number, contracting_dim_idx)[0].count /
+           tiling.block_k())) {
+    return Cancelled("Too small divisible part of the contracting dimension.");
+  }
+
+  for (int i = 0; i < shape.rank(); ++i) {
+    const int64_t dimension_size = shape.dimensions(i);
+    if (i == contracting_dim_idx) {
+      new_shape.add_dimensions(tiling.split_k());
+      new_shape.add_dimensions(dimension_size / tiling.split_k());
+    } else {
+      new_shape.add_dimensions(dimension_size);
+    }
+  }
+
+  absl::Span<const int64_t> physical_dim_order =
+      shape.layout().minor_to_major();
+  const int contracting_dim_physical_idx =
+      absl::c_find(physical_dim_order, contracting_dim_idx) -
+      physical_dim_order.begin();
+  Layout* batch_dot_layout = new_shape.mutable_layout();
+  for (int64_t physical_dim_idx : physical_dim_order) {
+    // When physical_dim_idx == contracting_dim_physical_idx add both
+    // physical_dim_idx+1 and physical_dim_idx because it gets split into two.
+    if (physical_dim_idx >= contracting_dim_physical_idx) {
+      batch_dot_layout->add_minor_to_major(physical_dim_idx + 1);
+    }
+    if (physical_dim_idx <= contracting_dim_physical_idx) {
+      batch_dot_layout->add_minor_to_major(physical_dim_idx);
+    }
+  }
+  return MakeBitcastHlo(dot.mutable_operand(operand_number), new_shape);
+}
+
+}  // anonymous namespace
+
+Status MakeDotComputationSplitKBatch(
+    HloComputation* computation,
+    const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
+  HloInstruction* dot = computation->root_instruction();
+  CHECK_EQ(dot->opcode(), HloOpcode::kDot);
+  const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
+  DotDimensionNumbers new_dim_numbers;
+
+  const int64_t lhs_contracting_idx = FirstContractingDimensionIndex(*dot, 0);
+  TF_ASSIGN_OR_RETURN(HloInstruction * lhs,
+                      MakeSplitKOperand(*dot, tiling, lhs_contracting_idx, 0));
+  CopyIncrementingAboveThreshold(
+      old_dim_numbers.lhs_contracting_dimensions(),
+      *new_dim_numbers.mutable_lhs_contracting_dimensions(),
+      lhs_contracting_idx);
+  CopyIncrementingAboveThreshold(
+      old_dim_numbers.lhs_batch_dimensions(),
+      *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
+  new_dim_numbers.mutable_lhs_batch_dimensions()->Add(lhs_contracting_idx);
+
+  const int64_t rhs_contracting_idx = FirstContractingDimensionIndex(*dot, 1);
+  TF_ASSIGN_OR_RETURN(HloInstruction * rhs,
+                      MakeSplitKOperand(*dot, tiling, rhs_contracting_idx, 1));
+  CopyIncrementingAboveThreshold(
+      old_dim_numbers.rhs_contracting_dimensions(),
+      *new_dim_numbers.mutable_rhs_contracting_dimensions(),
+      rhs_contracting_idx);
+  CopyIncrementingAboveThreshold(
+      old_dim_numbers.rhs_batch_dimensions(),
+      *new_dim_numbers.mutable_rhs_batch_dimensions(), rhs_contracting_idx);
+  new_dim_numbers.mutable_rhs_batch_dimensions()->Add(rhs_contracting_idx);
+
+  HloInstruction* new_dot =
+      MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
+                 dot->shape().element_type())
+          .value();
+  dot->SetupDerivedInstruction(new_dot);
+  TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWithDifferentShape(new_dot));
+  TF_RETURN_IF_ERROR(dot->parent()->RemoveInstruction(dot));
+  return OkStatus();
+}
+
+Status MakeDotSplitKBatch(
+    HloInstruction* dot_fusion,
+    const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
+  CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
+  TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
+      dot_fusion->fused_instructions_computation(), tiling));
+  const HloInstruction* dot = dot_fusion->fused_expression_root();
+
+  *dot_fusion->mutable_shape() = dot->shape();
+  HloInstruction* zero =
+      dot_fusion->parent()->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(dot->shape().element_type())));
+  const int new_batch_dim_idx =
+      dot->dot_dimension_numbers().lhs_batch_dimensions().size() - 1;
+  HloInstruction* reduce =
+      MakeReduceHlo(dot_fusion, zero, {new_batch_dim_idx}, HloOpcode::kAdd)
+          .value();
+
+  if (dot_fusion->IsRoot()) {
+    dot_fusion->parent()->set_root_instruction(reduce, true);
+  } else {
+    TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(reduce));
+  }
+  return OkStatus();
+}
+
+DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
+                                     const int64_t split_k) {
   VLOG(5) << root->parent()->ToString();
 
   while (root->opcode() != HloOpcode::kDot) {
@@ -498,10 +675,13 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
   for (int64_t operand_number = 0; operand_number < root->operand_count();
        ++operand_number) {
     const HloInstruction* parameter = root->operand(operand_number);
-    DimensionOrder dim_order(parameter, -1, -1);
+    DimensionOrder dim_order =
+        DimensionOrder::FromDotOperand(*root, operand_number, split_k);
     while (parameter->opcode() != HloOpcode::kParameter) {
       CHECK_EQ(parameter->operand_count(), 1);
-      dim_order.HandleInstruction(parameter).ok();
+      TF_CHECK_OK(dim_order.HandleInstruction(parameter));
+      TF_CHECK_OK(RequireTritonGemmSupportedDimOrder(dim_order))
+          << " " << root->parent()->ToString();
       parameter = parameter->operand(0);
     }
     operand_to_parameter_[operand_number] = parameter;
@@ -514,7 +694,7 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
          ++dim_order_index) {
       const DimensionOrder::DimDescription& dim =
           dim_order_vector[dim_order_index];
-      VLOG(6) << dim.target_dim_number << " " << dim.subdim_number << " "
+      VLOG(6) << dim.target_dim_number << "\t" << dim.subdim_number << "\t"
               << dim.size;
 
       if (dim.size == 1) {
@@ -529,13 +709,14 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
         if (iter_spec.empty()) {
           // Previous parts of this dimension were degenerate -
           // so create the dimension here.
-          iter_spec.push_back({accumulated_stride, dim.size});
+          iter_spec.push_back({accumulated_stride, dim.size, {dim.size}});
         } else {
           // Contiguous dimension, split only logically. Merge it back.
           iter_spec.back().count *= dim.size;
+          iter_spec.back().subfragments.push_back(dim.size);
         }
       } else {
-        iter_spec.push_back({accumulated_stride, dim.size});
+        iter_spec.push_back({accumulated_stride, dim.size, {dim.size}});
       }
 
       accumulated_stride *= dim.size;
@@ -546,10 +727,11 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root) {
 bool IsTritonHandledGEMM(
     const HloInstruction& dot,
     const se::CudaComputeCapability cuda_compute_capability) {
-  if (dot.opcode() != HloOpcode::kDot) {
+  if (dot.opcode() != HloOpcode::kDot ||
+      absl::c_any_of(dot.precision_config().operand_precision(),
+                     [](int x) { return x != PrecisionConfig::DEFAULT; })) {
     return false;
   }
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
 
   auto supported_output_type = [&](const PrimitiveType t) {
     switch (t) {
@@ -577,7 +759,7 @@ bool IsTritonHandledGEMM(
   }
 
   // TODO(b/269580541): support multiple batch dimensions.
-  if (dimension_numbers.lhs_batch_dimensions().size() > 1) {
+  if (dot.dot_dimension_numbers().lhs_batch_dimensions().size() > 1) {
     return false;
   }
 
@@ -587,11 +769,10 @@ bool IsTritonHandledGEMM(
 
   // Traverse HLO graph part checking that it both can be fused
   // and is worth fusing.
-  auto has_triton_fusible_inputs = [&](const HloInstruction* input,
-                                       int64_t batch_dimension_index,
-                                       int64_t contracting_dimension_index) {
-    DimensionOrder dim_order(input, batch_dimension_index,
-                             contracting_dimension_index);
+  auto has_triton_fusible_inputs = [&](const int operand_number) {
+    const HloInstruction* input = dot.operand(operand_number);
+    DimensionOrder dim_order =
+        DimensionOrder::FromDotOperand(dot, operand_number);
     while (TryToFuse(input, dim_order, cuda_compute_capability).ok()) {
       if (input->opcode() == HloOpcode::kConvert ||
           input->opcode() == HloOpcode::kTranspose) {
@@ -602,12 +783,7 @@ bool IsTritonHandledGEMM(
     return false;
   };
 
-  return has_triton_fusible_inputs(
-             dot.operand(0), FirstBatchDimensionIndex(dimension_numbers, 0),
-             dimension_numbers.lhs_contracting_dimensions(0)) ||
-         has_triton_fusible_inputs(
-             dot.operand(1), FirstBatchDimensionIndex(dimension_numbers, 1),
-             dimension_numbers.rhs_contracting_dimensions(0));
+  return has_triton_fusible_inputs(0) || has_triton_fusible_inputs(1);
 
   // TODO(b/266857789): either check that no output fusion (axpy, relu etc)
   // is expected or actually support it.

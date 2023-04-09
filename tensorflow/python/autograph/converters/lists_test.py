@@ -21,7 +21,7 @@ from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import test
 
@@ -96,7 +96,7 @@ class ListTest(converter_testing.TestCase):
 
     def f():
       l = [1, 2, 3]
-      return array_ops.stack(l)
+      return array_ops_stack.stack(l)
 
     tr = self.transform(f, lists)
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <exception>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -27,10 +28,30 @@ namespace python {
 
 namespace py = pybind11;
 
+class FingerprintException : public std::exception {
+ public:
+  explicit FingerprintException(const char *m) : message_{m} {}
+  const char *what() const noexcept override { return message_.c_str(); }
+
+ private:
+  std::string message_ = "";
+};
+
 void DefineFingerprintingModule(py::module main_module) {
   auto m = main_module.def_submodule("fingerprinting");
 
   m.doc() = "Python bindings for TensorFlow SavedModel Fingerprinting.";
+
+  static py::exception<FingerprintException> ex(m, "FingerprintException");
+  py::register_exception_translator([](std::exception_ptr p) {
+    try {
+      if (p) {
+        std::rethrow_exception(p);
+      }
+    } catch (const FingerprintException &e) {
+      ex(e.what());
+    }
+  });
 
   m.def(
       "CreateFingerprintDef",
@@ -39,42 +60,55 @@ void DefineFingerprintingModule(py::module main_module) {
         SavedModel saved_model_pb;
         saved_model_pb.ParseFromString(serialized_saved_model);
 
-        return py::bytes(
-            fingerprinting::CreateFingerprintDef(saved_model_pb, export_dir)
-                .SerializeAsString());
+        StatusOr<FingerprintDef> fingerprint =
+            fingerprinting::CreateFingerprintDef(saved_model_pb, export_dir);
+        if (fingerprint.ok()) {
+          return py::bytes(fingerprint.value().SerializeAsString());
+        }
+        throw FingerprintException(
+            std::string("Could not create fingerprint in directory: " +
+                        export_dir)
+                .c_str());
       },
       py::arg("saved_model"), py::arg("export_dir"),
       py::doc(
           "Returns the serialized FingerprintDef of a serialized SavedModel."));
 
   m.def(
-      "MaybeReadSavedModelChecksum",
+      "ReadSavedModelFingerprint",
       [](std::string export_dir) {
         StatusOr<FingerprintDef> fingerprint =
             fingerprinting::ReadSavedModelFingerprint(export_dir);
         if (fingerprint.ok()) {
-          return fingerprint->saved_model_checksum();
+          return py::bytes(fingerprint.value().SerializeAsString());
         }
-        return (uint64_t)0;
+        throw FingerprintException(
+            std::string("Could not read fingerprint from directory: " +
+                        export_dir)
+                .c_str());
       },
       py::arg("export_dir"),
       py::doc(
-          "Reads the fingerprint checksum from SavedModel directory. Returns "
-          "0 if an error occurs."));
+          "Loads the `fingerprint.pb` from `export_dir`, returns an error if "
+          "there is none."));
 
   m.def(
-      "GetFingerprintMap",
-      [](std::string export_dir) {
-        StatusOr<FingerprintDef> fingerprint =
-            fingerprinting::ReadSavedModelFingerprint(export_dir);
-        if (fingerprint.ok()) {
-          return fingerprinting::MakeFingerprintMap(*fingerprint);
+      "Singleprint",
+      [](uint64 graph_def_program_hash, uint64 signature_def_hash,
+         uint64 saved_object_graph_hash, uint64 checkpoint_hash) {
+        StatusOr<std::string> singleprint = fingerprinting::Singleprint(
+            graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
+            checkpoint_hash);
+        if (singleprint.ok()) {
+          return py::str(singleprint.value());
         }
-        return std::unordered_map<std::string, uint64_t>();
+        throw FingerprintException(
+            std::string("Could not create singleprint from given values.")
+                .c_str());
       },
-      py::arg("export_dir"),
-      py::doc("Returns the fingerprint protobuf as a dictionary. Returns "
-              "an empty dictionary if invalid fingerprint file."));
+      py::arg("graph_def_program_hash"), py::arg("signature_def_hash"),
+      py::arg("saved_object_graph_hash"), py::arg("checkpoint_hash"),
+      py::doc("Canonical fingerprinting ID for a SavedModel."));
 }
 
 }  // namespace python

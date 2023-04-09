@@ -23,6 +23,7 @@ import contextlib
 from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import control_flow_ops
@@ -179,25 +180,6 @@ class TPUReplicatedVariable(variables_lib.Variable):
     resource_list.append(self)
     return resource_list
 
-  def _export_to_saved_model_graph(self, object_map=None,
-                                   tensor_map=None,
-                                   options=None,
-                                   **kwargs):
-    """For implementing `Trackable`."""
-    first_var = self._vars[0]
-    resource_list = first_var._export_to_saved_model_graph(  # pylint:disable=protected-access
-        object_map=object_map,
-        tensor_map=tensor_map,
-        options=options)
-    for v in self._vars[1:]:
-      object_map[v] = object_map[first_var]
-      tensor_map[v.handle] = tensor_map[first_var.handle]
-      resource_list.append(v.handle)
-    object_map[self] = object_map[first_var]
-    tensor_map[self] = tensor_map[first_var.handle]
-    resource_list.append(self)
-    return resource_list
-
   def _gather_saveables_for_saved_model(self):
     return {trackable.VARIABLE_VALUE_KEY: self._vars[0]}
 
@@ -215,9 +197,18 @@ class TPUReplicatedVariable(variables_lib.Variable):
                                 'outside tpu context or save context')
     else:
       with tpu_util.outside_or_skip_tpu_context():
-        return xla_sharding.replicate(
-            tpu_partition_ops.tpu_partitioned_input(
-                [v.handle for v in self._vars], partition_dim=-1))
+        packed_var = getattr(self, '_packed_var', None)
+
+        # TODO(b/202047549): Enable packed variables with soft device placement
+        if packed_var is None or config.get_soft_device_placement():
+          tensor = tpu_partition_ops.tpu_partitioned_input_v2(
+              [v.handle for v in self._vars],
+              partition_dims=[], is_packed=False)
+        else:
+          tensor = tpu_partition_ops.tpu_partitioned_input_v2(
+              [packed_var.packed_handle], partition_dims=[], is_packed=True)
+
+      return xla_sharding.replicate(tensor)
 
   def _read_variable_op(self):
     return gen_resource_variable_ops.read_variable_op(self.handle, self.dtype)

@@ -48,6 +48,7 @@ pytype_strict_library(
         ":layout",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -120,7 +121,6 @@ pytype_strict_library(
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/checkpoint:graph_view",
@@ -133,6 +133,8 @@ pytype_strict_library(
         "//tensorflow/python/training:py_checkpoint_reader",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -305,7 +307,7 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/types",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )

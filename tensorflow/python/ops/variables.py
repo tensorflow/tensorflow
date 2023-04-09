@@ -30,6 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -199,97 +201,13 @@ def validate_synchronization_aggregation_trainable(synchronization, aggregation,
 class VariableMetaclass(abc.ABCMeta):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
-  def _variable_v1_call(cls,
-                        initial_value=None,
-                        trainable=None,
-                        collections=None,
-                        validate_shape=True,
-                        caching_device=None,
-                        name=None,
-                        variable_def=None,
-                        dtype=None,
-                        expected_shape=None,
-                        import_scope=None,
-                        constraint=None,
-                        use_resource=None,
-                        synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE,
-                        shape=None,
-                        experimental_enable_variable_lifting=None):
-    """Call on Variable class. Useful to force the signature."""
-    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
-    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
-      previous_getter = _make_getter(getter, previous_getter)
-
-    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
-    if aggregation is None:
-      aggregation = VariableAggregation.NONE
-    return previous_getter(
-        initial_value=initial_value,
-        trainable=trainable,
-        collections=collections,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        variable_def=variable_def,
-        dtype=dtype,
-        expected_shape=expected_shape,
-        import_scope=import_scope,
-        constraint=constraint,
-        use_resource=use_resource,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape,
-        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
-        )
-
-  def _variable_v2_call(cls,
-                        initial_value=None,
-                        trainable=None,
-                        validate_shape=True,
-                        caching_device=None,
-                        name=None,
-                        variable_def=None,
-                        dtype=None,
-                        import_scope=None,
-                        constraint=None,
-                        synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE,
-                        shape=None,
-                        experimental_enable_variable_lifting=None,
-                        ):
-    """Call on Variable class. Useful to force the signature."""
-    previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
-    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
-      previous_getter = _make_getter(getter, previous_getter)
-
-    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
-    if aggregation is None:
-      aggregation = VariableAggregation.NONE
-    return previous_getter(
-        initial_value=initial_value,
-        trainable=trainable,
-        validate_shape=validate_shape,
-        caching_device=caching_device,
-        name=name,
-        variable_def=variable_def,
-        dtype=dtype,
-        import_scope=import_scope,
-        constraint=constraint,
-        synchronization=synchronization,
-        aggregation=aggregation,
-        shape=shape,
-        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
-        )
-
   @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
-    if cls is VariableV1:
-      return cls._variable_v1_call(*args, **kwargs)
-    elif cls is Variable:
-      return cls._variable_v2_call(*args, **kwargs)
-    else:
-      return super(VariableMetaclass, cls).__call__(*args, **kwargs)
+    if hasattr(cls, "_variable_call") and callable(cls._variable_call):
+      variable_call = cls._variable_call(*args, **kwargs)
+      if variable_call is not None:
+        return variable_call
+    return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
 
 @tf_export("Variable", v1=[])
@@ -1279,6 +1197,50 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     """
     return object_identity.Reference(self)
 
+  @classmethod
+  def _variable_call(
+      cls,
+      initial_value=None,
+      trainable=None,
+      validate_shape=True,
+      caching_device=None,
+      name=None,
+      variable_def=None,
+      dtype=None,
+      import_scope=None,
+      constraint=None,
+      synchronization=VariableSynchronization.AUTO,
+      aggregation=VariableAggregation.NONE,
+      shape=None,
+      experimental_enable_variable_lifting=None,
+      **kwargs,
+    ):
+    """Variable class getter. Useful to force the signature."""
+    if cls is not Variable:
+      return None
+    previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
+    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        import_scope=import_scope,
+        constraint=constraint,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+    )
+
   class SaveSliceInfo:
     """Information on how to save this Variable as a slice.
 
@@ -1319,9 +1281,9 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         assert isinstance(save_slice_info_def, variable_pb2.SaveSliceInfoDef)
         self.full_name = ops.prepend_name_scope(
             save_slice_info_def.full_name, import_scope=import_scope)
-        self.full_shape = [i for i in save_slice_info_def.full_shape]
-        self.var_offset = [i for i in save_slice_info_def.var_offset]
-        self.var_shape = [i for i in save_slice_info_def.var_shape]
+        self.full_shape = list(save_slice_info_def.full_shape)
+        self.var_offset = list(save_slice_info_def.var_offset)
+        self.var_shape = list(save_slice_info_def.var_shape)
       else:
         self.full_name = full_name
         self.full_shape = full_shape
@@ -1576,9 +1538,59 @@ class VariableV1(Variable):
 
   def initialized_value(self):
     with ops.init_scope():
-      return control_flow_ops.cond(
+      return cond.cond(
           is_variable_initialized(self), self.read_value,
           lambda: self.initial_value)
+
+  @classmethod
+  def _variable_call(
+      cls,
+      initial_value=None,
+      trainable=None,
+      validate_shape=True,
+      caching_device=None,
+      name=None,
+      variable_def=None,
+      dtype=None,
+      import_scope=None,
+      constraint=None,
+      synchronization=VariableSynchronization.AUTO,
+      aggregation=VariableAggregation.NONE,
+      shape=None,
+      experimental_enable_variable_lifting=None,
+      expected_shape=None,
+      collections=None,
+      use_resource=None,
+      **kwargs,
+    ):
+    """VariableV1 class getter. Useful to force the signature."""
+    if cls is not VariableV1:
+      return None
+    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+    for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        import_scope=import_scope,
+        constraint=constraint,
+        synchronization=synchronization,
+        aggregation=aggregation,
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        expected_shape=expected_shape,
+        collections=collections,
+        use_resource=use_resource,
+    )
 
 
 # TODO(apassos): do not repeat all comments here
@@ -3104,7 +3116,7 @@ class PartitionedVariable:
       assert len(value) == len(self._variable_list)
       value_list = value
     elif isinstance(value, PartitionedVariable):
-      value_list = [var_part for var_part in value]
+      value_list = list(value)
     else:
       partition_ix = partition_axes[0]
       size_splits_list = [
@@ -3455,7 +3467,7 @@ def assert_variables_initialized(var_list=None):
     if len(ranks) == 1:
       return ranks[0]
     else:
-      return array_ops.stack(ranks)
+      return array_ops_stack.stack(ranks)
 
 
 @tf_export(v1=["report_uninitialized_variables"])
@@ -3497,7 +3509,7 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.constant([], dtype=dtypes.string)
       else:
         # Get a 1-D boolean tensor listing whether each variable is initialized.
-        variables_mask = math_ops.logical_not(array_ops.stack(init_vars))
+        variables_mask = math_ops.logical_not(array_ops_stack.stack(init_vars))
         # Get a 1-D string tensor containing all the variable names.
         variable_names_tensor = array_ops.constant(
             [s.op.name for s in var_list])

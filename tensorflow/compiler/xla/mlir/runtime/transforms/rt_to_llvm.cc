@@ -256,7 +256,7 @@ static LLVM::GlobalOp EncodeTypeTable(Globals &g, ImplicitLocOpBuilder &b,
   // Global initializer that encodes type ids as pointers.
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) -> LogicalResult {
     Value arr = b.create<LLVM::UndefOp>(type);
-    for (auto &pair : llvm::enumerate(type_ids)) {
+    for (const auto &pair : llvm::enumerate(type_ids)) {
       arr = b.create<LLVM::InsertValueOp>(arr, Globals::AddrOf(b, pair.value()),
                                           pair.index());
     }
@@ -324,7 +324,7 @@ static FailureOr<EncodedArguments> EncodeArguments(
   if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
 
   // Store pointer to encoded arguments into the allocated storage.
-  for (auto &pair : llvm::enumerate(encoded)) {
+  for (const auto &pair : llvm::enumerate(encoded)) {
     CustomCallArgEncoding::Encoded encoded = pair.value();
     int64_t offset = 2 + pair.index();
     insert_value(AsPtr(b, encoded.value), offset);
@@ -418,7 +418,7 @@ static FailureOr<EncodedResults> EncodeResults(
   if (!encoded.empty()) insert_value(Globals::AddrOf(b, type_table), 1);
 
   // Store encoded results into the allocated storage.
-  for (auto &pair : llvm::enumerate(encoded)) {
+  for (const auto &pair : llvm::enumerate(encoded)) {
     CustomCallRetEncoding::Encoded encoded_pair = pair.value();
     int64_t offset = 2 + pair.index();
     insert_value(encoded_pair.value, offset);
@@ -636,7 +636,7 @@ class TraceOpLowering : public OpConversionPattern<TraceOp> {
     // Replace trace operation with inlined region.
     b.setInsertionPointAfter(op);
     auto terminator = cast<YieldOp>(op.getBody().front().getTerminator());
-    rewriter.mergeBlockBefore(terminator->getBlock(), op);
+    rewriter.inlineBlockBefore(terminator->getBlock(), op);
     rewriter.replaceOp(op, terminator->getOperands());
     rewriter.eraseOp(terminator);
 
@@ -700,10 +700,9 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   // rewriter function into the CFG and they interact badly.
 
   // Convert all async types to opaque pointers.
-  llvm_converter.addConversion([&](Type type) -> Optional<Type> {
+  llvm_converter.addConversion([&](Type type) -> std::optional<Type> {
     if (type.isa<async::TokenType, async::GroupType, async::ValueType>())
-      return llvm_converter.getPointerType(
-          IntegerType::get(type.getContext(), 8));
+      return LLVM::LLVMPointerType::get(ctx);
     return std::nullopt;
   });
 
@@ -712,7 +711,7 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   auto add_unrealized_cast = [](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) {
     auto cast = builder.create<UnrealizedConversionCastOp>(loc, type, inputs);
-    return Optional<Value>(cast.getResult(0));
+    return std::optional<Value>(cast.getResult(0));
   };
   converter.addSourceMaterialization(add_unrealized_cast);
 

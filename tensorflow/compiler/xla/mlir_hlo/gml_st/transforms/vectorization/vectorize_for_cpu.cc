@@ -207,6 +207,86 @@ struct InlineCastInIfOpPattern : public OpRewritePattern<tensor::CastOp> {
   }
 };
 
+// This currently matches for all thlo.reverse of the form 1x1x..x1xVectorSize.
+// DimSize < kNumElementsVectorization will be handled by Scalarization.
+bool isPerfectlyTiledReverse(thlo::ReverseOp reverseOp) {
+  auto inputType = reverseOp.getInput().getType();
+  for (unsigned i = 0; i < inputType.getRank(); ++i) {
+    if (inputType.isDynamicDim(i)) {
+      return false;
+    }
+    if (i == inputType.getRank() - 1) {
+      return inputType.getDimSize(i) == kNumElementsVectorization &&
+             llvm::is_contained(reverseOp.getReverseDimensions(), i);
+    }
+    if (inputType.getDimSize(i) != 1) {
+      return false;
+    }
+  }
+  return false;
+}
+
+// Rewrite thlo.reverse of pattern 1x1x..x1xVectorSize as vector.transfer_read
+// followed by vector.shuffle followed by vector.transfer_write.
+struct ThloReverseVectorizationPattern
+    : public mlir::OpRewritePattern<thlo::ReverseOp> {
+  explicit ThloReverseVectorizationPattern(MLIRContext *context,
+                                           mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<thlo::ReverseOp>(context, benefit) {}
+
+  LogicalResult matchAndRewrite(thlo::ReverseOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isPerfectlyTiledReverse(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    auto inputType = op.getInput().getType();
+    if (!VectorType::isValidElementType(inputType.getElementType())) {
+      return rewriter.notifyMatchFailure(op, "cannot be vectorized");
+    }
+    auto vecTargetType =
+        VectorType::get(inputType.getShape()[inputType.getRank() - 1],
+                        inputType.getElementType());
+    Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+    SmallVector<Value> indices(op.getInit().getType().getRank(), zero);
+
+    auto readInput = rewriter.create<vector::TransferReadOp>(
+        op.getLoc(), vecTargetType, op.getInput(), indices);
+
+    SmallVector<int64_t> mask;
+    int64_t maskSize = inputType.getShape()[inputType.getRank() - 1];
+    mask.reserve(maskSize);
+    for (int64_t i = maskSize - 1; i >= 0; --i) {
+      mask.push_back(i);
+    }
+    auto shuffle = rewriter.create<vector::ShuffleOp>(op.getLoc(), readInput,
+                                                      readInput, mask);
+
+    rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
+        op, shuffle.getResult(), op.getInit(), indices);
+    return success();
+  }
+};
+
+struct IdentityTransposeOpFoldingPattern
+    : public OpRewritePattern<TransposeOp> {
+  explicit IdentityTransposeOpFoldingPattern(MLIRContext *context,
+                                             PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit) {}
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter & /*rewriter*/) const override {
+    auto perm = op.getPermutation();
+    for (int64_t i = 0; static_cast<uint64_t>(i) < perm.size(); ++i) {
+      if (perm[i] != i) return failure();
+    }
+
+    if (!hasSingleElementOperandsAndResults(op)) return failure();
+
+    op.replaceAllUsesWith(SmallVector<Value>(1, op.getInput()));
+    return success();
+  }
+};
+
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
 // `vector.shape_cast(vector.transfer_read)`.
 struct TransferReadOfOneDimExpandShape
@@ -249,102 +329,23 @@ struct TransferReadOfOneDimExpandShape
   }
 };
 
-// This currently matches for all thlo.reverse of the form 1x1x..x1xVectorSize.
-// DimSize < kNumElementsVectorization will be handled by Scalarization.
-bool isPerfectlyTiledReverse(thlo::ReverseOp reverseOp) {
-  auto inputType = reverseOp.getInput().getType();
-  for (unsigned i = 0; i < inputType.getRank(); ++i) {
-    if (inputType.isDynamicDim(i)) {
-      return false;
-    }
-    if (i == inputType.getRank() - 1) {
-      return inputType.getDimSize(i) == kNumElementsVectorization &&
-             llvm::is_contained(reverseOp.getReverseDimensions(), i);
-    }
-    if (inputType.getDimSize(i) != 1) {
-      return false;
-    }
-  }
-  return false;
-}
-
-// Rewrite thlo.reverse of pattern 1x1x..x1xVectorSize as vector.transfer_read
-// followed by vector.shuffle followed by vector.transfer_write.
-struct ThloReverseVectorizationPattern
-    : public mlir::OpRewritePattern<thlo::ReverseOp> {
-  explicit ThloReverseVectorizationPattern(MLIRContext *context,
-                                           mlir::PatternBenefit benefit = 1)
-      : mlir::OpRewritePattern<thlo::ReverseOp>(context, benefit) {}
-
-  LogicalResult matchAndRewrite(thlo::ReverseOp op,
-                                PatternRewriter &rewriter) const override {
-    if (!isPerfectlyTiledReverse(op))
-      return rewriter.notifyMatchFailure(op, "did not match filter");
-
-    auto inputType = op.getInput().getType();
-    auto vecTargetType =
-        RankedTensorType::get(inputType.getShape()[inputType.getRank() - 1],
-                              inputType.getElementType());
-    Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
-    SmallVector<Value> indices(op.getInit().getType().getRank(), zero);
-
-    auto readInput = rewriter.create<vector::TransferReadOp>(
-        op.getLoc(),
-        VectorType::get(vecTargetType.getShape(),
-                        vecTargetType.getElementType()),
-        op.getInput(), indices);
-
-    SmallVector<int64_t> mask;
-    int64_t maskSize = inputType.getShape()[inputType.getRank() - 1];
-    mask.reserve(maskSize);
-    for (int64_t i = maskSize - 1; i >= 0; --i) {
-      mask.push_back(i);
-    }
-    auto shuffle = rewriter.create<vector::ShuffleOp>(op.getLoc(), readInput,
-                                                      readInput, mask);
-
-    rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
-        op, shuffle.getResult(), op.getInit(), indices);
-    return success();
-  }
-};
-
-struct IdentityTransposeOpFoldingPattern
-    : public OpRewritePattern<TransposeOp> {
-  explicit IdentityTransposeOpFoldingPattern(MLIRContext *context,
-                                             PatternBenefit benefit = 1)
-      : OpRewritePattern(context, benefit) {}
-
-  LogicalResult matchAndRewrite(TransposeOp op,
-                                PatternRewriter & /*rewriter*/) const override {
-    auto perm = op.getPermutation();
-    for (int64_t i = 0; static_cast<uint64_t>(i) < perm.size(); ++i) {
-      if (perm[i] != i) return failure();
-    }
-
-    if (!hasSingleElementOperandsAndResults(op)) return failure();
-
-    op.replaceAllUsesWith(SmallVector<Value>(1, op.getInput()));
-    return success();
-  }
-};
-
-bool isNonComplexSmallTensorOrScalar(Type ty) {
-  if (auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>()) {
-    if (rankedTy.getElementType().isa<ComplexType>()) return false;
-    return rankedTy.hasStaticShape() &&
-           rankedTy.getNumElements() < kNumElementsThreshold;
-  }
-
-  if (ty.isa<ComplexType>()) return false;
-  return !isa<ShapedType>(ty);
-}
-
 struct VectorizeForCPUPass
     : public impl::VectorizeForCPUPassBase<VectorizeForCPUPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *ctx = func.getContext();
+
+    auto isNonComplexSmallTensorOrScalar = [&](Type ty) {
+      if (getElementTypeOrSelf(ty).isa<ComplexType>()) return false;
+      if (auto rankedTy = ty.dyn_cast<mlir::RankedTensorType>()) {
+        return rankedTy.hasStaticShape() &&
+               rankedTy.getNumElements() < numElementsThreshold;
+      }
+
+      return !isa<ShapedType>(ty);
+    };
 
     auto isOpOnNonComplexSmallTensorOrScalar = [&](Operation *op) {
       return llvm::all_of(op->getOperandTypes(),
@@ -354,7 +355,7 @@ struct VectorizeForCPUPass
     };
     auto isInsidePerfectlyTiledLoop = [&](Operation *op) {
       Operation *parent = op->getParentOp();
-      return (isa<ParallelOp, scf::ForOp>(parent)) &&
+      return (isa<scf::ForallOp, scf::ForOp>(parent)) &&
              hasLabel(parent, kPerfectlyTiledLoopLabel);
     };
     auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {
@@ -380,23 +381,21 @@ struct VectorizeForCPUPass
           VectorizationPattern<VecmatOp>
           >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
-      patterns.add<PassVectorizedValuesThroughIfOpPattern>(ctx);
-      populateTransferReadOfOneDimExpandShapePattern(patterns);
-      patterns.add<InlineCastInIfOpPattern, ThloReverseVectorizationPattern>(
-          ctx);
+      patterns
+          .add<InlineCastInIfOpPattern, PassVectorizedValuesThroughIfOpPattern,
+               ThloReverseVectorizationPattern,
+               TransferReadOfOneDimExpandShape>(ctx);
       tensor::CastOp::getCanonicalizationPatterns(patterns, ctx);
-      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
         return signalPassFailure();
-      }
     }
 
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
       patterns.add<IdentityTransposeOpFoldingPattern>(ctx);
-      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
         return signalPassFailure();
-      }
     }
 
     // Hoisting transfer_read/transfer_write.
@@ -406,8 +405,11 @@ struct VectorizeForCPUPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass() {
-  return std::make_unique<VectorizeForCPUPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
+    int64_t numElementsThreshold) {
+  VectorizeForCPUPassOptions opts;
+  opts.numElementsThreshold = numElementsThreshold;
+  return std::make_unique<VectorizeForCPUPass>(opts);
 }
 
 }  // namespace gml_st

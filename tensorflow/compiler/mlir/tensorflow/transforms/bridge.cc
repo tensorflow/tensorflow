@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -27,22 +26,28 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace mlir {
 namespace {
-
 // Add logger to bridge passmanager.
 // Enable timing statistics per pass for the bridge passmanager.
-void EnableDetailedLogging(PassManager *pm) {
+void EnableDetailedLogging(PassManager *pm,
+                           llvm::StringRef module_name = llvm::StringRef()) {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
   pm->getContext()->disableMultithreading();
-  pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+  pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
+      [module_name](const std::string &pass_tag_name) {
+        return GET_DUMP_FILENAME(module_name.str(), pass_tag_name);
+      },
+      "bridge_phase_1_",
       /*print_module_scope=*/true));
   pm->enableTiming();
 }
@@ -51,11 +56,24 @@ void EnableDetailedLogging(PassManager *pm) {
 namespace TFTPU {
 
 namespace {
+std::string GetMLIRModuleText(mlir::Operation *op,
+                              const mlir::PassManager *pass_manager) {
+  std::string module_txt;
+  llvm::raw_string_ostream os(module_txt);
+
+  if (pass_manager) ::tensorflow::PrintPassPipeline(*pass_manager, op, os);
+
+  op->print(os, mlir::OpPrintingFlags().useLocalScope());
+
+  return os.str();
+}
+
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
 tensorflow::Status RunTFXLABridge(
     ModuleOp module, bool enable_logging,
-    llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
+    llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
+    llvm::StringRef module_name = llvm::StringRef()) {
   // Explicitly check that the TensorFlow dialect can constant fold ops.
   // Constant folding is essential for the bridge. Without this check, the
   // bridge may fail with an error that is difficult to understand and not
@@ -77,18 +95,30 @@ tensorflow::Status RunTFXLABridge(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("tf_xla_bridge_before", module, "", &bridge);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
+  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name.str())) {
+    ::tensorflow::DumpMlirOpToFile(
+        GET_DUMP_FILENAME(module_name.str(), "tf_xla_bridge_before"), module,
+        llvm::StringRef(), &bridge);
   }
+
+  if (enable_logging || VLOG_IS_ON(2) || SHOULD_DUMP(module_name.str())) {
+    EnableDetailedLogging(&bridge, module_name);
+  }
+
   LogicalResult result = bridge.run(module);
   (void)result;
-  if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("tf_xla_bridge_after", module, "", &bridge);
+
+  if (enable_logging || VLOG_IS_ON(1) || SHOULD_DUMP(module_name.str())) {
+    ::tensorflow::DumpMlirOpToFile(
+        GET_DUMP_FILENAME(module_name.str(), "tf_xla_bridge_after"), module,
+        llvm::StringRef(), &bridge);
+  }
+
   return diag_handler.ConsumeStatus();
 }
 
-void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
+void CreateTPUBridgePipelineImpl(
+    OpPassManager &pm, llvm::StringRef module_name = llvm::StringRef()) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this but this is
   // currently not the case (see b/177478741).
@@ -180,7 +210,7 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
-  pm.addPass(CreateTPUExtractOutsideCompilationPass());
+  pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
 
   pm.addNestedPass<func::FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
@@ -193,11 +223,13 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRewriteTPUEmbeddingOpsPass());
-  pm.addPass(CreateTPURewritePass());
+  pm.addPass(CreateTPUAnnotateDynamicShapeInputsPass());
+  pm.addPass(CreateTPURewritePass(module_name));
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<func::FuncOp>(
       TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addPass(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<func::FuncOp>(CreateExtractTPUCopyWithDynamicShapeOpPass());
   pm.addNestedPass<func::FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<func::FuncOp>(CreateTPUColocateCompositeResourceOps());
@@ -206,11 +238,11 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 }
 }  // namespace
 
-void CreateTPUBridgePipeline(OpPassManager &pm) {
+void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
   pm.addPass(CreateTPUValidateInputsPass());
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  CreateTPUBridgePipelineImpl(pm);
+  CreateTPUBridgePipelineImpl(pm, module_name);
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
@@ -240,19 +272,26 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
-                             bool fallback_enabled) {
-  Status status = RunTFXLABridge(module, enable_logging, [](OpPassManager &pm) {
-    CreateTPUBridgePipeline(pm);
-    // Add set of passes to lower back to graph (from tf_executor).
-    // Use graph export pipline V2 in TPU Bridge.
-    // TODO(hanxiong): Completely replace AddGraphExportLoweringPasses with
-    // AddGraphExortLoweringPassessV2 in all the code paths (V1 compat pipeline,
-    // CPU/GPU bridge, etc.)
-    TF::AddGraphExportLoweringPassesV2(pm);
-  });
+                             bool fallback_enabled,
+                             llvm::StringRef module_name) {
+  Status status = RunTFXLABridge(
+      module, enable_logging,
+      [module_name](OpPassManager &pm) {
+        CreateTPUBridgePipeline(pm, module_name);
+        // Add set of passes to lower back to graph
+        // (from tf_executor). Use graph export
+        // pipline V2 in TPU Bridge.
+        // TODO(hanxiong): Completely replace
+        // AddGraphExportLoweringPasses with
+        // AddGraphExortLoweringPassessV2 in all the
+        // code paths (V1 compat pipeline, CPU/GPU
+        // bridge, etc.)
+        TF::AddGraphExportLoweringPassesV2(pm);
+      },
+      module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
-  OkOrSetErrorCounterPayload(
+  tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
   return status;
@@ -292,9 +331,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
-    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass(
-        tensorflow::GetMlirCommonFlags()
-            ->tf_mlir_enable_coarse_data_token_optimization));
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
   }
   pm.addPass(CreateVerifySuitableForExportPass());
 }
@@ -325,9 +362,7 @@ void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
-    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass(
-        tensorflow::GetMlirCommonFlags()
-            ->tf_mlir_enable_coarse_data_token_optimization));
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
   }
   pm.addPass(CreateVerifySuitableForExportPass());
 }
@@ -403,6 +438,7 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
           ->tf_mlir_enable_generic_outside_compilation) {
     pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
     pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
+    pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
   }
   // Outline clusters into cluster functions.
   pm.addPass(TFDevice::CreateClusterOutliningPass());
@@ -419,13 +455,16 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
-tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
+tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging,
+                                  llvm::StringRef module_name) {
   Status status = mlir::TFTPU::RunTFXLABridge(
-      module, enable_logging, [](OpPassManager &pm) {
+      module, enable_logging,
+      [](OpPassManager &pm) {
         CreateTFXLABridgePipeline(pm);
         // Add set of passes to lower back to graph (from tf_executor).
         TF::AddGraphExportLoweringPasses(pm);
-      });
+      },
+      module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,

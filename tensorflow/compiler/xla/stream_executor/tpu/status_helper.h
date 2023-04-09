@@ -36,7 +36,7 @@ class StatusHelper {
       return ::tsl::OkStatus();
     } else {
       return tsl::Status(  // TENSORFLOW_STATUS_OK
-          tsl::error::Code(
+          absl::StatusCode(
               stream_executor::tpu::ExecutorApiFn()->TpuStatus_CodeFn(
                   c_status)),
           stream_executor::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));

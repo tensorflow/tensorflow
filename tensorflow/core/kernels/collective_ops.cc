@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/activity_watcher/activity.h"
+#include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -642,10 +644,24 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             name_),
         done);
+
+    auto activity_id = activity_watcher::ActivityStart([&]() {
+      return activity_watcher::ActivityFromContext(
+          c, "CollectiveV2Op::Run",
+          activity_watcher::ActivityCategory::kCollective,
+          {
+              {"group_key", absl::StrCat(col_params->group.group_key)},
+              {"group_size", absl::StrCat(col_params->group.group_size)},
+              {"instance_key", absl::StrCat(col_params->instance.instance_key)},
+              {"communication_hint",
+               col_params->instance.impl_details.communication_hint},
+          });
+    });
     // Resolve the collective params.
     // Schedule the `CompleteParamsAsync` call on a work queue that can handle
     // blocking work because it's not guaranteed that this call cannot block.
-    c->collective_executor()->RunClosure([c, done = std::move(done), col_params,
+    c->collective_executor()->RunClosure([c, activity_id,
+                                          done = std::move(done), col_params,
                                           col_exec]() {
       VLOG(1) << "Collective CompleteParams for " << col_params->name
               << " device " << c->device()->name() << " group "
@@ -653,9 +669,10 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
           c->device()->attributes(), col_params, c->cancellation_manager(),
-          [c, done = std::move(done), col_params, col_exec](const Status& s) {
+          [c, activity_id, done = std::move(done), col_params,
+           col_exec](const Status& s) {
             if (s.ok()) {
-              auto actual_done = [c, col_params,
+              auto actual_done = [c, activity_id, col_params,
                                   done = std::move(done)](const Status& s) {
                 VLOG(1) << "Collective ExecuteAsync done for "
                         << col_params->name << " device " << c->device()->name()
@@ -666,6 +683,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
                   c->SetStatus(s);
                 }
                 done();
+                activity_watcher::ActivityEnd(activity_id);
               };
               VLOG(1) << "Collective ExecuteAsync start for "
                       << col_params->name << " device " << c->device()->name()
@@ -679,6 +697,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
             } else {
               c->SetStatus(s);
               done();
+              activity_watcher::ActivityEnd(activity_id);
             }
           });
     });
@@ -1283,12 +1302,14 @@ class CollectiveAllToAllV2OpKernel : public CollectiveOpV2Kernel {
             << col_params->group.group_size << " group_key "
             << col_params->group.group_key << " instance_key "
             << col_params->instance.instance_key;
-    // Allocate the output tensor.
+    // Allocate the output tensor. NCCL does not support in-place all-to-all, so
+    // don't reuse the input tensor. We could potentially use
+    // forward_input_or_allocate_output and allocate a temporary buffer inside
+    // the NCCL backend only when the input is reused.
     Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c,
-                         c->forward_input_or_allocate_output(
-                             {0}, 0, col_params->instance.shape, &output),
-                         done_with_cleanup);
+    OP_REQUIRES_OK_ASYNC(
+        c, c->allocate_output(0, col_params->instance.shape, &output),
+        done_with_cleanup);
     Run(c, col_params, std::move(done_with_cleanup));
   }
 };

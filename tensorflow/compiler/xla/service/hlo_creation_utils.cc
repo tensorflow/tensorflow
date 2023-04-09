@@ -439,7 +439,8 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   HloComputation* reduce_computation;
   {
-    HloComputation::Builder b(operand->name() + ".reduce_sub_computation");
+    HloComputation::Builder b(
+        absl::StrCat(operand->name(), ".reduce_sub_computation"));
     auto lhs = b.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
     auto rhs = b.AddInstruction(
@@ -465,7 +466,8 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   HloComputation* reduce_computation;
   {
-    HloComputation::Builder b(operand->name() + ".reduce_sub_computation");
+    HloComputation::Builder b(
+        absl::StrCat(operand->name(), ".reduce_sub_computation"));
     auto lhs = b.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
     auto rhs = b.AddInstruction(

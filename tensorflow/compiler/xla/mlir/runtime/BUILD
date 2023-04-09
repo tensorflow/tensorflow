@@ -1,5 +1,6 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package_group(
     name = "friends",
@@ -25,6 +26,13 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+build_test(
+    name = "xla-runtime-opt_build_test",
+    targets = [
+        ":xla-runtime-opt",
+    ],
 )
 
 xla_cc_binary(

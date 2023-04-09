@@ -259,7 +259,7 @@ static RankedTensorType GetStaticBroadcastType(
                                           shape_large.end());
 
   // Update according to the broadcast dimensions.
-  for (auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
+  for (const auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
     auto old_value = out_shape[index_pair.value()];
     auto new_value = shape_small[index_pair.index()];
     out_shape[index_pair.value()] = std::max(old_value, new_value);
@@ -554,7 +554,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
+  for (const auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -1922,9 +1922,9 @@ class ConvertMatrixDiagPartV3Op
     //              mask + sum approach. Special-case num_diags==1?
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(),
-        /*offset_dims=*/llvm::to_vector<4>(llvm::seq<int64_t>(0, num_dims - 2)),
-        /*collapsed_slice_dims=*/collapsed_dims, start_index_map,
-        /*index_vector_dim=*/0);
+        /*offsetDims=*/llvm::to_vector<4>(llvm::seq<int64_t>(0, num_dims - 2)),
+        /*collapsedSliceDims=*/collapsed_dims, start_index_map,
+        /*indexVectorDim=*/0);
     Value gather = rewriter.create<mhlo::GatherOp>(
         loc, op.getInput(), start_indices, dims_attr,
         GetI64ElementsAttr(slice_sizes, &rewriter));
@@ -3403,7 +3403,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     std::optional<int> dynamic_dim_index;
     split_sizes.reserve(
         split_sizes_attr.getType().cast<ShapedType>().getNumElements());
-    for (auto &dim : llvm::enumerate(split_sizes_attr)) {
+    for (const auto &dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
       if (dim_val == -1) {
@@ -4072,7 +4072,8 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // that this is a restricted form of shape manipulation that is just adding
     // unit dims.
     if (op.getKeepDims()) {
-      for (auto &dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+      for (const auto &dim_is_reduced :
+           llvm::enumerate(reduced_dimensions_bitmap)) {
         if (dim_is_reduced.value()) {
           auto index_attr = GetI32ElementsAttr(
               {static_cast<int>(dim_is_reduced.index())}, &rewriter);
@@ -4941,20 +4942,20 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         /*window_reversal=*/nullptr,
         ConvDimensionNumbersAttr::get(
             rewriter.getContext(),
-            /*input_batch_dimension=*/batch_dim,
-            /*input_feature_dimension=*/feature_dim,
-            /*input_spatial_dimensions=*/spatial_dims,
+            /*inputBatchDimension=*/batch_dim,
+            /*inputFeatureDimension=*/feature_dim,
+            /*inputSpatialDimensions=*/spatial_dims,
             // TF filter shape is [ H, W, ..., inC, outC ]
             // Transpose the input and output features for computing the
             // gradient.
-            /*kernel_input_feature_dimension=*/
+            /*kernelInputFeatureDimension=*/
             num_spatial_dims + 1,
-            /*kernel_output_feature_dimension=*/
+            /*kernelOutputFeatureDimension=*/
             num_spatial_dims,
-            /*kernel_spatial_dimensions=*/kernel_spatial_dims,
-            /*output_batch_dimension=*/batch_dim,
-            /*output_feature_dimension=*/feature_dim,
-            /*output_spatial_dimensions=*/spatial_dims),
+            /*kernelSpatialDimensions=*/kernel_spatial_dims,
+            /*outputBatchDimension=*/batch_dim,
+            /*outputFeatureDimension=*/feature_dim,
+            /*outputSpatialDimensions=*/spatial_dims),
         rewriter.getI64IntegerAttr(feature_group_count),
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
         /*precision_config=*/ArrayAttr());
@@ -5149,19 +5150,19 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         ConvDimensionNumbersAttr::get(
             rewriter.getContext(),
             // Swap batch_dim and feature_dim in the activations.
-            /*input_batch_dimension=*/feature_dim,
-            /*input_feature_dimension=*/batch_dim,
-            /*input_spatial_dimensions=*/kernel_spatial_dims,
+            /*inputBatchDimension=*/feature_dim,
+            /*inputFeatureDimension=*/batch_dim,
+            /*inputSpatialDimensions=*/kernel_spatial_dims,
             // The gradients become the RHS of the convolution.
             // The gradients have shape [batch, out_rows, out_cols, ...,
             // out_depth] where the batch becomes the input feature for the
             // convolution.
-            /*kernel_input_feature_dimension=*/batch_dim,
-            /*kernel_output_feature_dimension=*/feature_dim,
-            /*kernel_spatial_dimensions=*/kernel_spatial_dims,
-            /*output_batch_dimension=*/num_spatial_dims,
-            /*output_feature_dimension=*/num_spatial_dims + 1,
-            /*output_spatial_dimensions=*/output_spatial_dimensions),
+            /*kernelInputFeatureDimension=*/batch_dim,
+            /*kernelOutputFeatureDimension=*/feature_dim,
+            /*kernelSpatialDimensions=*/kernel_spatial_dims,
+            /*outputBatchDimension=*/num_spatial_dims,
+            /*outputFeatureDimension=*/num_spatial_dims + 1,
+            /*outputSpatialDimensions=*/output_spatial_dimensions),
         /*feature_group_count=*/rewriter.getI64IntegerAttr(1),
         rewriter.getI64IntegerAttr(batch_group_count),
         /*precision_config=*/ArrayAttr());
@@ -5318,7 +5319,7 @@ class ConvertInfeedDequeueTupleOp
     }
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
-    for (auto &idx_and_type : llvm::enumerate(result_types)) {
+    for (const auto &idx_and_type : llvm::enumerate(result_types)) {
       results.push_back(data_and_token.getResult(idx_and_type.index()));
     }
     rewriter.replaceOp(op, ValueRange(results));
@@ -5791,7 +5792,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         auto sorted = createSortOp(
             &rewriter, op.getLoc(), {keys, current},
             {rewriter.getIntegerType(32), input_type.getElementType()},
-            /*dimension=*/-1, /*is_stable=*/false,
+            /*dimension=*/-1, /*isStable=*/false,
             /*direction=*/ComparisonDirection::LT);
         current = sorted.getResult(1);
       }
@@ -5860,10 +5861,10 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(),
-        /*offset_dims=*/llvm::to_vector<4>(llvm::seq<int64_t>(1, input_rank)),
-        /*collapsed_slice_dims=*/{0},
-        /*start_index_map=*/{0},
-        /*index_vector_dim=*/1);
+        /*offsetDims=*/llvm::to_vector<4>(llvm::seq<int64_t>(1, input_rank)),
+        /*collapsedSliceDims=*/{0},
+        /*startIndexMap=*/{0},
+        /*indexVectorDim=*/1);
 
     SmallVector<Value> slice_sizes_values;
     for (auto i = 0; i < slice_sizes.size(); ++i) {
@@ -6561,7 +6562,7 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
     Type element_type = getElementTypeOrSelf(op.getInput().getType());
     auto sort_op =
         createSortOp(&rewriter, op.getLoc(), {op.getInput()}, {element_type},
-                     /*dimension=*/-1, /*is_stable=*/false,
+                     /*dimension=*/-1, /*isStable=*/false,
                      /*direction=*/ComparisonDirection::LT);
     rewriter.replaceOp(op, sort_op.getResult(0));
     return success();
@@ -6772,7 +6773,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
       if constexpr (std::is_same<DstOpT, mhlo::WhileOp>::value) {
         TypeConverter::SignatureConversion signature(num_results);
         Block &block = region.front();
-        for (auto &[block_idx, original_ty] :
+        for (const auto &[block_idx, original_ty] :
              llvm::enumerate(block.getArgumentTypes())) {
           TensorType updated_ty =
               UpdateElementTypeTo(original_ty, element_types[block_idx]);

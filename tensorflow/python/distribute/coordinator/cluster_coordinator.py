@@ -27,10 +27,10 @@ import weakref
 
 from six.moves import queue
 
-from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import remote_value
+from tensorflow.python.distribute.coordinator import utils
 from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.distribute.coordinator import watchdog
 from tensorflow.python.eager import cancellation
@@ -47,6 +47,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Maximum time for failed worker to come back is 1 hour
 _WORKER_MAXIMUM_RECOVERY_SEC = 3600
+# How often to poll task states from the coordination service. In testing, a
+# value of 1 led to some spurious reports of unavailability, so a higher value
+# is used. Refer to the discussion in b/249134783 for more.
+_POLL_FREQ_IN_SEC = 5
 
 # Maximum size for queued closures, "infinite" if set to 0.
 # When the maximum queue size is reached, further schedule calls will become
@@ -120,6 +124,20 @@ class ClosureAbortedError(Exception):
                (self.original_exception, str(self.original_exception)))
     super().__init__(message)
     self.with_traceback(original_exception.__traceback__)
+
+
+class PSUnavailableError(errors.UnavailableError):
+  """Specifies that a parameter server is the unavailable task."""
+
+  def __init__(self, original_exception):
+    assert isinstance(original_exception, errors.UnavailableError)
+    # TF Errors should have init args set as attributes for serialization.
+    self.original_exception = original_exception
+    super().__init__(
+        original_exception.node_def,
+        original_exception.op,
+        original_exception.message,
+    )
 
 
 def _get_error_from_remote_values(structure):
@@ -413,7 +431,7 @@ class _CoordinatedClosureQueue(object):
     if tag is not None:
       with self._queue_lock:
         self._tagged_queue[tag].put(closure, block=False)
-        self._closures_queued_condition.notifyAll()
+        self._closures_queued_condition.notify_all()
     else:
       with self._put_wait_lock, self._queue_lock:
         self._queue_free_slot_condition.wait_for(lambda: not self._queue.full())
@@ -529,6 +547,262 @@ class _CoordinatedClosureQueue(object):
     self._tagged_queue[tag] = queue.Queue()
 
 
+class CoordinationServicePreemptionHandler(object):
+  """Handles preemptions of workers and parameter servers.
+
+  Starts a thread to regularly poll the coordination service (hosted on PS 0)
+  for task states. When a worker's task state reflects an error, it inspects the
+  error. If the error is recoverable (i.e. a preemption), it waits for the
+  worker to recover, then updates the server def. Otherwise, it raises the error
+  to the user.
+
+  A worker error is detected to be recoverable if it is the result of missing a
+  heartbeat that workers regularly send to the coordination service.
+
+  The thread also checks for parameter server errors. If these are detected, the
+  thread and coordinator shutdown. To resume training in this case, the whole
+  job must be restarted and resumed from the latest checkpoint.
+  """
+
+  def __init__(self, server_def, cluster):
+    self._server_def = server_def
+    self._cluster = cluster
+    self._cluster_update_lock = threading.Lock()
+    self._cluster_due_for_update_or_finish = threading.Event()
+    self._worker_up_cond = threading.Condition(self._cluster_update_lock)
+
+    self._next_task_state_cond = threading.Condition()
+    self._task_states = None
+
+    self._error_from_recovery = None
+    self._should_preemption_thread_run = True
+    self._task_state_poller_thread = utils.RepeatedTimer(
+        interval=_POLL_FREQ_IN_SEC,
+        function=self._get_task_states)
+    self._preemption_handler_thread = threading.Thread(
+        target=self._preemption_handler,
+        name="WorkerPreemptionHandler",
+        daemon=True)
+    self._preemption_handler_thread.start()
+
+    self._num_workers = self._cluster._num_workers
+    self._num_ps = self._cluster._num_ps
+
+  def stop(self):
+    """Ensure the worker preemption thread is closed."""
+    self._task_state_poller_thread.stop()
+    self._should_preemption_thread_run = False
+    with self._cluster_update_lock:
+      self._cluster_due_for_update_or_finish.set()
+    # TODO(yuefengz): The preemption handler thread shouldn't be terminated
+    # asynchronously since it touches eager context which is a process-wide
+    # singleton. The problem is in OSS unit tests will time out.
+
+  @contextlib.contextmanager
+  def wait_on_failure(self,
+                      on_failure_fn=None,
+                      on_transient_failure_fn=None,
+                      on_recovery_fn=None,
+                      worker_device_name="(unknown)"):
+    """Catches errors during closure execution and handles them.
+
+    Args:
+      on_failure_fn: an optional function to run if preemption happens.
+      on_transient_failure_fn: an optional function to run if transient failure
+        happens.
+      on_recovery_fn: an optional function to run when a worker is recovered
+        from preemption.
+      worker_device_name: the device name of the worker instance that is passing
+        through the failure.
+
+    Yields:
+      None.
+    """
+    assert self._should_preemption_thread_run
+    try:
+      yield
+    except (errors.OpError, ClosureInputError,
+            ClosureAbortedError) as e:
+      # The next state could reflect stale heartbeats, so wait for two rounds.
+      # Example:
+      # - Worker sends healthy heartbeat at T=0.
+      # - Coordination service receives healthy heartbeat at T=0.
+      # - Worker gets preempted at T=0.1.
+      # - Coordinator catches error at T=0.2, and waits here for next states.
+      # - Coordinator polls states at T=1.9. Heartbeat time has not elapsed yet,
+      #   so coordination service does not know it is down yet.
+      # - Coordination service learns of worker unavailability at T=2, the next
+      #   heartbeat.
+      # - Coordinator polls states at T=3.9 and learns of worker unavailability.
+      with self._next_task_state_cond:
+        # Give some buffer time to make sure task states are updated during the
+        # wait interval
+        self._next_task_state_cond.wait(_POLL_FREQ_IN_SEC * 1.25)
+      with self._next_task_state_cond:
+        self._next_task_state_cond.wait(_POLL_FREQ_IN_SEC * 1.25)
+
+      # Check for coordination service failure
+      if not self._task_states:
+        self._log_ps_failure_and_raise(e, 0)
+
+      worker_states = self._task_states[:self._num_workers]
+      ps_states = self._task_states[self._num_workers:]
+
+      # Check for PS failure
+      if any(ps_states):
+        failed_ps_index = [
+            ix for ix, ps_state in enumerate(ps_states) if ps_state
+        ]
+        self._log_ps_failure_and_raise(e, failed_ps_index[0])
+
+      # Check for preemption of this worker
+      worker_ix = int(worker_device_name.split(":")[-1])
+      if worker_states[worker_ix]:
+        # Raise error if all closures are being cancelled
+        if self._cluster.closure_queue._cancellation_mgr.is_cancelled:  # pylint: disable=protected-access
+          if isinstance(e, errors.CancelledError):
+            raise e
+          # It's possible the caught error `e` here is due to worker preemption
+          # and is thus not a `CancelledError`, because a different
+          # unrecoverable error on another worker caused closure cancellation,
+          # while this thread was waiting for task states. So raise a new
+          # CancelledError.
+          else:
+            raise errors.CancelledError(
+                None, None, "The corresponding function was cancelled while "
+                "attempting to recover from worker failure.")
+        # Else, preemption
+        self._handle_failure_and_recovery(e, on_failure_fn,
+                                          on_transient_failure_fn,
+                                          on_recovery_fn, worker_device_name)
+        return
+
+      #  else, if timeout: log
+      if self._cluster._record_and_ignore_transient_timeouts(e):  # pylint: disable=protected-access
+        logging.error(
+            "Remote function on worker %s failed with %r:%s\n"
+            "This derived error is ignored and not reported to users.",
+            worker_device_name, e, e)
+        if on_transient_failure_fn:
+          on_transient_failure_fn()
+        return
+      raise e
+
+  def _handle_failure_and_recovery(self,
+                                   e,
+                                   on_failure_fn,
+                                   on_transient_failure_fn,
+                                   on_recovery_fn,
+                                   worker_device_name):
+    """Call failure fn, wait for cluster to recover, then call recovery fn.
+
+    Args:
+      e: the Exception thrown during closure execution.
+      on_failure_fn: an optional function to run if preemption happens.
+      on_transient_failure_fn: an optional function to run if transient failure
+        happens.
+      on_recovery_fn: an optional function to run when a worker is recovered
+        from preemption.
+      worker_device_name: the device name of the worker instance that is passing
+        through the failure.
+    """
+    if on_failure_fn:
+      on_failure_fn(e)
+    # update server def
+    with self._cluster_update_lock:
+      self._cluster_due_for_update_or_finish.set()
+      self._worker_up_cond.wait(_WORKER_MAXIMUM_RECOVERY_SEC)
+      if self._error_from_recovery:
+        # TODO(yuefengz): there is only one worker that will get this error.
+        # Ideally we should let all workers notified by `_worker_up_cond` get
+        # this error.
+        try:
+          raise self._error_from_recovery
+        finally:
+          self._error_from_recovery = None
+      logging.info("Worker %s has been recovered.", worker_device_name)
+
+    if on_recovery_fn:
+      logging.info("Worker %s calling on_recovery_fn", worker_device_name)
+      with self.wait_on_failure(
+          on_recovery_fn=on_recovery_fn,
+          on_transient_failure_fn=on_transient_failure_fn,
+          worker_device_name=worker_device_name):
+        on_recovery_fn()
+
+  def _log_ps_failure_and_raise(self, e, ps_index):
+    logging.info("Parameter server failure detected at PS task %d", ps_index)
+    self.stop()
+    raise PSUnavailableError(e)
+
+  def _get_task_states(self):
+    try:
+      self._task_states = context.context().get_task_states(
+          [("worker", self._num_workers), ("ps", self._num_ps)]
+      )
+    except errors.UnavailableError:
+      # Coordination service is down
+      self._task_states = None
+    with self._next_task_state_cond:
+      self._next_task_state_cond.notify_all()
+
+  def _preemption_handler(self):
+    """A loop that handles preemption.
+
+    This loop waits for signal of worker preemption and upon worker preemption,
+    it waits until all workers are back and updates the cluster about the
+    restarted workers.
+    """
+    assert self._should_preemption_thread_run
+    while True:
+      self._cluster_due_for_update_or_finish.wait()
+      if not self._should_preemption_thread_run:
+        logging.info("Stopping the failure handing thread.")
+        break
+
+      with self._cluster_update_lock:
+        try:
+          # TODO(haoyuzhang): support partial cluster recovery
+          logging.info("Cluster now being recovered.")
+          context.context().update_server_def(self._server_def)
+
+          # Cluster updated successfully, clear the update signal, and notify
+          # all workers that they are recovered from failure.
+          logging.info("Cluster successfully recovered.")
+          self._notify_cluster_update()
+        except Exception as e:  # pylint: disable=broad-except
+          logging.info("Error occurred while updating server def: %s", e)
+          # Wait for the next set of states from the task state poller
+          with self._next_task_state_cond:
+            self._next_task_state_cond.wait(_POLL_FREQ_IN_SEC * 2)
+          # If a PS is preempted, set the error
+          if not self._task_states:
+            self._error_from_recovery = e
+          else:
+            ps_states = self._task_states[self._num_workers:]
+            # Check for PS failure
+            if any(ps_states):
+              self._error_from_recovery = e
+          # Else, likely another worker failed. Just log and retry
+          self._notify_cluster_update()
+          # NOTE: Since the first RPC (GetStatus) of update_server_def is
+          # currently blocking by default, error should only happen if:
+          # (1) More workers failed while waiting for the previous workers to
+          #     come back;
+          # (2) Worker failed when exchanging subsequent RPCs after the first
+          #     RPC returns.
+          # Consider adding backoff retry logic if we see the error logged
+          # too frequently.
+          logging.error("Cluster update failed with error: %s. Retrying...", e)
+
+  def _notify_cluster_update(self):
+    self._worker_up_cond.notify_all()
+    # The check for _should_preemption_thread_run is necessary since the
+    # `stop` may have already set _cluster_due_for_update_or_finish.
+    if self._should_preemption_thread_run:
+      self._cluster_due_for_update_or_finish.clear()
+
+
 class WorkerPreemptionHandler(object):
   """Handles worker preemptions."""
 
@@ -589,7 +863,7 @@ class WorkerPreemptionHandler(object):
     try:
       yield
     except (errors.OpError, ClosureInputError,
-            ClosureAbortedError) as e:
+            ClosureAbortedError, TypeError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -979,8 +1253,17 @@ class Cluster(object):
     self._transient_timeouts_count = 0
 
     self.closure_queue = _CoordinatedClosureQueue()
-    self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
-                                                   self)
+    # Set this environment variable to use an experimental
+    # integration with the runtime coordination service to aid in failure
+    # detection and handling. This will not affect the functionality of
+    # the strategy or cluster coordinator, but is off by default.
+    if os.getenv("TF_PSS_ENABLE_COORDINATION_SERVICE"):
+      self.failure_handler = CoordinationServicePreemptionHandler(
+          context.get_server_def(), self,
+      )
+    else:
+      self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
+                                                     self)
     worker_device_strings = [
         "/job:worker/replica:0/task:%d" % i for i in range(self._num_workers)
     ]
@@ -1138,8 +1421,7 @@ class ClusterCoordinator(object):
       ValueError: if the strategy being used is not supported.
     """
     if not getattr(self, "_has_initialized", False):
-      if not isinstance(strategy,
-                        parameter_server_strategy_v2.ParameterServerStrategyV2):
+      if not hasattr(strategy, "_is_parameter_server_strategy_v2"):
         raise ValueError(
             "Only `tf.distribute.experimental.ParameterServerStrategy` "
             "is supported to work with "
@@ -1421,6 +1703,8 @@ def _extract_failed_ps_instances(err_msg):
 
 def _is_ps_failure(error):
   """Whether the error is considered a parameter server failure."""
+  if isinstance(error, PSUnavailableError):
+    return True
 
   # For an `ClosureInputError` or `ClosureAbortedError`, extract
   # the original error and assess it accordingly.
@@ -1499,6 +1783,14 @@ def _is_worker_failure(error):
   # CancelledError can be returned due to chief/PS cancelling outstanding RPCs
   # to the failing workers.
   if isinstance(error, errors.CancelledError):
+    return True
+
+  # This can occur when preparing closures for execution when doing exact
+  # evaluation, because the iterator creation, which occurs within the
+  # tf.function, needs to access the worker device, so it fails if the worker is
+  # down.
+  if isinstance(error, TypeError) and "Binding inputs to tf.function" in str(
+      error):
     return True
 
   return False

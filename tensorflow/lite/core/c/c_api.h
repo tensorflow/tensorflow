@@ -25,6 +25,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 
 // --------------------------------------------------------------------------
@@ -542,6 +543,19 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInvoke(
     TfLiteRegistrationExternal* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
                            TfLiteOpaqueNode* node));
+
+/// Sets the async kernel accessor callback for the registration.
+///
+/// The callback is called to retrieve the async kernel if the delegate supports
+/// it. If the delegate does not support async execution, either this function
+/// should not be called, or `async_kernel` needs to be nullptr.
+/// `node` is the delegate TfLiteNode created by `ModifyGraphWithDelegate`.
+/// Please refer `async_kernel` of `TfLiteRegistration` for the detail.
+/// \warning This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetAsyncKernel(
+    TfLiteRegistrationExternal* registration,
+    TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                       TfLiteOpaqueNode* node));
 
 // NOLINTEND(modernize-redundant-void-arg)
 

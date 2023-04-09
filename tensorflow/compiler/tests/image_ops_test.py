@@ -25,6 +25,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
@@ -54,12 +55,12 @@ class RGBToHSVTest(xla_test.XLATestCase):
         with self.test_scope():
           batch1 = image_ops.rgb_to_hsv(batch0)
           batch2 = image_ops.hsv_to_rgb(batch1)
-        split0 = array_ops.unstack(batch0)
+        split0 = array_ops_stack.unstack(batch0)
         with self.test_scope():
           split1 = list(map(image_ops.rgb_to_hsv, split0))
           split2 = list(map(image_ops.hsv_to_rgb, split1))
-        join1 = array_ops.stack(split1)
-        join2 = array_ops.stack(split2)
+        join1 = array_ops_stack.stack(split1)
+        join2 = array_ops_stack.stack(split2)
         batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2],
                                                 {batch0: inp})
 

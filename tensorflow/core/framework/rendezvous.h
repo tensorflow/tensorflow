@@ -127,7 +127,7 @@ class RendezvousInterface {
 //
 // This class is used in cases where a rendezvous may be shared between multiple
 // threads with no clear owner.
-class Rendezvous : public RendezvousInterface, public core::RefCounted {
+class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
  public:
   class Factory {
    public:

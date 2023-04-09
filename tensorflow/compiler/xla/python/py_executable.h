@@ -75,11 +75,10 @@ class PyExecuteResults {
                    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
                    int num_computations, PyShardedToken token);
 
-  std::vector<std::vector<PyBuffer::object>>
-  DisassembleIntoSingleDeviceArrays();
+  std::vector<std::vector<PyArray>> DisassembleIntoSingleDeviceArrays();
 
-  std::vector<std::vector<PyBuffer::object>>
-  DisassemblePrefixIntoSingleDeviceArrays(size_t n);
+  std::vector<std::vector<PyArray>> DisassemblePrefixIntoSingleDeviceArrays(
+      size_t n);
 
   std::vector<pybind11::object> ConsumeWithHandlers(
       std::vector<std::variant<const PyArrayResultHandler*, pybind11::object>>
@@ -104,6 +103,8 @@ class PyExecuteResults {
   int num_computations_;
   PyShardedToken token_;
 };
+
+using ExecuteShardedArg = std::variant<PyArray, std::vector<PyArray>>;
 
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
@@ -146,30 +147,19 @@ class PyLoadedExecutable
 
   bool is_deleted() { return ifrt_loaded_executable_->IsDeleted(); }
 
-  StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
-  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
   // args is [num_args x num_devices].
-  StatusOr<std::vector<std::vector<PyBuffer::object>>>
-  ExecuteShardedOnLocalDevices(
-      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
-          args);
+  StatusOr<std::vector<std::vector<PyArray>>> ExecuteShardedOnLocalDevices(
+      absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<
-      std::pair<std::vector<std::vector<PyBuffer::object>>, PyShardedToken>>
+  StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
-      absl::Span<const std::vector<std::variant<PyBuffer::object, PyArray>>>
-          args);
+      absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<PyExecuteResults> ExecuteSharded(
-      std::vector<std::vector<std::variant<PyBuffer::object, PyArray>>> args,
-      bool with_tokens);
+  StatusOr<PyExecuteResults> ExecuteSharded(std::vector<ExecuteShardedArg> args,
+                                            bool with_tokens);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
@@ -211,9 +201,6 @@ class PyLoadedExecutable
   void KeepAlive(pybind11::object obj);
 
  private:
-  StatusOr<std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>>
-  ExecuteInternal(absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;

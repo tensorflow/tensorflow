@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -125,6 +126,17 @@ bool EnableReplicatedSpmdAsDefault(const std::string& op_name) {
   char* dtensor_enable_replicated_spmd_as_default =
       std::getenv(env_name.c_str());
   return dtensor_enable_replicated_spmd_as_default != nullptr;
+}
+
+bool EnableAllToAllForRelayout() {
+  // Whether to use all-to-all collective for relayout when possible.
+  static bool is_enabled = [] {
+    bool ret = true;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("DTENSOR_USE_ALL_TO_ALL_RELAYOUT",
+                                        /*default_val=*/true, &ret));
+    return ret;
+  }();
+  return is_enabled;
 }
 
 }  // namespace dtensor

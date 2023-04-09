@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -24,13 +25,17 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/mhlo_passes/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
@@ -153,21 +158,67 @@ StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   return PrintModule(*module);
 }
 
+StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
+                                                std::string target) {
+  mlir::MLIRContext context;
+  if (VLOG_IS_ON(3)) context.disableMultithreading();
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
+
+  // Legalize CHLO -> [MHLO+Shape] -> StableHLO
+  mlir::PassManager pm(&context);
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createShapeLegalizeToHloPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument(
+        "CHLO => [MHLO+Shape] => StableHLO failed");
+  }
+
+  // Serialize portable artifact
+  std::string buffer;
+  llvm::raw_string_ostream os(buffer);
+  if (failed(mlir::stablehlo::serializePortableArtifact(*module, target, os)))
+    return tsl::errors::InvalidArgument("Failed to serialize StableHLO");
+  return py::bytes(buffer);
+}
+
+StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {
+  mlir::MLIRContext context;
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::stablehlo::deserializePortableArtifact(bytecode_str, &context);
+  if (!module)
+    return tsl::errors::InvalidArgument("Failed to deserialize StableHLO");
+  return PrintModule(*module);
+}
+
 }  // namespace
 
 void BuildMlirSubmodule(py::module& m) {
   py::module mlir_module = m.def_submodule("mlir", "MLIR/XLA integration");
 
   mlir_module.def("xla_computation_to_mlir_module",
-                  &PyXlaComputationToMlirModule, py::arg("computation"),
-                  py::arg("emit_stable_hlo") = true);
+                  xla::ValueOrThrowWrapper(PyXlaComputationToMlirModule),
+                  py::arg("computation"), py::arg("emit_stable_hlo") = true);
   mlir_module.def("mlir_module_to_xla_computation",
-                  &PyMlirModuleToXlaComputation, py::arg("mlir_module"),
-                  py::arg("use_tuple_args") = false,
+                  xla::ValueOrThrowWrapper(PyMlirModuleToXlaComputation),
+                  py::arg("mlir_module"), py::arg("use_tuple_args") = false,
                   py::arg("return_tuple") = false);
-  mlir_module.def("mhlo_to_stablehlo", &PyMhloToStablehlo,
+  mlir_module.def("mhlo_to_stablehlo",
+                  xla::ValueOrThrowWrapper(PyMhloToStablehlo),
                   py::arg("mlir_module"));
-  mlir_module.def("stablehlo_to_mhlo", &PyStablehloToMhlo,
+  mlir_module.def("stablehlo_to_mhlo",
+                  xla::ValueOrThrowWrapper(PyStablehloToMhlo),
+                  py::arg("mlir_module"));
+  mlir_module.def("serialize_portable_artifact",
+                  xla::ValueOrThrowWrapper(PySerializePortableArtifact),
+                  py::arg("mlir_module"), py::arg("target"));
+  mlir_module.def("deserialize_portable_artifact",
+                  xla::ValueOrThrowWrapper(PyDeserializePortableArtifact),
                   py::arg("mlir_module"));
 }
 

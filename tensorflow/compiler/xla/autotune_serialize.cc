@@ -40,7 +40,7 @@ Status LoadAutotuneResults(absl::string_view data) {
   }
   if (results.version() != kVersion) {
     return tsl::errors::InvalidArgument(absl::StrFormat(
-        "Version mismatch in autotune results.  Expected %d but was %d",
+        "Version mismatch in autotune results. Expected %d but was %d",
         kVersion, results.version()));
   }
 

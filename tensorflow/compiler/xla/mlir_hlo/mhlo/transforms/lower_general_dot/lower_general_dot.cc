@@ -42,16 +42,6 @@ namespace mhlo {
 
 namespace {
 
-bool hasAnySparseOperandOrResult(Operation *op) {
-  bool anySparseIn = llvm::any_of(op->getOperands().getTypes(), [](Type t) {
-    return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
-  });
-  bool anySparseOut = llvm::any_of(op->getResults().getTypes(), [](Type t) {
-    return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
-  });
-  return anySparseIn || anySparseOut;
-}
-
 Value transposeReshape(Value arg, Location loc,
                        llvm::ArrayRef<int64_t> leftDims,
                        llvm::ArrayRef<int64_t> rightDims,
@@ -262,7 +252,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     // For any sparse situation, don't use any of the following rules, since
     // transposing and reshaping is not without cost. Instead, rely on the
     // default linalg lowering that follows later in the pipeline.
-    if (hasAnySparseOperandOrResult(op)) return failure();
+    if (sparse_tensor::hasAnySparseOperandOrResult(op)) return failure();
 
     // Compute the, possibly, transposed-reshaped operands.
     lhs = llvm::cast<mlir::TypedValue<mlir::TensorType>>(processDotArg(

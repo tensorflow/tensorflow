@@ -241,7 +241,7 @@ cuda_py_test(
     size = "small",
     srcs = ["uniform_test.py"],
     deps = [
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",

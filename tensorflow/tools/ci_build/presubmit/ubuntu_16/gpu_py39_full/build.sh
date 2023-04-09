@@ -28,7 +28,7 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-tag_filters="gpu,-no_gpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-no_cuda11""$(maybe_skip_v1)"
+tag_filters="gpu,-no_gpu,-benchmark-test,-no_oss,-oss_excluded,-oss_serial,-no_gpu_presubmit,-no_cuda11""$(maybe_skip_v1)"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

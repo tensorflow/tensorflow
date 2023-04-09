@@ -567,6 +567,28 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       return absl::OkStatus();
     }
 
+    case kTfLiteBuiltinGather:
+      if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/2,
+                                    /*required_const_inputs=*/0,
+                                    /*required_outputs=*/1)
+               .ok() &&
+          !CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                    /*required_const_inputs=*/1,
+                                    /*required_outputs=*/1)
+               .ok()) {
+        return absl::InvalidArgumentError(
+            "Op can only handle 1 or 2 operand(s).");
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
+        return absl::UnimplementedError("Does not accept INT32 input.\n");
+      }
+      if (op_sig.inputs[1].dims.size() != 1) {
+        return absl::UnimplementedError("Only support 1D indices\n");
+      }
+      return op_sig.inputs.at(1).type == kTfLiteInt32
+                 ? absl::OkStatus()
+                 : absl::UnimplementedError("Only accept INT32 indices\n");
+
     case kTfLiteBuiltinHardSwish:
       return CheckInputsOutputs(op_sig, /*required_runtime_inputs=*/1,
                                 /*required_outputs=*/1);
@@ -683,7 +705,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
       return absl::OkStatus();
-
+    case kTfLiteBuiltinSelect:
     case kTfLiteBuiltinSelectV2:
       return CheckSelectV2GpuDelegateCompatibility(op_sig);
 
@@ -820,6 +842,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     }
 
     case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2:
     case kTfLiteBuiltinMirrorPad: {
       if (opcode == kTfLiteBuiltinMirrorPad) {
         const TfLiteMirrorPaddingParams* tf_options;
@@ -830,6 +853,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
               absl::StrCat("Only Reflective padding is supported for Mirror "
                            "Pad operation. But node has ",
                            tf_options->mode));
+        }
+      } else if (opcode == kTfLiteBuiltinPadv2 && op_sig.inputs.size() == 3) {
+        if (op_sig.inputs.at(2).type != kTfLiteFloat32) {
+          return absl::InvalidArgumentError(
+              "constant_values must be a scalar float");
         }
       }
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
@@ -861,6 +889,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
     case kTfLiteBuiltinRsqrt:
+    case kTfLiteBuiltinSign:
     case kTfLiteBuiltinSin:
     case kTfLiteBuiltinSqrt:
     case kTfLiteBuiltinSquare:

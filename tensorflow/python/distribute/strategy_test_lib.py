@@ -47,6 +47,7 @@ from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import optimizer
@@ -485,7 +486,7 @@ class DistributionTestBase(test.TestCase):
         run_and_concatenate(strategy, i)
 
   def _test_trainable_variable(self, strategy):
-    for cls in [variables.VariableV1, variables.Variable]:
+    for cls in [variable_v1.VariableV1, variables.Variable]:
       with strategy.scope():
         v1 = cls(1.0)
         self.assertEqual(True, v1.trainable)

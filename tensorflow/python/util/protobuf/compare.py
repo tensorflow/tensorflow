@@ -70,15 +70,27 @@ from google.protobuf import message
 from google.protobuf import text_format
 
 
+# TODO(alankelly): Distinguish between signalling and quiet NaNs.
 def isClose(x, y, relative_tolerance):  # pylint: disable=invalid-name
-  """Returns True if x is close to y given the relative tolerance.
+  """Returns True if x is close to y given the relative tolerance or if x and y are both inf, both -inf, or both NaNs.
+
+  This function does not distinguish between signalling and non-signalling NaN.
 
   Args:
     x: float value to be compared
     y: float value to be compared
-    relative_tolerance: float, relative tolerance.  Returns false if x or y is
-      'inf' or 'nan'
+    relative_tolerance: float. The allowable difference between the two values
+      being compared is determined by multiplying the relative tolerance by the
+      maximum of the two values. If this is not provided, then all floats are
+      compared using string comparison.
   """
+  # NaNs are considered equal.
+  if math.isnan(x) or math.isnan(y):
+    return math.isnan(x) == math.isnan(y)
+
+  if math.isinf(x) or math.isinf(y):
+    return x == y
+
   return abs(x - y) <= relative_tolerance * max(abs(x), abs(y))
 
 
@@ -209,54 +221,6 @@ def assertProtoEqual(
         difflib.unified_diff(a_str.splitlines(True), b_str.splitlines(True)))
     if diff:
       self.fail('%s :\n%s' % (msg, diff))
-
-
-def FindNans(pb):
-  """Checks  number fields of type flaot and double for NaN.
-
-  Recurses into nested objects.
-
-  Args:
-    pb: proto2 message.
-
-  Returns:
-    True if pb contains NaN.
-  """
-  result = False
-  for desc, values in pb.ListFields():
-    if desc.label != descriptor.FieldDescriptor.LABEL_REPEATED:
-      values = [values]
-
-    if (
-        desc.type == descriptor.FieldDescriptor.TYPE_FLOAT
-        or desc.type == descriptor.FieldDescriptor.TYPE_DOUBLE
-    ):
-      for x in values:
-        if math.isnan(x):
-          return True
-
-    if (
-        desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE
-        or desc.type == descriptor.FieldDescriptor.TYPE_GROUP
-    ):
-      if (
-          desc.type == descriptor.FieldDescriptor.TYPE_MESSAGE
-          and desc.message_type.has_options
-          and desc.message_type.GetOptions().map_entry
-      ):
-        # This is a map, only recurse if the values have a message type.
-        if (
-            desc.message_type.fields_by_number[2].type
-            == descriptor.FieldDescriptor.TYPE_MESSAGE
-        ):
-          for v in six.itervalues(values):
-            result |= FindNans(v)
-      else:
-        for v in values:
-          # recursive step
-          result |= FindNans(v)
-
-  return result
 
 
 def NormalizeNumberFields(pb):

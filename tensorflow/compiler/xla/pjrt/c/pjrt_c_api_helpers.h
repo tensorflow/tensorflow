@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -96,10 +97,10 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
-tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
 
-PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code);
+PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code);
 
 // Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.
 PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type);
@@ -146,6 +147,13 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
                                      size_t expected_size, size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
+
+// Releases `chunk`.
+PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);
+
+// Returned PjRtChunk takes ownership of data in PJRT_Chunk (i.e. chunk.deleter
+// should not be called).
+xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 
 }  // namespace pjrt
 

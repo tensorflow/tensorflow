@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -42,6 +41,7 @@ namespace {
 
 using linalg::LinalgOp;
 using tensor::ExtractOp;
+using tensor::ExtractSliceOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
 
@@ -63,37 +63,6 @@ struct FoldTensorFromElementsIntoInsertSlice
     rewriter.replaceOpWithNewOp<tensor::InsertOp>(
         insertSliceOp, fromElementsOp.getElements().front(),
         insertSliceOp.getDest(), indices);
-    return success();
-  }
-};
-
-// Fold `gml_st.set_yield(tensor.from_elements(x) -> tensor<1x1xf32>)` into
-//      `gml_st.set_yield(x)` for single-element tensors.
-struct FoldTensorFromElementsIntoSetYield
-    : public OpRewritePattern<gml_st::SetYieldOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(gml_st::SetYieldOp yieldOp,
-                                PatternRewriter &rewriter) const override {
-    bool isFoldingPossible = false;
-    SmallVector<Value> newSrcs;
-    for (auto [src, set] : llvm::zip(yieldOp.getSrcs(), yieldOp.getSets())) {
-      auto fromElementsOp = src.getDefiningOp<FromElementsOp>();
-      if (!fromElementsOp) continue;
-
-      if (hasSingleElement(fromElementsOp.getType())) {
-        newSrcs.push_back(fromElementsOp.getElements().front());
-        isFoldingPossible = true;
-        continue;
-      }
-      newSrcs.push_back(src);
-    }
-
-    if (!isFoldingPossible) return failure();
-
-    // Update in-place to make sure that the accumulator regions don't get lost.
-    rewriter.updateRootInPlace(
-        yieldOp, [&]() { yieldOp.getSrcsMutable().assign(newSrcs); });
     return success();
   }
 };
@@ -136,9 +105,17 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
   }
 };
 
+// Get reassociation indices to collapse first dimension.
+SmallVector<ReassociationIndices> getCollapseFirstDimReassociation(
+    unsigned rank) {
+  SmallVector<ReassociationIndices> result{{0, 1}};
+  for (unsigned i = 2; i < rank; ++i) result.push_back({i});
+  return result;
+}
+
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
 // startIndices has a different shape.
-Optional<SmallVector<Value>> extractStartIndices(
+std::optional<SmallVector<Value>> extractStartIndices(
     ImplicitLocOpBuilder &b, TypedValue<ShapedType> startIndices) {
   if (startIndices.getType().getRank() != 2 ||
       startIndices.getType().getDimSize(0) != 1) {
@@ -271,7 +248,7 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
   if (!bbArg.hasOneUse()) return failure();
 
   Operation *user = *bbArg.getUsers().begin();
-  auto extractOp = dyn_cast<tensor::ExtractOp>(user);
+  auto extractOp = dyn_cast<ExtractOp>(user);
   if (!extractOp) return failure();
 
   Operation *terminator = forOp.getBody()->getTerminator();
@@ -282,8 +259,8 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(forOp);
   Location loc = forOp.getLoc();
-  Value extractedElement = rewriter.create<tensor::ExtractOp>(
-      loc, iterOperand.get(), extractOp.getIndices());
+  Value extractedElement = rewriter.create<ExtractOp>(loc, iterOperand.get(),
+                                                      extractOp.getIndices());
   auto newForOp = rewriter.create<scf::ForOp>(
       loc, forOp.getLowerBound(), forOp.getUpperBound(), forOp.getStep(),
       ValueRange{extractedElement});
@@ -302,7 +279,7 @@ LogicalResult hoistTensorExtractFromForOp(scf::ForOp forOp,
   // element.
   Operation *newTerminator = newForOp.getBody()->getTerminator();
   rewriter.setInsertionPointAfter(newTerminator);
-  Value elemOfYieldedTensor = rewriter.create<tensor::ExtractOp>(
+  Value elemOfYieldedTensor = rewriter.create<ExtractOp>(
       loc, terminator->getOperand(0), extractOp.getIndices());
   rewriter.replaceOpWithNewOp<scf::YieldOp>(newTerminator, elemOfYieldedTensor);
 
@@ -350,11 +327,11 @@ LogicalResult hoistTensorExtractFromIfOp(scf::IfOp ifOp,
     llvm::SmallVector<Value> zeroIndices(
         unscalarizedResultType[i].cast<RankedTensorType>().getRank(), zero);
     rewriter.setInsertionPoint(scalarizedOp.thenYield());
-    Value thenScalar = rewriter.createOrFold<tensor::ExtractOp>(
+    Value thenScalar = rewriter.createOrFold<ExtractOp>(
         loc, scalarizedOp.thenYield().getOperand(i), zeroIndices);
     scalarizedOp.thenYield().setOperand(i, thenScalar);
     rewriter.setInsertionPoint(scalarizedOp.elseYield());
-    Value elseScalar = rewriter.createOrFold<tensor::ExtractOp>(
+    Value elseScalar = rewriter.createOrFold<ExtractOp>(
         loc, scalarizedOp.elseYield().getOperand(i), zeroIndices);
     scalarizedOp.elseYield().setOperand(i, elseScalar);
   }
@@ -376,22 +353,26 @@ LogicalResult hoistTensorExtractFromIfOp(scf::IfOp ifOp,
 
 struct ScalarizationPass
     : public impl::ScalarizationPassBase<ScalarizationPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     auto func = getOperation();
-    auto *context = &getContext();
+    auto *ctx = &getContext();
 
-    RewritePatternSet patterns(context);
-    patterns.add<ScalarizeLinalgOp, FoldTensorFromElementsIntoInsertSlice,
-                 FoldTensorFromElementsIntoSetYield>(context);
+    RewritePatternSet patterns(ctx);
+    patterns.add<ScalarizeLinalgOp, FoldTensorFromElementsIntoInsertSlice>(ctx);
     patterns.add(hoistTensorExtractFromForOp);
     patterns.add(hoistTensorExtractFromIfOp);
-    patterns.add(scalarizeConcatenateOp);
     patterns.add(scalarizeDynamicBroadcastInDimOp);
-    patterns.add(scalarizeGatherOp);
     patterns.add(scalarizeReverseOp);
-    patterns.add(scalarizeScatterOp);
 
-    FromElementsOp::getCanonicalizationPatterns(patterns, context);
+    if (scalarizeAllThlo) {
+      patterns.add(scalarizeConcatenateOp);
+      patterns.add(scalarizeGatherOp);
+      patterns.add(scalarizeScatterOp);
+    }
+
+    FromElementsOp::getCanonicalizationPatterns(patterns, ctx);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
   }
@@ -428,8 +409,7 @@ LogicalResult scalarizeConcatenateOp(thlo::ConcatenateOp concatenateOp,
   }
 
   auto materializeAndInsert = [&](OpBuilder &b, Location l, Value input) {
-    Value slice =
-        b.create<tensor::ExtractSliceOp>(l, input, offsets, sizes, strides);
+    Value slice = b.create<ExtractSliceOp>(l, input, offsets, sizes, strides);
     return b.create<tensor::InsertSliceOp>(l, slice, initTensor, offsets, sizes,
                                            strides);
   };
@@ -504,8 +484,8 @@ LogicalResult scalarizeGatherOp(thlo::GatherOp gatherOp,
 
         // Materialize the value and yield it.
         SmallVector<OpFoldResult> ones(initRank, oneAttr);
-        Value val = nestedBuilder.create<tensor::ExtractOp>(bodyLoc, operand,
-                                                            readIndices);
+        Value val =
+            nestedBuilder.create<ExtractOp>(bodyLoc, operand, readIndices);
         Value updatedInit = nestedBuilder.create<tensor::InsertOp>(
             bodyLoc, val, loopInits.front(), ivs);
 
@@ -519,6 +499,19 @@ LogicalResult scalarizeGatherOp(thlo::GatherOp gatherOp,
 LogicalResult scalarizeLinalgOp(LinalgOp linalgOp, PatternRewriter &rewriter) {
   // Fail if not every argument is a scalar or a single-element tensor.
   if (!hasSingleElementOperandsAndResults(linalgOp)) return failure();
+
+  // Do not scalarize linalg::FillOp that is only used by DPS ops as init
+  // operands.
+  if (isa<linalg::FillOp>(linalgOp)) {
+    if (llvm::all_of(linalgOp->getUses(), [&](OpOperand &use) {
+          Operation *user = use.getOwner();
+          return isa<DestinationStyleOpInterface>(user) &&
+                 llvm::is_contained(cast<DestinationStyleOpInterface>(user)
+                                        .getDpsInitOperands(),
+                                    &use);
+        }))
+      return failure();
+  }
 
   // Load the data corresponding to the block arguments that
   // represent input operands.
@@ -554,10 +547,11 @@ LogicalResult scalarizeReverseOp(thlo::ReverseOp reverseOp,
   return scalarizeOp(reverseOp, rewriter, input, output);
 }
 
-LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
-                                 PatternRewriter &rewriter) {
+FailureOr<scf::IfOp> rewriteScatterOpAsIfOp(thlo::ScatterOp scatterOp,
+                                            PatternRewriter &rewriter) {
   Location loc = scatterOp.getLoc();
   ImplicitLocOpBuilder b(loc, rewriter);
+  b.setInsertionPoint(scatterOp);
 
   auto scatterIndices = extractStartIndices(b, scatterOp.getIndices());
   if (!scatterIndices) return failure();
@@ -607,29 +601,34 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
 
           // Create rank-reducing `tensor.extract_slice` to avoid insertion of
           // `tensor.collapse_shape` to get rid of the outer size-1 dimension.
-          RankedTensorType resultType =
-              tensor::ExtractSliceOp::inferCanonicalRankReducedResultType(
-                  /*resultRank=*/updatesRank - 1,
-                  updatesType.cast<RankedTensorType>(), offsets,
-                  updatesDimSizes, strides);
-          Value extracted = thenBuilder.create<tensor::ExtractSliceOp>(
-              thenLoc, resultType, updates, offsets, updatesDimSizes, strides);
+          Value extracted = thenBuilder.create<ExtractSliceOp>(
+              thenLoc, updates, offsets, updatesDimSizes, strides);
+          Value collapsed = thenBuilder.create<tensor::CollapseShapeOp>(
+              thenLoc, extracted,
+              getCollapseFirstDimReassociation(updatesRank));
 
           // Insert resized `updates` into `init`.
           Value inserted = thenBuilder.create<tensor::InsertSliceOp>(
-              thenLoc, extracted, init, collapsedOffsets, collapsedSizes,
+              thenLoc, collapsed, init, collapsedOffsets, collapsedSizes,
               collapsedStrides);
           thenBuilder.create<scf::YieldOp>(thenLoc, inserted);
           return;
         }
 
-        // Extract a slice form `init`.
-        Value extracted = thenBuilder.create<tensor::ExtractSliceOp>(
+        // Extract a slice for `init`.
+        Value extracted = thenBuilder.create<ExtractSliceOp>(
             thenLoc, init, collapsedOffsets, collapsedSizes, collapsedStrides);
+
+        // Insert indentity slice for `updates`.
+        Value updatesSlice = thenBuilder.create<ExtractSliceOp>(
+            thenLoc, updates,
+            SmallVector<OpFoldResult>(updatesRank, b.getIndexAttr(0)),
+            updatesDimSizes,
+            SmallVector<OpFoldResult>(updatesRank, b.getIndexAttr(1)));
 
         // Reduce `updates` into that slice.
         auto reduced = thenBuilder.create<linalg::ReduceOp>(
-            thenLoc, extracted.getType().cast<RankedTensorType>(), updates,
+            thenLoc, extracted.getType().cast<RankedTensorType>(), updatesSlice,
             extracted, ArrayRef<int64_t>({0}));
         reduced.getRegion().takeBody(scatterOp.getBodyRegion());
 
@@ -649,11 +648,19 @@ LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
         elseBuilder.create<scf::YieldOp>(elseLoc, init);
       });
   rewriter.replaceOp(scatterOp, ifOp.getResults());
-  return success();
+  return ifOp;
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {
-  return std::make_unique<ScalarizationPass>();
+LogicalResult scalarizeScatterOp(thlo::ScatterOp scatterOp,
+                                 PatternRewriter &rewriter) {
+  return rewriteScatterOpAsIfOp(scatterOp, rewriter);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass(
+    bool scalarizeAllThlo) {
+  ScalarizationPassOptions opts;
+  opts.scalarizeAllThlo = scalarizeAllThlo;
+  return std::make_unique<ScalarizationPass>(opts);
 }
 
 }  // namespace gml_st

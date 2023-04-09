@@ -15,7 +15,6 @@ cuda_py_test(
     srcs = ["custom_gradient_memory_test.py"],
     xla_enable_strict_auto_jit = False,  # XLA are enabled explicitly in XLA memory tests.
     deps = [
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/xla/service:hlo_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
@@ -28,6 +27,7 @@ cuda_py_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -41,19 +41,19 @@ tpu_py_test(
     disable_tfrt = True,
     main = "custom_gradient_memory_test.py",
     deps = [
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/compiler/xla/service:hlo_proto_py",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/platform:test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/tpu:tpu_strategy_util",
+        "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )

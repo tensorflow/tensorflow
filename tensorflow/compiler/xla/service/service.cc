@@ -62,7 +62,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/util/ptr_util.h"
 
 namespace xla {
 namespace {

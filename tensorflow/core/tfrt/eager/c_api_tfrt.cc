@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -50,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat_eager.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
@@ -289,6 +290,24 @@ int64_t GetNextLocationId() {
   static std::atomic<int64_t> id(0);
   return id.fetch_add(1, std::memory_order_relaxed);
 }
+
+// TODO(b/161370736): Have a formal method to convert between TF's and TFRT's
+// device name. Currently TFRT adopts the suffix of TF's device name,
+// e.g. CPU:0.
+tfrt::Expected<const char*> ConvertTfDeviceNameToTfrt(
+    const char* device_name, tensorflow::EagerContext* eager_context) {
+  // NOTE(fishx): We need to get tf_device first because DeviceMgr in current TF
+  // allows us get the device with simplified name like "CPU:0". However, TFRT
+  // DeviceManager only allows get device via its fullname.
+  tensorflow::Device* tf_device;
+  tensorflow::Status s =
+      eager_context->FindDeviceFromName(device_name, &tf_device);
+  if (!s.ok()) {
+    return MakeStringError(s.error_message());
+  }
+  return tf_device->name().c_str();
+}
+
 }  // namespace
 
 tensorflow::DataType TensorInterface::Type() const {
@@ -538,7 +557,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Failed to build a RequestContext: ", req_ctx.takeError()));
     return nullptr;
   }
@@ -552,7 +571,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
   }
   if (target_av->IsError()) {
     *status = tensorflow::Status(
-        tensorflow::error::Code::UNKNOWN,
+        absl::StatusCode::kUnknown,
         StrCat("Cannot resolve tensor: ", target_av->GetError().message()));
     return nullptr;
   }
@@ -1100,6 +1119,11 @@ std::vector<std::string> ContextInterface::ListFunctionNames() {
   return GetEagerContext()->ListFunctionNames();
 }
 
+tensorflow::ImmediateExecutionContext::CacheStats
+ContextInterface::GetCacheStats() {
+  return GetEagerContext()->GetCacheStats();
+}
+
 tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   // TODO(tfrt-devs): We need to ensure all invocations of this function is
   // finished before removing it.
@@ -1107,9 +1131,19 @@ tensorflow::Status ContextInterface::RemoveFunction(const std::string& func) {
   return GetEagerContext()->RemoveFunction(func);
 }
 
+tensorflow::Status ContextInterface::AddRemoveFunctionNotifier(
+    const std::string& func, std::function<void()> notifier) {
+  return GetEagerContext()->AddRemoveFunctionNotifier(func, notifier);
+}
+
 const tensorflow::FunctionDef* ContextInterface::FindFunctionDef(
     const std::string& name) const {
   return GetEagerContext()->FindFunctionDef(name);
+}
+
+tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>
+ContextInterface::FindRecord(const std::string& name) const {
+  return GetEagerContext()->FindRecord(name);
 }
 
 const tensorflow::DeviceNameUtils::ParsedName&

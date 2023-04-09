@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/core/async/c/async_kernel.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-// TODO(b/191883048): This interface should only depend on C API instead of
-// internal definitions.
-#include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/c/types.h"
 
 namespace tflite {
 namespace delegates {
@@ -33,9 +31,7 @@ namespace delegates {
 class BackendAsyncKernelInterface {
  public:
   BackendAsyncKernelInterface();
-  virtual ~BackendAsyncKernelInterface() {
-    if (kernel_) delete kernel_;
-  }
+  virtual ~BackendAsyncKernelInterface() { TfLiteAsyncKernelDelete(kernel_); }
 
   // Returns the TfLiteAsyncKernel instance.
   // kernel_ will be filled with the implementation of the class.
@@ -120,8 +116,8 @@ class BackendAsyncKernelInterface {
   // Returns true if the attribute map type is recognizable and there's no
   // conflicting attribute.
   virtual bool ReconcileRestrictions(
-      TfLiteOpaqueContext* context, TfLiteOpaqueNode* node, int tensor_index,
-      const TfLiteAttributeMap* user_provided_attributes,
+      const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node,
+      int tensor_index, const TfLiteAttributeMap* user_provided_attributes,
       TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const = 0;
 
   // Sets the input / output buffer / sync attributes.

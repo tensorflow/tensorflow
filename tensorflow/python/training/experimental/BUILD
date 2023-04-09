@@ -12,17 +12,19 @@ py_library(
     srcs = ["loss_scale.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -39,6 +41,7 @@ py_library(
         "//tensorflow/python:smart_cond",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/training:optimizer",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -63,6 +66,7 @@ py_test(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/training:momentum",
         "@absl_py//absl/testing:parameterized",
@@ -77,6 +81,7 @@ py_test(
     deps = [
         ":loss_scale",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "@absl_py//absl/testing:parameterized",
@@ -87,6 +92,7 @@ py_library(
     name = "mixed_precision_global_state",
     srcs = ["mixed_precision_global_state.py"],
     srcs_version = "PY3",
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(
@@ -98,7 +104,8 @@ py_library(
         ":loss_scale_optimizer",
         ":mixed_precision_global_state",
         "//tensorflow/python:config",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

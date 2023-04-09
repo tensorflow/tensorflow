@@ -51,6 +51,8 @@ class LoadDatasetOp : public DatasetOpKernel {
  private:
   // Dataset classes for different formats. V1 loads the output of a
   // `SaveDataset()`. V2 loads the output of a `DistributedSaveDataset()`.
+  // TODO(b/250921378): Unify the file format for distributed and
+  // non-distributed save so we only need to keep V2.
   class DatasetV1;
   class DatasetV2;
 

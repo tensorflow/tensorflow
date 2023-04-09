@@ -257,7 +257,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
 
-  auto* r = env_->rendezvous_mgr->Find(request->context_id());
+  tsl::core::RefCountPtr<RemoteRendezvous> r =
+      env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
   if (VLOG_IS_ON(2)) {
@@ -272,6 +273,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       request->server_def().default_session_config().isolate_session_state()));
   int64_t context_id = request->context_id();
   std::function<void()> session_destroyer = [this, context_id, session_name]() {
+    env_->rendezvous_mgr->Cleanup(context_id);
     auto s = env_->session_mgr->DeleteSession(session_name);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to destroy worker session '" << session_name
@@ -290,6 +292,14 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   // Set the rendezvous as context-global instance for eager op-by-op execution.
   r->SetRemoteEagerContextDefault();
 
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
+      [worker_session, this](const int64_t step_id) {
+        tsl::core::RefCountPtr<RemoteRendezvous> r =
+            env_->rendezvous_mgr->Find(step_id);
+        r->Initialize(worker_session.get()).IgnoreError();
+        return r.release();
+      };
+
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
             << " eager service context with rendezvous_id on host "
             << port::Hostname() << " " << worker_session->worker_name();
@@ -297,8 +307,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, worker_session->cluster_flr(),
-      env_->collective_executor_mgr.get());
+      request->async(), device_mgr, false, r.release(),
+      worker_session->cluster_flr(), env_->collective_executor_mgr.get());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -318,10 +328,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   auto remote_mgr =
       std::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
-      env_, worker_session, std::move(remote_eager_workers),
-      worker_session->remote_device_mgr(), remote_workers,
-      request->context_id(), request->context_view_id(), cluster_flr,
-      std::move(remote_mgr), std::move(session_destroyer));
+      std::move(remote_eager_workers), worker_session->remote_device_mgr(),
+      remote_workers, request->context_id(), request->context_view_id(),
+      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr),
+      std::move(session_destroyer));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();
@@ -348,7 +358,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
-            const auto& coord_task = coord_agent->GetOwnTask().value();
+            const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
                 "TF_DEFAULT_PREEMPTION_NOTICE_KEY",
                 absl::StrCat("/job:", coord_task.job_name(),

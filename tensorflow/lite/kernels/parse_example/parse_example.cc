@@ -555,10 +555,11 @@ Status FastParseExampleLite(
     tf::TensorShape values_shape;
     DCHECK_EQ(max_num_features % config.dense[d].elements_per_stride, 0);
     const size_t batch_size = GetStringCount(serialized);
-    values_shape.AddDim(batch_size);
-    values_shape.AddDim(max_num_elements);
+    TF_RETURN_IF_ERROR(values_shape.AddDimWithStatus(batch_size));
+    TF_RETURN_IF_ERROR(values_shape.AddDimWithStatus(max_num_elements));
     for (int i = 1; i < config.dense[d].shape.dims(); ++i) {
-      values_shape.AddDim(config.dense[d].shape.dim_size(i));
+      TF_RETURN_IF_ERROR(
+          values_shape.AddDimWithStatus(config.dense[d].shape.dim_size(i)));
     }
     TfLiteTensor* values = result->dense_values[d];
     const size_t num_elements = GetTensorShape(values).FlatSize();

@@ -750,7 +750,7 @@ tsl::Status MIOpenSupport::Init() {
     }
   }
 
-  return tsl::Status{tsl::error::INTERNAL,
+  return tsl::Status{absl::StatusCode::kInternal,
                      absl::StrCat("miopen library could not create a handle: ",
                                   ToString(status))};
 }
@@ -1878,7 +1878,7 @@ class MixinBase<void> {};
 #define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                              \
   if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
     string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
-    SetFailure(::tsl::Status(tsl::error::UNKNOWN, error_msg));           \
+    SetFailure(::tsl::Status(absl::StatusCode::kUnknown, error_msg));    \
     LOG(ERROR) << error_msg;                                             \
     return;                                                              \
   }
@@ -2044,7 +2044,7 @@ class MIOpenRnnSequenceTensorDescriptor
       string error_msg =
           absl::StrCat("sequence length must be positive: ", seq_length);
       LOG(ERROR) << error_msg;
-      SetFailure(tsl::Status(tsl::error::UNKNOWN, error_msg));
+      SetFailure(tsl::Status(absl::StatusCode::kUnknown, error_msg));
       return;
     }
     auto status = wrap::miopenCreateTensorDescriptor(&handle);
@@ -2663,7 +2663,7 @@ tsl::Status MIOpenSupport::DoCtcLoss(
     int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "MIOpenCTCLossDescriptor is supported only when the "
                        "DataType is float");
   }
@@ -2693,14 +2693,14 @@ MIOpenSupport::createRnnDescriptor(
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "ROCm MIOpen only supports packed input output.");
   }
 
   bool use_projection = cell_size != 0 && hidden_size < cell_size;
   if (use_projection) {
     return tsl::Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         "ROCm MIOpen does not support RNN ProjectionLayers yet.");
   }
 
@@ -3111,14 +3111,15 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       timer.reset(new GpuTimer(parent_));
       if (!timer->Init()) {
-        return tsl::Status(tsl::error::INTERNAL, "Failed to init timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to init timer");
       }
       // The start and stop of the timer should be as close to the MIOpen call
       // as possible. It is still possible for other threads to issue workload
       // on to this stream. So it could take multiple profiling measurements.
       if (!timer->Start(AsGpuStream(stream))) {
         timer->Destroy();
-        return tsl::Status(tsl::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(absl::StatusCode::kInternal,
+                           "Failed to start timer");
       }
     }
 
@@ -3190,7 +3191,7 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
         timer->Destroy();
-        return tsl::Status(tsl::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
       }
       if (status == miopenStatusSuccess) {
         dnn::AlgorithmDesc algotype(algo_id_, false);
@@ -3281,7 +3282,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
           filter_descriptor, filter_data, output_descriptor, output_data,
           convolution_descriptor, scratch_allocator, &profile_results)) {
     return tsl::Status(
-        tsl::error::UNKNOWN,
+        absl::StatusCode::kUnknown,
         "GetConvolveRunners: GetMIOpenConvolveAlgorithms failed");
   }
 
@@ -4137,7 +4138,7 @@ tsl::Status MIOpenSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "MIOpen does not support pooling for double type yet");
   }
 
@@ -4296,7 +4297,7 @@ tsl::Status MIOpenSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return tsl::Status(tsl::error::INVALID_ARGUMENT,
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
                        "MIOpen does not support pooling for double type yet");
   }
 

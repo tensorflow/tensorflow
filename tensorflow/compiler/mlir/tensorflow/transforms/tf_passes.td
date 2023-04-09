@@ -1240,14 +1240,14 @@ def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "Module
   let constructor = "TFTPU::CreateTPUResourceReadForWritePass()";
 }
 
-def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
-  let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
+def ExtractOutsideCompilationPass : Pass<"tf-extract-outside-compilation", "ModuleOp"> {
+  let summary = "Extracts device outside compilation computation to a separate tf_device.parallel_execute region.";
 
   let description = [{
     This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-    annotation, which denotes ops that should be run on CPU/host, from a TPU cluster.
+    annotation, which denotes ops that should be run on CPU/host, from a device cluster.
     Each outside compilation cluster is moved to
-    a tf_device.parallel_execute region. The TPU cluster is also moved to a
+    a tf_device.parallel_execute region. The device cluster is also moved to a
     tf_device.parallel_execute region. Communication ops between device and host are
     added to pass inputs/outputs to/from the outside compiled region.
 
@@ -1293,7 +1293,7 @@ def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation"
     ```
   }];
 
-  let constructor = "TFTPU::CreateTPUExtractOutsideCompilationPass()";
+  let constructor = "TFDevice::CreateExtractOutsideCompilationPass()";
 }
 
 def HoistReplicateInvariantResourceWritesPass : Pass<"tf-hoist-replicate-invariant-resource-writes", "mlir::func::FuncOp"> {
@@ -1779,6 +1779,31 @@ def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute
   }];
 
   let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
+}
+
+def ExtractTPUCopyWithDynamicShapeOpPass : Pass<"tf-extract-tpu-copy-with-dynamic-shape-op", "mlir::func::FuncOp"> {
+  let summary = "Extract the TPUCopyWithDynamicShapeOp out of the host launch and place it on device launch";
+
+  let description = [{
+    This pass looks for TPUCopyWithDynamicShapeOp which wraps in a
+    `tf_device.launch` with host device attribute. It extracts the ops and wrap
+    them in `tf_device.launch` with tpu device attribute so that ops can be
+    run on TPU instead of CPU while still being compiled on host.
+  }];
+
+  let constructor = "TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass()";
+}
+
+def TPUAnnotateDynamicShapeInputsPass : Pass<"tf-tpu-annotate-dynamic-shape-inputs", "ModuleOp"> {
+  let summary = "Annotate the inputs returned by TPUCopyWithDynamicShapeOp with dynamic shape";
+
+  let description = [{
+    This pass looks for the usage of the result of TPUCopyWithDynamicShapeOp
+    and sets the shape of these inputs to be dynamic shaped. This will ensure
+    that the generated HLO program is correctly reflecting the dynamic shape.
+  }];
+
+  let constructor = "TFTPU::CreateTPUAnnotateDynamicShapeInputsPass()";
 }
 
 def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting", "mlir::func::FuncOp"> {

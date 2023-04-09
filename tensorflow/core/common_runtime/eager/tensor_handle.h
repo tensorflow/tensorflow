@@ -120,7 +120,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
                                               EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
-  void Release() override;
+  // Templated struct `AutoReleaser` in
+  // core/runtime_fallback/runtime/kernel_utils.h needs a Release() method
+  // defined.
+  void Release();
 
   tensorflow::DataType DataType() const override;
   Status Shape(tensorflow::PartialTensorShape* shape) const override;
@@ -133,8 +136,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   const char* DeviceType(Status* status) const override;
   int DeviceId(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
-
-  ImmediateExecutionTensorHandle* Copy() override;
 
   // Subclasses may return True to instruct the string formatter
   // to use SummarizeValue instead of the NumPy formatter.
@@ -273,6 +274,8 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   }
 
   tensorflow::FullTypeDef FullType() const override { return full_type_; }
+
+  void SetFullType(FullTypeDef& full_type) { full_type_ = full_type; }
 
  private:
   friend class PackedTensorHandleTest;

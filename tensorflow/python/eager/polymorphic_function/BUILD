@@ -23,6 +23,7 @@ py_library(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
@@ -83,8 +84,22 @@ py_library(
         ":attributes",
         ":function_context",
         ":monomorphic_function",
+        ":tf_method_target",
         "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/core/function/polymorphism:function_cache",
+    ],
+)
+
+py_library(
+    name = "tf_method_target",
+    srcs = ["tf_method_target.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/python/autograph/impl:__pkg__",
+        "//tensorflow/python/eager:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -96,7 +111,9 @@ py_library(
     deps = [
         ":attributes",
         ":compiler_ir",
+        ":eager_function_run",
         ":function_spec",
+        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -125,9 +142,13 @@ cuda_py_test(
     ],
     # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
+        ":monomorphic_function",
+        ":polymorphic_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -147,13 +168,12 @@ cuda_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
-        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/core:ag_ctx",
+        "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
         "@absl_py//absl/testing:parameterized",
@@ -176,7 +196,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -201,9 +220,12 @@ tf_xla_py_test(
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_assert",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
     ],
 )
@@ -239,8 +261,10 @@ cuda_py_test(
     shard_count = 5,
     deps = [
         ":polymorphic_function",
+        "//tensorflow/python:cond",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:while_loop",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -255,6 +279,7 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":atomic_function",
+        ":eager_function_run",
         ":tracing_compiler",
     ],
 )
@@ -276,6 +301,9 @@ tf_py_test(
     srcs = ["quarantine_test.py"],
     python_version = "PY3",
     deps = [
+        ":monomorphic_function",
+        ":polymorphic_function",
+        ":quarantine",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -302,9 +330,6 @@ tf_py_test(
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -340,10 +365,19 @@ cuda_py_test(
 )
 
 py_library(
+    name = "eager_function_run",
+    srcs = ["eager_function_run.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/python/util:tf_export"],
+)
+
+py_library(
     name = "function_context",
     srcs = ["function_context.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/core/function/trace_type",
@@ -432,6 +466,7 @@ tf_xla_py_test(
     srcs = ["compiler_ir_test.py"],
     disabled_backends = [
         "cpu_ondemand",
+        "gpu_a100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",

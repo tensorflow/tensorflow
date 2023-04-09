@@ -29,52 +29,57 @@ namespace {
 
 TEST_F(OpenCLOperationTest, PaddingAppendWidth) {
   auto status = PaddingAppendWidthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
+}
+
+TEST_F(OpenCLOperationTest, PaddingAppendWidthConstValues) {
+  auto status = PaddingAppendWidthConstValuesTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingPrependWidth) {
   auto status = PaddingPrependWidthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingAppendHeight) {
   auto status = PaddingAppendHeightTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingPrependHeight) {
   auto status = PaddingPrependHeightTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingAppendChannels) {
   auto status = PaddingAppendChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingPrependChannels) {
   auto status = PaddingPrependChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingPrependChannelsX4) {
   auto status = PaddingPrependChannelsX4Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingComplex) {
   auto status = PaddingComplexTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingReflectWidth) {
   auto status = PaddingReflectWidthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, PaddingReflectChannels) {
   auto status = PaddingReflectChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

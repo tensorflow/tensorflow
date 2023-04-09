@@ -295,6 +295,13 @@ REGISTER_SELECT_GPU(complex128);
 #undef REGISTER_SELECT_GPU
 #endif
 
+REGISTER_KERNEL_BUILDER(
+    Name("Select").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectOp<GPUDevice, bfloat16>);
+REGISTER_KERNEL_BUILDER(
+    Name("SelectV2").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectV2Op<GPUDevice, bfloat16>);
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 

@@ -352,29 +352,29 @@ PyObject* PyCustomFloat_RichCompare(PyObject* a, PyObject* b, int op) {
   if (!SafeCastToCustomFloat<T>(a, &x) || !SafeCastToCustomFloat<T>(b, &y)) {
     return PyGenericArrType_Type.tp_richcompare(a, b, op);
   }
+  bool less = x < y;
+  bool equal = x == y;
+  bool greater = x > y;
   bool result;
   switch (op) {
     case Py_LT:
-      result = x < y;
+      result = less;
       break;
     case Py_LE:
-      result = x <= y;
+      result = less || equal;
       break;
     case Py_EQ:
-      result = x == y;
+      result = equal;
       break;
     case Py_NE:
-      result = x != y;
+      result = !equal;
       break;
     case Py_GT:
-      result = x > y;
+      result = greater;
       break;
     case Py_GE:
-      result = x >= y;
+      result = greater || equal;
       break;
-    default:
-      LOG(ERROR) << "Invalid op type " << op;
-      result = false;
   }
   return PyBool_FromLong(result);
 }
@@ -530,20 +530,18 @@ int NPyCustomFloat_Compare(const void* a, const void* b, void* arr) {
 
   T y;
   memcpy(&y, b, sizeof(T));
-  float fy(y);
-  float fx(x);
 
-  if (fx < fy) {
+  if (x < y) {
     return -1;
   }
-  if (fy < fx) {
+  if (y < x) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!Eigen::numext::isnan(fx) && Eigen::numext::isnan(fy)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (Eigen::numext::isnan(fx) && !Eigen::numext::isnan(fy)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;
@@ -640,13 +638,14 @@ template <typename T>
 int NPyCustomFloat_ArgMaxFunc(void* data, npy_intp n, npy_intp* max_ind,
                               void* arr) {
   const T* bdata = reinterpret_cast<const T*>(data);
+  static_assert(std::numeric_limits<T>::has_quiet_NaN);
   // Start with a max_val of NaN, this results in the first iteration preferring
   // bdata[0].
-  float max_val = std::numeric_limits<float>::quiet_NaN();
+  T max_val = std::numeric_limits<T>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
     // This condition is chosen so that NaNs are always considered "max".
-    if (!(static_cast<float>(bdata[i]) <= max_val)) {
-      max_val = static_cast<float>(bdata[i]);
+    if (!(bdata[i] <= max_val)) {
+      max_val = bdata[i];
       *max_ind = i;
       // NumPy stops at the first NaN.
       if (Eigen::numext::isnan(max_val)) {
@@ -661,13 +660,14 @@ template <typename T>
 int NPyCustomFloat_ArgMinFunc(void* data, npy_intp n, npy_intp* min_ind,
                               void* arr) {
   const T* bdata = reinterpret_cast<const T*>(data);
-  float min_val = std::numeric_limits<float>::quiet_NaN();
+  static_assert(std::numeric_limits<T>::has_quiet_NaN);
   // Start with a min_val of NaN, this results in the first iteration preferring
   // bdata[0].
+  T min_val = std::numeric_limits<T>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
     // This condition is chosen so that NaNs are always considered "min".
-    if (!(static_cast<float>(bdata[i]) >= min_val)) {
-      min_val = static_cast<float>(bdata[i]);
+    if (!(bdata[i] >= min_val)) {
+      min_val = bdata[i];
       *min_ind = i;
       // NumPy stops at the first NaN.
       if (Eigen::numext::isnan(min_val)) {
@@ -1163,43 +1163,14 @@ template <typename T>
 struct Ceil {
   T operator()(T a) { return T(std::ceil(static_cast<float>(a))); }
 };
-
-// Helper struct for getting a bit representation provided a byte size.
-template <int kNumBytes>
-struct GetUnsignedInteger;
-
-template <>
-struct GetUnsignedInteger<1> {
-  using type = uint8_t;
-};
-
-template <>
-struct GetUnsignedInteger<2> {
-  using type = uint16_t;
-};
-
-template <typename T>
-using BitsType = typename GetUnsignedInteger<sizeof(T)>::type;
-
-template <typename T>
-std::pair<BitsType<T>, BitsType<T>> SignAndMagnitude(T x) {
-  const BitsType<T> x_abs_bits =
-      Eigen::numext::bit_cast<BitsType<T>>(Eigen::numext::abs(x));
-  const BitsType<T> x_bits = Eigen::numext::bit_cast<BitsType<T>>(x);
-  const BitsType<T> x_sign = x_bits ^ x_abs_bits;
-  return {x_sign, x_abs_bits};
-}
-
 template <typename T>
 struct CopySign {
   T operator()(T a, T b) {
-    auto [a_sign, a_abs_bits] = SignAndMagnitude(a);
-    auto [b_sign, b_abs_bits] = SignAndMagnitude(b);
-    BitsType<T> rep = a_abs_bits | b_sign;
-    return Eigen::numext::bit_cast<T>(rep);
+    auto abs_a = Eigen::numext::abs(a);
+    bool b_sign = static_cast<bool>(Eigen::numext::signbit(b));
+    return b_sign ? -abs_a : abs_a;
   }
 };
-
 template <typename T>
 struct Exp {
   T operator()(T a) { return T(std::exp(static_cast<float>(a))); }
@@ -1230,12 +1201,13 @@ struct Heaviside {
     if (Eigen::numext::isnan(x)) {
       return x;
     }
-    auto [sign_x, abs_x] = SignAndMagnitude(x);
-    // x == 0
-    if (abs_x == 0) {
-      return h0;
+    if (x < T(0)) {
+      return T(0.0f);
     }
-    return sign_x ? T(0.0f) : T(1.0f);
+    if (x > T(0)) {
+      return T(1.0f);
+    }
+    return h0;  // x == 0
   }
 };
 template <typename T>
@@ -1332,22 +1304,18 @@ struct Rint {
 template <typename T>
 struct Sign {
   T operator()(T a) {
-    if (Eigen::numext::isnan(a)) {
-      return a;
+    if (a < T(0)) {
+      return T(-1);
     }
-    auto [sign_a, abs_a] = SignAndMagnitude(a);
-    if (abs_a == 0) {
-      return a;
+    if (a > T(0)) {
+      return T(1);
     }
-    return sign_a ? T(-1) : T(1);
+    return a;
   }
 };
 template <typename T>
 struct SignBit {
-  bool operator()(T a) {
-    auto [sign_a, abs_a] = SignAndMagnitude(a);
-    return sign_a;
-  }
+  bool operator()(T a) { return static_cast<bool>(Eigen::numext::signbit(a)); }
 };
 template <typename T>
 struct Sqrt {
@@ -1467,31 +1435,19 @@ struct Ge {
 };
 template <typename T>
 struct Maximum {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fa) || fa > fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(a) || a > b ? a : b; }
 };
 template <typename T>
 struct Minimum {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fa) || fa < fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(a) || a < b ? a : b; }
 };
 template <typename T>
 struct Fmax {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fb) || fa > fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(b) || a > b ? a : b; }
 };
 template <typename T>
 struct Fmin {
-  T operator()(T a, T b) {
-    float fa(a), fb(b);
-    return Eigen::numext::isnan(fb) || fa < fb ? a : b;
-  }
+  T operator()(T a, T b) { return Eigen::numext::isnan(b) || a < b ? a : b; }
 };
 
 template <typename T>
@@ -1519,40 +1475,35 @@ struct LogicalXor {
 
 template <typename T>
 struct NextAfter {
+  using BitsType =
+      typename Eigen::numext::get_integer_by_size<sizeof(T)>::unsigned_type;
   T operator()(T from, T to) {
-    BitsType<T> from_rep = Eigen::numext::bit_cast<BitsType<T>>(from);
-    BitsType<T> to_rep = Eigen::numext::bit_cast<BitsType<T>>(to);
     if (Eigen::numext::isnan(from) || Eigen::numext::isnan(to)) {
       return std::numeric_limits<T>::quiet_NaN();
     }
-    if (from_rep == to_rep) {
+    if (from == to) {
       return to;
     }
-    auto [from_sign, from_abs] = SignAndMagnitude(from);
-    auto [to_sign, to_abs] = SignAndMagnitude(to);
-    if (from_abs == 0) {
-      if (to_abs == 0) {
-        return to;
-      } else {
-        // Smallest subnormal signed like `to`.
-        return Eigen::numext::bit_cast<T>(
-            static_cast<BitsType<T>>(0x01 | to_sign));
-      }
+    CopySign<T> copysign;
+    if (from == T(0)) {
+      // Smallest subnormal signed like `to`.
+      return copysign(std::numeric_limits<T>::denorm_min(), to);
     }
-    BitsType<T> magnitude_adjustment =
-        (from_abs > to_abs || from_sign != to_sign)
-            ? static_cast<BitsType<T>>(-1)
-            : static_cast<BitsType<T>>(1);
-    BitsType<T> out_int = from_rep + magnitude_adjustment;
-    T out = Eigen::numext::bit_cast<T>(out_int);
     // Some non-IEEE compatible formats may have a representation for NaN
     // instead of -0, ensure we return a zero in such cases.
+    const bool from_is_bigger = from > to;
     if constexpr (!std::numeric_limits<T>::is_iec559) {
-      if (Eigen::numext::isnan(out)) {
-        return Eigen::numext::bit_cast<T>(BitsType<T>{0});
+      if (from == std::numeric_limits<T>::denorm_min() && from_is_bigger) {
+        return copysign(T(0), from);
       }
     }
-    return out;
+    const bool from_sign = static_cast<bool>(Eigen::numext::signbit(from));
+    const BitsType magnitude_adjustment = from_is_bigger != from_sign
+                                              ? static_cast<BitsType>(-1)
+                                              : static_cast<BitsType>(1);
+    const BitsType from_rep = Eigen::numext::bit_cast<BitsType>(from);
+    const BitsType out_int = from_rep + magnitude_adjustment;
+    return Eigen::numext::bit_cast<T>(out_int);
   }
 };
 

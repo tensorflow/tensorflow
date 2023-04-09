@@ -18,8 +18,10 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/IRMapping.h"
 
 namespace mlir {
@@ -34,15 +36,19 @@ bool hasTensorSemantics(Operation *op) {
          llvm::all_of(op->getOperandTypes(), isATensor);
 }
 
-LogicalResult peelLoop(RewriterBase &b, ParallelOp loopOp, int64_t idx,
-                       ParallelOp &result, Value &splitBound) {
+LogicalResult peelLoop(RewriterBase &b, scf::ForallOp loopOp, int64_t idx,
+                       scf::ForallOp &result, Value &splitBound) {
   if (!hasTensorSemantics(loopOp)) return failure();
 
-  Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
-        step = loopOp.getStep()[idx];
+  Location loc = loopOp.getLoc();
+  Value lb =
+      getValueOrCreateConstantIndexOp(b, loc, loopOp.getMixedLowerBound()[idx]);
+  Value ub =
+      getValueOrCreateConstantIndexOp(b, loc, loopOp.getMixedUpperBound()[idx]);
+  Value step =
+      getValueOrCreateConstantIndexOp(b, loc, loopOp.getMixedStep()[idx]);
   auto ubInt = getConstantIntValue(ub);
 
-  auto loc = loopOp.getLoc();
   AffineExpr exprLb, exprUb, exprStep;
   bindSymbols(b.getContext(), exprLb, exprUb, exprStep);
   // New upper bound: %ub - (%ub - %lb) mod %step
@@ -61,11 +67,12 @@ LogicalResult peelLoop(RewriterBase &b, ParallelOp loopOp, int64_t idx,
   // Create remainder loop.
   IRMapping bvm;
   for (const auto &[res, termDst] :
-       llvm::zip(loopOp.getResults(), loopOp.getLoopLikeOpInits())) {
+       llvm::zip(loopOp.getResults(), loopOp.getOutputs())) {
     bvm.map(termDst, res);
   }
   b.setInsertionPointAfter(loopOp);
-  auto remainderLoop = cast<ParallelOp>(b.clone(*loopOp.getOperation(), bvm));
+  auto remainderLoop =
+      cast<scf::ForallOp>(b.clone(*loopOp.getOperation(), bvm));
 
   Operation *remainderLoopOp = remainderLoop.getOperation();
 
@@ -80,15 +87,24 @@ LogicalResult peelLoop(RewriterBase &b, ParallelOp loopOp, int64_t idx,
   }
 
   // Set new loop bounds.
+  SmallVector<OpFoldResult> ubs = loopOp.getMixedUpperBound();
+  ubs[idx] = splitBound;
+  SmallVector<Value> dynamicUbs;
+  SmallVector<int64_t> staticUbs;
+  dispatchIndexOpFoldResults(ubs, dynamicUbs, staticUbs);
   b.updateRootInPlace(loopOp, [&]() {
-    SmallVector<Value> ubs = loopOp.getUpperBound();
-    ubs[idx] = splitBound;
-    loopOp.getUpperBoundMutable().assign(ubs);
+    loopOp.getDynamicUpperBoundMutable().assign(dynamicUbs);
+    loopOp.setStaticUpperBound(staticUbs);
   });
-  SmallVector<Value> lbs = remainderLoop.getLowerBound();
+
+  SmallVector<OpFoldResult> lbs = remainderLoop.getMixedLowerBound();
   lbs[idx] = splitBound;
+  SmallVector<Value> dynamicLbs;
+  SmallVector<int64_t> staticLbs;
+  dispatchIndexOpFoldResults(lbs, dynamicLbs, staticLbs);
   b.updateRootInPlace(remainderLoop, [&]() {
-    remainderLoop.getLowerBoundMutable().assign(lbs);
+    remainderLoop.getDynamicLowerBoundMutable().assign(dynamicLbs);
+    remainderLoop.setStaticLowerBound(staticLbs);
   });
 
   result = remainderLoop;
@@ -111,19 +127,19 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
 
 }  // namespace
 
-GmlStPeelingResult peelAllLoops(ParallelOp loop,
+GmlStPeelingResult peelAllLoops(scf::ForallOp loop,
                                 mlir::PatternRewriter &rewriter) {
   GmlStPeelingResult peelingResult;
 
   bool hasMainLoop = true;
-  for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
-    int64_t numLoops = loop.getNumLoops();
+  for (unsigned peeledIdx = 0; peeledIdx < loop.getRank(); ++peeledIdx) {
+    int64_t numLoops = loop.getRank();
     if (peeledIdx < 0 || numLoops <= peeledIdx) continue;
 
-    Value ub = loop.getUpperBound()[peeledIdx];
-    Value step = loop.getStep()[peeledIdx];
-    auto ubInt = getConstantIntValue(ub);
-    auto stepInt = getConstantIntValue(step);
+    OpFoldResult ubOfr = loop.getMixedUpperBound()[peeledIdx];
+    OpFoldResult stepOfr = loop.getMixedStep()[peeledIdx];
+    auto ubInt = getConstantIntValue(ubOfr);
+    auto stepInt = getConstantIntValue(stepOfr);
 
     // If the loop is smaller than the step, then append loop as tail. Needs to
     // be done only once.
@@ -135,7 +151,10 @@ GmlStPeelingResult peelAllLoops(ParallelOp loop,
       continue;
     }
 
-    ParallelOp remainderLoop;
+    Location loc = loop.getLoc();
+    Value ub = getValueOrCreateConstantIndexOp(rewriter, loc, ubOfr);
+    Value step = getValueOrCreateConstantIndexOp(rewriter, loc, stepOfr);
+    scf::ForallOp remainderLoop;
     Value splitBound;
     if (failed(peelLoop(rewriter, loop, peeledIdx, remainderLoop, splitBound)))
       continue;

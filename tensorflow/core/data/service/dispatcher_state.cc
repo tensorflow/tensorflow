@@ -95,19 +95,10 @@ Status DispatcherState::Apply(const Update& update) {
 void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
   std::string dataset_id = register_dataset.dataset_id();
-  int64_t fingerprint = register_dataset.fingerprint();
-  auto dataset = std::make_shared<Dataset>(dataset_id, fingerprint,
-                                           register_dataset.metadata());
+  auto dataset =
+      std::make_shared<Dataset>(dataset_id, register_dataset.metadata());
   DCHECK(!datasets_by_id_.contains(dataset_id));
   datasets_by_id_[dataset_id] = dataset;
-  if (!register_dataset.dedupe_by_dataset_id()) {
-    // Only stores the fingerprint if the user has not requested a dataset ID.
-    // If the user has requested a dataset ID, we will look up datasets by their
-    // IDs, not by fingerprints. Otherwise, an anonymous dataset can refer to
-    // a dataset with an explicit dataset ID.
-    DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
-    datasets_by_fingerprint_[fingerprint] = dataset;
-  }
   UpdateNextAvailableDatasetId();
 }
 
@@ -186,7 +177,8 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
   DCHECK(iteration->distributed_epoch_state.has_value());
   DistributedEpochState& state = iteration->distributed_epoch_state.value();
   int64_t provider_index = produce_split.split_provider_index();
-  DCHECK_EQ(produce_split.repetition(), state.repetitions[provider_index]);
+  DCHECK_GE(produce_split.repetition(), state.repetitions[provider_index]);
+  state.repetitions[provider_index] = produce_split.repetition();
   if (produce_split.finished()) {
     state.repetitions[provider_index]++;
     state.indices[provider_index] = 0;
@@ -333,16 +325,6 @@ Status DispatcherState::DatasetFromId(
   auto it = datasets_by_id_.find(id);
   if (it == datasets_by_id_.end()) {
     return errors::NotFound("Dataset id ", id, " not found");
-  }
-  dataset = it->second;
-  return OkStatus();
-}
-
-Status DispatcherState::DatasetFromFingerprint(
-    uint64 fingerprint, std::shared_ptr<const Dataset>& dataset) const {
-  auto it = datasets_by_fingerprint_.find(fingerprint);
-  if (it == datasets_by_fingerprint_.end()) {
-    return errors::NotFound("Dataset fingerprint ", fingerprint, " not found");
   }
   dataset = it->second;
   return OkStatus();

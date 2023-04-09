@@ -28,6 +28,8 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
   tensorflow::SessionOptions session_options;
   auto& config = session_options.config;
 
+  *config.mutable_graph_options() = options.compile_options.graph_options;
+
   config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_disable_meta_optimizer(!options.compile_options.enable_grappler);
@@ -71,7 +73,10 @@ void UpdateTpuTargetByBridgeCompatibility(
           tensorflow::TfrtDeviceInfraTarget::kTpurt;
     }
   }
-  if (!tfrt::CheckSpmdGraph(graph_def).ok()) {
+  // TODO(linchai): Once native support for SPMD models is fully rollout, remove
+  // the fallback logic.
+  if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
+        options.compile_options.tpu_fuse_ops)) {
     options.compile_options.device_target =
         tensorflow::TfrtDeviceInfraTarget::kTfFallback;
   }

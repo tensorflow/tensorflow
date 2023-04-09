@@ -110,6 +110,9 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
         result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($1)));";
       }
       break;
+    case OperationType::SIGN:
+      result = "$0 = sign($1);";
+      break;
     case OperationType::SIN:
       if (use_native_opencl_functions) {
         result = "$0 = convert_half4(native_sin(convert_float4($1)));";

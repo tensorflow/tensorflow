@@ -1957,6 +1957,15 @@ func.func @iota_f32() -> tensor<7x10xf32> {
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
 
+// CHECK-PRIMITIVE-LABEL: func @iota_f32
+// CHECK-PRIMITIVE: %[[EMPTY:.*]] = tensor.empty()
+// CHECK-PRIMITIVE: linalg.map outs(%[[EMPTY]] : tensor<7x10xf32>
+// CHECK-PRIMITIVE-SAME: {someattr}
+// CHECK-PRIMITIVE:        %[[INDEX:.*]] = linalg.index 1
+// CHECK-PRIMITIVE-NEXT:   %[[INT_CAST:.*]] = arith.index_cast %[[INDEX]] : index to i64
+// CHECK-PRIMITIVE-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i64 to f32
+// CHECK-PRIMITIVE-NEXT:   linalg.yield %[[FLOAT_CAST]]
+
 // -----
 
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>

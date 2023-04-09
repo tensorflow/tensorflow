@@ -22,7 +22,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetInputMap(OpKernelContext* ctx, int index, const TensorMap** ret_map) {
+inline Status GetInputMap(OpKernelContext* ctx, int index,
+                          const TensorMap** ret_map) {
   if (!TensorShapeUtils::IsScalar(ctx->input(index).shape())) {
     return errors::InvalidArgument("Input map must be a scalar. Saw: ",
                                    ctx->input(index).shape().DebugString());
@@ -38,10 +39,11 @@ Status GetInputMap(OpKernelContext* ctx, int index, const TensorMap** ret_map) {
 }
 
 // TODO(kattian): change into templated function
-Status ForwardInputOrCreateNewMap(OpKernelContext* ctx, int32_t input_index,
-                                  int32_t output_index,
-                                  const TensorMap& input_map,
-                                  TensorMap** output_map) {
+inline Status ForwardInputOrCreateNewMap(OpKernelContext* ctx,
+                                         int32_t input_index,
+                                         int32_t output_index,
+                                         const TensorMap& input_map,
+                                         TensorMap** output_map) {
   // Attempt to forward the input tensor to the output if possible.
   std::unique_ptr<Tensor> maybe_output = ctx->forward_input(
       input_index, output_index, DT_VARIANT, TensorShape{},

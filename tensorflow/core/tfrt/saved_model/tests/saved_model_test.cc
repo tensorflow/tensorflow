@@ -116,6 +116,50 @@ TEST(SavedModelTest, BasicV2) {
   EXPECT_EQ(output.flat<int32_t>()(0), 6);
 }
 
+TEST_P(SavedModelTest, OnlineCostAnalysis) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  //  x = tf.placeholder(tf.int32, shape=(3))
+  //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
+  //  r = tf.matmul(x, y)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.enable_online_cost_analysis = true;
+  options.enable_lazy_loading = true;
+  options.lazy_loading_use_graph_executor = true;
+  // This is an example feature that should continue to work with online cost
+  // analysis enabled.
+  options.graph_execution_options.compile_options.hoist_invariant_ops = true;
+
+  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                    /*tags=*/{"serve"});
+  TF_CHECK_OK(saved_model.status());
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  tfrt::SavedModel::RunOptions run_options;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK((*saved_model)->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+
+  outputs.clear();
+  TF_ASSERT_OK((*saved_model)->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({6}));
+}
+
 TEST(SavedModelTest, BasicInlineExecution) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
   // using the following python code:
@@ -830,7 +874,7 @@ TEST(SavedModelTest, Error) {
 
   ASSERT_FALSE(status.ok());
 
-  EXPECT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 
   EXPECT_TRUE(absl::StrContains(
       status.error_message(), "You must feed a value for placeholder tensor"));
@@ -982,9 +1026,6 @@ TEST(SavedModelTest, DeadlineExceeded) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-
-  // TODO(chky): Implement cancellation in MLRT.
-  if (options.graph_execution_options.enable_mlrt) return;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});

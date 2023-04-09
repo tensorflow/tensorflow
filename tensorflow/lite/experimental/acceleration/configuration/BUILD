@@ -165,6 +165,15 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "proto_to_flatbuffer_test",
+    srcs = ["proto_to_flatbuffer_test.cc"],
+    deps = [
+        ":proto_to_flatbuffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "flatbuffer_to_proto",
     srcs = [
@@ -273,8 +282,8 @@ cc_library(
     srcs = ["hexagon_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        "@com_google_absl//absl/memory",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
@@ -312,8 +321,8 @@ cc_library(
     ],
     deps = [
         ":configuration_fbs",
-        "@com_google_absl//absl/memory",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -384,9 +393,9 @@ cc_library(
     srcs = ["coreml_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        "@com_google_absl//absl/memory",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:macos": [
             "//tensorflow/lite/delegates/coreml:coreml_delegate",
