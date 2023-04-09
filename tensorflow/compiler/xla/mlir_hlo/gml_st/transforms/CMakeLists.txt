@@ -28,6 +28,7 @@ include_directories(BEFORE
 
 add_mlir_library(GmlStPasses
   add_debug_info/add_debug_info.cc
+  canonicalization/optimize_linalg_ops.cc
   collapse_shape/collapse_shape.cc
   collect_stats/collect_stats.cc
   compose_extract_insert_slice/compose_extract_insert_slice.cc

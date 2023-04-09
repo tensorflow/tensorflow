@@ -230,8 +230,8 @@ def FusionPlanningForCpuPass :
   let summary = "Create fusion clusters.";
   let constructor = "createFusionPlanningForCpuPass()";
   let dependentDialects = [
-    "::mlir::gml_st::GmlStDialect",
     "::mlir::arith::ArithDialect",
+    "::mlir::gml_st::GmlStDialect",
     "::mlir::linalg::LinalgDialect",
     "::mlir::tensor::TensorDialect"
   ];
@@ -265,5 +265,17 @@ def InlineFusionClustersPass :
   let constructor = "createInlineFusionClustersPass()";
   let dependentDialects = [
     "::mlir::gml_st::GmlStDialect",
+  ];
+}
+
+def OptimizeLinalgOpsPass
+    : Pass<"gml-st-optimize-linalg-ops-pass", "mlir::func::FuncOp"> {
+  let summary = "Canonicalization patterns for linalg ops.";
+  let constructor = "createOptimizeLinalgOpsPass()";
+
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::linalg::LinalgDialect",
+    "::mlir::tensor::TensorDialect"
   ];
 }
