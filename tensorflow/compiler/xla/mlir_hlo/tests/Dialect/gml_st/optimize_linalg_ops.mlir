@@ -96,3 +96,42 @@ func.func @map_all_constant_operand(%select: i1) -> tensor<32xf32> {
 // CHECK:          linalg.fill
 // CHECK-SAME:       ins(%[[VAL]]
 // CHECK-SAME:       outs(%[[INIT]]
+
+// -----
+
+func.func @broadcast_of_splat() -> tensor<32x64xf32> {
+  %c0 = arith.constant dense<0.0> : tensor<32xf32>
+  %init = tensor.empty() : tensor<32x64xf32>
+
+  %bcast = linalg.broadcast
+    ins(%c0: tensor<32xf32>)
+    outs(%init: tensor<32x64xf32>)
+    dimensions = [1]
+  func.return %bcast : tensor<32x64xf32>
+}
+// CHECK-LABEL:  @broadcast_of_splat
+// CHECK-DAG:      %[[CST:.*]] = arith.constant
+// CHECK-DAG:      %[[INIT:.*]] = tensor.empty
+// CHECK:          linalg.fill
+// CHECK-SAME:       ins(%[[CST]]
+// CHECK-SAME:       outs(%[[INIT]]
+
+// -----
+
+func.func @broadcast_of_single_element_tensor(%arg: tensor<f32>)
+    -> tensor<32xf32> {
+  %init = tensor.empty() : tensor<32xf32>
+  %bcast = linalg.broadcast
+    ins(%arg: tensor<f32>)
+    outs(%init: tensor<32xf32>)
+    dimensions = [0]
+  func.return %bcast : tensor<32xf32>
+}
+// CHECK-LABEL:  @broadcast_of_single_element_tensor
+// CHECK-SAME:       (%[[ARG:.*]]: tensor<f32>)
+
+// CHECK-DAG:      %[[INIT:.*]] = tensor.empty
+// CHECK-DAG:      %[[EXTRACT:.*]] = tensor.extract %[[ARG]]
+// CHECK:          linalg.fill
+// CHECK-SAME:       ins(%[[EXTRACT]]
+// CHECK-SAME:       outs(%[[INIT]]

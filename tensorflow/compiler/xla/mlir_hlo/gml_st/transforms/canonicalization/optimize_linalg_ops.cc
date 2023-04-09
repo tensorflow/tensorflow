@@ -18,9 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/transforms/passes.h"
-#include "llvm/ADT/STLExtras.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -34,16 +33,15 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir {
-namespace gml_st {
+namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_OPTIMIZELINALGOPSPASS
 #include "gml_st/transforms/passes.h.inc"
 
-std::optional<Value> getConstantOperandValue(PatternRewriter& rewriter,
-                                             Location loc, OpOperand* operand) {
-  auto* definingOp = operand->get().getDefiningOp();
+std::optional<Value> getSplatValue(PatternRewriter& rewriter, Location loc,
+                                   Value value) {
+  auto* definingOp = value.getDefiningOp();
   if (!definingOp) return std::nullopt;
 
   if (auto constantOp = dyn_cast_or_null<arith::ConstantOp>(definingOp)) {
@@ -56,10 +54,8 @@ std::optional<Value> getConstantOperandValue(PatternRewriter& rewriter,
         loc, denseElementsAttr.getSplatValue<Attribute>());
   }
 
-  if (auto fillOp = dyn_cast_or_null<linalg::FillOp>(definingOp)) {
+  if (auto fillOp = dyn_cast_or_null<linalg::FillOp>(definingOp))
     return fillOp.getInputs()[0];
-  }
-
   return std::nullopt;
 }
 
@@ -71,7 +67,7 @@ LogicalResult foldConstantOperandsIntoMap(linalg::MapOp op,
 
   for (auto [operand, bbArg] :
        llvm::zip(op.getDpsInputOperands(), op.getBody()->getArguments())) {
-    auto constantValue = getConstantOperandValue(rewriter, loc, operand);
+    auto constantValue = getSplatValue(rewriter, loc, operand->get());
     if (constantValue.has_value()) {
       mapping.map(bbArg, *constantValue);
     } else {
@@ -115,6 +111,27 @@ LogicalResult replaceConstantMapWithFill(linalg::MapOp op,
   return success();
 }
 
+// Replace linalg.broadcast(single_element_tensor) with linalg.fill.
+LogicalResult replaceBroadcastWithFill(linalg::BroadcastOp op,
+                                       PatternRewriter& rewriter) {
+  Value input = op.getInput();
+  auto inputType = dyn_cast<RankedTensorType>(input.getType());
+  if (!inputType) return failure();
+
+  Location loc = op.getLoc();
+  Value scalar;
+  if (auto splatValue = getSplatValue(rewriter, loc, input)) {
+    scalar = *splatValue;
+  } else if (hasSingleElement(inputType)) {
+    SmallVector<Value> indicesInput(
+        inputType.getRank(), rewriter.create<arith::ConstantIndexOp>(loc, 0));
+    scalar = rewriter.create<tensor::ExtractOp>(loc, input, indicesInput);
+  }
+  if (!scalar) return failure();
+  rewriter.replaceOpWithNewOp<linalg::FillOp>(op, scalar, op.getInit());
+  return success();
+}
+
 struct OptimizeLinalgOpsPass
     : public impl::OptimizeLinalgOpsPassBase<OptimizeLinalgOpsPass> {
   void runOnOperation() override {
@@ -124,6 +141,7 @@ struct OptimizeLinalgOpsPass
     // Populate patterns.
     RewritePatternSet patterns(ctx);
     patterns.add(foldConstantOperandsIntoMap);
+    patterns.add(replaceBroadcastWithFill);
     patterns.add(replaceConstantMapWithFill);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
@@ -139,5 +157,4 @@ createOptimizeLinalgOpsPass() {
   return std::make_unique<gml_st::OptimizeLinalgOpsPass>();
 }
 
-}  // namespace gml_st
-}  // namespace mlir
+}  // namespace mlir::gml_st
