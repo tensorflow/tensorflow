@@ -2235,7 +2235,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   };
 
   std::vector<TensorWithLayout*> typed_inputs;
-  std::vector<std::unique_ptr<TensorWithLayout>> inputs_with_no_layout;
+  std::vector<std::unique_ptr<TensorWithLayout>> broadcast_results_keep_alive;
 
   // Record a unique mesh identified through all inputs that's already on
   // DTensor device. If we can identify a single mesh, the same mesh is used as
@@ -2267,24 +2267,20 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
 
   const std::optional<Mesh> mesh = ChooseBroadcastingMesh(input_meshes, dtypes);
 
-  // Short circuit to run fully single device ops with the nested Eager
-  // Executor.
-  // FIXME(b/274647196): After ::Wrap() lands, cast the inputs to SingleDevice
-  // TensorWithLayout, and move the dispatch to behind DTensor rewrites.
-  if (mesh.has_value() && mesh->IsSingleDevice()) {
-    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation,
-                                 std::string{mesh->single_device()}, attributes,
-                                 num_outputs, outputs, status);
-    return;
-  }
-
   // Op-by-op const has no obvious layout. DTensor skips SPMD expansion and runs
   // them on TensorFlow's default placement logic,
   // Relying on copy-on-use when the value is used later.
-
+  // Except a single device mesh will override this placement logic.
+  // TODO(feyu): I think we shall change this to always broadcast to
+  // the default mesh, to make it consistent with the rest of DTensor.
   if (operation_name == std::string("_EagerConst")) {
-    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation, "",
-                                 attributes, num_outputs, outputs, status);
+    std::string device_name = "";
+    if (mesh.has_value()) {
+      device_name = std::string{mesh->single_device()};
+    }
+    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation,
+                                 device_name, attributes, num_outputs, outputs,
+                                 status);
     return;
   }
 
@@ -2337,11 +2333,14 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     TF_DataType dtype = TFE_TensorHandleDataType(input);
     const bool small_int_tensor = num_elements < kSmallTensorThreshold &&
                                   (dtype == TF_INT32 || dtype == TF_INT64);
+
     // Only allow large constant autobroadcast for CopyToMesh and Relayout ops.
-    if ((operation_name != std::string("CopyToMesh") &&
-         operation_name != std::string("CopyToMeshGrad") &&
-         operation_name != std::string("Relayout") &&
-         operation_name != std::string("RelayoutGrad")) &&
+    if (!mesh->IsSingleDevice()  // Broadcast to single device tensor is
+                                 // allowed.
+        && (operation_name != std::string("CopyToMesh") &&
+            operation_name != std::string("CopyToMeshGrad") &&
+            operation_name != std::string("Relayout") &&
+            operation_name != std::string("RelayoutGrad")) &&
         !(num_dims == 0 || dtype == TF_STRING || small_int_tensor)) {
       std::vector<int64_t> tensor_shape(TensorShapeAsVector(input, status));
       if (TF_GetCode(status) != TF_OK) return;
@@ -2359,7 +2358,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
               .c_str());
     }
     // Construct temporary TensorWithLayout objects for inputs that didn't
-    // have any to start. These are owned by the `inputs_with_no_layout`
+    // have any to start. These are owned by the `broadcast_results_keep_alive`
     // vector, whereas the input `TFE_TensorHandle`s maintain ownership for
     // inputs that already had layouts (and therefor had TensorWithLayout
     // objects).
@@ -2369,7 +2368,19 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       return;
     }
     typed_inputs[single_device_input_index] = tensor_with_layout.get();
-    inputs_with_no_layout.emplace_back(tensor_with_layout.release());
+    broadcast_results_keep_alive.emplace_back(std::move(tensor_with_layout));
+  }
+
+  // Short circuit to run fully single device ops with the nested Eager
+  // Executor.
+  // FIXME(b/274647196): After ::Wrap() lands, cast the inputs to SingleDevice
+  // TensorWithLayout, and move the dispatch to behind DTensor rewrites.
+  if (single_device_input_indices.size() == num_inputs &&
+      mesh->IsSingleDevice()) {
+    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation,
+                                 std::string{mesh->single_device()}, attributes,
+                                 num_outputs, outputs, status);
+    return;
   }
 
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
