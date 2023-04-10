@@ -420,7 +420,8 @@ PYBIND11_MODULE(xla_extension, m) {
   // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
   // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",
-        [](std::string platform_name) -> std::unique_ptr<PjRtDeviceTopology> {
+        [](std::string platform_name)
+            -> std::unique_ptr<PjRtTopologyDescription> {
           return xla::ValueOrThrow(GetCApiTopology(platform_name));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
@@ -777,16 +778,17 @@ PYBIND11_MODULE(xla_extension, m) {
         "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
         "representation");
 
-  py::class_<PjRtDeviceTopology>(m, "DeviceTopology")
-      .def_property_readonly(
-          "platform",
-          [](PjRtDeviceTopology& topology) { return topology.platform_name(); })
+  py::class_<PjRtTopologyDescription>(m, "DeviceTopology")
+      .def_property_readonly("platform",
+                             [](PjRtTopologyDescription& topology) {
+                               return topology.platform_name();
+                             })
       .def_property_readonly("platform_version",
-                             [](PjRtDeviceTopology& topology) {
+                             [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
                              })
       .def_property_readonly("device_attributes",
-                             [](PjRtDeviceTopology& topology) {
+                             [](PjRtTopologyDescription& topology) {
                                return py::cast(topology.DeviceAttributes());
                              });
 
@@ -802,7 +804,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "compile",
-      [](const PjRtDeviceTopology& topology, std::string mlir_module,
+      [](const PjRtTopologyDescription& topology, std::string mlir_module,
          CompileOptions options) -> std::shared_ptr<PjRtExecutable> {
         std::unique_ptr<PjRtExecutable> executable;
         std::optional<std::string> fingerprint;
