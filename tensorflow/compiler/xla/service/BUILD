@@ -3453,7 +3453,6 @@ cc_library(
     srcs = ["reshape_mover.cc"],
     hdrs = ["reshape_mover.h"],
     deps = [
-        ":hlo_creation_utils",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:permutation_util",
@@ -3718,11 +3717,6 @@ xla_cc_test(
     name = "reshape_mover_test",
     srcs = ["reshape_mover_test.cc"],
     deps = [
-        ":algebraic_simplifier",
-        ":hlo_pass",
-        ":hlo_verifier",
-        ":pattern_matcher",
-        ":pattern_matcher_gmock",
         ":reshape_mover",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -3735,7 +3729,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
     ],

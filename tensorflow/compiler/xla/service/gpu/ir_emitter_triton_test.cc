@@ -202,7 +202,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%transpose{{[^)]*}}, %p0)
+; CHECK: fusion(%transpose.2, %p0)
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");

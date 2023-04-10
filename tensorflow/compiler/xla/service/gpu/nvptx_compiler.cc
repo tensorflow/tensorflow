@@ -131,6 +131,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(
+      true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
@@ -141,14 +143,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnSimplifyPadding>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
-  // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
-  // to a fixed point.  Include algsimp because ReshapeMover relies on it.
-  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-          "reshape_mover_after_conv_canonicalization")] {
-    pipeline.AddPass<HloPassFix<ReshapeMover>>();
-    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
-  }();
-
+  // CudnnSimplifyPadding introduce reshapes and transposes.
+  pipeline.AddPass<HloPassFix<ReshapeMover>>();
   // The reshapes and transposes can possibly be eliminated using
   // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
   // ConvertMover wants to move some converts down the graph, but ReshapeMover

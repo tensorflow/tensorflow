@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -70,14 +69,14 @@ class CudnnSimplifyPaddingTest : public HloTestBase {
                         RunHloPass(CudnnSimplifyPadding(), module));
     VLOG(1) << "after simplify_padding:\n" << module->ToString();
 
-    {
-      // reshape-mover expects to be run alongside algsimp.
-      HloPassFix<HloPassPipeline> pipeline("reshape-mover and algsimp");
-      pipeline.AddPass<ReshapeMover>();
-      pipeline.AddPass<AlgebraicSimplifier>(AlgebraicSimplifierOptions());
-      TF_RETURN_IF_ERROR(RunHloPass(pipeline, module).status());
-    }
-    VLOG(1) << "after reshape mover + algsimp:\n" << module->ToString();
+    TF_RETURN_IF_ERROR(RunHloPass(HloPassFix<ReshapeMover>(), module).status());
+    VLOG(1) << "after reshape mover:\n" << module->ToString();
+
+    TF_RETURN_IF_ERROR(RunHloPass(HloPassFix<AlgebraicSimplifier>(
+                                      AlgebraicSimplifierOptions()),
+                                  module)
+                           .status());
+    VLOG(1) << "after algsimp:\n" << module->ToString();
 
     return changed;
   }

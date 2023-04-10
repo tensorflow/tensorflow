@@ -1769,7 +1769,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service:reshape_mover",
