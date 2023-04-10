@@ -134,9 +134,6 @@ struct TransformMmt4DForCpuPass
     patterns.add(tileMmt4DOp);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
-
-    // Ensure we drop the marker in the end.
-    func.walk([](linalg::Mmt4DOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

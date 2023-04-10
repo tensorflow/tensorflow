@@ -99,29 +99,18 @@ def add_function_callback(function_callback):
 
   The callback function has the signature:
 
-    `def function_callback(function, name, graph, inputs, outputs):`
+    `def function_callback(function: AtomicFunction) -> AtomicFunction`
 
-  where:
-  - `function`: _EagerDefinedFunction being created before finalizing the graph.
-      Do not modify the function directly but instead modify the graph.
-  - `name`: name of the function.
-  - `graph`: Graph of the function.
-  - `inputs`: `tuple` of tensors used as inputs to the function.
-  - `outputs`: `tuple` of tensors used as outputs from the function.
+  Repeated registration of the same callback function will cause repeated
+  transformations.
 
-  The callback is at the top of the `_EagerDefinedFunction` construction, giving
-  callback an opportunity to make the last edits to the graph. Do not make
-  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
-  `graph` as the default then define ops.
-
-  Repeated registration of the same callback function is idempotent.
   After a callback is added, it can be removed with the
   `remove_function_callback()` method.
 
   Args:
     function_callback: The callback to add.
   """
-  atomic_function.function_callbacks.add(function_callback)
+  atomic_function.FUNCTION_TRANSFORMS.append(function_callback)
 
 
 # TODO(b/244360504): Remove this API in favour of the graph transformation API.
@@ -133,13 +122,13 @@ def remove_function_callback(function_callback):
   Args:
     function_callback: The callback to remove.
   """
-  atomic_function.function_callbacks.remove(function_callback)
+  atomic_function.FUNCTION_TRANSFORMS.remove(function_callback)
 
 
 # TODO(b/244360504): Remove this API in favour of the graph transformation API.
 def clear_function_callbacks():
   """Clear all function callbacks, if any have been regisered."""
-  atomic_function.function_callbacks.clear()
+  atomic_function.FUNCTION_TRANSFORMS.clear()
 
 
 @deprecation.deprecated(

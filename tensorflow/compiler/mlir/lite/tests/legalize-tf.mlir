@@ -2578,6 +2578,24 @@ func.func @bitcastI16ToFloat(%arg0: tensor<8x2xi16>) -> tensor<8xf32> {
 // CHECK:  return %[[RES0]] : tensor<8xf32>
 }
 
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testBitwiseXor
+  // CHECK: %[[RES0:.*]] = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testRightShift
+  // CHECK: %[[RES0:.*]] = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
 // =============================================================================
 // Training OPs
 // =============================================================================

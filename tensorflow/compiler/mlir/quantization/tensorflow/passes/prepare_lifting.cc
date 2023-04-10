@@ -21,9 +21,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -367,6 +369,85 @@ Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
 
   return builder.create<TF::EinsumOp>(loc, output.getType(), input_arguments,
                                       builder.getStringAttr(einsum_equation));
+}
+
+// TODO (b/275225582): Supports Xla Gather op in general case.
+bool IsXlaGatherWithoutBatch(Value operand, Value start_indices) {
+  auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
+  auto start_indices_type =
+      start_indices.getType().dyn_cast_or_null<ShapedType>();
+  if (start_indices_type == nullptr || operand_type == nullptr) return false;
+  return start_indices_type.getShape().size() == 1;
+}
+
+Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
+    OpBuilder& builder, const Location loc, Value operand, Value start_indices,
+    Value slice_sizes, Value output, StringAttr dimension_numbers_str) {
+  // Reads dimension numbers.
+  xla::GatherDimensionNumbers dimension_numbers;
+  dimension_numbers.ParseFromString(dimension_numbers_str.str());
+
+  // Construct full start_indices with given start_indices and
+  // start_index_map.
+  const ArrayRef<int64_t> operand_shape =
+      operand.getType().cast<ShapedType>().getShape();
+  const int64_t operand_rank = operand_shape.size();
+
+  // Fills zeros if start_index is not given in start_indices.
+  Value empty_start_indices = builder.create<TF::FillOp>(
+      loc, RankedTensorType::get({operand_rank}, builder.getI64Type()),
+      /*shape=*/Create1DConstValue<int64_t>(builder, loc, {operand_rank}),
+      /*value=*/CreateScalarConstValue<int64_t>(builder, loc, 0));
+
+  // Converts start_index_map proto to tensor.
+  const int64_t index_map_size = dimension_numbers.start_index_map().size();
+  SmallVector<int64_t> indices(index_map_size);
+  for (int64_t i = 0; i < index_map_size; i++) {
+    indices[i] = dimension_numbers.start_index_map()[i];
+  }
+
+  // Fill elements from start_indices with start_index_map
+  Value scattered_start_indices = builder.create<TF::TensorScatterUpdateOp>(
+      loc, empty_start_indices,
+      /*indices=*/
+      builder.create<TF::ReshapeOp>(
+          loc, RankedTensorType::get({index_map_size, 1}, builder.getI64Type()),
+          Create1DConstValue<int64_t>(builder, loc, indices),
+          Create1DConstValue<int64_t>(builder, loc, {index_map_size, 1})),
+      /*value=*/
+      builder.create<TF::CastOp>(
+          loc,
+          RankedTensorType::get(
+              start_indices.getType().template cast<ShapedType>().getShape(),
+              builder.getI64Type()),
+          start_indices));
+
+  // Slice operand by constructed start_indices and slice_sizes.
+  Value slice = builder.create<TF::SliceOp>(
+      loc, output.getType(), operand,
+      /*start_indices=*/scattered_start_indices,
+      /*slice_sizes=*/
+      builder.create<TF::CastOp>(
+          loc,
+          RankedTensorType::get(
+              slice_sizes.getType().template cast<ShapedType>().getShape(),
+              builder.getI64Type()),
+          slice_sizes));
+
+  // Collapses dimensions by reshaping.
+  absl::flat_hash_set<int64_t> collapsed_dims;
+  collapsed_dims.insert(dimension_numbers.collapsed_slice_dims().begin(),
+                        dimension_numbers.collapsed_slice_dims().end());
+  SmallVector<int64_t> new_shape(operand_rank - collapsed_dims.size());
+  for (int64_t i = 0, j = 0; i < operand_rank; i++) {
+    if (!collapsed_dims.contains(i)) {
+      new_shape[j++] = operand_shape[i];
+    }
+  }
+  if (!new_shape.empty()) new_shape[0] = -1;
+  return builder.create<TF::ReshapeOp>(
+      loc, output.getType(), slice,
+      Create1DConstValue(builder, loc, new_shape));
 }
 
 bool IsPrecisionEmpty(StringAttr prec_str) {

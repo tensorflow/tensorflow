@@ -5757,10 +5757,11 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
   if (arg->opcode() == HloOpcode::kTranspose &&
-      (reduce->shape().rank() < 2 || arg->user_count() == 1 ||
-       absl::c_all_of(arg->users(), [](HloInstruction* use) {
-         return use->opcode() == HloOpcode::kReduce;
-       }))) {
+      (options_.unconditionally_simplify_reduce_of_transpose_or_reshape() ||
+       (reduce->shape().rank() < 2 || arg->user_count() == 1 ||
+        absl::c_all_of(arg->users(), [](HloInstruction* use) {
+          return use->opcode() == HloOpcode::kReduce;
+        })))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64_t> new_reduce_dimensions;
     new_reduce_dimensions.reserve(dimensions.size());
@@ -5830,24 +5831,35 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                     new_dimensions, function));
   }
 
-  // A reshape that collapses multiple dimensions into a dimension being
-  // reduced can just reduce all of those dimensions instead of doing a
-  // collapsing reshape before a reduction.
+  // Handle two cases of reduce(reshape(x)).
+  //
+  // 1. The reshape collapses/expands only dimensions that are being reduced.
+  //    In this case we can just reduce those dimensions and skip the reshape.
+  // 2. The reshape collapses/expands only dimensions that are *not* being
+  //    reduced.  In this case we can do the reshape after the reduce.  This is
+  //    beneficial because the reduce will now operate on less data.
   if (options_.enable_reduce_of_reshape() &&
       arg->opcode() == HloOpcode::kReshape) {
     std::vector<std::pair<int64_t, int64_t>> unmodified_dims =
         ShapeUtil::DimensionsUnmodifiedByReshape(arg->operand(0)->shape(),
                                                  arg->shape());
-    std::vector<bool> arg_dim_in_output(arg->shape().rank(), true);
-    std::vector<bool> arg_dim_unmodified(arg->shape().rank(), false);
+
+    // True for those dimensions of the reduce input that are not reduced, false
+    // for the dims that are reduced.
+    absl::InlinedVector<bool, 8> arg_dim_in_output(arg->shape().rank(), true);
     for (auto dim : dimensions) {
       arg_dim_in_output[dim] = false;
     }
-    for (auto dim_pair : unmodified_dims) {
-      arg_dim_unmodified[dim_pair.second] = true;
+
+    // True for those dimensions of the reduce input that are unmodified by the
+    // reshape.
+    absl::InlinedVector<bool, 8> arg_dim_unmodified(arg->shape().rank(), false);
+    for (auto [input_idx, output_idx] : unmodified_dims) {
+      arg_dim_unmodified[output_idx] = true;
     }
-    // The goal is to verify that all dimensions that are not removed in the
-    // reduce are unmodified by the reshape. For example:
+
+    // Case 1: Check whether all dimensions that are not removed in the reduce
+    // are unmodified by the reshape. For example:
     // reduce(reshape([A,B*C], a[A,B,C]),[1]) = reduce(a[A, B, C], [1, 2])
     bool can_move_reshape_into_reduce = true;
     for (int64_t i = 0; i < arg_dim_in_output.size(); ++i) {
@@ -5874,7 +5886,32 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                       reduce_result_shape, arg->mutable_operand(0), init_value,
                       new_reduce_dimensions, function));
     }
+
+    // Case 2: Check whether the reshape only modifies non-reduction dimensions.
+    // Equivalently, the reduction dimensions are all preserved by the reshape.
+    if ((arg->user_count() == 1 ||
+         options_.unconditionally_simplify_reduce_of_transpose_or_reshape()) &&
+        absl::c_all_of(dimensions,
+                       [&](int64_t dim) { return arg_dim_unmodified[dim]; })) {
+      absl::InlinedVector<int64_t, 8> new_reduce_dims;
+      for (auto dim : dimensions) {
+        auto matching_dim_it = absl::c_find_if(
+            unmodified_dims,
+            [&](const auto& dim_pair) { return dim_pair.second == dim; });
+        CHECK(matching_dim_it != unmodified_dims.end());
+        new_reduce_dims.push_back(matching_dim_it->first);
+      }
+
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_reduce,
+          MakeReduceHlo(arg->mutable_operand(0), init_value, new_reduce_dims,
+                        reduce->to_apply(), &reduce->metadata()));
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_reshape,
+                          MakeReshapeHlo(reduce->shape(), new_reduce));
+      return ReplaceInstruction(reduce, new_reshape);
+    }
   }
+
   // Convert Reduce(concat({a,b,...})) to
   //  map(reduce(a),map(reduce(b),...,))
   //

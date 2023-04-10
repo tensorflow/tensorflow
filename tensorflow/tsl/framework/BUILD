@@ -4,6 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
@@ -81,7 +82,7 @@ filegroup(
         "tracking_allocator.h",
         "type_traits.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 # Files needed for tf2xla build.
@@ -152,11 +153,11 @@ cc_library(
         "cpu_allocator_impl.cc",
         "tracking_allocator.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
     deps = [
         ":numeric_types",
         ":type_traits",
@@ -265,10 +266,10 @@ filegroup(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":fixedpoint_types",
         "//tensorflow/tsl/platform:types",
@@ -307,9 +308,9 @@ cc_library(
 cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/framework:__pkg__",
-    ],
+    ]),
     deps = [
         ":numeric_types",
         "//tensorflow/tsl/platform:types",
@@ -321,7 +322,7 @@ filegroup(
     srcs = [
         "cancellation.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = set_external_visibility(["//tensorflow/core:__subpackages__"]),
 )
 
 cc_library(
@@ -377,12 +378,12 @@ exports_files(
         "shared_counter.h",
         "tracking_allocator.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime:__pkg__",
         "//tensorflow/core/common_runtime/gpu:__pkg__",
         "//tensorflow/core/framework:__pkg__",
-    ],
+    ]),
 )
 
 # Files whose users still need to be migrated from core:framework to the

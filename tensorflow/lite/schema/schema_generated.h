@@ -24,7 +24,7 @@ limitations under the License.
 // generated, otherwise it may not be compatible.
 static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
               FLATBUFFERS_VERSION_MINOR == 1 &&
-              FLATBUFFERS_VERSION_REVISION == 20,
+              FLATBUFFERS_VERSION_REVISION == 21,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -561,6 +561,14 @@ struct BitcastOptions;
 struct BitcastOptionsBuilder;
 struct BitcastOptionsT;
 
+struct BitwiseXorOptions;
+struct BitwiseXorOptionsBuilder;
+struct BitwiseXorOptionsT;
+
+struct RightShiftOptions;
+struct RightShiftOptionsBuilder;
+struct RightShiftOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
@@ -1078,11 +1086,13 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_UNSORTED_SEGMENT_MIN = 157,
   BuiltinOperator_SIGN = 158,
   BuiltinOperator_BITCAST = 159,
+  BuiltinOperator_BITWISE_XOR = 160,
+  BuiltinOperator_RIGHT_SHIFT = 161,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BITCAST
+  BuiltinOperator_MAX = BuiltinOperator_RIGHT_SHIFT
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[160] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[162] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1243,13 +1253,15 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[160] {
     BuiltinOperator_ATAN2,
     BuiltinOperator_UNSORTED_SEGMENT_MIN,
     BuiltinOperator_SIGN,
-    BuiltinOperator_BITCAST
+    BuiltinOperator_BITCAST,
+    BuiltinOperator_BITWISE_XOR,
+    BuiltinOperator_RIGHT_SHIFT
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[161] = {
+  static const char * const names[163] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1410,13 +1422,15 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "UNSORTED_SEGMENT_MIN",
     "SIGN",
     "BITCAST",
+    "BITWISE_XOR",
+    "RIGHT_SHIFT",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BITCAST)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_RIGHT_SHIFT)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1547,11 +1561,13 @@ enum BuiltinOptions : uint8_t {
   BuiltinOptions_ATan2Options = 122,
   BuiltinOptions_SignOptions = 123,
   BuiltinOptions_BitcastOptions = 124,
+  BuiltinOptions_BitwiseXorOptions = 125,
+  BuiltinOptions_RightShiftOptions = 126,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_BitcastOptions
+  BuiltinOptions_MAX = BuiltinOptions_RightShiftOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[125] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[127] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1677,13 +1693,15 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[125] {
     BuiltinOptions_UnsortedSegmentSumOptions,
     BuiltinOptions_ATan2Options,
     BuiltinOptions_SignOptions,
-    BuiltinOptions_BitcastOptions
+    BuiltinOptions_BitcastOptions,
+    BuiltinOptions_BitwiseXorOptions,
+    BuiltinOptions_RightShiftOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[126] = {
+  static const char * const names[128] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1809,13 +1827,15 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "ATan2Options",
     "SignOptions",
     "BitcastOptions",
+    "BitwiseXorOptions",
+    "RightShiftOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_BitcastOptions)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_RightShiftOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2320,6 +2340,14 @@ template<> struct BuiltinOptionsTraits<tflite::BitcastOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BitcastOptions;
 };
 
+template<> struct BuiltinOptionsTraits<tflite::BitwiseXorOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_BitwiseXorOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::RightShiftOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RightShiftOptions;
+};
+
 template<typename T> struct BuiltinOptionsUnionTraits {
   static const BuiltinOptions enum_value = BuiltinOptions_NONE;
 };
@@ -2818,6 +2846,14 @@ template<> struct BuiltinOptionsUnionTraits<tflite::SignOptionsT> {
 
 template<> struct BuiltinOptionsUnionTraits<tflite::BitcastOptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_BitcastOptions;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::BitwiseXorOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_BitwiseXorOptions;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::RightShiftOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RightShiftOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -3841,6 +3877,22 @@ struct BuiltinOptionsUnion {
   const tflite::BitcastOptionsT *AsBitcastOptions() const {
     return type == BuiltinOptions_BitcastOptions ?
       reinterpret_cast<const tflite::BitcastOptionsT *>(value) : nullptr;
+  }
+  tflite::BitwiseXorOptionsT *AsBitwiseXorOptions() {
+    return type == BuiltinOptions_BitwiseXorOptions ?
+      reinterpret_cast<tflite::BitwiseXorOptionsT *>(value) : nullptr;
+  }
+  const tflite::BitwiseXorOptionsT *AsBitwiseXorOptions() const {
+    return type == BuiltinOptions_BitwiseXorOptions ?
+      reinterpret_cast<const tflite::BitwiseXorOptionsT *>(value) : nullptr;
+  }
+  tflite::RightShiftOptionsT *AsRightShiftOptions() {
+    return type == BuiltinOptions_RightShiftOptions ?
+      reinterpret_cast<tflite::RightShiftOptionsT *>(value) : nullptr;
+  }
+  const tflite::RightShiftOptionsT *AsRightShiftOptions() const {
+    return type == BuiltinOptions_RightShiftOptions ?
+      reinterpret_cast<const tflite::RightShiftOptionsT *>(value) : nullptr;
   }
 };
 
@@ -11635,6 +11687,84 @@ inline ::flatbuffers::Offset<BitcastOptions> CreateBitcastOptions(
 
 ::flatbuffers::Offset<BitcastOptions> CreateBitcastOptions(::flatbuffers::FlatBufferBuilder &_fbb, const BitcastOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct BitwiseXorOptionsT : public ::flatbuffers::NativeTable {
+  typedef BitwiseXorOptions TableType;
+};
+
+struct BitwiseXorOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef BitwiseXorOptionsT NativeTableType;
+  typedef BitwiseXorOptionsBuilder Builder;
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  BitwiseXorOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BitwiseXorOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<BitwiseXorOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BitwiseXorOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct BitwiseXorOptionsBuilder {
+  typedef BitwiseXorOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  explicit BitwiseXorOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<BitwiseXorOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<BitwiseXorOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<BitwiseXorOptions> CreateBitwiseXorOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  BitwiseXorOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<BitwiseXorOptions> CreateBitwiseXorOptions(::flatbuffers::FlatBufferBuilder &_fbb, const BitwiseXorOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct RightShiftOptionsT : public ::flatbuffers::NativeTable {
+  typedef RightShiftOptions TableType;
+};
+
+struct RightShiftOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef RightShiftOptionsT NativeTableType;
+  typedef RightShiftOptionsBuilder Builder;
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  RightShiftOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RightShiftOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<RightShiftOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RightShiftOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct RightShiftOptionsBuilder {
+  typedef RightShiftOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  explicit RightShiftOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<RightShiftOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<RightShiftOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<RightShiftOptions> CreateRightShiftOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  RightShiftOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<RightShiftOptions> CreateRightShiftOptions(::flatbuffers::FlatBufferBuilder &_fbb, const RightShiftOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public ::flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code = 0;
@@ -12149,6 +12279,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   }
   const tflite::BitcastOptions *builtin_options_as_BitcastOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_BitcastOptions ? static_cast<const tflite::BitcastOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::BitwiseXorOptions *builtin_options_as_BitwiseXorOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_BitwiseXorOptions ? static_cast<const tflite::BitwiseXorOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::RightShiftOptions *builtin_options_as_RightShiftOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_RightShiftOptions ? static_cast<const tflite::RightShiftOptions *>(builtin_options()) : nullptr;
   }
   const ::flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -12680,6 +12816,14 @@ template<> inline const tflite::SignOptions *Operator::builtin_options_as<tflite
 
 template<> inline const tflite::BitcastOptions *Operator::builtin_options_as<tflite::BitcastOptions>() const {
   return builtin_options_as_BitcastOptions();
+}
+
+template<> inline const tflite::BitwiseXorOptions *Operator::builtin_options_as<tflite::BitwiseXorOptions>() const {
+  return builtin_options_as_BitwiseXorOptions();
+}
+
+template<> inline const tflite::RightShiftOptions *Operator::builtin_options_as<tflite::RightShiftOptions>() const {
+  return builtin_options_as_RightShiftOptions();
 }
 
 struct OperatorBuilder {
@@ -17040,6 +17184,52 @@ inline ::flatbuffers::Offset<BitcastOptions> CreateBitcastOptions(::flatbuffers:
       _fbb);
 }
 
+inline BitwiseXorOptionsT *BitwiseXorOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<BitwiseXorOptionsT>(new BitwiseXorOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void BitwiseXorOptions::UnPackTo(BitwiseXorOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline ::flatbuffers::Offset<BitwiseXorOptions> BitwiseXorOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const BitwiseXorOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateBitwiseXorOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<BitwiseXorOptions> CreateBitwiseXorOptions(::flatbuffers::FlatBufferBuilder &_fbb, const BitwiseXorOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const BitwiseXorOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateBitwiseXorOptions(
+      _fbb);
+}
+
+inline RightShiftOptionsT *RightShiftOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<RightShiftOptionsT>(new RightShiftOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void RightShiftOptions::UnPackTo(RightShiftOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline ::flatbuffers::Offset<RightShiftOptions> RightShiftOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const RightShiftOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRightShiftOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<RightShiftOptions> CreateRightShiftOptions(::flatbuffers::FlatBufferBuilder &_fbb, const RightShiftOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const RightShiftOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRightShiftOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorCodeT>(new OperatorCodeT());
   UnPackTo(_o.get(), _resolver);
@@ -18079,6 +18269,14 @@ inline bool VerifyBuiltinOptions(::flatbuffers::Verifier &verifier, const void *
       auto ptr = reinterpret_cast<const tflite::BitcastOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_BitwiseXorOptions: {
+      auto ptr = reinterpret_cast<const tflite::BitwiseXorOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_RightShiftOptions: {
+      auto ptr = reinterpret_cast<const tflite::RightShiftOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -18594,6 +18792,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::BitcastOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_BitwiseXorOptions: {
+      auto ptr = reinterpret_cast<const tflite::BitwiseXorOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_RightShiftOptions: {
+      auto ptr = reinterpret_cast<const tflite::RightShiftOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -19097,6 +19303,14 @@ inline ::flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(::flatbuffers::Flat
       auto ptr = reinterpret_cast<const tflite::BitcastOptionsT *>(value);
       return CreateBitcastOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_BitwiseXorOptions: {
+      auto ptr = reinterpret_cast<const tflite::BitwiseXorOptionsT *>(value);
+      return CreateBitwiseXorOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_RightShiftOptions: {
+      auto ptr = reinterpret_cast<const tflite::RightShiftOptionsT *>(value);
+      return CreateRightShiftOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -19597,6 +19811,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) : 
     }
     case BuiltinOptions_BitcastOptions: {
       value = new tflite::BitcastOptionsT(*reinterpret_cast<tflite::BitcastOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_BitwiseXorOptions: {
+      value = new tflite::BitwiseXorOptionsT(*reinterpret_cast<tflite::BitwiseXorOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_RightShiftOptions: {
+      value = new tflite::RightShiftOptionsT(*reinterpret_cast<tflite::RightShiftOptionsT *>(u.value));
       break;
     }
     default:
@@ -20223,6 +20445,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BitcastOptions: {
       auto ptr = reinterpret_cast<tflite::BitcastOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_BitwiseXorOptions: {
+      auto ptr = reinterpret_cast<tflite::BitwiseXorOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_RightShiftOptions: {
+      auto ptr = reinterpret_cast<tflite::RightShiftOptionsT *>(value);
       delete ptr;
       break;
     }

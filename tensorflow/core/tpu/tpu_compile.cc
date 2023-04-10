@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/statusor.h"

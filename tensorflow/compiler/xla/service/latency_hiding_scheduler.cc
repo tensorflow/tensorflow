@@ -1251,6 +1251,17 @@ std::vector<HloGraphNode*> HloScheduleGraph::FindBottomRoots() const {
   return roots;
 }
 
+std::vector<HloGraphNode*> HloScheduleGraph::FindTopRoots() const {
+  std::vector<HloGraphNode*> roots;
+  for (const HloInstruction* instr : original_order_) {
+    HloGraphNode& node = GetNode(instr);
+    if (node.GetIndegree() == 0) {
+      roots.push_back(&node);
+    }
+  }
+  return roots;
+}
+
 void HloScheduleGraph::InitializeGraphAnalysis(
     const AsyncTracker* async_tracker) {
   absl::flat_hash_map<HloGraphNode*, int> current_rank;

@@ -531,7 +531,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
     # shape: (?, 2)
     weight = array_ops.transpose_v2(
-        array_ops_stack.stack([weight_row, weight_row]))
+        array_ops_stack.stack([weight_row, weight_row])
+    )
     # shape: (2, 2)
     output_tensor = math_ops.matmul(matmul_input, weight)
 
@@ -786,7 +787,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     )
     # shape: (?, 2)
     weight = array_ops.transpose_v2(
-        array_ops_stack.stack([weight_row, weight_row]))
+        array_ops_stack.stack([weight_row, weight_row])
+    )
     weight = array_ops.fake_quant_with_min_max_args(
         weight, min=-0.1, max=0.2, num_bits=8, narrow_range=False
     )
@@ -946,20 +948,41 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         conv_filters = np.random.uniform(
             low=-10, high=10, size=filter_shape
         ).astype('f4')
+        second_conv_filter_shape = (3, 3, filter_shape[-1], 1)
+        second_conv_filters = np.random.uniform(
+            low=-10, high=10, size=second_conv_filter_shape
+        ).astype('f4')
 
         out = array_ops.gather_v2(self.embedding_w, input_tensor)
+
+        # One pure conv
+        out = nn_ops.conv2d(
+            out,
+            conv_filters,
+            strides=(1, 1, 2, 1),
+            dilations=(1, 1, 1, 1),
+            padding='SAME',
+            data_format='NHWC',
+        )
+
+        # One fakequant attached conv
         if is_qat_model:
           out = array_ops.fake_quant_with_min_max_args(
               out, min=-0.1, max=0.2, num_bits=8, narrow_range=False
           )
-          conv_filters = array_ops.fake_quant_with_min_max_args(
-              conv_filters, min=-0.1, max=0.2, num_bits=8, narrow_range=True
+          second_conv_filters = array_ops.fake_quant_with_min_max_args(
+              second_conv_filters,
+              min=-0.1,
+              max=0.2,
+              num_bits=8,
+              narrow_range=True,
           )
+
         out = nn_ops.conv2d(
             out,
-            conv_filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
+            second_conv_filters,
+            strides=(1, 1, 2, 1),
+            dilations=(1, 1, 1, 1),
             padding='SAME',
             data_format='NHWC',
         )

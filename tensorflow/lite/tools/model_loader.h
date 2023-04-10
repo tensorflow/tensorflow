@@ -166,7 +166,7 @@ class PipeModelLoader : public ModelLoader {
 // "buffer:%buffer_handle%:%buffer_size%". This model loader does not own the
 // buffer_handle, and the caller needs to ensure the buffer_handle out-lives the
 // model loader.
-std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path);
+std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(const std::string& path);
 
 }  // namespace tools
 }  // namespace tflite

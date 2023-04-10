@@ -55,6 +55,7 @@ cc_test(
     srcs = ["sample_stable_delegate_test.cc"],
     data = [
         "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/sub.bin",
     ],
     deps = [
         ":sample_stable_delegate_opaque_delegate",

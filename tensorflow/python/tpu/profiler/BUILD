@@ -14,7 +14,7 @@ py_library(
         ":profiler_analysis_pb2_grpc",
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:all_util",
     ],
 )
 

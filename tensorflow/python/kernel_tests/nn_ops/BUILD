@@ -89,6 +89,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
@@ -462,6 +463,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//third_party/py/numpy",
@@ -507,6 +509,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//third_party/py/numpy",
@@ -543,6 +546,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",

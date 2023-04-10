@@ -27,31 +27,27 @@ DebugDataDumper* DebugDataDumper::Global() {
   return global_instance_;
 }
 
-bool DebugDataDumper::ShouldDump(const std::string& name,
-                                 bool bypass_name_filter) const {
+bool DebugDataDumper::ShouldDump(const std::string& name) const {
   // Do not dump data for the wrapped functions.
   if (absl::StartsWith(name, "__wrapped__")) return false;
 
-  // Do name filter check if bypass_name_filter is false.
-  if (!bypass_name_filter) {
-    // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
-    const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
-    if (name_filter == nullptr) {
-      VLOG(1) << "Skip dumping graph '" << name
-              << "', because TF_DUMP_GRAPH_NAME_FILTER is not set";
-      return false;
-    }
+  // Get the name filter from TF_DUMP_GRAPH_NAME_FILTER.
+  const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
+  if (name_filter == nullptr) {
+    VLOG(1) << "Skip dumping graph '" << name
+            << "', because TF_DUMP_GRAPH_NAME_FILTER is not set";
+    return false;
+  }
 
-    // If name_filter is not '*' or name doesn't contain the name_filter,
-    // skip the dump.
-    std::string str_name_filter = std::string(name_filter);
-    if (str_name_filter != "*" &&
-        name.find(str_name_filter) == std::string::npos) {
-      VLOG(1) << "Skip dumping graph '" << name
-              << "', because TF_DUMP_GRAPH_NAME_FILTER is not '*' and "
-              << "it is not contained by the graph name";
-      return false;
-    }
+  // If name_filter is not '*' or name doesn't contain the name_filter,
+  // skip the dump.
+  std::string str_name_filter = std::string(name_filter);
+  if (str_name_filter != "*" &&
+      name.find(str_name_filter) == std::string::npos) {
+    VLOG(1) << "Skip dumping graph '" << name
+            << "', because TF_DUMP_GRAPH_NAME_FILTER is not '*' and "
+            << "it is not contained by the graph name";
+    return false;
   }
 
   // If all conditions are met, return true to allow the dump.
@@ -111,7 +107,8 @@ void DebugDataDumper::DumpOpCreationStackTraces(const std::string& name,
 }
 
 void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
-                                const Graph* graph) {
+                                const Graph* graph,
+                                const FunctionLibraryDefinition* func_lib_def) {
   // Construct the dump filename.
   std::string dump_filename = GetDumpFileBasename(name, tag);
 
@@ -123,8 +120,14 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
     return;
   }
 
+  // Construct a graph def.
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
+
+  if (func_lib_def) *graph_def.mutable_library() = func_lib_def->ToProto();
+
   // Now dump the graph into the target file.
-  DumpGraphToFile(dump_filename, *graph);
+  DumpGraphDefToFile(dump_filename, graph_def);
 }
 
 void DebugDataDumper::DumpMLIRModule(const std::string& name,

@@ -44,6 +44,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -1190,7 +1191,7 @@ class DataServiceOpsTest(
     cluster = self.make_test_cluster(num_workers=1)
     if not use_resource:
       with variable_scope.variable_scope("foo", use_resource=False):
-        v = variables.VariableV1(10, dtype=dtypes.int64)
+        v = variable_v1.VariableV1(10, dtype=dtypes.int64)
     else:
       v = variables.Variable(10, dtype=dtypes.int64)
 

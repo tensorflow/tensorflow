@@ -69,14 +69,14 @@ auto* saved_model_write_path = monitoring::Gauge<string, 0>::New(
     "/tensorflow/core/saved_model/write/path",
     "The path (saved_model_path) of the exported SavedModel.");
 
-// Gauge that contains the path (saved_model_path) and the fingerprint
+// Gauge that contains the path (saved_model_path) and the singleprint
 // (concatenation of graph_def_program_hash, signature_def_hash,
 // saved_object_graph_hash, and checkpoint_hash) of the newly written
 // SavedModel.
 auto* saved_model_write_path_and_singleprint =
     monitoring::Gauge<string, 0>::New(
-        "/tensorflow/core/saved_model/write/path_and_fingerprint",
-        "The path (saved_model_path) and fingerprint (concatenation of "
+        "/tensorflow/core/saved_model/write/path_and_singleprint",
+        "The path (saved_model_path) and singleprint (concatenation of "
         "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
         "and checkpoint_hash) of the newly written SavedModel.");
 
@@ -91,12 +91,12 @@ auto* saved_model_read_path = monitoring::Gauge<string, 0>::New(
     "/tensorflow/core/saved_model/read/path",
     "The path (saved_model_path) of the loaded SavedModel.");
 
-// Gauge that contains the path (saved_model_path) and the fingerprint
+// Gauge that contains the path (saved_model_path) and the singleprint
 // (concatenation of graph_def_program_hash, signature_def_hash,
 // saved_object_graph_hash, and checkpoint_hash) of the loaded SavedModel.
 auto* saved_model_read_path_and_singleprint = monitoring::Gauge<string, 0>::New(
-    "/tensorflow/core/saved_model/read/path_and_fingerprint",
-    "The path (saved_model_path) and fingerprint (concatenation of "
+    "/tensorflow/core/saved_model/read/path_and_singleprint",
+    "The path (saved_model_path) and singleprint (concatenation of "
     "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
     "and checkpoint_hash) of the loaded SavedModel.");
 

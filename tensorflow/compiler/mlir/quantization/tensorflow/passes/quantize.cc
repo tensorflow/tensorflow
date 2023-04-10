@@ -81,14 +81,28 @@ struct TFQuantizationBase
   // range quantization.
   static bool AllowDynamicRangeQuantizedOperand(
       Operation* quantized_op, const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    const bool is_gather = function_name.contains("gather");
+    return quantization_trait != kFullQuantization || is_gather;
   }
 
   // All the quantized ops are supported if the quantization method is dynamic
   // range quantization.
   static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
                                                const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    bool is_gather = false;
+    if (function_name.contains("gather")) is_gather = true;
+    return quantization_trait != kFullQuantization ||
+           (quantization_trait == kFullQuantization && is_gather);
   }
 
   // If weight_only_quantization is true, the legacy weight-only quantization is

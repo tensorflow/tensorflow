@@ -113,6 +113,11 @@ py_library(
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
         "//tensorflow/python/training/tracking:base_delegate",
+        "//tensorflow/python/util:_pywrap_checkpoint_reader",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:function_utils",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -242,7 +247,7 @@ py_library(
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -327,11 +332,12 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/summary",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -362,6 +368,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
@@ -383,7 +390,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_utils",
@@ -392,6 +398,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -429,7 +436,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:_pywrap_quantize_training",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -443,8 +450,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -494,8 +501,10 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/distribute:distribute_lib",
@@ -507,8 +516,8 @@ py_library(
     srcs = ["summary_io.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/summary",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -527,10 +536,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -582,6 +591,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -662,7 +672,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "//third_party/py/numpy",
     ],
 )
@@ -727,7 +737,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -767,8 +777,8 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
+        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -789,11 +799,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -816,7 +825,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
@@ -824,6 +832,7 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -881,8 +890,8 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/checkpoint:checkpoint_management",
@@ -891,6 +900,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/summary",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )
@@ -968,10 +978,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/summary",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -996,6 +1006,7 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/summary",
@@ -1009,7 +1020,8 @@ py_library(
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -1027,6 +1039,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
@@ -1043,7 +1056,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
     ],
 )
 
@@ -1062,6 +1075,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
@@ -1128,7 +1142,6 @@ TRAINING_TEST_DEPS = [
     "//tensorflow/python:sparse_ops",
     "//tensorflow/python:state_ops",
     "//tensorflow/python:state_ops_gen",
-    "//tensorflow/python:util",
     "//tensorflow/python:variable_scope",
     "//tensorflow/python:variables",
     "//tensorflow/python/distribute:cross_device_ops",
@@ -1264,6 +1277,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python:variable_v1",
     ] + TRAINING_TEST_DEPS,
 )
 
@@ -1274,6 +1288,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python:variable_v1",
     ] + TRAINING_TEST_DEPS,
 )
 
@@ -1294,6 +1309,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":training",
+        "//tensorflow/python:variable_v1",
     ] + TRAINING_TEST_DEPS,
 )
 
@@ -1305,6 +1321,7 @@ cuda_py_test(
     deps = [
         ":training",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
     ] + TRAINING_TEST_DEPS,
@@ -1364,6 +1381,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/checkpoint:checkpoint_management",
@@ -1479,10 +1497,10 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/summary",
+        "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -1507,6 +1525,7 @@ tf_py_test(
         "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -1529,8 +1548,8 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
     ],
 )

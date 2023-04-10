@@ -71,7 +71,9 @@ int64_t roundDownToPowerOfTwo(int64_t n) {
 // Skylake.
 MatmulSizes skylakeTilingHeuristic(MatmulSizes sizes) {
   if (sizes.m == 1) {
-    return {1, sizes.n, 1};
+    // Limit the maximum tiling to an arbitrary 32 to limit code growth. This
+    // needs re-tuning.
+    return {1, std::min<int64_t>(sizes.n, 32), 1};
   }
 
   if (sizes.n == 1) {
@@ -189,10 +191,6 @@ struct DotTransformPattern : public OpRewritePattern<DotTy> {
     if (hasLabel(dotOp, kTransformedLabel)) {
       return rewriter.notifyMatchFailure(dotOp,
                                          "has already been transformed.");
-    }
-    if (isa<scf::ForallOp, scf::ForOp>(dotOp->getParentOp())) {
-      return rewriter.notifyMatchFailure(
-          dotOp, "has already been tiled by another pass.");
     }
     auto producerFilterFn = [](Operation *op) {
       return isa<linalg::FillOp, thlo::ReverseOp, tensor::CastOp>(op);
@@ -379,13 +377,6 @@ struct TransformDotForCpuPass
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-
-    // Ensure we drop the marker in the end.
-    f.walk([](Operation *op) {
-      if (isa<linalg::MatmulOp, linalg::MatvecOp, linalg::VecmatOp,
-              linalg::DotOp>(op))
-        removeLabel(op, kTransformedLabel);
-    });
   }
 
   MatmulTileSizeComputationFn tileSizeFn;

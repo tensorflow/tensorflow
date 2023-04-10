@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/util.h"

@@ -115,10 +115,8 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
                                },
                                report_instruction_count));
   absl::StrAppend(&report, "\n  ** All instructions\n");
-  absl::StrAppend(&report,
-                  ReportMemoryUsage(
-                      module, [](const HloInstruction* hlo) { return true; },
-                      report_instruction_count));
+  absl::StrAppend(&report, ReportMemoryUsage(module, HloPredicateTrue,
+                                             report_instruction_count));
   return report;
 }
 
@@ -127,10 +125,8 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
   std::string report;
   absl::StrAppend(&report,
                   "\n\n***** SPMD memory usage after partition *****\n");
-  absl::StrAppend(&report,
-                  ReportMemoryUsage(
-                      module, [](const HloInstruction* hlo) { return true; },
-                      report_instruction_count));
+  absl::StrAppend(&report, ReportMemoryUsage(module, HloPredicateTrue,
+                                             report_instruction_count));
   return report;
 }
 

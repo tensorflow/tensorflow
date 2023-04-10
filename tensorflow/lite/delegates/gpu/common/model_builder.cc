@@ -1374,6 +1374,38 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   }
 };
 
+class GatherOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::GATHER);
+    GatherAttributes attr;
+    const TfLiteTensor* input_tensor = reader->GetInputTensor(0);
+    const TfLiteGatherParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    RETURN_IF_ERROR(
+        ExtractAxisFromIndex(*input_tensor, tf_options->axis, &attr.axis));
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    const TfLiteTensor* idx_tensor = reader->GetInputTensor(1);
+    if (!IsConstantTensor(idx_tensor)) {
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+    } else {
+      RETURN_IF_ERROR(reader->ReadTensor(1, &attr.indices));
+    }
+    node->operation.attributes = std::move(attr);
+    return reader->AddOutputs(node);
+  }
+};
+
 class HardSwishOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2090,7 +2122,12 @@ class SelectV2OperationParser : public TFLiteOperationParser {
     const bool is_else_constant =
         false_tensor->allocation_type == kTfLiteMmapRo;
     BHWC cond_shape, true_shape, false_shape;
-    RETURN_IF_ERROR(ExtractTensorShape(*cond_tensor, &cond_shape));
+    if (cond_tensor->dims->size == 0) {
+      attr.scalar_cond = true;
+    } else {
+      RETURN_IF_ERROR(ExtractTensorShape(*cond_tensor, &cond_shape));
+      attr.scalar_cond = cond_shape.DimensionsProduct() == 1;
+    }
     if (true_tensor->dims->size == 0) {
       attr.broadcast_true = true;
     } else {
@@ -3080,6 +3117,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
           OperationType::FLOOR_MOD);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
+    case kTfLiteBuiltinGather:
+      return std::make_unique<GatherOperationParser>();
     case kTfLiteBuiltinGreater:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::GREATER);
@@ -3230,7 +3269,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 // TODO(impjdi): Check ops' parameters.
 TfLiteIntArray* GetOpsToReplace(
     TfLiteContext* context, bool allow_quant_ops, int max_delegated_partitions,
-    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops) {
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops,
+    int start_node_index, int end_node_index) {
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
@@ -3276,6 +3316,9 @@ TfLiteIntArray* GetOpsToReplace(
       allowed_in_types.push_back(kTfLiteBool);
       allowed_out_types.push_back(kTfLiteBool);
     }
+    if (registration->builtin_code == kTfLiteBuiltinGather) {
+      allowed_in_types.push_back(kTfLiteInt32);
+    }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
@@ -3290,7 +3333,13 @@ TfLiteIntArray* GetOpsToReplace(
   delegates::FP16GraphPartitionHelper partition_helper(context,
                                                        node_supported_fn);
   std::set<std::string> unsupported_nodes_info;
-  if (partition_helper.Partition(&unsupported_nodes_info) != kTfLiteOk) {
+#ifndef TFLITE_DEBUG_DELEGATE
+  auto res = partition_helper.Partition(&unsupported_nodes_info);
+#else
+  auto res = partition_helper.Partition(&unsupported_nodes_info,
+                                        start_node_index, end_node_index);
+#endif
+  if (res != kTfLiteOk) {
     return TfLiteIntArrayCreate(0);
   }
 

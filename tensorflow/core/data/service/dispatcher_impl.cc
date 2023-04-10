@@ -166,14 +166,6 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
   }
   return new_config;
 }
-
-void VLogLines(const int log_level, const std::string& message) {
-#if defined(PLATFORM_GOOGLE)
-  VLOG_LINES(log_level, message);
-#else
-  VLOG(log_level) << message;
-#endif
-}
 }  // namespace
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
@@ -507,8 +499,6 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   DatasetDef dataset_def = request->dataset();
   GraphDef* graph = dataset_def.mutable_graph();
   PrepareGraph(graph);
-  VLogLines(/*log_level=*/4,
-            absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 
   mutex_lock l(mu_);
   TF_ASSIGN_OR_RETURN(std::optional<std::string> dataset_id,

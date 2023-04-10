@@ -430,7 +430,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 491> a = {{
+  static std::array<OpIndexInfo, 485> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -486,6 +486,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Ceil"},
       {"CheckNumerics"},
       {"CheckNumericsV2"},
+      {"ClipByValue"},
       {"CollectivePermute"},
       {"Complex"},
       {"CompositeTensorVariantFromComponents"},

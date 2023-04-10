@@ -30,6 +30,7 @@ from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
 from .xla_extension import DeviceArrayBase as DeviceArrayBase
 from .xla_extension import DeviceAssignment as DeviceAssignment
+from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
 from .xla_extension import LoadedExecutable as LoadedExecutable
 from .xla_extension import FftType as FftType
@@ -94,6 +95,10 @@ def make_interpreter_client() -> Client:
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
+  ...
+
+
+def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
   ...
 
 

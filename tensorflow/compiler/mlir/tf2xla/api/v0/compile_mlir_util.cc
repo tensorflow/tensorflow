@@ -18,9 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
-#include "absl/types/variant.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"

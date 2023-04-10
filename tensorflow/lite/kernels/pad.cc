@@ -126,7 +126,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // unranked input. Set output tensor to dynamic so output size can be
   // determined in Eval.
   if (NumDimensions(op_context.input) == 0 ||
-      !IsConstantTensor(op_context.paddings)) {
+      !IsConstantOrPersistentTensor(op_context.paddings)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }

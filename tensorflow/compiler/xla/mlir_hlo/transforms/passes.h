@@ -48,6 +48,7 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_FINALBUFFERIZEPASS
 #define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
+#define GEN_PASS_DECL_GENERICHOSTTOLLVMPASS
 #include "transforms/passes.h.inc"
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
@@ -107,7 +108,8 @@ void registerTestHloTransformDialectInterpreterPass();
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
-std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
+std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass(
+    const GenericHostToLLVMPassOptions& options = {});
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();

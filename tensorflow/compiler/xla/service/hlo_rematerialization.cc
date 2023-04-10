@@ -31,11 +31,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -1550,7 +1552,7 @@ const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
 StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
-    InstructionList* instruction_list,
+    InstructionList* instruction_list, HloSchedule* schedule,
     HloRematerialization* rematerialization) {
   int64_t net_instructions_added = 0;
   int64_t total_memory_saved =
@@ -1571,8 +1573,21 @@ StatusOr<int64_t> RematerializeInstructions(
       continue;
     }
 
+    HloCloneContext context(computation->parent());
     HloInstruction* remat =
-        computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
+        computation->AddInstruction(best->Clone(/*suffix=*/"remat", &context));
+    for (auto& cloned_computation_pair : context.cloned_computations()) {
+      if (!schedule->is_computation_scheduled(cloned_computation_pair.first)) {
+        continue;
+      }
+      HloInstructionSequence& sequence =
+          schedule->GetOrCreateSequence(cloned_computation_pair.second);
+      HloInstructionSequence& old_sequence =
+          schedule->GetOrCreateSequence(cloned_computation_pair.first);
+      for (HloInstruction* instr : old_sequence.instructions()) {
+        sequence.push_back(instr);
+      }
+    }
     // Increment channel_id on channel instructions with a channel id.
     if (DynCast<HloChannelInstruction>(best) &&
         DynCast<HloChannelInstruction>(best)->channel_id()) {
@@ -1795,7 +1810,8 @@ struct InstructionsAdded {
 // instructions can be found. Returns number of instructions rematerialized.
 StatusOr<InstructionsAdded> RematerializeBestBlock(
     int min_block_size, int max_block_size, MemoryUsageTracker* memory_tracker,
-    InstructionList* instruction_list, int64_t memory_limit_bytes,
+    InstructionList* instruction_list, HloSchedule* schedule,
+    int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
     HloRematerialization* rematerialization) {
@@ -1836,7 +1852,7 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
         num_instructions_added.net_instructions_added,
         RematerializeInstructions(memory_tracker, &best_items,
                                   remat_move_instructions, instruction_list,
-                                  rematerialization));
+                                  schedule, rematerialization));
   }
   return num_instructions_added;
 }
@@ -1977,7 +1993,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         TF_ASSIGN_OR_RETURN(
             InstructionsAdded instructions_added,
             RematerializeBestBlock(min_block_size, max_block_size,
-                                   &memory_tracker, &instruction_list,
+                                   &memory_tracker, &instruction_list, schedule,
                                    memory_limit_bytes, &rematerializable_map,
                                    &remat_move_instructions, this));
         net_instructions_added += instructions_added.net_instructions_added;

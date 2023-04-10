@@ -187,12 +187,6 @@ def is_nested_or_composite(seq):
   return _is_nested_or_composite(seq)
 
 
-# FIXME(feyu): Remove the back-compat names before closing b/201685523, after
-# all users of is_sequence are moved to the new names. (cl/405503918)
-def is_sequence(seq):
-  return nest_util.is_nested(nest_util.Modality.CORE, seq)
-
-
 def is_sequence_or_composite(seq):
   return _is_nested_or_composite(seq)
 

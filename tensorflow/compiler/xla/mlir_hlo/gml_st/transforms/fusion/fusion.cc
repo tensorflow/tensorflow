@@ -389,6 +389,7 @@ void fuseFillOpsIntoForallOp(PatternRewriter& rewriter,
                     {fillOp.value(), regionOutputArg}));
 
     output.set(fillOp.output());
+    setLabel(clonedFill, kTransformedLabel);
 
     SmallVector<tensor::ExtractSliceOp> sliceOps;
     regionOutputArg.replaceUsesWithIf(

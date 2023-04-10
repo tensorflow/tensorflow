@@ -746,10 +746,12 @@ func.func @test_elu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_softmax
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.exp"(%arg0)
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reduce_sum"(%[[VAR0]]) {axis = 2 : i64}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.reciprocal"(%[[VAR1]])
-// CHECK: %[[VAR3:.*]] = "tosa.mul"(%[[VAR0]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_max"(%arg0)
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.sub"(%arg0, %[[VAR0]])
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.exp"(%[[VAR1]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.reduce_sum"(%[[VAR2]]) {axis = 2 : i64}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reciprocal"(%[[VAR3]])
+// CHECK: %[[VAR5:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR4]]) {shift = 0 : i32}
 func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Softmax"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %2 : tensor<13x21x3xf32>

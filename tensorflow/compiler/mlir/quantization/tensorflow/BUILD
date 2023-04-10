@@ -8,8 +8,8 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
-        "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/compiler/mlir/quantization/...",
     ] + internal_visibility_allowlist(),
 )
 
