@@ -50,7 +50,6 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -2441,10 +2440,6 @@ def _GatherGrad(op, grad):
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
-
-
-_to_proto_fn = variable_scope._to_proto_fn  # pylint: disable=protected-access
-_from_proto_fn = variable_scope._from_proto_fn  # pylint: disable=protected-access
 
 
 @tf_export("__internal__.ops.is_resource_variable", v1=[])

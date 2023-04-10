@@ -1139,7 +1139,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
   @staticmethod
   def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return RefVariable(variable_def=variable_def, import_scope=import_scope)
+    raise NotImplementedError
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `Variable`.
@@ -1541,6 +1541,10 @@ class VariableV1(Variable):
       return cond.cond(
           is_variable_initialized(self), self.read_value,
           lambda: self.initial_value)
+
+  @staticmethod
+  def from_proto(variable_def, import_scope=None):
+    return RefVariable(variable_def=variable_def, import_scope=import_scope)
 
   @classmethod
   def _variable_call(
