@@ -449,7 +449,23 @@ struct MatvecPattern : public OpRewritePattern<linalg::MatvecOp> {
     if (hasLabel(matvecOp, kTransformedLabel))
       return rewriter.notifyMatchFailure(matvecOp, "already transformed");
 
-    MatmulSizes tileSizes = tileSizeFn(getMatmulSizes(matvecOp));
+    MatmulSizes matmulSizes = getMatmulSizes(matvecOp);
+    // For large K it is beneficial to perform reduction in two steps, i.e.
+    // reduce tensor<K> to tensor<VECTOR_SIZE> and then perform a horizontal
+    // add to reduce tensoSr<VECTOR_SIZE> to a single element.
+    constexpr int64_t kReductionDimSizeThreshold = 96;
+    if (!ShapedType::isDynamic(matmulSizes.k) &&
+        matmulSizes.k > kReductionDimSizeThreshold) {
+      auto tilingParallelDim = tileUsingSCFForallOpAndFuseGreedily(
+          rewriter, matvecOp, getSCFTilingOptions({1, 0}), nullptr);
+      if (failed(tilingParallelDim)) return failure();
+
+      auto tiledMatvecOp =
+          cast<linalg::MatvecOp>(tilingParallelDim->tiledOps.front());
+      return convertMatvecToDotOp(rewriter, tiledMatvecOp);
+    }
+
+    MatmulSizes tileSizes = tileSizeFn(matmulSizes);
     return tileAndPeelMatmulOp(rewriter, matvecOp, {tileSizes.m, tileSizes.k});
   }
 

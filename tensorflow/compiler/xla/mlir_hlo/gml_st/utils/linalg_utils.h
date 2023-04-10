@@ -64,6 +64,10 @@ FailureOr<linalg::MatmulOp> convertConvToMatmul(linalg::Conv2DNhwcHwcfOp convOp,
 FailureOr<linalg::MatmulOp> convertBatchMatmulToMatmul(
     linalg::BatchMatmulOp batchMatmulOp, PatternRewriter &rewriter);
 
+// Converts linalg.matvec into linalg.dot.
+FailureOr<linalg::DotOp> convertMatvecToDotOp(PatternRewriter &rewriter,
+                                              linalg::MatvecOp matvecOp);
+
 // Converts linalg.dot into linalg.reduce(linalg.map).
 FailureOr<linalg::ReduceOp> convertDotOpToReduce(linalg::DotOp dotOp,
                                                  PatternRewriter &rewriter);

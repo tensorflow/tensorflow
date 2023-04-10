@@ -19,11 +19,27 @@ limitations under the License.
 
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 
 namespace mlir::gml_st {
+namespace {
 
 using tensor::CollapseShapeOp;
 using tensor::ExpandShapeOp;
+
+Value collapseDpsInit(OpBuilder &b, Location loc, Value init,
+                      ArrayRef<ReassociationIndices> reassociation) {
+  auto fillOp = init.getDefiningOp<linalg::FillOp>();
+  if (!fillOp) return b.create<CollapseShapeOp>(loc, init, reassociation);
+
+  Value collapsedInit = b.create<CollapseShapeOp>(
+      loc, fillOp.getOutputs().front(), reassociation);
+  auto newFill = b.create<linalg::FillOp>(loc, fillOp.getInputs(),
+                                          ValueRange{collapsedInit});
+  return newFill.getResult(0);
+}
+
+}  // namespace
 
 bool isCwiseGenericOp(Operation *op, int64_t *arity) {
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
@@ -140,24 +156,40 @@ FailureOr<linalg::MatmulOp> convertBatchMatmulToMatmul(
   SmallVector<ReassociationIndices> map{{0, 1}, {2}};
   Value newLhs = rewriter.create<CollapseShapeOp>(loc, lhs, map);
   Value newRhs = rewriter.create<CollapseShapeOp>(loc, rhs, map);
-  Value newInit;
-  if (auto fillOp = init.getDefiningOp<linalg::FillOp>()) {
-    Value collapsedInit =
-        rewriter.create<CollapseShapeOp>(loc, fillOp.getOutputs().front(), map);
-    newInit = rewriter
-                  .create<linalg::FillOp>(loc, fillOp.getInputs(),
-                                          ValueRange{collapsedInit})
-                  .getResult(0);
-  } else {
-    newInit = rewriter.create<CollapseShapeOp>(loc, init, map);
-  }
-
+  Value newInit = collapseDpsInit(rewriter, loc, init, map);
   auto matmul = rewriter.create<linalg::MatmulOp>(
       loc, newInit.getType(), ValueRange{newLhs, newRhs}, ValueRange{newInit});
 
   rewriter.replaceOpWithNewOp<ExpandShapeOp>(
       batchMatmulOp, batchMatmulOp.getType(0), matmul.getResult(0), map);
   return matmul;
+}
+
+FailureOr<linalg::DotOp> convertMatvecToDotOp(PatternRewriter &rewriter,
+                                              linalg::MatvecOp matvecOp) {
+  auto resultType = matvecOp.getType(0).cast<RankedTensorType>();
+  if (resultType.getDimSize(0) != 1) return failure();
+
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(matvecOp);
+
+  Location loc = matvecOp.getLoc();
+  Value lhs = matvecOp.getInputs().front();
+  Value rhs = matvecOp.getInputs().back();
+  Value init = matvecOp.getOutputs().front();
+
+  Value collapsedLhs =
+      rewriter.create<CollapseShapeOp>(loc, lhs, ReassociationIndices{{0, 1}});
+  Value collapsedInit = collapseDpsInit(rewriter, loc, init, {});
+  auto dotOp = rewriter.create<linalg::DotOp>(loc, collapsedInit.getType(),
+                                              ValueRange{collapsedLhs, rhs},
+                                              ValueRange{collapsedInit});
+  Value expandResult =
+      rewriter.create<ExpandShapeOp>(loc, init.getType(), dotOp.getResult(0),
+                                     ArrayRef<ReassociationIndices>{});
+
+  rewriter.replaceOp(matvecOp, expandResult);
+  return dotOp;
 }
 
 FailureOr<linalg::ReduceOp> convertDotOpToReduce(linalg::DotOp dotOp,
