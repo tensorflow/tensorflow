@@ -456,7 +456,6 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.shape_inference_on_tfe_dialect_import =
       options.shape_inference_on_tfe_dialect_import;
   optimization_options.debug_filename_prefix = function_name;
-  env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
   DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get(),
              &reachable_lib_def, false);
@@ -565,7 +564,6 @@ PreprocessAndPartitionGraph(
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = device_name_to_subgraphs.get();
   optimization_options.debug_filename_prefix = function_name;
-  env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we
