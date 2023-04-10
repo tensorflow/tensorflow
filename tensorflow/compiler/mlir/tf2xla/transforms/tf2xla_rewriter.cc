@@ -175,13 +175,6 @@ tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::ImportXlaComputation(
                           *hlo_module->entry_computation(), symbol_table,
                           &function_map, &builder, /*is_main*/ false));
 
-  // TODO(b/276498211): Set this imported function as public so that LLVM
-  // doesn't optimize it out.
-  for (auto it : function_map) {
-    FuncOp function = it.second;
-    function.setVisibility(FuncOp::Visibility::Public);
-  }
-
   return translated_function;
 }
 
