@@ -34,11 +34,13 @@ class FullyConnectedTester {
     kFP16,
     kTensorWiseQuantizedInt8,
     kChannelWiseQuantizedInt8,
+    kDynamic,
   };
   enum class BiasType {
     kNone,
     kFP32,
     kFP16,
+    kDynamic,
   };
 
   FullyConnectedTester() = default;
@@ -104,8 +106,19 @@ class FullyConnectedTester {
     return *this;
   }
 
+  inline FullyConnectedTester& DynamicWeights() {
+    weights_type_ = WeightsType::kDynamic;
+    bias_type_ = BiasType::kFP32;
+    return *this;
+  }
+
   inline FullyConnectedTester& NoBias() {
     bias_type_ = BiasType::kNone;
+    return *this;
+  }
+
+  inline FullyConnectedTester& DynamicBias() {
+    bias_type_ = BiasType::kDynamic;
     return *this;
   }
 
