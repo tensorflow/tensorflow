@@ -543,20 +543,26 @@ PreprocessAndPartitionGraph(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
-  VLOG(4) << "Main function graph to be partitioned:";
-  VLOG(4) << DebugString(graph->ToGraphDefDebug());
+  // Dump graph before the partition starts.
+  DUMP_GRAPH(function_name, "before_partition", graph.get(), lib_def,
+             VLOG_IS_ON(4));
 
+  // Partition the graph.
   auto device_name_to_subgraphs =
       std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
   TF_RETURN_IF_ERROR(PartitionFunctionGraph(dev_set, std::move(graph),
                                             device_name_to_subgraphs.get()));
 
+  // Dump graphs before post-partitioning passes.
   for (const auto& pair : *device_name_to_subgraphs) {
-    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
-                              pair.first, ")"),
-              pair.second.get());
+    std::string partitioned_func_name =
+        absl::StrCat(function_name, "_partition_" + pair.first);
+    const auto* optimized_subgraph = pair.second.get();
+    DUMP_GRAPH(partitioned_func_name, "before_partition_passes",
+               optimized_subgraph, lib_def, false);
   }
 
+  // Doing post-partitioning passes.
   GraphOptimizationPassOptions optimization_options;
   optimization_options.flib_def = &(input_optimized_graph.lib_def);
   optimization_options.is_function_graph = true;
@@ -573,19 +579,16 @@ PreprocessAndPartitionGraph(
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   }
+
+  // Dump graphs after post-partitioning passes.
   for (const auto& pair : *device_name_to_subgraphs) {
+    std::string partitioned_func_name =
+        absl::StrCat(function_name, "_partition_" + pair.first);
     const auto* optimized_subgraph = pair.second.get();
-    DumpGraph(
-        strings::StrCat("After all optimization passes (", pair.first, ")"),
-        optimized_subgraph);
-    if (VLOG_IS_ON(3)) {
-      DumpGraphDefToFile(
-          strings::StrCat("pflr_after_all_optimization_passes_",
-                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
-                          pair.first),
-          optimized_subgraph->ToGraphDefDebug());
-    }
+    DUMP_GRAPH(partitioned_func_name, "after_partition_passes",
+               optimized_subgraph, lib_def, false);
   }
+
   return std::move(device_name_to_subgraphs);
 }
 

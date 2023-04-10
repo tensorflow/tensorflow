@@ -124,7 +124,11 @@ void DebugDataDumper::DumpGraph(const std::string& name, const std::string& tag,
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
 
-  if (func_lib_def) *graph_def.mutable_library() = func_lib_def->ToProto();
+  if (func_lib_def) {
+    FunctionLibraryDefinition reachable_lib_def =
+        func_lib_def->ReachableDefinitions(graph_def);
+    *graph_def.mutable_library() = reachable_lib_def.ToProto();
+  }
 
   // Now dump the graph into the target file.
   DumpGraphDefToFile(dump_filename, graph_def);
