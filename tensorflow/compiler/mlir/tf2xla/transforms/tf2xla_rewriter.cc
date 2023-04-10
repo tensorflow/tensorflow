@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -154,47 +155,34 @@ tsl::StatusOr<std::string> Tf2XlaRewriter::CreateUniqueTranslatedFunctionName(
 
 tsl::StatusOr<mlir::func::FuncOp> Tf2XlaRewriter::ImportXlaComputation(
     XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> computed_module,
-                      CreateModuleFromXlaComputation(computation));
+  ModuleOp mlir_module = op_->getParentOfType<ModuleOp>();
+  mlir::Builder builder(mlir_module);
+  mlir::SymbolTable symbol_table(mlir_module);
 
-  ModuleOp parent_module = op_->getParentOfType<ModuleOp>();
-  for (func::FuncOp xla_generated_func :
-       computed_module->getOps<func::FuncOp>()) {
-    FuncOp imported_function = xla_generated_func.clone();
-    // TODO(b/276498211): Set this imported function as public so that LLVM
-    // doesn't optimize it out.
-    imported_function.setVisibility(FuncOp::Visibility::Public);
-    parent_module.push_back(imported_function);
+  xla::DebugOptions debug_options;
+  TF_ASSIGN_OR_RETURN(auto hlo_module_config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          computation.proto(), debug_options));
+  TF_ASSIGN_OR_RETURN(
+      auto hlo_module,
+      xla::HloModule::CreateFromProto(computation.proto(), hlo_module_config));
+
+  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>
+      function_map;
+
+  TF_ASSIGN_OR_RETURN(FuncOp translated_function,
+                      xla::HloFunctionImporter::ImportAsFunc(
+                          *hlo_module->entry_computation(), symbol_table,
+                          &function_map, &builder, /*is_main*/ false));
+
+  // TODO(b/276498211): Set this imported function as public so that LLVM
+  // doesn't optimize it out.
+  for (auto it : function_map) {
+    FuncOp function = it.second;
+    function.setVisibility(FuncOp::Visibility::Public);
   }
 
-  func::FuncOp translated_function_main =
-      parent_module.lookupSymbol<func::FuncOp>(computation.name());
-  if (!translated_function_main) {
-    return tsl::errors::NotFound(absl::StrCat(
-        "Imported all XLA computations did not include ", computation.name()));
-  }
-
-  return translated_function_main;
-}
-
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-Tf2XlaRewriter::CreateModuleFromXlaComputation(XlaComputation& computation) {
-  mlir::OwningOpRef<mlir::ModuleOp> temp_module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(op_->getContext()));
-
-  TF_RETURN_IF_ERROR(
-      xla::ConvertHloToMlirHlo(temp_module.get(), &computation.proto(),
-                               /*import_all_computations=*/false));
-
-  func::FuncOp xla_main_function =
-      temp_module->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!xla_main_function) {
-    // TODO(b/276465283): This shouldn't happen, but check to be defensive.
-    return tsl::errors::Internal("Could not find 'main' HLO imported function");
-  }
-  xla_main_function.setName(computation.name());
-
-  return temp_module;
+  return translated_function;
 }
 
 LogicalResult Tf2XlaRewriter::PrepareParams() {
