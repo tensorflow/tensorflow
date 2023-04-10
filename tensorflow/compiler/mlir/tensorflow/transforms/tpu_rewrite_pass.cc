@@ -442,23 +442,23 @@ void AssignDevicesToReplicate(
   for (int core = 0; core < num_cores_per_replica; ++core) {
     llvm::SmallVector<StringRef, 8> devices_by_core;
     devices_by_core.reserve(num_replicas);
-    for (int replica = 0; replica < num_replicas; ++replica)
+    llvm::SmallVector<StringRef, 8> hosts_by_core;
+    hosts_by_core.reserve(num_replicas);
+    for (int replica = 0; replica < num_replicas; ++replica) {
       devices_by_core.push_back(tpu_devices[replica][core].device);
+      hosts_by_core.push_back(tpu_devices[replica][core].host);
+    }
 
     device_attrs.push_back(
         builder->getNamedAttr(tensorflow::GetDeviceAliasForLogicalCore(core),
                               builder->getStrArrayAttr(devices_by_core)));
+
+    // For data parallelism, also add replicated host devices, as these are
+    // necessary for outside compilation.
+    device_attrs.push_back(builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForHostOfLogicalCore(core),
+        builder->getStrArrayAttr(hosts_by_core)));
   }
-
-  // For data parallelism, also add replicated host devices, as these are
-  // necessary for outside compilation.
-  llvm::SmallVector<StringRef, 8> hosts;
-  hosts.reserve(num_replicas);
-  for (int replica = 0; replica < num_replicas; ++replica)
-    hosts.push_back(tpu_devices[replica][0].host);
-
-  device_attrs.push_back(builder->getNamedAttr(
-      tensorflow::kTPUReplicatedHost, builder->getStrArrayAttr(hosts)));
 
   replicate->setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
 }

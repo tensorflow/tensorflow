@@ -830,7 +830,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
   std::string host_device;
   EXPECT_TRUE(mlir::succeeded(
       GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));
-  EXPECT_EQ(host_device, kTPUReplicatedHost);
+  EXPECT_EQ(host_device, GetDeviceAliasForHostOfLogicalCore(0));
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
