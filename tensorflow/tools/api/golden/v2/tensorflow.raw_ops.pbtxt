@@ -1362,7 +1362,7 @@ tf_module {
   }
   member_method {
     name: "DropoutGrad"
-    argspec: "args=[\'gradients\', \'rate\', \'noise_shape\', \'seed1\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'rate\', \'mask\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DummyIterationCounter"
@@ -1875,6 +1875,14 @@ tf_module {
   member_method {
     name: "GatherV2"
     argspec: "args=[\'params\', \'indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "Gelu"
+    argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GeluGrad"
+    argspec: "args=[\'gradients\', \'outputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "GenerateBoundingBoxProposals"

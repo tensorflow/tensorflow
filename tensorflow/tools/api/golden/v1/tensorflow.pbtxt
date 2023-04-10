@@ -1194,11 +1194,11 @@ tf_module {
   }
   member_method {
     name: "dropout"
-    argspec: "args=[\'input\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'rate\', \'noise_shape\', \'seed1\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dropout_grad"
-    argspec: "args=[\'gradients\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'rate\', \'mask\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dynamic_partition"
@@ -1375,6 +1375,14 @@ tf_module {
   member_method {
     name: "gather_nd"
     argspec: "args=[\'params\', \'indices\', \'name\', \'batch_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
+  }
+  member_method {
+    name: "gelu"
+    argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "gelu_grad"
+    argspec: "args=[\'gradients\', \'outputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_collection"
