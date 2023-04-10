@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -43,10 +44,14 @@ FunctionDef FoldBoolInputTensor(const FunctionDef& fdef,
   // -  Compare with grappler constant folding.
   FunctionDef result = fdef;
 
+  // Rename the new fdef.
+  result.mutable_signature()->set_name(
+      FoldedFunctionName(fdef.signature().name(), input_name, input_value));
+
   // Remove boolean tensor from input arg signature.
   result.mutable_signature()->clear_input_arg();
   for (const auto& input_arg : fdef.signature().input_arg()) {
-    if (input_arg.name() != input_name) continue;
+    if (input_arg.name() == input_name) continue;
     *result.mutable_signature()->add_input_arg() = input_arg;
   }
 
@@ -83,6 +88,12 @@ void DisableBoolInputFolding(FunctionDef& fdef) {
 }
 
 }  // namespace
+
+std::string FoldedFunctionName(const std::string& fname,
+                               const std::string& input_name,
+                               bool input_value) {
+  return absl::StrCat(fname, "_", input_name, "_", input_value);
+}
 
 bool IsSmallConstantOptimizationEnabled(const FunctionDef& fdef) {
   auto it = fdef.attr().find(kRuntimeConstantOptimization);

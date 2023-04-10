@@ -458,6 +458,7 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -547,6 +548,7 @@ cc_library(
         ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
+        ":small_constants_optimizer",
         ":tensor_handle",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
@@ -710,6 +712,7 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":placement_utils",
+        ":small_constants_optimizer",
         ":tensor_handle",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",

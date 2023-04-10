@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_SMALL_CONSTANTS_OPTIMIZER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_SMALL_CONSTANTS_OPTIMIZER_H_
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb.h"
@@ -28,6 +29,10 @@ bool IsSmallConstantOptimizationEnabled(const FunctionDef& fdef);
 // Generates new FunctionDefs with the boolean input tensors folded as
 // constants into the FunctionDef.
 std::vector<FunctionDef> FoldInputTensors(const FunctionDef& fdef);
+
+// Generates the FunctionDef name for the folded function.
+std::string FoldedFunctionName(const std::string& fname,
+                               const std::string& input_name, bool input_value);
 
 }  // namespace tensorflow::small_constants_optimizer
 
