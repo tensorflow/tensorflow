@@ -1432,6 +1432,19 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_base_device",
+    srcs = ["pjrt_base_device.cc"],
+    hdrs = ["pjrt_base_device.h"],
+    # Public visibility is needed for external TF/XLA backends.
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:layout_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:local_device",
+    ],
+)
+
+cc_library(
     name = "pjrt_device_context",
     srcs = [
         "pjrt_device_context.cc",
