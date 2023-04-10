@@ -173,6 +173,22 @@ if collaborator_build:
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
+EXTRA_PACKAGES = {}
+EXTRA_PACKAGES['with-cuda'] = [
+    # TODO(nluehr): set nvidia lib versions based on build components.
+    'nvidia-cuda-runtime-cu11 == 11.8.89',
+    'nvidia-cublas-cu11 == 11.11.3.6',
+    'nvidia-cufft-cu11 == 10.9.0.58',
+    'nvidia-cudnn-cu11 == 8.7.0.84',
+    'nvidia-curand-cu11 == 10.3.0.86',
+    'nvidia-cusolver-cu11 == 11.4.1.48',
+    'nvidia-cusparse-cu11 == 11.7.5.86',
+    'nvidia-nccl-cu11 == 2.16.5',
+    'nvidia-cuda-cupti-cu11 == 11.8.87',
+    'nvidia-cuda-nvcc-cu11 == 11.8.89',
+    'tensorrt == 8.5.3.1',
+]
+
 DOCLINES = __doc__.split('\n')
 if project_name.endswith('-gpu'):
   project_name_no_gpu = project_name[:-len('-gpu')]
@@ -354,6 +370,7 @@ setup(
     } if not collaborator_build else {},
     headers=headers if not collaborator_build else [],
     install_requires=REQUIRED_PACKAGES,
+    extras_require=EXTRA_PACKAGES,
     # Add in any packaged data.
     include_package_data=True if not collaborator_build else False,
     package_data={
