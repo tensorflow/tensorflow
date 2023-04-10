@@ -64,6 +64,7 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
+class GraphTest;
 class GraphDef;
 class Node;
 struct OutputTensor;
@@ -454,6 +455,7 @@ class Edge {
   Edge() {}
 
   friend class EdgeSetTest;
+  friend class GraphTest;
   friend class Graph;
   Node* src_;
   Node* dst_;
