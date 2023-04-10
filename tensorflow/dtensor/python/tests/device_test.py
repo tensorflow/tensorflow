@@ -377,9 +377,12 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     with api.default_mesh(cpu0_mesh):
       a = constant_op.constant(1.0)
       b = array_ops.ones(shape=(3, 3))
-    # FIXME(b/274647196): This shall eventually become a DTensor on cpu0_mesh.
-    self.assertIn("CPU:0", b.device)
+
+    self.assertFalse(api.is_dtensor(a))
     self.assertIn("CPU:0", a.device)
+
+    self.assertTrue(api.is_dtensor(b))
+    self.assertEqual(api.fetch_layout(b).mesh, cpu0_mesh)
 
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):

@@ -453,7 +453,7 @@ class DTensorDevice {
   // Executes a single device Operation, on a single device.
   void ExecuteSingleDeviceOperation(
       TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
-      const DTensorOperation& doperation, const std::string& device_name,
+      const std::string& operation_name, const std::string& device_name,
       const TFE_OpAttrs* attributes, int* num_outputs,
       TFE_TensorHandle** outputs, TF_Status* status);
 
@@ -1780,7 +1780,7 @@ void DTensorDevice::ParallelExecuteRegularOperation(
 
 void DTensorDevice::ExecuteSingleDeviceOperation(
     TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
-    const DTensorOperation& doperation, const std::string& device_name,
+    const std::string& operation_name, const std::string& device_name,
     const TFE_OpAttrs* attributes, int* num_outputs, TFE_TensorHandle** outputs,
     TF_Status* status) {
   std::unique_ptr<tensorflow::EagerOperation> new_op(
@@ -1790,7 +1790,7 @@ void DTensorDevice::ExecuteSingleDeviceOperation(
   // TODO(b/274647196): don't forget setting step id when this is moved after
   // rewrite.
   Set_TF_Status_from_Status(
-      status, new_op->Reset(doperation.name,
+      status, new_op->Reset(operation_name.c_str(),
                             /*device_name=*/device_name.c_str(),
                             /*remote=*/false, eager_executor_.get()));
   if (TF_GetCode(status) != TF_OK) return;
@@ -2007,6 +2007,8 @@ void DTensorDevice::ExecuteRegularOperation(
     const std::string& translated_function_name =
         function.translated_function_name;
 
+    VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
+
     num_global_outputs += function.local_output_shapes.size();
 
     if (is_remote_mesh(mesh) ||
@@ -2014,6 +2016,9 @@ void DTensorDevice::ExecuteRegularOperation(
          excluded_fn_names.end())) {
       // Skip execution for a translated function has remote mesh or when it is
       // excluded.
+      continue;
+    }
+    if (mesh.IsSingleDevice()) {
       continue;
     }
 
@@ -2045,7 +2050,6 @@ void DTensorDevice::ExecuteRegularOperation(
       }
     }
 
-    VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
     parallel_device_mesh->parallel_device().StartExecute(
         context, parallel_inputs, translated_function_name.c_str(), attributes,
         /*expected_max_outputs=*/function.local_output_shapes.size(),
@@ -2074,7 +2078,40 @@ void DTensorDevice::ExecuteRegularOperation(
 
     std::vector<std::unique_ptr<TensorWithLayout>> output_with_layout;
     output_with_layout.reserve(function.output_index_map.size());
-    if (is_remote_mesh(mesh)) {
+    VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
+
+    if (mesh.IsSingleDevice()) {
+      const std::string device_name = std::string{mesh.single_device()};
+      std::vector<TFE_TensorHandle*> single_device_inputs;
+      single_device_inputs.reserve(inputs_tf.size());
+      for (auto input_tf : inputs_tf) {
+        if (!input_tf->layout().IsSingleDevice()) {
+          Set_TF_Status_from_Status(
+              status, errors::InvalidArgument(
+                          "Some of the inputs are not single device"));
+          break;
+        }
+        single_device_inputs.push_back(input_tf->single_tensor());
+      }
+      int num_outputs = function.output_index_map.size();
+
+      std::vector<TFE_TensorHandle*> single_device_outputs;
+      single_device_outputs.resize(num_outputs);
+
+      if (TF_GetCode(status) == TF_OK) {
+        ExecuteSingleDeviceOperation(context, single_device_inputs,
+                                     function.translated_function_name,
+                                     device_name, attributes, &num_outputs,
+                                     single_device_outputs.data(), status);
+        for (auto output : single_device_outputs) {
+          auto output_tensor = Broadcast(context, output, mesh, status);
+          if (TF_GetCode(status) != TF_OK) {
+            break;
+          }
+          output_with_layout.push_back(std::move(output_tensor));
+        }
+      }
+    } else if (is_remote_mesh(mesh)) {
       // Create dummy outputs on a remote mesh.
       for (int i = 0; i < function.output_index_map.size(); ++i) {
         const auto dim_sizes = function.local_output_shapes.at(i).dim_sizes();
@@ -2087,37 +2124,39 @@ void DTensorDevice::ExecuteRegularOperation(
         output_with_layout.push_back(std::move(remote_output));
       }
     } else {
-      VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
       auto result = parallel_device_mesh->parallel_device().Join(
           function.local_output_shapes, status);
-      if (TF_GetCode(join_status.get()) != TF_OK &&
-          // Preserve the first failure we see, but only if it is a real failure
-          // and not a cancellation (which was probably triggered by the error
-          // we want to propagate).
-          (TF_GetCode(status) == TF_OK ||
-           TF_GetCode(join_status.get()) != TF_CANCELLED)) {
-        continue;
-      }
-      if (TF_GetCode(status) != TF_OK) {
-        if (TF_GetCode(status) != TF_CANCELLED) {
-          LOG(ERROR) << "Encountered error while executing function: "
-                     << function.translated_function_name
-                     << " for mesh : " << mesh.ToString()
-                     << " / error : " << TF_Message(status);
+
+      if (TF_GetCode(status) == TF_OK) {
+        for (int i = 0; i < result->size(); ++i) {
+          ASSIGN_OR_RETURN_C_STATUS(
+              auto local_output,
+              CreateTensorWithLayout(std::move((*result)[i]),
+
+                                     function.output_layouts[i]),
+              status);
+          output_with_layout.push_back(std::move(local_output));
         }
-        TF_SetStatus(join_status.get(), TF_GetCode(status), TF_Message(status));
-        continue;
       }
+    }
 
-      for (int i = 0; i < result->size(); ++i) {
-        ASSIGN_OR_RETURN_C_STATUS(
-            auto local_output,
-            CreateTensorWithLayout(std::move((*result)[i]),
-
-                                   function.output_layouts[i]),
-            status);
-        output_with_layout.push_back(std::move(local_output));
+    if (TF_GetCode(join_status.get()) != TF_OK &&
+        // Preserve the first failure we see, but only if it is a real failure
+        // and not a cancellation (which was probably triggered by the error
+        // we want to propagate).
+        (TF_GetCode(status) == TF_OK ||
+         TF_GetCode(join_status.get()) != TF_CANCELLED)) {
+      continue;
+    }
+    if (TF_GetCode(status) != TF_OK) {
+      if (TF_GetCode(status) != TF_CANCELLED) {
+        LOG(ERROR) << "Encountered error while executing function: "
+                   << function.translated_function_name
+                   << " for mesh : " << mesh.ToString()
+                   << " / error : " << TF_Message(status);
       }
+      TF_SetStatus(join_status.get(), TF_GetCode(status), TF_Message(status));
+      continue;
     }
 
     for (int i = 0; i < function.output_index_map.size(); ++i) {
@@ -2278,7 +2317,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     if (mesh.has_value()) {
       device_name = std::string{mesh->single_device()};
     }
-    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation,
+    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation.name,
                                  device_name, attributes, num_outputs, outputs,
                                  status);
     return;
@@ -2369,18 +2408,6 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     }
     typed_inputs[single_device_input_index] = tensor_with_layout.get();
     broadcast_results_keep_alive.emplace_back(std::move(tensor_with_layout));
-  }
-
-  // Short circuit to run fully single device ops with the nested Eager
-  // Executor.
-  // FIXME(b/274647196): After ::Wrap() lands, cast the inputs to SingleDevice
-  // TensorWithLayout, and move the dispatch to behind DTensor rewrites.
-  if (single_device_input_indices.size() == num_inputs &&
-      mesh->IsSingleDevice()) {
-    ExecuteSingleDeviceOperation(context, inputs, dtensor_operation,
-                                 std::string{mesh->single_device()}, attributes,
-                                 num_outputs, outputs, status);
-    return;
   }
 
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
