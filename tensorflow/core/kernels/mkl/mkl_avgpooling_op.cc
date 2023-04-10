@@ -289,6 +289,14 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                                                       this->data_format_tf_)
                           : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
                                                        this->data_format_tf_);
+
+      OP_REQUIRES(
+          context, orig_input_dims_mkl_order[0] == diff_dst_dims[0],
+          errors::InvalidArgument(
+              "Expected first dimension of orig_input and diff_dst to match, "
+              "got ",
+              orig_input_dims_mkl_order[0], " and ", diff_dst_dims[0]));
+
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
