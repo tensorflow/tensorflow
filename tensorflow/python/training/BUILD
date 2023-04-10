@@ -1415,8 +1415,8 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/summary:summary_py",
-        "//tensorflow/python/summary/writer",
         "//tensorflow/python/summary/writer:fake_summary_writer",
+        "//tensorflow/python/summary/writer:writer_cache",
     ],
 )
 
