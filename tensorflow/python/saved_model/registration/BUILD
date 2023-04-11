@@ -53,6 +53,7 @@ tf_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -82,6 +83,7 @@ tf_py_test(
         ":test_util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
