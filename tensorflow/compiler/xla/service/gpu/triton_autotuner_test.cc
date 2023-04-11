@@ -46,10 +46,12 @@ class TritonAutotunerTest : public HloTestBase {
                                              .default_stream_executor()
                                              ->GetDeviceDescription()
                                              .cuda_compute_capability());
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
+                                        tsl::port::MaxParallelism());
     pipeline.AddPass<TritonAutotuner>(
         DeviceConfig{backend().default_stream_executor(),
                      backend().memory_allocator()},
-        tsl::port::MaxParallelism());
+        &thread_pool);
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
