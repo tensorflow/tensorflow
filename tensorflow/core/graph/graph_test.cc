@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <memory>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -71,15 +72,15 @@ class GraphTest : public ::testing::Test {
     EXPECT_EQ(Stringify(expected_out), Stringify(out));
   }
 
-  Edge* BuildEdge(int id = 0, Node* src = 0, Node* dst = 0, int x = 0,
-                  int y = 0) {
+  std::unique_ptr<Edge> BuildEdge(int id = 0, Node* src = nullptr,
+                                  Node* dst = nullptr, int x = 0, int y = 0) {
     Edge* e = new Edge;
     e->id_ = id;
     e->src_ = src;
     e->dst_ = dst;
     e->src_output_ = x;
     e->dst_input_ = y;
-    return e;
+    return absl::WrapUnique(e);
   }
 
   void VerifyGraphStats() {
