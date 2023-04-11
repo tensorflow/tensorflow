@@ -9887,10 +9887,12 @@ TEST_F(OpConverterTest, DuplicateSqueeze) {
     if (params->validation_only) return OkStatus();
     auto input = params->inputs.at(0).tensor();
     ITensorProxyPtr output;
+    // Squeeze the first dimension.
     std::vector<int> new_dims = {0, 1, 2, 3};
     TF_EXPECT_OK(params->converter->SqueezeTensor(
         /*input=*/input, /*input_dims=*/&new_dims, /*params=*/params,
         /*output=*/&output, /*op_instance=*/0));
+    // Squeeze the second dimension.
     new_dims = {0, 2, 3};
     TF_EXPECT_OK(params->converter->SqueezeTensor(
         /*input=*/output, /*input_dims=*/&new_dims, /*params=*/params,
@@ -9908,17 +9910,17 @@ TEST_F(OpConverterTest, DuplicateSqueeze) {
   RunValidationAndConversion(node_def);
   // Set up the inputs and outputs.
   DataVec input_data;
-  DataVec outputs;
-  InputOutputData data{"input",
+  DataVec output_data;
+  InputOutputData abs_input{"input",
                        ConstructTensor<float>(/*data_size=*/6, /*value=*/0,
                                               /*tf_type=*/DataType::DT_FLOAT)};
-  InputOutputData data2{"my_unary",
+  InputOutputData abs_output{"my_unary",
                         ConstructTensor<float>(/*data_size=*/6, /*value=*/0,
                                                /*tf_type=*/DataType::DT_FLOAT)};
-  input_data.push_back(data);
-  outputs.push_back(data2);
+  input_data.push_back(abs_input);
+  output_data.push_back(abs_output);
   // Build and run the cuda engine.
-  TF_EXPECT_OK(BuildAndRun(input_data, &outputs));
+  TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
 }
 
 #endif
