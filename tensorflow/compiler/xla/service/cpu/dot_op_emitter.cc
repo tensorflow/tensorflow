@@ -828,11 +828,8 @@ Status DotOpEmitter::EmitCallToRuntime() {
       break;
     case F64:
       fn_name = multi_threaded
-                    ? (use_mkl_dnn ? runtime::kMKLMatMulF64SymbolName
-                                   : runtime::kEigenMatMulF64SymbolName)
-                    : (use_mkl_dnn
-                           ? runtime::kMKLSingleThreadedMatMulF64SymbolName
-                           : runtime::kEigenSingleThreadedMatMulF64SymbolName);
+                    ? runtime::kEigenMatMulF64SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
       float_type = b_->getDoubleTy();
       break;
     case C64:
