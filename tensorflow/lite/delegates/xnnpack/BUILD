@@ -150,6 +150,7 @@ cc_library(
     linkstatic = True,
     deps = [
         ":quantization_util",
+        ":tflite_with_xnnpack_dynamic_fully_connected",
         ":tflite_with_xnnpack_qs8",
         ":tflite_with_xnnpack_qu8",
         "//tensorflow/lite:kernel_api",
