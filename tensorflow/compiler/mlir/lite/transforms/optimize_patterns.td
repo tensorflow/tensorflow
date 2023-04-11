@@ -412,6 +412,10 @@ def IsTailOfShape : Constraint<CPred<
 def IsReducedTailOfShape : Constraint<CPred<
   "TFL::IsReducedTailOfShape($0.getType(), $1.getType())">>;
 
+def IsRankLessThanEqualTo : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() <= "
+  "$1.getType().cast<ShapedType>().getRank()">>;
+
 def Flatten : NativeCodeCall<
   "$0.cast<DenseElementsAttr>()"
     ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
@@ -509,9 +513,9 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
   // Pattern targetted here is as follows-
   // [input, lhr, rhs] == [<1x1024x128>, <1x1024x8x16>, <1x1x8x16xf32>]
-  // This is valid only when the- 
+  // This is valid only when the-
   // 1.last dimension of lhs is equal to the number of elements in constant rhs.
-  // 2.Reduded shape of rhs, here <8x16> is equal to last dimensions of lhs. 
+  // 2.Reduded shape of rhs, here <8x16> is equal to last dimensions of lhs.
   // Therefore, after transformation broadcast of binary op is always
   // applied to the last dimension of $input.
   def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
@@ -530,6 +534,52 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
       (HasRankAtMost<4> $lhs),
       (HasRankAtMost<4> $rhs),
       (IsDefinedByFullyConnectedOp $input)]>;
+
+  // Pattern to remove redundant reshape op used as LHS to binary ops
+  // Binary(Reshape(input, shape), rhs) -> Binary(input, rhs)
+  // This pattern is valid only if-
+  // 1. The shape is only adding broadcasting that can otherwise be implicitly
+  // handled by the binary op. Ex- shape == [1, 1, 1, 128]
+  // 2. The rank of the input to reshape is <= reshape output.
+  // 3. The rank of the output to reshape is <= binary rhs.
+  // The conditions 2 and 3 will make sure any required increase in
+  // dimentionality dure to reshape op is not lost.
+  def RemoveRedundantReshapeUsedAsLhsTo#BinaryOp : Pat<
+    (BinaryOp (TFL_ReshapeOp:$lhs $input, (Arith_ConstantOp:$shape $s)),
+              $rhs, $act_fn),
+    (BinaryOp $input, $rhs, $act_fn),
+    [(AnyStaticShapeTensor $input),
+     (AnyStaticShapeTensor $rhs),
+     (IsRankLessThanEqualTo $input, $lhs),
+     (IsRankLessThanEqualTo $lhs, $rhs),
+     (IsReducedTailOfShape $lhs, $input),
+     // Restrict operands to have at most rank 4 because TFLite binary
+     // kernel supports up to 4D broadcast.
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $rhs)]>;
+
+  // Pattern to remove redundant reshape op used as RHS to binary ops
+  // Binary(lhs, Reshape(input, shape)) -> Binary(lhs, input)
+  // This pattern is valid only if-
+  // 1. The shape is only adding broadcasting that can otherwise be implicitly
+  // handled by the binary op. Ex- shape == [1, 1, 1, 128]
+  // 2. The rank of the input to reshape is <= reshape output.
+  // 3. The rank of the output to reshape is <= binary lhs.
+  // The conditions 2 and 3 will make sure any required increase in
+  // dimentionality dure to reshape op is not lost.
+  def RemoveRedundantReshapeUsedAsRhsTo#BinaryOp : Pat<
+    (BinaryOp $lhs, (TFL_ReshapeOp:$rhs $input, (Arith_ConstantOp:$shape $s)),
+              $act_fn),
+    (BinaryOp $lhs, $input, $act_fn),
+    [(AnyStaticShapeTensor $input),
+     (AnyStaticShapeTensor $lhs),
+     (IsRankLessThanEqualTo $input, $rhs),
+     (IsRankLessThanEqualTo $rhs, $lhs),
+     (IsReducedTailOfShape $rhs, $input),
+     // Restrict operands to have at most rank 4 because TFLite binary
+     // kernel supports up to 4D broadcast.
+     (HasRankAtMost<4> $input),
+     (HasRankAtMost<4> $lhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
