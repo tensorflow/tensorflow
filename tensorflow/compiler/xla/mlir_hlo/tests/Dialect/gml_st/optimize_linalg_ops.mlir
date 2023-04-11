@@ -45,6 +45,21 @@ func.func @map_dense_constant_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
 
 // -----
 
+func.func @map_dense_constant_operand_complex(%arg: tensor<32xcomplex<f64>>) -> tensor<32xcomplex<f64>> {
+  %c0 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<32xcomplex<f64>>
+  %init = tensor.empty() : tensor<32xcomplex<f64>>
+
+  %res = linalg.map { complex.add }
+           ins(%arg, %c0: tensor<32xcomplex<f64>>, tensor<32xcomplex<f64>>)
+           outs(%init: tensor<32xcomplex<f64>>)
+  func.return %res : tensor<32xcomplex<f64>>
+}
+
+// CHECK-LABEL:  @map_dense_constant_operand_complex
+// CHECK: linalg.map { complex.add }
+
+// -----
+
 func.func @map_fill_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
   %c0 = arith.constant 0.0 : f32
   %init = tensor.empty() : tensor<32xf32>

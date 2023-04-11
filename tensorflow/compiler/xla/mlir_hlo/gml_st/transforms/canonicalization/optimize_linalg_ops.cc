@@ -48,7 +48,11 @@ std::optional<Value> getSplatValue(PatternRewriter& rewriter, Location loc,
     auto denseElementsAttr =
         constantOp.getValue().dyn_cast<DenseElementsAttr>();
 
-    if (!denseElementsAttr.isSplat()) return std::nullopt;
+    if (!denseElementsAttr.isSplat() ||
+        !arith::ConstantOp::isBuildableWith(
+            denseElementsAttr.getSplatValue<Attribute>(),
+            denseElementsAttr.getElementType()))
+      return std::nullopt;
 
     return rewriter.create<arith::ConstantOp>(
         loc, denseElementsAttr.getSplatValue<Attribute>());
