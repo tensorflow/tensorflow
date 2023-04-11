@@ -30,7 +30,7 @@ void RuntimeDevices::AddGpuDevice(const ParsedName& device,
   gpu_metadata_.insert({DeviceNameUtils::ParsedNameToString(device), metadata});
 }
 
-llvm::Optional<GpuDeviceMetadata> RuntimeDevices::GetGpuDeviceMetadata(
+std::optional<GpuDeviceMetadata> RuntimeDevices::GetGpuDeviceMetadata(
     const ParsedName& device) const {
   auto it = gpu_metadata_.find(DeviceNameUtils::ParsedNameToString(device));
   if (it != gpu_metadata_.end()) {

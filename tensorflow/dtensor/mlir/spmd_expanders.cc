@@ -522,6 +522,7 @@ REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
 
 // IO ops
 REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
+REGISTER_SPMD(FlushSummaryWriter, TF::FlushSummaryWriterOp, IOOpSPMDExpander);
 REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
               DisableCopyOnReadSPMDExpander);
 REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);

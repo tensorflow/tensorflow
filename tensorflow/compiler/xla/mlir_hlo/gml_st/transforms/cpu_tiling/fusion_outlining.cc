@@ -40,16 +40,6 @@ void outlineFusionOp(func::FuncOp parentFuncOp, gml_st::FusionOp fusionOp,
   Location loc = fusionOp.getLoc();
   MLIRContext* ctx = fusionOp.getContext();
 
-  // Find implicit operands, all of which must be constant-like.
-  Region& fusionBody = fusionOp.getBodyRegion();
-  SetVector<Operation*> implicitConstantLikeOperands;
-  visitUsedValuesDefinedAbove({fusionBody}, [&](OpOperand* operand) -> void {
-    Operation* def = operand->get().getDefiningOp();
-    assert(def && def->getNumOperands() == 0 && isPure(def) &&
-           "expect only constant-like implicit operands");
-    implicitConstantLikeOperands.insert(def);
-  });
-
   // Generate outlined fusion func ops right before the parent func op.
   rewriter.setInsertionPoint(parentFuncOp);
   std::string funcName =
@@ -76,17 +66,6 @@ void outlineFusionOp(func::FuncOp parentFuncOp, gml_st::FusionOp fusionOp,
 
   // Forward fusion op results.
   rewriter.create<func::ReturnOp>(loc, newFusionOp->getResults());
-
-  // Clone and replace constant-like implicit operands.
-  rewriter.setInsertionPointToStart(funcBlock);
-  for (Operation* constantLikeOp : implicitConstantLikeOperands) {
-    Operation* clonedConstantLikeOp = rewriter.clone(*constantLikeOp);
-    for (auto it : llvm::zip(constantLikeOp->getResults(),
-                             clonedConstantLikeOp->getResults())) {
-      replaceAllUsesInRegionWith(std::get<0>(it), std::get<1>(it),
-                                 funcOp.getBody());
-    }
-  }
 
   // Replace fusion op with a call to the newly outlined function.
   rewriter.setInsertionPoint(fusionOp);

@@ -67,10 +67,6 @@ class TPUVariableMixin(object):
   def _get_as_operand(self):
     return self.read_value()
 
-  def _is_mirrored(self):
-    raise NotImplementedError(
-        "`TPUVariableMixin._is_mirrored()` must be implemented by subclasses.")
-
   @property
   def handle(self):
     """The handle by which this variable can be accessed."""
@@ -152,9 +148,6 @@ class TPUVariableMixin(object):
 
 class TPUDistributedVariable(TPUVariableMixin, values.DistributedVariable):
   """DistributedVariable subclass for TPUStrategy."""
-
-  def _is_mirrored(self):
-    return self._policy._is_mirrored()  # pylint: disable=protected-access
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():
@@ -343,9 +336,6 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
       return self._primary.scatter_update(*args, **kwargs)
     raise NotImplementedError
 
-  def _is_mirrored(self):
-    return True
-
 
 class TPUSyncOnReadVariable(TPUVariableMixin, values.SyncOnReadVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
@@ -372,9 +362,6 @@ class TPUSyncOnReadVariable(TPUVariableMixin, values.SyncOnReadVariable):
     else:
       return tpu_util.make_raw_assign_fn(
           gen_resource_variable_ops.assign_variable_op)(self, *args, **kwargs)
-
-  def _is_mirrored(self):
-    return False
 
 
 # Common method between OnWrite and Mirrored variables.
@@ -524,9 +511,6 @@ class TPUOnWritePolicy(values.OnWritePolicy):
                              "scatter_update", var, sparse_delta, use_locking,
                              name)
 
-  def _is_mirrored(self):
-    return True
-
 
 class TPUOnReadPolicy(values.OnReadPolicy):
   """Policy defined for `tf.VariableSynchronization.ON_READ` synchronization.
@@ -560,9 +544,6 @@ class TPUOnReadPolicy(values.OnReadPolicy):
     else:
       return tpu_util.make_raw_assign_fn(
           gen_resource_variable_ops.assign_variable_op)(var, *args, **kwargs)
-
-  def _is_mirrored(self):
-    return False
 
   def scatter_sub(self, *args, **kwargs):
     raise NotImplementedError

@@ -36,6 +36,7 @@ class DTensorMlirPassRunner {
   // Imports Graph to MLIR module in tf_execute Dialect with DTensor attributes.
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportGraphToMlir(
       const DeviceSet& device_set, bool is_func,
+      const dtensor::Mesh& default_mesh,
       const FunctionLibraryDefinition& flib_def, const Graph& graph,
       Fprint128 cache_key);
 

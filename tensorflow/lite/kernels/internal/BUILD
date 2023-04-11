@@ -511,6 +511,7 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reduce_common.h",
         "reference/add.h",
         "reference/add_n.h",
         "reference/arg_min_max.h",
@@ -557,8 +558,8 @@ cc_library(
         "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
         "reference/leaky_relu.h",
-        "reference/logistic.h",
         "reference/log_softmax.h",
+        "reference/logistic.h",
         "reference/lstm_cell.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -570,7 +571,6 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
-        "reduce_common.h",
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
@@ -592,8 +592,8 @@ cc_library(
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
             "reference/reference_ops.h",
-            "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
+            "reference/string_comparisons.h",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -934,8 +934,8 @@ cc_library(
     deps = [
         ":cpu_check",
         ":tensor_utils_no_eigen",
-        "//third_party/eigen3",
         "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -1285,6 +1285,17 @@ cc_test(
     deps = [
         ":common",
         ":reduce_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "runtime_shape_test",
+    srcs = ["runtime_shape_test.cc"],
+    deps = [
+        ":types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

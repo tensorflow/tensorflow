@@ -24,11 +24,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_state
@@ -312,10 +310,10 @@ def _MaybeCompile(scope, op, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
-    xla_compile = func.definition.attr["_XlaCompile"].b
-    xla_separate_compiled_gradients = func.definition.attr[
+    xla_compile = func.cached_definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.cached_definition.attr[
         "_XlaSeparateCompiledGradients"].b
-    xla_scope = func.definition.attr["_XlaScope"].s.decode()
+    xla_scope = func.cached_definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
@@ -369,16 +367,14 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):
 
 
 def _IsFunction(graph):
-  return (isinstance(graph, FuncGraph) or
-          isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
+  # isinstance check for FuncGraphs that avoids the explicit dependency
+  # on func_graph.py and function.py
+  return isinstance(graph, ops.Graph) and graph._building_function  # pylint: disable=protected-access
 
 
 def _Captures(func_graph):
-  if isinstance(func_graph, FuncGraph):
-    return func_graph.captures
-  else:
-    assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph.captures
+  assert _IsFunction(func_graph)
+  return func_graph.captures
 
 
 def _MaybeCaptured(t):
@@ -516,11 +512,7 @@ def _GradientsHelper(ys,
   curr_graph = src_graph
   while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    if isinstance(curr_graph, FuncGraph):
-      curr_graph = curr_graph.outer_graph
-    else:
-      assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-      curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
+    curr_graph = curr_graph.outer_graph
 
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:

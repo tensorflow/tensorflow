@@ -351,7 +351,7 @@ TEST(Conv2D, FP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(Conv2D, INT8Weights) {
+TEST(Conv2D, TensorWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -379,11 +379,11 @@ TEST(Conv2D, INT8Weights) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .INT8Weights()
+      .TensorWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(Conv2D, INT8ChannelWiseWeights) {
+TEST(Conv2D, ChannelWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -411,7 +411,7 @@ TEST(Conv2D, INT8ChannelWiseWeights) {
       .KernelWidth(kernel_rng())
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
-      .INT8ChannelWiseWeights()
+      .ChannelWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 
@@ -480,7 +480,7 @@ TEST(Conv2D, SparseFP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(Conv2D, SparseINT8Weights) {
+TEST(Conv2D, SparseTensorWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -509,11 +509,11 @@ TEST(Conv2D, SparseINT8Weights) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SparseWeights()
-      .INT8Weights()
+      .TensorWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(Conv2D, SparseINT8ChannelWiseWeights) {
+TEST(Conv2D, SparseChannelWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -542,7 +542,7 @@ TEST(Conv2D, SparseINT8ChannelWiseWeights) {
       .StrideHeight(stride_rng())
       .StrideWidth(stride_rng())
       .SparseWeights()
-      .INT8ChannelWiseWeights()
+      .ChannelWiseQuantizedInt8Weights()
       .Test(xnnpack_delegate.get());
 }
 

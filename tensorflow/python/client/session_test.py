@@ -40,6 +40,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
@@ -54,7 +55,9 @@ from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -1049,7 +1052,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[1, 2], name='b')
-      v = variables.VariableV1(a, a.dtype)
+      v = variable_v1.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
       self.evaluate(assign_a_to_v)
@@ -1166,7 +1169,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with ops.colocate_with(x):
         y = array_ops.placeholder(dtype=dtypes.float32)
       with ops.device('/cpu:0'):
-        z = control_flow_ops.while_loop(
+        z = while_loop.while_loop(
             lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
       with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
         gradients_impl.gradients(z, [x, y])
@@ -1300,7 +1303,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only('b/120545219')
   def testNotEntered(self):
     # pylint: disable=protected-access
-    self.assertIsNone(ops._default_session_stack.get_default())
+    self.assertIsNone(stack._default_session_stack.get_default())
     # pylint: enable=protected-access
     with ops.device('/cpu:0'):
       sess = session.Session()
@@ -1816,7 +1819,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(AssertionError, 'Nesting violated'):
       sess1_controller.__exit__(None, None, None)
 
-    ops._default_session_stack.reset()
+    stack._default_session_stack.reset()
 
   def testInteractiveSessionNesting(self):
     sess1 = session.InteractiveSession()

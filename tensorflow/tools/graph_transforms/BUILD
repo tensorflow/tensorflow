@@ -124,11 +124,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/algorithm:container",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -138,6 +134,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ] + if_not_windows([
         "//tensorflow/core:sparse_ops_op_lib",
         "//tensorflow/core:parsing_ops_op_lib",
@@ -336,8 +336,8 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/util:_pywrap_transform_graph",
+        "//tensorflow/python/util:compat",
     ],
 )
 

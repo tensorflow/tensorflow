@@ -665,6 +665,22 @@ TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
       ->GetModelMetadata(name, ptr, bytes);
 }
 
+TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
+  TF_LITE_ENSURE(&context_, subgraph_index > 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) <= subgraphs_->size());
+  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
+  return kTfLiteOk;
+}
+
+TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) {
+  if (subgraph_index < 0 ||
+      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
+    return nullptr;
+  }
+  return subgraphs_->at(subgraph_index)->context();
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {
@@ -1157,6 +1173,7 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
     TfLiteRegistration* referenced_registration =
         &nodes_and_registration_[op_reg.registration_external->node_index]
              .second;
+    if (referenced_registration->init == nullptr) return nullptr;
     return referenced_registration->init(&context_, buffer, length);
   }
 
@@ -1187,6 +1204,18 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
     TfLiteRegistration* referenced_registration =
         &nodes_and_registration_[op_reg.registration_external->node_index]
              .second;
+    if (referenced_registration->prepare == nullptr) {
+      if (IsUnresolvedCustomOp(op_reg)) {
+        ReportError(
+            "Encountered unresolved custom op: %s.\nSee instructions: "
+            "https://www.tensorflow.org/lite/guide/ops_custom ",
+            op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
+        return kTfLiteUnresolvedOps;
+      } else {
+        // Resolved ops can have a null Prepare function.
+        return kTfLiteOk;
+      }
+    }
     return referenced_registration->prepare(&context_, node);
   }
   if (op_reg.registration_external && op_reg.registration_external->prepare) {
@@ -1241,6 +1270,7 @@ TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
     TfLiteRegistration* referenced_registration =
         &nodes_and_registration_[op_reg.registration_external->node_index]
              .second;
+    if (referenced_registration->invoke == nullptr) return kTfLiteError;
     return referenced_registration->invoke(&context_, node);
   }
 
@@ -1273,6 +1303,7 @@ void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
     TfLiteRegistration* referenced_registration =
         &nodes_and_registration_[op_reg.registration_external->node_index]
              .second;
+    if (referenced_registration->free == nullptr) return;
     return referenced_registration->free(&context_, buffer);
   }
   if (op_reg.registration_external && op_reg.registration_external->free &&
@@ -1977,6 +2008,12 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
                                        execution_plan_[execution_plan_index]);
   }
   nodes_and_registration_.resize(max_retained_node_index + 1);
+
+  // Reset all the is_delegation_skippable_ flags in subgraphs.
+  for (auto& subgraph : *subgraphs_) {
+    subgraph->is_delegation_skippable_ = false;
+  }
+
   // After undoing delegates, the graph is uninvokable, but mutable.
   state_ = kStateUninvokable;
 

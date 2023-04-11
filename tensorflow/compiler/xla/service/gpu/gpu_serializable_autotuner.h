@@ -19,6 +19,7 @@ limitations under the License.
 #include <tuple>
 #include <variant>
 
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
@@ -47,11 +48,20 @@ struct DevicelessConfig {
   se::CudaComputeCapability cuda_compute_capability{0, 0};
 };
 
-using AutotuningConfig = std::variant<DeviceConfig, DevicelessConfig>;
+struct AutotuningConfig : public std::variant<DeviceConfig, DevicelessConfig> {
+  using std::variant<DeviceConfig, DevicelessConfig>::variant;
+  bool is_offline() const {
+    return std::holds_alternative<DevicelessConfig>(*this);
+  }
+  bool is_online() const { return std::holds_alternative<DeviceConfig>(*this); }
+};
 
 using AutotuneCacheKey =
     std::tuple<std::string /* stream_exec->GetDeviceDescription().model_str()*/,
                std::string /* instr->ToString(HloPrintOptions::Canonical()) */>;
+
+using AutotuneCacheMap =
+    absl::flat_hash_map<AutotuneCacheKey, tensorflow::AutotuneResult>;
 
 inline AutotuneCacheKey AutotuneCacheKeyFromInstruction(
     const HloInstruction* instr, absl::string_view model_str) {

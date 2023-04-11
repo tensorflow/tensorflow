@@ -58,7 +58,7 @@ string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version) {
 tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
   std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() != 2 && pieces.size() != 3) {
-    return tsl::Status{tsl::error::INVALID_ARGUMENT,
+    return tsl::Status{absl::StatusCode::kInvalidArgument,
                        absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
                                        "for driver version; got \"%s\"",
                                        value.c_str())};
@@ -69,21 +69,21 @@ tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
   int patch = 0;
   if (!absl::SimpleAtoi(pieces[0], &major)) {
     return tsl::Status{
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0].c_str(), value.c_str())};
   }
   if (!absl::SimpleAtoi(pieces[1], &minor)) {
     return tsl::Status{
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str())};
   }
   if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
     return tsl::Status{
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[2].c_str(), value.c_str())};
@@ -154,7 +154,7 @@ void Diagnostician::LogDiagnosticInformation() {
 // driver-interfacing DSO version number. Returns it as a string.
 tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   tsl::StatusOr<DriverVersion> result{tsl::Status{
-      tsl::error::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       "was unable to find librocm.so DSO loaded into this program"}};
 
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
@@ -198,7 +198,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == string::npos) {
     return tsl::Status{
-        tsl::error::NOT_FOUND,
+        absl::StatusCode::kNotFound,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\"")};
@@ -230,7 +230,7 @@ void Diagnostician::WarnOnDsoKernelMismatch(
 }
 
 tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
-  auto status = tsl::Status{tsl::error::UNIMPLEMENTED,
+  auto status = tsl::Status{absl::StatusCode::kUnimplemented,
                             "kernel reported driver version not implemented"};
   return status;
 }

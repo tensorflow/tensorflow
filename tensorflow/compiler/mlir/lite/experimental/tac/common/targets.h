@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 
@@ -86,7 +85,7 @@ inline std::string GetCanonicalHardwareName(const std::string& hardware_name) {
 }
 
 // Get the target annotation form the op.
-inline llvm::Optional<std::string> GetTargetAnnotation(Operation* op) {
+inline std::optional<std::string> GetTargetAnnotation(Operation* op) {
   auto device = op->getAttrOfType<StringAttr>(kDevice);
   if (device == nullptr || device.getValue().empty()) return std::nullopt;
 
@@ -94,7 +93,7 @@ inline llvm::Optional<std::string> GetTargetAnnotation(Operation* op) {
 }
 
 // Get inference type attribute from the operation if available.
-inline llvm::Optional<InferenceType> GetInferenceTypeAnnotation(Operation* op) {
+inline std::optional<InferenceType> GetInferenceTypeAnnotation(Operation* op) {
   auto inference_type = op->getAttrOfType<StringAttr>(kInferenceType);
   if (inference_type == nullptr) return std::nullopt;
 
@@ -126,7 +125,7 @@ struct InferenceDeviceType {
 };
 
 // Get InferenceDeviceType attribute from the operation if available.
-inline llvm::Optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
+inline std::optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
     Operation* op) {
   auto hardware = GetTargetAnnotation(op);
   if (!hardware.has_value()) return std::nullopt;

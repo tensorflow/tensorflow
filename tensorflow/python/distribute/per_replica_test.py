@@ -27,7 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.util import nest
 
 
@@ -115,7 +115,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     per_replica_2 = values_lib.PerReplica((constant_op.constant(["b", "c"]),))
     condition = array_ops.placeholder_with_default(True, [])
 
-    result = control_flow_ops.cond(
+    result = cond.cond(
         condition, lambda: per_replica_1, lambda: per_replica_2)
 
     self.assertLen(result.values, 1)
@@ -127,7 +127,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     per_replica_2 = values_lib.PerReplica(("b",))
     condition = array_ops.placeholder_with_default(True, [])
 
-    result = control_flow_ops.cond(
+    result = cond.cond(
         condition, lambda: per_replica_1, lambda: per_replica_2)
 
     self.assertLen(result.values, 1)
@@ -140,7 +140,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     condition = array_ops.placeholder(dtypes.bool, [])
 
     with self.assertRaisesRegex(TypeError, "Could not build a TypeSpec for"):
-      control_flow_ops.cond(
+      cond.cond(
           condition, lambda: per_replica_1, lambda: per_replica_2)
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/linalg/sparse:conjugate_gradient",
         "//third_party/py/numpy",
     ],
 )
@@ -33,7 +34,7 @@ cuda_py_test(
         "no_cuda_asan",  # TODO(b/190824595)
     ],
     deps = [
-        "//tensorflow/python/ops/linalg/sparse",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
     ],
 )
 
@@ -46,11 +47,9 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_gpu",  # b/203655060 (cuda 11.5 specific)
-        "notsan",  # b/149115441
     ],
     deps = [
-        "//tensorflow/python/ops/linalg/sparse",
-        "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -62,7 +61,8 @@ cuda_py_test(
     main = "csr_sparse_matrix_grad_test.py",
     shard_count = 50,
     deps = [
-        "//tensorflow/python/ops/linalg/sparse",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
     ],
 )
 
@@ -76,7 +76,8 @@ cuda_py_test(
         "no_cuda_asan",  # TODO(b/190824595)
     ],
     deps = [
-        "//tensorflow/python/ops/linalg/sparse",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
     ],
 )
 
@@ -87,6 +88,7 @@ cuda_py_test(
     main = "csr_sparse_matrix_sparse_mat_mul_grad_test.py",
     shard_count = 50,
     deps = [
-        "//tensorflow/python/ops/linalg/sparse",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
     ],
 )

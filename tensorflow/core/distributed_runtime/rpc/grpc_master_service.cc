@@ -205,7 +205,8 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
           delete wrapped_response;
           delete trace;
           if (call->request.store_errors_in_response_body() && !status.ok()) {
-            call->response.set_status_code(status.code());
+            call->response.set_status_code(
+                static_cast<error::Code>(status.code()));
             call->response.set_status_error_message(status.error_message());
             call->SendResponse(ToGrpcStatus(OkStatus()));
           } else {

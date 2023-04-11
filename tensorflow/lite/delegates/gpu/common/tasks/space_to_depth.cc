@@ -97,6 +97,7 @@ std::string GetDepthToSpaceCode(const OperationDef& op_def) {
   c += "    int src_y = Y / args.block_size;\n";
   c += "    int block_id = block_y * args.block_size + block_x;\n";
   c += "    int src_c = block_id * args.dst_tensor.Channels() + dst_c;\n";
+  c += "    src_c = min(src_c, args.src_tensor.Channels() - 1);\n";
   c += "    args.src_tensor.ReadPerChannel(tmp[i], src_x, src_y, src_c);\n";
   c += "  }\n";
   c += "  FLT4 result;\n";

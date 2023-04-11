@@ -113,7 +113,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // If 'allow_reassociation' is true, the fast-math reassociation flag will
   // be enabled in the function's body. This is used when emitting reducers.
   StatusOr<llvm::Function*> EmitComputation(
-      HloComputation* computation, const std::string& function_name_prefix,
+      HloComputation* computation, absl::string_view function_name_prefix,
       bool is_top_level_computation,
       absl::Span<HloInstruction* const> instruction_order,
       bool allow_reassociation);

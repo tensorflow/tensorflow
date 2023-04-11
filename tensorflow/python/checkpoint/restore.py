@@ -594,6 +594,13 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
   # pylint: disable=protected-access
   trackable = checkpoint_position.trackable
   for child in checkpoint_position.object_proto.children:
+    # trackable._lookup_dependency can be expensive so first check if this node
+    # already has an object correspondence. If so we skip this node.
+    correspondence = checkpoint_position.checkpoint.object_by_proto_id.get(
+        child.node_id, None
+    )
+    if correspondence is not None:
+      continue
     child_position = checkpoint_position.create_child_position(child.node_id)
     local_object = trackable._lookup_dependency(child.local_name)
     child_proto = child_position.object_proto

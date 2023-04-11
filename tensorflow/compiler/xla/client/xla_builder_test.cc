@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -1471,9 +1471,7 @@ TEST_F(XlaBuilderTest, OutfeedTokenSharding) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto it = std::find_if(module->entry_computation()->instructions().begin(),
                          module->entry_computation()->instructions().end(),
-                         [](const HloInstruction* i) {
-                           return i->opcode() == HloOpcode::kOutfeed;
-                         });
+                         HloPredicateIsOp<HloOpcode::kOutfeed>);
   EXPECT_NE(it, module->entry_computation()->instructions().end());
   auto* outfeed = *it;
   EXPECT_TRUE(outfeed->has_sharding());

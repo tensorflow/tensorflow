@@ -1468,6 +1468,14 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         output_shapes.append(TensorShape(per_replica_batch_size))
     return output_shapes
 
+  def _create_copy_for_async_checkpoint(
+      self, feature_config, optimizer, pipeline_execution_with_tensor_core):
+    """Create a TPUEmbedding copy for checkpoint/async_checkpoint_helper.py."""
+    return TPUEmbedding(
+        feature_config=feature_config,
+        optimizer=optimizer,
+        pipeline_execution_with_tensor_core=pipeline_execution_with_tensor_core)
+
 
 @def_function.function
 def _load_variables_impl(

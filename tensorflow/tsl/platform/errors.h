@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -119,7 +120,7 @@ inline void CopyPayloads(const ::tsl::Status& from, ::tsl::Status& to) {
 
 // Creates a new status with the given code, message and payloads.
 inline ::tsl::Status Create(
-    Code code, ::tsl::StringPiece message,
+    absl::StatusCode code, ::tsl::StringPiece message,
     const std::unordered_map<std::string, std::string>& payloads,
     SourceLocation loc = SourceLocation::current()) {
   Status status(code, message, loc);
@@ -130,7 +131,8 @@ inline ::tsl::Status Create(
 // Returns a new Status, replacing its message with the given.
 inline ::tsl::Status CreateWithUpdatedMessage(const ::tsl::Status& status,
                                               ::tsl::StringPiece message) {
-  return Create(status.code(), message, GetPayloads(status));
+  return Create(static_cast<absl::StatusCode>(status.code()), message,
+                GetPayloads(status));
 }
 
 // Append some context to an error message.  Each time we append
@@ -170,7 +172,7 @@ void AppendToMessage(::tsl::Status* status, Args... args) {
 // CANCELLED
 template <typename... Args>
 ::tsl::Status Cancelled(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::CANCELLED,
+  return ::tsl::Status(absl::StatusCode::kCancelled,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -178,13 +180,13 @@ template <typename... Args>
 ::tsl::Status CancelledWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::CANCELLED, message, payloads);
+  return errors::Create(absl::StatusCode::kCancelled, message, payloads);
 }
 
 // InvalidArgument
 template <typename... Args>
 ::tsl::Status InvalidArgument(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::INVALID_ARGUMENT,
+  return ::tsl::Status(absl::StatusCode::kInvalidArgument,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -193,7 +195,7 @@ template <typename Arg1, typename Arg2, typename Arg3>
 ::tsl::Status InvalidArgument(Arg1 arg1, Arg2 arg2, Arg3 arg3,
                               SourceLocation loc = SourceLocation::current()) {
   return ::tsl::Status(
-      ::tsl::error::Code::INVALID_ARGUMENT,
+      absl::StatusCode::kInvalidArgument,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2),
                              ::tsl::errors::internal::PrepareForStrCat(arg3)),
@@ -203,7 +205,7 @@ template <typename Arg1, typename Arg2>
 ::tsl::Status InvalidArgument(Arg1 arg1, Arg2 arg2,
                               SourceLocation loc = SourceLocation::current()) {
   return ::tsl::Status(
-      ::tsl::error::Code::INVALID_ARGUMENT,
+      absl::StatusCode::kInvalidArgument,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2)),
       loc);
@@ -212,7 +214,7 @@ template <typename Arg1>
 ::tsl::Status InvalidArgument(Arg1 arg1,
                               SourceLocation loc = SourceLocation::current()) {
   return ::tsl::Status(
-      ::tsl::error::Code::INVALID_ARGUMENT,
+      absl::StatusCode::kInvalidArgument,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
 }
@@ -221,14 +223,14 @@ template <typename... Args>
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads,
     SourceLocation loc = SourceLocation::current()) {
-  return errors::Create(::tsl::error::Code::INVALID_ARGUMENT, message, payloads,
+  return errors::Create(absl::StatusCode::kInvalidArgument, message, payloads,
                         loc);
 }
 
 // NotFound
 template <typename... Args>
 ::tsl::Status NotFound(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::NOT_FOUND,
+  return ::tsl::Status(absl::StatusCode::kNotFound,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -237,7 +239,7 @@ template <typename Arg1, typename Arg2, typename Arg3>
 ::tsl::Status NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3,
                        SourceLocation loc = SourceLocation::current()) {
   return ::tsl::Status(
-      ::tsl::error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2),
                              ::tsl::errors::internal::PrepareForStrCat(arg3)),
@@ -247,7 +249,7 @@ template <typename Arg1, typename Arg2>
 ::tsl::Status NotFound(Arg1 arg1, Arg2 arg2,
                        SourceLocation loc = SourceLocation::current()) {
   return ::tsl::Status(
-      ::tsl::error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2)),
       loc);
@@ -256,7 +258,7 @@ template <typename Arg1>
 ::tsl::Status NotFound(Arg1 arg1,
                        SourceLocation loc = SourceLocation::current()) {
   return ::tsl::Status(
-      ::tsl::error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
 }
@@ -265,13 +267,13 @@ template <typename... Args>
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads,
     SourceLocation loc = SourceLocation::current()) {
-  return errors::Create(::tsl::error::Code::NOT_FOUND, message, payloads, loc);
+  return errors::Create(absl::StatusCode::kNotFound, message, payloads, loc);
 }
 
 // AlreadyExists
 template <typename... Args>
 ::tsl::Status AlreadyExists(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::ALREADY_EXISTS,
+  return ::tsl::Status(absl::StatusCode::kAlreadyExists,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -279,13 +281,13 @@ template <typename... Args>
 ::tsl::Status AlreadyExistsWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::ALREADY_EXISTS, message, payloads);
+  return errors::Create(absl::StatusCode::kAlreadyExists, message, payloads);
 }
 
 // ResourceExhausted
 template <typename... Args>
 ::tsl::Status ResourceExhausted(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::RESOURCE_EXHAUSTED,
+  return ::tsl::Status(absl::StatusCode::kResourceExhausted,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -293,14 +295,14 @@ template <typename... Args>
 ::tsl::Status ResourceExhaustedWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::RESOURCE_EXHAUSTED, message,
+  return errors::Create(absl::StatusCode::kResourceExhausted, message,
                         payloads);
 }
 
 // Unavailable
 template <typename... Args>
 ::tsl::Status Unavailable(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::UNAVAILABLE,
+  return ::tsl::Status(absl::StatusCode::kUnavailable,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -308,13 +310,13 @@ template <typename... Args>
 ::tsl::Status UnavailableWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::UNAVAILABLE, message, payloads);
+  return errors::Create(absl::StatusCode::kUnavailable, message, payloads);
 }
 
 // FailedPrecondition
 template <typename... Args>
 ::tsl::Status FailedPrecondition(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::FAILED_PRECONDITION,
+  return ::tsl::Status(absl::StatusCode::kFailedPrecondition,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -322,14 +324,14 @@ template <typename... Args>
 ::tsl::Status FailedPreconditionWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::FAILED_PRECONDITION, message,
+  return errors::Create(absl::StatusCode::kFailedPrecondition, message,
                         payloads);
 }
 
 // OutOfRange
 template <typename... Args>
 ::tsl::Status OutOfRange(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::OUT_OF_RANGE,
+  return ::tsl::Status(absl::StatusCode::kOutOfRange,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -337,13 +339,13 @@ template <typename... Args>
 ::tsl::Status OutOfRangeWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::OUT_OF_RANGE, message, payloads);
+  return errors::Create(absl::StatusCode::kOutOfRange, message, payloads);
 }
 
 // Unimplemented
 template <typename... Args>
 ::tsl::Status Unimplemented(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::UNIMPLEMENTED,
+  return ::tsl::Status(absl::StatusCode::kUnimplemented,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -351,13 +353,13 @@ template <typename... Args>
 ::tsl::Status UnimplementedWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::UNIMPLEMENTED, message, payloads);
+  return errors::Create(absl::StatusCode::kUnimplemented, message, payloads);
 }
 
 // Internal
 template <typename... Args>
 ::tsl::Status Internal(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::INTERNAL,
+  return ::tsl::Status(absl::StatusCode::kInternal,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -365,13 +367,13 @@ template <typename... Args>
 ::tsl::Status InternalWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::INTERNAL, message, payloads);
+  return errors::Create(absl::StatusCode::kInternal, message, payloads);
 }
 
 // Aborted
 template <typename... Args>
 ::tsl::Status Aborted(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::ABORTED,
+  return ::tsl::Status(absl::StatusCode::kAborted,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -379,13 +381,13 @@ template <typename... Args>
 ::tsl::Status AbortedWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::ABORTED, message, payloads);
+  return errors::Create(absl::StatusCode::kAborted, message, payloads);
 }
 
 // DeadlineExceeded
 template <typename... Args>
 ::tsl::Status DeadlineExceeded(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::DEADLINE_EXCEEDED,
+  return ::tsl::Status(absl::StatusCode::kDeadlineExceeded,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -393,14 +395,13 @@ template <typename... Args>
 ::tsl::Status DeadlineExceededWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::DEADLINE_EXCEEDED, message,
-                        payloads);
+  return errors::Create(absl::StatusCode::kDeadlineExceeded, message, payloads);
 }
 
 // DataLoss
 template <typename... Args>
 ::tsl::Status DataLoss(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::DATA_LOSS,
+  return ::tsl::Status(absl::StatusCode::kDataLoss,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -408,13 +409,13 @@ template <typename... Args>
 ::tsl::Status DataLossWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::DATA_LOSS, message, payloads);
+  return errors::Create(absl::StatusCode::kDataLoss, message, payloads);
 }
 
 // Unknown
 template <typename... Args>
 ::tsl::Status Unknown(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::UNKNOWN,
+  return ::tsl::Status(absl::StatusCode::kUnknown,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -422,12 +423,12 @@ template <typename... Args>
 ::tsl::Status UnknownPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::UNKNOWN, message, payloads);
+  return errors::Create(absl::StatusCode::kUnknown, message, payloads);
 }
 // PermissionDenied
 template <typename... Args>
 ::tsl::Status PermissionDenied(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::PERMISSION_DENIED,
+  return ::tsl::Status(absl::StatusCode::kPermissionDenied,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -435,14 +436,13 @@ template <typename... Args>
 ::tsl::Status PermissionDeniedWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::PERMISSION_DENIED, message,
-                        payloads);
+  return errors::Create(absl::StatusCode::kPermissionDenied, message, payloads);
 }
 
 // Unauthenticated
 template <typename... Args>
 ::tsl::Status Unauthenticated(Args... args) {
-  return ::tsl::Status(::tsl::error::Code::UNAUTHENTICATED,
+  return ::tsl::Status(absl::StatusCode::kUnauthenticated,
                        ::tsl::strings::StrCat(
                            ::tsl::errors::internal::PrepareForStrCat(args)...));
 }
@@ -450,7 +450,7 @@ template <typename... Args>
 ::tsl::Status UnauthenticatedWithPayloads(
     const ::tsl::StringPiece& message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  return errors::Create(::tsl::error::Code::UNAUTHENTICATED, message, payloads);
+  return errors::Create(absl::StatusCode::kUnauthenticated, message, payloads);
 }
 
 bool IsAborted(const Status& status);
@@ -509,7 +509,7 @@ inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
                                                   absl::string_view op_name) {
   assert(::tsl::errors::IsUnavailable(s));
   return Status(
-      error::Code::INTERNAL,
+      absl::StatusCode::kInternal,
       strings::StrCat(
           s.error_message(), "\nExecuting non-communication op <", op_name,
           "> originally returned UnavailableError, and was replaced by "

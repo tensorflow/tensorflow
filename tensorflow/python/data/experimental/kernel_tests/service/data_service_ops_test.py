@@ -44,6 +44,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -537,6 +538,38 @@ class DataServiceOpsTest(
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDontGcJobsWithVisitationGuarantees(self):
+    cluster = self.make_test_cluster(
+        num_workers=1,
+        job_gc_check_interval_ms=50,
+        job_gc_timeout_ms=20,
+    )
+    num_elements = 1000
+    it1 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test1",
+        )
+    )
+    it2 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test2",
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        )
+    )
+    self.assertEqual(cluster.workers[0].num_tasks(), 2)
+    del it1
+    del it2
+    # Check that only the first job is gced. The second job will not be gced
+    # because it has a sharding policy with visitation guarantees.
+    while cluster.workers[0].num_tasks() > 1:
+      time.sleep(0.1)
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testGcAndRecreate(self):
     cluster = self.make_test_cluster(
         num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20
@@ -814,17 +847,20 @@ class DataServiceOpsTest(
   def testFromDatasetIdSharedJobs(self):
     cluster = self.make_test_cluster(num_workers=2)
 
+    dataset_ids = ["dataset_1", "dataset_2"]
     datasets = [
         dataset_ops.Dataset.range(20, output_type=dtypes.int32),
         dataset_ops.Dataset.from_tensor_slices(list(range(20, 40))),
     ]
-    dataset_ids = []
 
-    for ds in datasets:
-      dataset_id = data_service_ops.register_dataset(
-          cluster.dispatcher_address(), ds
+    for ds, dataset_id in zip(datasets, dataset_ids):
+      # Evaluate to ensure that in graph mode `register_dataset` is called
+      # before `from_dataset_id` below.
+      self.evaluate(
+          data_service_ops.register_dataset(
+              cluster.dispatcher_address(), ds, dataset_id=dataset_id
+          )
       )
-      dataset_ids.append(dataset_id)
 
     # Read from both jobs in parallel, with 2 consumers for each job.
     data_service_datasets = []
@@ -938,15 +974,6 @@ class DataServiceOpsTest(
     self.assertEqual(0, self.evaluate(get_next()))
     # Without properly implemented cancellation, we will hang here while trying
     # to garbage collect the dataset iterator.
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testRegisterEquivalentDatasets(self):
-    ds_1 = dataset_ops.Dataset.range(10)
-    ds_2 = dataset_ops.Dataset.range(10)
-    cluster = self.make_test_cluster(num_workers=1)
-    id_1 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_1)
-    id_2 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_2)
-    self.assertEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testRegisterDifferentDatasets(self):
@@ -1196,7 +1223,7 @@ class DataServiceOpsTest(
     cluster = self.make_test_cluster(num_workers=1)
     if not use_resource:
       with variable_scope.variable_scope("foo", use_resource=False):
-        v = variables.VariableV1(10, dtype=dtypes.int64)
+        v = variable_v1.VariableV1(10, dtype=dtypes.int64)
     else:
       v = variables.Variable(10, dtype=dtypes.int64)
 

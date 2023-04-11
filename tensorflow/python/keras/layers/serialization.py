@@ -27,22 +27,20 @@ from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import convolutional_recurrent
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import cudnn_recurrent
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers import merge
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
-from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
-               convolutional_recurrent, core, cudnn_recurrent, dense_attention,
+               convolutional_recurrent, core, dense_attention,
                embeddings, merge, pooling, recurrent)
-ALL_V2_MODULES = (rnn_cell_wrapper_v2, recurrent_v2)
+ALL_V2_MODULES = (rnn_cell_wrapper_v2,)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()

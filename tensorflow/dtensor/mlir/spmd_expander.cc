@@ -95,7 +95,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
 
   // If op is on an XLA SPMD mesh, then set layout and skip expansion.
   TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
-  if (mesh.use_xla_spmd()) {
+  if (mesh.IsSingleDevice() || mesh.use_xla_spmd()) {
     *output = op;
     SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
                                computed_layout.data(), computed_layout.size()));

@@ -100,8 +100,6 @@ struct TileByOnePattern : public OpRewritePattern<OpTy> {
 };
 
 struct TileByOnePass : public impl::TileByOnePassBase<TileByOnePass> {
-  TileByOnePass() = default;
-
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<GmlStDialect, arith::ArithDialect, tensor::TensorDialect,
                     scf::SCFDialect>();
@@ -116,7 +114,11 @@ struct TileByOnePass : public impl::TileByOnePassBase<TileByOnePass> {
     RewritePatternSet patterns(ctx);
     // clang-format off
     patterns.add<
+        TileByOnePattern<thlo::ConcatenateOp>,
+        TileByOnePattern<thlo::GatherOp>,
         TileByOnePattern<thlo::ReverseOp>,
+        TileByOnePattern<thlo::ScatterOp>,
+        TileByOnePattern<thlo::SortOp>,
         TileByOnePattern<linalg::MapOp>>(ctx);
     // clang-format on
 

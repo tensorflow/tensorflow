@@ -73,7 +73,7 @@ TEST(TaskRunnerCheckpointTest, SaveAndRestoreFromCheckpoints) {
   TestDataset dataset(testing::RangeDataset(range));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Iterator> iterator,
                           dataset.MakeIterator());
-  TF_ASSERT_OK_AND_ASSIGN(Tensor saved_iterator, iterator->Save());
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> saved_iterator, iterator->Save());
 
   for (int64_t i = 0; i < range; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(iterator, dataset.MakeIterator());
@@ -87,7 +87,7 @@ TEST(TaskRunnerCheckpointTest, EmptyDataset) {
   TestDataset dataset(testing::RangeDataset(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Iterator> iterator,
                           dataset.MakeIterator());
-  TF_ASSERT_OK_AND_ASSIGN(Tensor saved_iterator, iterator->Save());
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> saved_iterator, iterator->Save());
 
   TF_ASSERT_OK_AND_ASSIGN(iterator, dataset.MakeIterator());
   TF_ASSERT_OK(iterator->Restore(saved_iterator));
@@ -100,7 +100,7 @@ TEST(TaskRunnerCheckpointTest, EndOfSequenceIterator) {
                           dataset.MakeIterator());
   EXPECT_THAT(GetNext<int64_t>(*iterator), StatusIs(error::OUT_OF_RANGE));
 
-  TF_ASSERT_OK_AND_ASSIGN(Tensor saved_iterator, iterator->Save());
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> saved_iterator, iterator->Save());
   TF_ASSERT_OK_AND_ASSIGN(iterator, dataset.MakeIterator());
   TF_ASSERT_OK(iterator->Restore(saved_iterator));
   EXPECT_THAT(GetNext<int64_t>(*iterator), StatusIs(error::OUT_OF_RANGE));

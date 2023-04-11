@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -367,7 +367,8 @@ llvm::SmallVector<int, 4> GetReturnIndicesToKeep(
     }
     return false;
   };
-  for (auto& index_and_value : llvm::enumerate(current_if_op.getResults())) {
+  for (const auto& index_and_value :
+       llvm::enumerate(current_if_op.getResults())) {
     if (!llvm::all_of(index_and_value.value().getUsers(),
                       is_op_inside_IfRegions)) {
       return_indices_to_keep.push_back(index_and_value.index());

@@ -1,6 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 # Import third party config rules.
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
@@ -58,6 +59,7 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
+    bazel_skylib_workspace()
     benchmark()
     dlpack()
     eigen3()
@@ -141,9 +143,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "0a7ad183dcb4db36e82c4c24376a28281c30e986bd2d71311e624405229a7618",
-        strip_prefix = "XNNPACK-659147817805d17c7be2d60bd7bbca7e780f9c82",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/659147817805d17c7be2d60bd7bbca7e780f9c82.zip"),
+        sha256 = "c979b62e8b77af60dfd7567f22ade20d5a9d4d0888f8a2d60d155fc0d31b22ab",
+        strip_prefix = "XNNPACK-b9d4073a6913891ce9cbd8965c8d506075d2a45a",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/b9d4073a6913891ce9cbd8965c8d506075d2a45a.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -172,17 +174,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "3c7b842cd67989810955b220fa1116e7e2ed10660a8cfb632118146a64992c30",
-        strip_prefix = "cudnn-frontend-0.7.3",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.7.3.zip"),
-    )
-
-    tf_http_archive(
-        name = "mkl_dnn",
-        build_file = "//third_party/mkl_dnn:mkldnn.BUILD",
-        sha256 = "a0211aeb5e7dad50b97fa5dffc1a2fe2fe732572d4164e1ee8750a2ede43fbec",
-        strip_prefix = "oneDNN-0.21.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz"),
+        sha256 = "bfcf778030831f325cfc13ae5995388cc834fbff2995a297ba580d9ec65ca3b6",
+        strip_prefix = "cudnn-frontend-0.8",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.8.zip"),
     )
 
     tf_http_archive(
@@ -191,6 +185,14 @@ def _tf_repositories():
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.3.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "onednn_v3",
+        build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
+        sha256 = "28e31f2d576e1a7e3a796f5c33c1d733c256078cff1c48b9e2a692d5975e1401",
+        strip_prefix = "oneDNN-3.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -212,7 +214,11 @@ def _tf_repositories():
         sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
         strip_prefix = "ComputeLibrary-22.11",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_openmp_fix.patch"],
+        patch_file = [
+            "//third_party/compute_library:compute_library.patch",
+            "//third_party/compute_library:acl_fixed_format_kernels_striding.patch",
+            "//third_party/compute_library:acl_openmp_fix.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
     )
 
@@ -546,15 +552,6 @@ def _tf_repositories():
         sha256 = "d19f728c8e04fb1e94566c8d76aef50ec926cd2f95ef3bf1e0a5de4909b28b44",
         strip_prefix = "openmp-10.0.1.src",
         urls = tf_mirror_urls("https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz"),
-    )
-
-    tf_http_archive(
-        name = "lmdb",
-        build_file = "//third_party:lmdb.BUILD",
-        sha256 = "22054926b426c66d8f2bc22071365df6e35f3aacf19ad943bc6167d4cae3bebb",
-        strip_prefix = "lmdb-LMDB_0.9.29/libraries/liblmdb",
-        system_build_file = "//third_party/systemlibs:lmdb.BUILD",
-        urls = tf_mirror_urls("https://github.com/LMDB/lmdb/archive/refs/tags/LMDB_0.9.29.tar.gz"),
     )
 
     tf_http_archive(

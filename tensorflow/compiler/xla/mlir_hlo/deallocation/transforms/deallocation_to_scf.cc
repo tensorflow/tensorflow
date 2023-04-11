@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
 #include <memory>
 #include <utility>
 
 #include "deallocation/IR/deallocation_ops.h"
 #include "deallocation/transforms/passes.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -35,50 +37,84 @@ namespace {
 
 LogicalResult rewriteRetain(RetainOp op, PatternRewriter& rewriter) {
   assert(!op.getAllocs().empty() && "run canonicalization first");
-  assert(op.getAllocs().size() == 1 && "not supported yet");
-  assert(op.getRetained().size() <= 1 && "not supported yet");
 
-  // dealloc happens to lower to free, which accepts null pointers. We still
-  // guard it with if, because this behavior is not documented.
+  // `dealloc` happens to lower to free, which accepts null pointers. We still
+  // guard it with if, because this behavior is not documented and it makes
+  // downstream passes simpler (because they can assume we never deallocate
+  // null).
+
+  // Note: The generated code has size O(|`allocs`| * |`retains`|). If there are
+  // cases where this gets too big, we should lower it to a library call
+  // instead.
 
   auto loc = op.getLoc();
-  ImplicitLocOpBuilder b(loc, rewriter);
-  Value alloc = op.getAllocs().front();
-  Value returnValue = {};
-  auto allocBuffer = b.create<GetBufferOp>(b.getIndexType(), alloc);
-  auto zero = b.create<arith::ConstantIndexOp>(0);
-  OpBuilder deallocBuilder = rewriter;
-  if (op.getRetained().size() == 1) {
+
+  // Get the buffers of all `alloc` values.
+  SmallVector<Value> remainingBuffersAndResult;
+  for (Value alloc : op.getAllocs()) {
+    remainingBuffersAndResult.push_back(alloc);
+  }
+  llvm::copy(llvm::map_range(op.getAllocs(),
+                             [&](Value alloc) -> Value {
+                               return rewriter.create<GetBufferOp>(
+                                   loc, rewriter.getIndexType(), alloc);
+                             }),
+             std::back_inserter(remainingBuffersAndResult));
+  remainingBuffersAndResult.push_back({});
+
+  Value null = rewriter.create<NullOp>(loc);
+  auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+  SmallVector<Value> results;
+
+  size_t nAllocs = op.getAllocs().size();
+  for (auto [retainedIndex, retained] : llvm::enumerate(op.getRetained())) {
     auto retainedBuffer =
-        b.create<GetBufferOp>(b.getIndexType(), op.getRetained().front());
-    auto isSameBuffer = b.create<arith::CmpIOp>(arith::CmpIPredicate::eq,
-                                                allocBuffer, retainedBuffer);
-    auto ifOp =
-        b.create<scf::IfOp>(TypeRange{alloc.getType()}, isSameBuffer, true);
-    ifOp.getThenBodyBuilder().create<scf::YieldOp>(loc, ValueRange{alloc});
-    auto null = ifOp.getElseBodyBuilder().create<deallocation::NullOp>(
-        loc, alloc.getType());
-    ifOp.getElseBodyBuilder().create<scf::YieldOp>(
-        loc, ValueRange{null.getResult()});
-    deallocBuilder = ifOp.getElseBodyBuilder();
-    deallocBuilder.setInsertionPoint(null);
+        rewriter.create<GetBufferOp>(loc, rewriter.getIndexType(), retained);
 
-    returnValue = ifOp.getResult(0);
+    remainingBuffersAndResult.back() = null;
+    for (auto allocIndex : llvm::seq<size_t>(0, nAllocs)) {
+      auto isSame = rewriter.create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::eq, retainedBuffer,
+          remainingBuffersAndResult[nAllocs + allocIndex]);
+
+      // If the buffers are the same, remove the alloc from consideration for
+      // future `retained` values.
+      SmallVector<Value> yieldedIfSame{null, zero,
+                                       remainingBuffersAndResult[allocIndex]};
+      SmallVector<Value> yieldedIfDifferent{
+          remainingBuffersAndResult[allocIndex],
+          remainingBuffersAndResult[allocIndex + nAllocs],
+          remainingBuffersAndResult.back()};
+
+      auto ifOp =
+          rewriter.create<scf::IfOp>(loc, TypeRange{ValueRange{yieldedIfSame}},
+                                     isSame, /*withElseRegion=*/true);
+      ifOp.getThenBodyBuilder().create<scf::YieldOp>(loc, yieldedIfSame);
+
+      // Otherwise, keep the current results.
+      ifOp.getElseBodyBuilder().create<scf::YieldOp>(loc, yieldedIfDifferent);
+
+      remainingBuffersAndResult[allocIndex] = ifOp.getResult(0);
+      remainingBuffersAndResult[allocIndex + nAllocs] = ifOp.getResult(1);
+      remainingBuffersAndResult.back() = ifOp.getResult(2);
+    }
+
+    results.push_back(remainingBuffersAndResult.back());
   }
 
-  Value shouldDealloc = deallocBuilder.create<arith::CmpIOp>(
-      loc, arith::CmpIPredicate::ne, allocBuffer, zero);
-  deallocBuilder.create<scf::IfOp>(
-      loc, shouldDealloc, [&](mlir::OpBuilder& thenB, mlir::Location loc) {
-        thenB.create<memref::DeallocOp>(loc, alloc);
-        thenB.create<scf::YieldOp>(loc);
-      });
-
-  if (returnValue) {
-    rewriter.replaceOp(op, returnValue);
-  } else {
-    op.erase();
+  // Deallocate any remaining buffers.
+  for (auto index : llvm::seq<size_t>(0, nAllocs)) {
+    auto nonZero = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::ne,
+        remainingBuffersAndResult[index + nAllocs], zero);
+    rewriter.create<scf::IfOp>(
+        loc, nonZero, [&](OpBuilder& thenBuilder, Location loc) {
+          thenBuilder.create<FreeOp>(loc, remainingBuffersAndResult[index]);
+          thenBuilder.create<scf::YieldOp>(loc);
+        });
   }
+
+  rewriter.replaceOp(op, results);
 
   return success();
 }

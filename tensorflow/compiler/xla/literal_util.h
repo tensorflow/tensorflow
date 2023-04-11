@@ -113,10 +113,10 @@ class LiteralUtil {
   // Creates a scalar literal value one of the given primitive type.
   static Literal One(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the minimum value of the given
-  // primitive type. For floating-point types, returns -inf.
+  // primitive type. For floating-point types supporting inf, returns -inf.
   static Literal MinValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the maximum value of the given
-  // primitive type. For floating-point types, returns inf.
+  // primitive type. For floating-point types supporting inf, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
@@ -227,6 +227,7 @@ class LiteralUtil {
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToS8(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
   static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);

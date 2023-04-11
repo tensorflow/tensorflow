@@ -23,8 +23,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -253,7 +255,9 @@ class DispatchTest(test_util.TensorFlowTestCase):
       x = TensorTracer("x")
       y = TensorTracer("y")
       trace = math_ops.add(
-          math_ops.abs(ops.convert_to_tensor_v2_with_dispatch(x)), y)
+          math_ops.abs(tensor_conversion.convert_to_tensor_v2_with_dispatch(x)),
+          y,
+      )
       self.assertEqual(
           str(trace), "math.add(math.abs(convert_to_tensor(x)), y)")
 
@@ -771,7 +775,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     @dispatch.dispatch_for_api(math_ops.add_n,
                                {"inputs": typing.List[MaskedTensor]})
     def masked_add_n(inputs):
-      masks = array_ops.stack([x.mask for x in inputs])
+      masks = array_ops_stack.stack([x.mask for x in inputs])
       return MaskedTensor(
           math_ops.add_n([x.values for x in inputs]),
           math_ops.reduce_all(masks, axis=0))

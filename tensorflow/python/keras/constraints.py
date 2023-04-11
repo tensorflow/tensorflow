@@ -22,8 +22,8 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -298,12 +298,13 @@ class RadialConstraint(Constraint):
           padding,
           constant_values=kernel[start + i, start + i])
 
-    _, kernel_new = control_flow_ops.while_loop(
+    _, kernel_new = while_loop.while_loop(
         while_condition,
-        body_fn,
-        [index, kernel_new],
-        shape_invariants=[index.get_shape(),
-                          tensor_shape.TensorShape([None, None])])
+        body_fn, [index, kernel_new],
+        shape_invariants=[
+            index.get_shape(),
+            tensor_shape.TensorShape([None, None])
+        ])
     return kernel_new
 
 

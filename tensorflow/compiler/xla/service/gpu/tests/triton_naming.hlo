@@ -1,0 +1,19 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+// CHECK: define void @triton_gemm_r_impl(
+// CHECK: define void @triton_gemm_r(
+
+HloModule t, entry_computation_layout={(f16[15,19]{1,0},s8[19,17]{1,0})->f16[15,17]{1,0}}
+
+%triton_gemm_r (parameter_0: s8[19,17], parameter_1: f16[15,19]) -> f16[15,17] {
+  %parameter_1 = f16[15,19]{1,0} parameter(1)
+  %parameter_0 = s8[19,17]{1,0} parameter(0)
+  %cp1.1 = f16[19,17]{1,0} convert(%parameter_0)
+  ROOT %r.1 = f16[15,17]{1,0} dot(%parameter_1, %cp1.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY %e (p0: f16[15,19], p1: s8[19,17]) -> f16[15,17] {
+  %p1 = s8[19,17]{1,0} parameter(1)
+  %p0 = f16[15,19]{1,0} parameter(0)
+  ROOT %triton_gemm_r = f16[15,17]{1,0} fusion(%p1, %p0), kind=kCustom, calls=%triton_gemm_r, backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"8\"}"
+}

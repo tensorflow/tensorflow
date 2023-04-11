@@ -481,8 +481,6 @@ REGISTER_OP("GetElementAtIndex")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
-                                                           "output_types"))
     .SetShapeFn(shape_inference::DatasetIteratorShape);
 
 REGISTER_OP("ExperimentalGroupByWindowDataset")
@@ -1226,6 +1224,21 @@ REGISTER_OP("SnapshotDatasetReader")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       // `start_index` should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("SnapshotChunkDataset")
+    .Input("chunk_file: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("compression: string = ''")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `chunk_file` should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 

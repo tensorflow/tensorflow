@@ -32,8 +32,14 @@ namespace core {
 namespace function {
 
 // TODO(mdan): Get rid of this once pybind can depend on MLIR headers.
-// This empty struct serves to hide a pointer to an actual MLIR FuncOp object.
+// This empty struct serves to hide a pointer to an actual MLIR TFG dialect
+// FuncOp object.
 struct OpaqueTfgGraphFuncOp;
+
+// TODO(xjun): Get rid of this once pybind can depend on MLIR headers.
+// This empty struct serves to hide a pointer to an actual MLIR TF dialect
+// FuncOp object.
+struct OpaqueTfFuncOp;
 
 // This is the current global context managed by the Python API. For historical
 // reasons, the Python runtime controls this context and all other clients must
@@ -59,17 +65,25 @@ class Runtime {
  public:
   explicit Runtime(EagerContext& eager_ctx) : eager_ctx_(eager_ctx) {}
 
+  enum class Dialect {
+    TFG,
+    TF,
+  };
+
   StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
 
   // TODO(mdan): Enforce creation or rename to SetFunction.
   Status CreateFunction(const FunctionDef& fdef);
   // TODO(mdan): Change to mlir::tfg::GraphFuncOp once pybind can depend on it.
   Status CreateFunction(OpaqueTfgGraphFuncOp* fop);
+  // TODO(xjun): Change to mlir::func::FuncOp once pybind can depend on it.
+  Status CreateFunction(OpaqueTfFuncOp* fop);
   // Applies a MLIR pipeline to an existing function.
   // The pipeline may rename the function. If it does so, the old function
   // remains unchanged. If the new name specifies an existing function, it will
   // be overwritten.
-  Status TransformFunction(StringPiece name, StringPiece pipeline_name);
+  Status TransformFunction(StringPiece name, StringPiece pipeline_name,
+                           Dialect dialect = Dialect::TFG);
 
   StatusOr<ReturnValues> CallFunction(
       StringPiece name, absl::Span<AbstractTensorHandle* const> args);

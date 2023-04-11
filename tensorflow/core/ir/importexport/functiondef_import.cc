@@ -503,7 +503,7 @@ Status ImportGenericFunction(
     ret_vals[func.ret_size() + position->second] = result;
   }
   // Check that all the of the return operands have been populated.
-  for (auto& indexed_val : llvm::enumerate(ret_vals)) {
+  for (const auto& indexed_val : llvm::enumerate(ret_vals)) {
     if (indexed_val.value()) continue;
     return InvalidArgument(
         "Failed to import function, missing output for position ",

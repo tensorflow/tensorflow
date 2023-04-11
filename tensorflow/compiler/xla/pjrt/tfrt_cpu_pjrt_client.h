@@ -351,9 +351,6 @@ class TfrtCpuBuffer final : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
-      bool discard_cached_copy, std::optional<xla::Layout> layout);
-
   // Acquires the device buffer for shared read-only usages, and it also adds
   // the `usage_event` to it. Any donation event in the future is expected to be
   // serialized after all the usage events added through this method. Returns
@@ -475,7 +472,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      bool parameter_is_tupled_arguments,
+      bool parameter_is_tupled_arguments, CompileOptions compile_options,
       std::unique_ptr<Executable> cpu_executable,
       BufferAllocation::Index result_buffer_index,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -585,6 +582,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   int num_partitions_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
   bool parameter_is_tupled_arguments_;
+  CompileOptions compile_options_;
 
   std::shared_ptr<Executable> cpu_executable_;
 

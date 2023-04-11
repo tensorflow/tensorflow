@@ -37,7 +37,8 @@ class RunnerInterface {
   virtual ~RunnerInterface() {}
   virtual Status Join() = 0;
   virtual Status ExportCostGraph(CostGraphDef* cost_graph) const {
-    return Status(error::INVALID_ARGUMENT, "No cost model to export.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "No cost model to export.");
   }
   /// Returns true iff the runner is running, i.e. if it is trying to populate
   /// its queue.

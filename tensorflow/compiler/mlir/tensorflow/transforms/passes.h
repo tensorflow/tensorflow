@@ -447,6 +447,15 @@ CreateAnnotateParameterReplicationPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
 
+// Creates a pass that extracts outside compilation (Host ops inside device
+// cluster) at head/tail of Device cluster to run before/after XLA computation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that extract outside compilation (Host ops inside cevice
+// cluster) ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOutsideCompilationPass();
+
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
@@ -520,9 +529,16 @@ CreateTPUReorderReplicateAndPartitionedInputsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUResourceReadsWritesPartitioningPass();
 
+// Creates a pass that looks for usage of the result of
+// TPUCopyWithDynamicShapeOp and annotate these values to be dynamic shape. This
+// ensures that the generated tpu program has the correct inputs annotation.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUAnnotateDynamicShapeInputsPass();
+
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass(
+    llvm::StringRef module_name = llvm::StringRef());
 
 // Creates a pass that identifies XLASharding ops in launch op for TPU
 // computation.
@@ -540,6 +556,12 @@ CreateTPUParallelExecuteSinkResourceWritePass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUMergeVariablesWithExecutePass();
 
+// Create a pass that extract TPUCopyWithDynamicShapeOp from the host launch op
+// and wrap them in device launch op. This allows this op executed on TPU while
+// still compiled on host.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateExtractTPUCopyWithDynamicShapeOpPass();
+
 // Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
 // packed tensor to have same device placement as underlying TPU device.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -555,11 +577,6 @@ CreateTPUVariableRuntimeReformattingPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
 
-// Creates a pass that extracts outside compilation (CPU ops inside TPU cluster)
-// at head/tail of TPU cluster to run before/after TPU computation.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractHeadTailOutsideCompilationPass();
-
 // Creates a pass that expands outside compilation cluster at the head/tail of
 // TPU computation by adding outside compilation attribute to identity/cast ops
 // that are only used for host computation.
@@ -571,17 +588,13 @@ CreateTPUHostComputationExpansionPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 
-// Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
-// ops to a separate parallel_execute region to run on CPU.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUExtractOutsideCompilationPass();
-
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.
-void CreateTPUBridgePipeline(OpPassManager& pm);
+void CreateTPUBridgePipeline(OpPassManager& pm,
+                             llvm::StringRef module_name = llvm::StringRef());
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge in V1 mode.
@@ -682,6 +695,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS
 #define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS
+#define GEN_PASS_DECL_EXTRACTTPUCOPYWITHDYNAMICSHAPEOPPASS
 #define GEN_PASS_DECL_TPUPARALLELEXECUTESINKRESOURCEWRITEPASS
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
 #define GEN_PASS_DECL_TPURESOURCEREADFORWRITEPASS

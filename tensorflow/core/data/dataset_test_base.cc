@@ -218,7 +218,7 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   case DataTypeToEnum<DT>::value:          \
     TF_RETURN_IF_ERROR(IsEqual<DT>(a, b)); \
     break;
-    TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_POD_TYPES(CASE);
     TF_CALL_tstring(CASE);
 #undef CASE
     case DT_VARIANT: {
@@ -856,6 +856,7 @@ Status DatasetOpsTestBase::RunDatasetOp(
     created_tensors->push_back(std::move(t));
   }
   gtl::InlinedVector<TensorValue, 4> inputs;
+  inputs.reserve(input_datasets.size());
   for (auto input_dataset : input_datasets) {
     inputs.emplace_back(TensorValue(input_dataset));
   }

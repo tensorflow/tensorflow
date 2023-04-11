@@ -37,6 +37,7 @@ COMMON_PROTO_SRCS = [
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
+    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -214,11 +215,13 @@ tf_proto_library(
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:rpc_options_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
     exports = [
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
         "//tensorflow/tsl/protobuf:rpc_options_proto",
+        "//tensorflow/tsl/protobuf:status_proto",
     ],
 )
 

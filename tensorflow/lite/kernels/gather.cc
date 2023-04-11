@@ -67,6 +67,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (positions->type) {
     case kTfLiteInt64:
     case kTfLiteInt32:
+    case kTfLiteInt16:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -289,6 +290,45 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
         break;
       case kTfLiteString:
         status = GatherStrings<int64_t>(context, input, positions, output);
+        break;
+      default:
+        TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
+                           TfLiteTypeGetName(input->type));
+        return kTfLiteError;
+    }
+  }
+  if (positions->type == kTfLiteInt16) {
+    switch (input->type) {
+      case kTfLiteFloat32:
+        status =
+            Gather<float, int16_t>(context, *params, input, positions, output);
+        break;
+      case kTfLiteUInt8:
+        status = Gather<uint8_t, int16_t>(context, *params, input, positions,
+                                          output);
+        break;
+      case kTfLiteInt8:
+        status =
+            Gather<int8_t, int16_t>(context, *params, input, positions, output);
+        break;
+      case kTfLiteInt16:
+        status = Gather<int16_t, int16_t>(context, *params, input, positions,
+                                          output);
+        break;
+      case kTfLiteInt32:
+        status = Gather<int32_t, int16_t>(context, *params, input, positions,
+                                          output);
+        break;
+      case kTfLiteInt64:
+        status = Gather<int64_t, int16_t>(context, *params, input, positions,
+                                          output);
+        break;
+      case kTfLiteBool:
+        status =
+            Gather<bool, int16_t>(context, *params, input, positions, output);
+        break;
+      case kTfLiteString:
+        status = GatherStrings<int16_t>(context, input, positions, output);
         break;
       default:
         TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",

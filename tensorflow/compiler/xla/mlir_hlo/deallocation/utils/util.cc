@@ -51,6 +51,21 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
     }
   }
 
+  // TODO(frgossen): Fix this in the `RegionBranchOpInterface`.
+  // RegionBranchOpInterface believes for ops are always executed at least once.
+  if (llvm::isa<scf::ForOp>(op) && !index) {
+    assert(llvm::none_of(edges,
+                         [](auto& edge) {
+                           return edge.successorRegionIndex == std::nullopt;
+                         }) &&
+           "this was fixed, please remove this if");
+    auto& edge = edges.emplace_back();
+    edge.successorRegionIndex = edge.predecessorRegionIndex = std::nullopt;
+    edge.successorOpOrRegion = edge.predecessorOp = op;
+    edge.successorValueIndex = 0;
+    edge.predecessorOperandIndex = 3;
+  }
+
   return edges;
 }
 
@@ -94,22 +109,13 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     llvm_unreachable("unsupported");
   }
 
+  newOp->setAttrs(op->getAttrs());
   for (auto [oldRegion, newRegion] :
        llvm::zip(op->getRegions(), newOp->getRegions())) {
     newRegion.takeBody(oldRegion);
   }
 
   return newOp;
-}
-
-Type getUnrankedMemrefType(Type ty) {
-  MemRefType memRefTy = llvm::cast<MemRefType>(ty);
-  return UnrankedMemRefType::get(memRefTy.getElementType(),
-                                 memRefTy.getMemorySpace());
-}
-
-Type getUnrankedMemrefType(Value v) {
-  return getUnrankedMemrefType(v.getType());
 }
 
 }  // namespace deallocation

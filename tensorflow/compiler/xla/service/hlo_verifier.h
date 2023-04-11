@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -388,6 +390,30 @@ class HloVerifier : public HloModulePass {
 
   // The hlo pass when the verifier is invoked.
   std::string context_;
+};
+
+// Tracks debug metadata coverage on HLO Ops and reports the results as an INFO
+// log starting with a `prefix` passed to the ctor.
+// TODO(b/261216447): Remove once the work on debug metadata is finished.
+class MetadataTracker : public DfsHloVisitorWithDefault {
+ public:
+  explicit MetadataTracker(absl::string_view prefix);
+  ~MetadataTracker() override;
+  Status DefaultAction(HloInstruction* instruction) override;
+  void HandleMetadata(const OpMetadata& metadata);
+
+ private:
+  const std::string prefix_;
+  int64_t instruction_count_ = 0;
+  int64_t has_op_type_count_ = 0;
+  int64_t has_op_name_count_ = 0;
+  int64_t has_source_file_count_ = 0;
+  int64_t has_source_line_count_ = 0;
+  int64_t has_creation_pass_id_count_ = 0;
+  int64_t has_logical_creation_pass_id_count_ = 0;
+  int64_t has_size_of_generated_code_in_bytes_count_ = 0;
+  int64_t has_size_of_memory_working_set_in_bytes_count_ = 0;
+  int64_t has_profile_info_count_ = 0;
 };
 
 }  // namespace xla

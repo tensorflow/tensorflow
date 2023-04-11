@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
-namespace {
 
 REGISTER_OP("OneInput").Input("x: float");
 
@@ -68,6 +69,17 @@ class GraphTest : public ::testing::Test {
       out.push_back(e->dst());
     }
     EXPECT_EQ(Stringify(expected_out), Stringify(out));
+  }
+
+  Edge* BuildEdge(int id = 0, Node* src = 0, Node* dst = 0, int x = 0,
+                  int y = 0) {
+    Edge* e = new Edge;
+    e->id_ = id;
+    e->src_ = src;
+    e->dst_ = dst;
+    e->src_output_ = x;
+    e->dst_input_ = y;
+    return e;
   }
 
   void VerifyGraphStats() {
@@ -153,6 +165,8 @@ class GraphTest : public ::testing::Test {
     return result;
   }
 };
+
+namespace {
 
 TEST_F(GraphTest, Constructor) {
   Node* source = graph_.source_node();
@@ -591,6 +605,30 @@ TEST_F(GraphTest, InputEdges) {
   TF_EXPECT_OK(b->input_edges(&edges));
 }
 
+TEST_F(GraphTest, EdgeDebugString) {
+  // Print valid edge
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "OneInput", 1);
+  auto e = graph_.AddEdge(a, 0, b, 0);
+  auto s = e->DebugString();
+  EXPECT_EQ(s, "[id=1 A:0 -> B:0]");
+
+  // Print empty edge
+  auto e1 = BuildEdge();
+  auto s1 = e1->DebugString();
+  EXPECT_EQ(s1, "[id=0 <NULL>:0 -> <NULL>:0]");
+
+  // Print edge with null src node
+  auto e2 = BuildEdge(2, 0, b, 1, 1);
+  auto s2 = e2->DebugString();
+  EXPECT_EQ(s2, "[id=2 <NULL>:1 -> B:1]");
+
+  // Print edge with null dst node
+  auto e3 = BuildEdge(3, a, 0, 2, 1);
+  auto s3 = e3->DebugString();
+  EXPECT_EQ(s3, "[id=3 A:2 -> <NULL>:1]");
+}
+
 TEST_F(GraphTest, AddFunctionLibrary) {
   // Basic functionality
   FunctionDefLibrary proto;
@@ -672,6 +710,121 @@ TEST_F(GraphTest, Clear) {
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
   graph.Clear();
   EXPECT_EQ(graph.num_nodes(), 2);
+}
+
+TEST_F(GraphTest, NodeFullType) {
+  FromNodeDef("A", "OneOutput", 0);
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  FullTypeDef* output_t = node_t.add_args();
+  output_t->set_type_id(TFT_TENSOR);
+  output_t->add_args()->set_type_id(TFT_FLOAT);
+  graph_.SetNodeType("A", node_t);
+
+  const FullTypeDef* ft;
+  graph_.NodeType("A", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
+}
+
+TEST_F(GraphTest, NodeShrinkTypeOutput) {
+  // The inputs and outputs of a While node are the same and described by
+  // attr T.
+  auto builder = NodeDefBuilder("while", "While");
+  builder = builder.Input({NodeDefBuilder::NodeOut("node_0", 0, DT_FLOAT),
+                           NodeDefBuilder::NodeOut("node_1", 0, DT_INT32),
+                           NodeDefBuilder::NodeOut("node_2", 0, DT_INT64),
+                           NodeDefBuilder::NodeOut("node_3", 0, DT_STRING)});
+
+  NodeDef node_def;
+  TF_CHECK_OK(builder.Finalize(&node_def));
+
+  Status s;
+  Node* node = graph_.AddNode(node_def, &s);
+  TF_CHECK_OK(s);
+
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  for (FullTypeId id : {TFT_FLOAT, TFT_INT32, TFT_INT64, TFT_STRING}) {
+    FullTypeDef* output_t = node_t.add_args();
+    output_t->set_type_id(TFT_TENSOR);
+    output_t->add_args()->set_type_id(id);
+  }
+  graph_.SetNodeType("while", node_t);
+
+  // Keep the DT_INT32 and DT_STRING inputs/outputs, removing the other two.
+  TF_CHECK_OK(
+      node->ShrinkTypeInfo({{1, 0}, {3, 1}}, "T", /*update_full_type=*/true));
+
+  std::vector<DataType> new_dtypes;
+  TF_CHECK_OK(GetNodeAttr(node->def(), "T", &new_dtypes));
+
+  ASSERT_EQ(new_dtypes.size(), 2);
+  EXPECT_EQ(new_dtypes[0], DT_INT32);
+  EXPECT_EQ(new_dtypes[1], DT_STRING);
+
+  const FullTypeDef* ft;
+  graph_.NodeType("while", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft->args_size(), 2);
+  ASSERT_EQ(ft->args(0).args_size(), 1);
+  EXPECT_EQ(ft->args(0).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(ft->args(1).args_size(), 1);
+  EXPECT_EQ(ft->args(1).args(0).type_id(), TFT_STRING);
+}
+
+TEST_F(GraphTest, NodeShrinkTypeInput) {
+  // The inputs an If node aredescribed by attr Tin.
+  auto builder = NodeDefBuilder("if", "If");
+  builder = builder.Input("cond", 0, DT_BOOL);
+  builder = builder.Input({NodeDefBuilder::NodeOut("node_0", 0, DT_FLOAT),
+                           NodeDefBuilder::NodeOut("node_1", 0, DT_INT32),
+                           NodeDefBuilder::NodeOut("node_2", 0, DT_INT64),
+                           NodeDefBuilder::NodeOut("node_3", 0, DT_STRING)});
+  builder = builder.Attr("Tout", "[DT_FLOAT, DT_INT32, DT_INT63, DT_STRING]");
+
+  NodeDef node_def;
+  TF_CHECK_OK(builder.Finalize(&node_def));
+
+  Status s;
+  Node* node = graph_.AddNode(node_def, &s);
+  TF_CHECK_OK(s);
+
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  for (FullTypeId id : {TFT_FLOAT, TFT_INT32, TFT_INT64, TFT_STRING}) {
+    FullTypeDef* output_t = node_t.add_args();
+    output_t->set_type_id(TFT_TENSOR);
+    output_t->add_args()->set_type_id(id);
+  }
+  graph_.SetNodeType("if", node_t);
+
+  // Keep the DT_INT32 and DT_STRING inputs, removing the other two.
+  TF_CHECK_OK(node->ShrinkTypeInfo({{1, 0}, {3, 1}}, "Tin",
+                                   /*update_full_type=*/false));
+
+  std::vector<DataType> new_dtypes;
+  TF_CHECK_OK(GetNodeAttr(node->def(), "Tin", &new_dtypes));
+
+  ASSERT_EQ(new_dtypes.size(), 2);
+  EXPECT_EQ(new_dtypes[0], DT_INT32);
+  EXPECT_EQ(new_dtypes[1], DT_STRING);
+
+  // Full type information is unchanged.
+  const FullTypeDef* ft;
+  graph_.NodeType("if", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft->args_size(), 4);
+  ASSERT_EQ(ft->args(0).args_size(), 1);
+  EXPECT_EQ(ft->args(0).args(0).type_id(), TFT_FLOAT);
+  ASSERT_EQ(ft->args(1).args_size(), 1);
+  EXPECT_EQ(ft->args(1).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(ft->args(2).args_size(), 1);
+  EXPECT_EQ(ft->args(2).args(0).type_id(), TFT_INT64);
+  ASSERT_EQ(ft->args(3).args_size(), 1);
+  EXPECT_EQ(ft->args(3).args(0).type_id(), TFT_STRING);
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {

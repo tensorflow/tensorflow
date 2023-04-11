@@ -27,7 +27,11 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
@@ -38,6 +42,7 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -76,7 +81,7 @@ def _assert(cond, ex_type, msg):
     A list, containing at most one assert op.
   """
   if _is_tensor(cond):
-    return [control_flow_ops.Assert(cond, [msg])]
+    return [control_flow_assert.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)
@@ -112,7 +117,7 @@ def _ImageDimensions(image, rank):
     return image.get_shape().as_list()
   else:
     static_shape = image.get_shape().with_rank(rank).as_list()
-    dynamic_shape = array_ops.unstack(array_ops.shape(image), rank)
+    dynamic_shape = array_ops_stack.unstack(array_ops.shape(image), rank)
     return [
         s if s is not None else d for s, d in zip(static_shape, dynamic_shape)
     ]
@@ -508,7 +513,7 @@ def _random_flip(image, flip_index, random_func, scope_name):
     def f_rank3():
       uniform_random = random_func(shape=[], minval=0, maxval=1.0)
       mirror_cond = math_ops.less(uniform_random, .5)
-      result = control_flow_ops.cond(
+      result = tf_cond.cond(
           mirror_cond,
           lambda: array_ops.reverse(image, [flip_index]),
           lambda: image,
@@ -526,7 +531,7 @@ def _random_flip(image, flip_index, random_func, scope_name):
 
     if shape.ndims is None:
       rank = array_ops.rank(image)
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     if shape.ndims == 3:
       return f_rank3()
     elif shape.ndims == 4:
@@ -638,7 +643,7 @@ def _flip(image, flip_index, scope_name):
 
     if shape.ndims is None:
       rank = array_ops.rank(image)
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return f_rank3()
     elif shape.ndims == 4:
@@ -704,7 +709,7 @@ def rot90(image, k=1, name=None):
       def f_rank4():
         return _rot90_4D(image, k, scope)
 
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
@@ -739,7 +744,7 @@ def _rot90_3D(image, k, name_scope):
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(
+  result = control_flow_case.case(
       cases, default=lambda: image, exclusive=True, name=name_scope)
   result.set_shape([None, None, image.get_shape()[2]])
   return result
@@ -770,7 +775,7 @@ def _rot90_4D(images, k, name_scope):
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(
+  result = control_flow_case.case(
       cases, default=lambda: images, exclusive=True, name=name_scope)
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
@@ -837,7 +842,7 @@ def transpose(image, name=None):
       def f_rank4():
         return array_ops.transpose(image, [0, 2, 1, 3], name=name)
 
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
@@ -972,11 +977,11 @@ def central_crop(image, central_fraction):
     bbox_w_size = img_w - bbox_w_start * 2
 
     if rank == 3:
-      bbox_begin = array_ops.stack([bbox_h_start, bbox_w_start, 0])
-      bbox_size = array_ops.stack([bbox_h_size, bbox_w_size, -1])
+      bbox_begin = array_ops_stack.stack([bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops_stack.stack([bbox_h_size, bbox_w_size, -1])
     else:
-      bbox_begin = array_ops.stack([0, bbox_h_start, bbox_w_start, 0])
-      bbox_size = array_ops.stack([-1, bbox_h_size, bbox_w_size, -1])
+      bbox_begin = array_ops_stack.stack([0, bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops_stack.stack([-1, bbox_h_size, bbox_w_size, -1])
 
     image = array_ops.slice(image, bbox_begin, bbox_size)
 
@@ -1136,7 +1141,7 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
 
     # Do not pad on the depth dimensions.
     paddings = array_ops.reshape(
-        array_ops.stack([
+        array_ops_stack.stack([
             0, 0, offset_height, after_padding_height, offset_width,
             after_padding_width, 0, 0
         ]), [4, 2])
@@ -1239,9 +1244,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image = control_flow_ops.with_dependencies(assert_ops, image)
 
     cropped = array_ops.slice(
-        image, array_ops.stack([0, offset_height, offset_width, 0]),
-        array_ops.stack([array_ops.shape(image)[0], target_height, target_width,
-                         array_ops.shape(image)[3]]))
+        image,
+        array_ops_stack.stack([0, offset_height, offset_width, 0]),
+        array_ops_stack.stack([
+            array_ops.shape(image)[0],
+            target_height,
+            target_width,
+            array_ops.shape(image)[3]]))
 
     cropped_shape = [
         None if _is_tensor(i) else i
@@ -2490,6 +2499,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating and not dtype.is_integer:
     raise AttributeError('dtype must be either floating point or integer')
+  if not image.dtype.is_floating and not image.dtype.is_integer:
+    raise AttributeError('image dtype must be either floating point or integer')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
@@ -4126,11 +4137,11 @@ def _verify_compatible_image_shapes(img1, img2):
   # TODO(sjhwang): Check if shape1[:-3] and shape2[:-3] are broadcastable.
   checks = []
   checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.greater_equal(array_ops.size(shape1), 3), [shape1, shape2],
           summarize=10))
   checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(math_ops.equal(shape1[-3:], shape2[-3:])),
           [shape1, shape2],
           summarize=10))
@@ -4307,12 +4318,12 @@ def _ssim_per_channel(img1,
 
   shape1, shape2 = array_ops.shape_n([img1, img2])
   checks = [
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(
               math_ops.greater_equal(shape1[-3:-1], filter_size)),
           [shape1, filter_size],
           summarize=8),
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(
               math_ops.greater_equal(shape2[-3:-1], filter_size)),
           [shape2, filter_size],
@@ -4543,9 +4554,9 @@ def ssim_multiscale(img1,
           remainder = tails[0] % divisor_tensor
           need_padding = math_ops.reduce_any(math_ops.not_equal(remainder, 0))
           # pylint: disable=cell-var-from-loop
-          padded = control_flow_ops.cond(need_padding,
-                                         lambda: do_pad(flat_imgs, remainder),
-                                         lambda: flat_imgs)
+          padded = tf_cond.cond(need_padding,
+                                lambda: do_pad(flat_imgs, remainder),
+                                lambda: flat_imgs)
           # pylint: enable=cell-var-from-loop
 
           downscaled = [
@@ -4572,7 +4583,7 @@ def ssim_multiscale(img1,
     # Remove the cs score for the last scale. In the MS-SSIM calculation,
     # we use the l(p) at the highest scale. l(p) * cs(p) is ssim(p).
     mcs.pop()  # Remove the cs score for the last scale.
-    mcs_and_ssim = array_ops.stack(
+    mcs_and_ssim = array_ops_stack.stack(
         mcs + [nn_ops.relu(ssim_per_channel)], axis=-1)
     # Take weighted geometric mean across the scale axis.
     ms_ssim = math_ops.reduce_prod(
@@ -4638,17 +4649,17 @@ def image_gradients(image):
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
   image_shape = array_ops.shape(image)
-  batch_size, height, width, depth = array_ops.unstack(image_shape)
+  batch_size, height, width, depth = array_ops_stack.unstack(image_shape)
   dy = image[:, 1:, :, :] - image[:, :-1, :, :]
   dx = image[:, :, 1:, :] - image[:, :, :-1, :]
 
   # Return tensors with same size as original image by concatenating
   # zeros. Place the gradient [I(x+1,y) - I(x,y)] on the base pixel (x, y).
-  shape = array_ops.stack([batch_size, 1, width, depth])
+  shape = array_ops_stack.stack([batch_size, 1, width, depth])
   dy = array_ops.concat([dy, array_ops.zeros(shape, image.dtype)], 1)
   dy = array_ops.reshape(dy, image_shape)
 
-  shape = array_ops.stack([batch_size, height, 1, depth])
+  shape = array_ops_stack.stack([batch_size, height, 1, depth])
   dx = array_ops.concat([dx, array_ops.zeros(shape, image.dtype)], 2)
   dx = array_ops.reshape(dx, image_shape)
 
@@ -5326,10 +5337,11 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
     # Iterates over tiles that can possibly suppress the current tile.
     box_slice = array_ops.slice(boxes, [0, idx * tile_size, 0],
                                 [batch_size, tile_size, 4])
-    _, box_slice, _, _ = control_flow_ops.while_loop(
+    _, box_slice, _, _ = while_loop.while_loop(
         lambda _boxes, _box_slice, _threshold, inner_idx: inner_idx < idx,
         cross_suppression_func,
-        [boxes, box_slice, iou_threshold, constant_op.constant(0)])
+        [boxes, box_slice, iou_threshold,
+         constant_op.constant(0)])
 
     # Iterates over the current tile to compute self-suppression.
     iou = _bbox_overlap(box_slice, box_slice)
@@ -5339,11 +5351,13 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
                 math_ops.range(tile_size), [-1, 1]), 0)
     iou *= math_ops.cast(
         math_ops.logical_and(mask, iou >= iou_threshold), iou.dtype)
-    suppressed_iou, _, _, _ = control_flow_ops.while_loop(
+    suppressed_iou, _, _, _ = while_loop.while_loop(
         lambda _iou, loop_condition, _iou_sum, _: loop_condition,
-        _self_suppression,
-        [iou, constant_op.constant(True), math_ops.reduce_sum(iou, [1, 2]),
-         iou_threshold])
+        _self_suppression, [
+            iou,
+            constant_op.constant(True),
+            math_ops.reduce_sum(iou, [1, 2]), iou_threshold
+        ])
     suppressed_box = math_ops.reduce_sum(suppressed_iou, 1) > 0
     box_slice *= array_ops.expand_dims(
         1.0 - math_ops.cast(suppressed_box, box_slice.dtype), 2)
@@ -5616,11 +5630,11 @@ def non_max_suppression_padded_v2(boxes,
           value=boxes, num_or_size_splits=4, axis=2)
       y_1_is_min = math_ops.reduce_all(
           math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
-      y_min, y_max = control_flow_ops.cond(
+      y_min, y_max = tf_cond.cond(
           y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
       x_1_is_min = math_ops.reduce_all(
           math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
-      x_min, x_max = control_flow_ops.cond(
+      x_min, x_max = tf_cond.cond(
           x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
       boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
   # TODO(@bhack): https://github.com/tensorflow/tensorflow/issues/56089
@@ -5656,7 +5670,7 @@ def non_max_suppression_padded_v2(boxes,
     return _suppression_loop_body(
         boxes, iou_threshold, output_size, idx, tile_size)
 
-  selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
+  selected_boxes, _, output_size, _ = while_loop.while_loop(
       _loop_cond,
       suppression_loop_body,
       [

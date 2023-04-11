@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Path.h"
@@ -62,7 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
@@ -130,13 +129,13 @@ opt<bool> skip_resize(
     "skip-resize",
     llvm::cl::desc(
         "Skip converting tf.ResizeBilinear and tf.ResizeNearestNeighbor ops."),
-    llvm::cl::Optional, llvm::cl::init(false));
+    llvm::cl::Optional, llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
     llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
-    llvm::cl::Optional, llvm::cl::init(false));
+    llvm::cl::Optional, llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 opt<bool> freeze_tf_graph(
@@ -233,7 +232,10 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
 tensorflow::Status ConvertTFToStableHLO(
     ModuleOp tf_module, const PassPipelineCLParser& pass_pipeline) {
   PassManager pm(tf_module.getContext());
-  applyPassManagerCLOptions(pm);
+  if (failed(applyPassManagerCLOptions(pm))) {
+    return tensorflow::errors::Aborted(
+        "Failed to apply MLIR pass manager CL options.");
+  }
 
   auto error_handler = [&](const Twine& msg) {
     emitError(UnknownLoc::get(pm.getContext())) << msg;
@@ -309,7 +311,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
                                     elide_large_elements_attrs));
   }
 
-  llvm::Optional<tensorflow::Session*> session = std::nullopt;
+  std::optional<tensorflow::Session*> session = std::nullopt;
   if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
 
   if (freeze_tf_graph) {
@@ -361,7 +363,7 @@ void initAllPasses() {
   mlir::registerTensorFlowPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  // These are in compiler/mlir/xla and not part of the above MHLO passes.
+  // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();
@@ -384,7 +386,7 @@ int main(int argc, char* argv[]) {
 
   if (!status.ok()) {
     LOG(ERROR) << status;
-    return status.code();
+    return status.raw_code();
   }
   return 0;
 }

@@ -248,6 +248,16 @@ class PjRtChunk {
   uint8_t* data() { return data_; }
   const uint8_t* data() const { return data_; }
   int64_t size() const { return size_; }
+  std::function<void(void*)> deleter() const { return deleter_; }
+
+  // Release the ownership of the data. Note that this does not free the data;
+  // the caller should copy `data()` and `deleter()` to manage the ownership
+  // before calling `release()`. This PjRtChunk is invalidated after calling.
+  void release() {
+    data_ = nullptr;
+    size_ = 0;
+    deleter_ = nullptr;
+  }
 
  private:
   // The ownership of the bytes pointed to by `data_` is controlled by the
@@ -657,6 +667,22 @@ class PjRtClient {
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
+  // Variant of BufferFromHostBuffer that takes an optional device layout. It is
+  // used when non-compact layout is preferred.
+  // TODO(b/275645543): remove BufferFromHostBuffer without optional device
+  // layout after all the inherited classes and call sites are updated.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostBuffer with an optional device layout is not "
+        "implemented on platform: ",
+        platform_name());
+  }
+
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
@@ -745,9 +771,15 @@ class PjRtClient {
   // Defragment device memory.
   virtual Status Defragment() = 0;
 
+  // If false, this client does not support send/recv host callbacks, and
+  // callers should not set the `send_callbacks` and `recv_callbacks` arguments
+  // in ExecuteOptions.
+  virtual bool SupportsSendRecvCallbacks() const { return false; }
+
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
-  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+  virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
+      const {
     return host_memory_for_device_manager_.get();
   }
 
@@ -830,8 +862,12 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+    Shape device_shape = on_device_shape();
+    if (device_shape.is_dynamic()) {
+      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    }
     auto literal = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(on_device_shape()));
+        ShapeUtil::DeviceShapeToHostShape(device_shape));
     TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }
@@ -1077,6 +1113,9 @@ class ExecuteContext {
 };
 
 struct PjRtTransferMetadata {
+  // May be invalid if
+  // ExecuteOptions::use_major_to_minor_data_layout_for_callbacks is true for
+  // this execution.
   Shape device_shape;
 };
 
@@ -1147,6 +1186,15 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
+
+  // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
+  // recv functions should pass major-to-minor chunks to
+  // CopyToDeviceStream::AddChunk.
+  //
+  // If false, send callbacks are passed PjRtChunks in the on-device layout
+  // specified in the PjRtTransferMetadata, and recv functions should similarly
+  // pass device-layout chunks to CopyToDeviceStream::AddChunk.
+  bool use_major_to_minor_data_layout_for_callbacks = false;
 
   // The `execution_mode` decides whether the execution will be invoked in the
   // caller thread or launched to a separate thread. By default, the

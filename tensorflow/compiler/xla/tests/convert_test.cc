@@ -731,5 +731,25 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive3) {
   ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
+XLA_TEST_F(ConvertTest, ConvertF8e5m2ToPred) {
+  XlaBuilder builder(TestName());
+  using F8 = tsl::float8_e5m2;
+  auto a = ConstantR1<F8>(&builder, {F8{0.0}, F8{0.25}, F8{2.0}});
+  ConvertElementType(a, PRED);
+
+  std::array<bool, 3> expected = {false, true, true};
+  ComputeAndCompareR1<bool>(&builder, expected, {});
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3fnToPred) {
+  XlaBuilder builder(TestName());
+  using F8 = tsl::float8_e4m3fn;
+  auto a = ConstantR1<F8>(&builder, {F8{0.0}, F8{0.25}, F8{2.0}});
+  ConvertElementType(a, PRED);
+
+  std::array<bool, 3> expected = {false, true, true};
+  ComputeAndCompareR1<bool>(&builder, expected, {});
+}
+
 }  // namespace
 }  // namespace xla

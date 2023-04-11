@@ -923,6 +923,16 @@ ArrayRef<Type> TFRFuncOp::getCallableResults() {
   return getFunctionType().getResults();
 }
 
+// CallableOpInterface
+::mlir::ArrayAttr TFRFuncOp::getCallableArgAttrs() {
+  return getArgAttrs().value_or(nullptr);
+}
+
+// CallableOpInterface
+::mlir::ArrayAttr TFRFuncOp::getCallableResAttrs() {
+  return getResAttrs().value_or(nullptr);
+}
+
 //===----------------------------------------------------------------------===//
 // Dialect type definitions
 //===----------------------------------------------------------------------===//

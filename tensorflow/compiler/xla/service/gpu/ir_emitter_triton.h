@@ -17,18 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_TRITON_H_
 
 #include <functional>
-#include <optional>
-#include <string>
-#include <vector>
 
 #include "llvm/IR/Module.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
-#include "triton/ir/builder.h"
-#include "triton/ir/function.h"
 
 namespace xla {
 namespace gpu {
@@ -38,25 +35,24 @@ using tensorflow::AutotuneResult;
 // Generate matrix multiplication in Triton IR inside 'fn'
 // for 'dot_instr' which is described by an HLO custom call computation.
 // Use tiling and execution parameters from 'config'.
-// Values in 'config' can be adjusted by this function if the original ones
-// are not executable or inefficient.
-std::optional<LaunchDimensions> MatMul(triton::ir::builder& b,
-                                       const HloDotInstruction* dot_instr,
-                                       triton::ir::function* fn,
-                                       AutotuneResult::TritonGemmKey& config,
-                                       int shmem_budget);
+StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
+                                  const HloDotInstruction* dot_instr,
+                                  mlir::func::FuncOp fn,
+                                  const AutotuneResult::TritonGemmKey& config,
+                                  int shmem_budget);
+
+using LaunchDimensionsGenerator = std::function<StatusOr<LaunchDimensions>(
+    mlir::OpBuilder, const HloDotInstruction*, mlir::func::FuncOp,
+    const AutotuneResult::TritonGemmKey&, int)>;
 
 // Generate Triton IR by running the provided generator, compile it into LLVM IR
-// and return either launch dimensions or std::nullopt if generation failed.
+// and return launch dimensions.
 // The MatMul() above is one of such possible IR generators.
-std::optional<LaunchDimensions> TritonWrapper(
+StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
-    AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    std::function<std::optional<LaunchDimensions>(
-        triton::ir::builder&, const HloDotInstruction*, triton::ir::function*,
-        AutotuneResult::TritonGemmKey&, int)>
-        generator);
+    const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
+    LaunchDimensionsGenerator generator);
 
 }  // namespace gpu
 }  // namespace xla
