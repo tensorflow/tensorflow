@@ -114,6 +114,12 @@
     *   `tf.data.Dataset.zip` now supports Python-style zipping, i.e.
         `Dataset.zip(a, b, c)`.
 
+*   `tf.math`
+
+    * `tf.nn.top_k` now supports specifying the output index type via parameter
+       `index_type`.  Supported types are `tf.int16`, `tf.int32`
+       (default), and `tf.int64`.
+
 *   `tf.SavedModel`
 
     *   Introduce class method
