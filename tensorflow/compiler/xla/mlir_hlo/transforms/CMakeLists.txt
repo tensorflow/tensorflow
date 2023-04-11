@@ -39,6 +39,7 @@ add_mlir_library(MLIRBufferTransforms
 
   DEPENDS
   LMHLOTransformsPassIncGen
+  MLIRDeallocationPassesIncGen
 
   LINK_COMPONENTS
   Core
