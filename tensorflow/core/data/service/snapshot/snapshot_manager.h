@@ -40,6 +40,7 @@ namespace data {
 // The on-disk state has this structure:
 // - snapshot_path
 //   - DONE
+//   - ERROR
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - dataset_spec.pb
@@ -48,6 +49,7 @@ namespace data {
 //   - streams
 //     - stream_0
 //       - DONE
+//       - ERROR
 //       - splits
 //         - source_0
 //           - split_<local_split_index>_<global_split_index>
