@@ -174,7 +174,7 @@ if collaborator_build:
   ]
 
 EXTRA_PACKAGES = {}
-EXTRA_PACKAGES['with-cuda'] = [
+EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia lib versions based on build components.
     'nvidia-cuda-runtime-cu11 == 11.8.89',
     'nvidia-cublas-cu11 == 11.11.3.6',
