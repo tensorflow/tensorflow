@@ -1411,6 +1411,7 @@ py_library(
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variable_v1",
         "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",

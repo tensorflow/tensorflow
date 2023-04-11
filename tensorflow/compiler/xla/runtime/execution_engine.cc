@@ -257,8 +257,8 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   // TODO(ezhulenev): We should have out own optimizing transformer pipelines
   // for different Xla backends, e.g. there is absolutely no need to run
   // SLV vectorizer for Xla Gpi host side executable.
-  auto transformer = options.make_optimizing_transformer(
-      llvm::CodeGenOpt::Default, /*sizeLevel=*/0, options.target_machine);
+  auto transformer =
+      options.make_optimizing_transformer(options.target_machine);
   if (auto err = transformer(module_ptr))
     return InternalError("failed to run optimization pipeline: %s",
                          ToString(err));

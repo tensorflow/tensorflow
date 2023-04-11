@@ -664,4 +664,28 @@ sharded than the input layout.
   let hasVerifier = 1;
 }
 
+def TF_DTensorAllToAllOp : TF_Op<"DTensorAllToAll", [Pure]> {
+  let summary = "Mutually exchanges the input to match the given layout.";
+
+  let description = [{
+This op takes both an input and an output layout. There can be one mesh
+dimension which is becoming unsharded in one axis while becoming sharded 
+in another axis."
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$input,
+    DTensor_LayoutAttr:$input_layout,
+    DTensor_LayoutAttr:$output_layout
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 #endif // TENSORFLOW_DTENSOR_MLIR_IR_TF_DTENSOR_OPS

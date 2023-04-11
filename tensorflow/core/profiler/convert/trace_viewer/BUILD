@@ -12,4 +12,7 @@ package(
 cc_library(
     name = "trace_events_filter_interface",
     hdrs = ["trace_events_filter_interface.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+    ],
 )

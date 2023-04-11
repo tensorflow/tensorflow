@@ -223,7 +223,7 @@ PYBIND11_MODULE(xla_extension, m) {
              PythonDeprecationWarning(
                  "Per device live_buffers() is going to be deprecated. Please "
                  "use the jax.live_arrays() for jax.Arrays instead.");
-             return device.client->LiveBuffersOnDevice(device.get());
+             return py::list();
            })
       .def(
           "__getattr__",
@@ -263,15 +263,16 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
       .def("get_default_device_assignment",
-           &PyClient::GetDefaultDeviceAssignment)
+           xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment))
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
-           &PyClient::GetDefaultDeviceAssignment1D)
-      .def("create_channel_handle", &PyClient::CreateChannelHandle)
+           xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment1D))
+      .def("create_channel_handle",
+           xla::ValueOrThrowWrapper(&PyClient::CreateChannelHandle))
       .def("create_device_to_host_channel_handle",
-           &PyClient::CreateDeviceToHostChannelHandle)
+           xla::ValueOrThrowWrapper(&PyClient::CreateDeviceToHostChannelHandle))
       .def("create_host_to_device_channel_handle",
-           &PyClient::CreateHostToDeviceChannelHandle)
+           xla::ValueOrThrowWrapper(&PyClient::CreateHostToDeviceChannelHandle))
       .def(
           "buffer_from_pyval",
           [](py::handle py_client, py::handle argument, py::handle py_device,
@@ -289,40 +290,47 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("host_buffer_semantics") =
               PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("make_cross_host_receive_buffers",
-           &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
-           py::arg("device"))
-      .def("compile", &PyClient::Compile, py::arg("computation"),
+           xla::ValueOrThrowWrapper(&PyClient::MakeCrossHostReceiveBuffers),
+           py::arg("shapes"), py::arg("device"))
+      .def("compile", xla::ValueOrThrowWrapper(&PyClient::Compile),
+           py::arg("computation"),
            py::arg("compile_options") = CompileOptions(),
            py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("serialize_executable", &PyClient::SerializeExecutable)
+      .def("serialize_executable",
+           xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
       .def("deserialize_executable",
-           py::overload_cast<const std::string&, CompileOptions,
-                             std::vector<py::capsule>>(
-               &PyClient::DeserializeExecutable),
+           xla::ValueOrThrowWrapper(
+               py::overload_cast<const std::string&, CompileOptions,
+                                 std::vector<py::capsule>>(
+                   &PyClient::DeserializeExecutable)),
            py::arg("serialized"), py::arg("compile_options"),
            py::arg("host_callbacks") = std::vector<py::capsule>())
       // TODO(skyewm): remove when jax stop providing hlo_module
       .def("deserialize_executable",
-           py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
-                             CompileOptions, std::vector<py::capsule>>(
-               &PyClient::DeserializeExecutable),
+           xla::ValueOrThrowWrapper(
+               py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
+                                 CompileOptions, std::vector<py::capsule>>(
+                   &PyClient::DeserializeExecutable)),
            py::arg("serialized"), py::arg("hlo_module"),
            py::arg("compile_options"),
            py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("heap_profile", &PyClient::HeapProfile)
+      .def("heap_profile", xla::ValueOrThrowWrapper(&PyClient::HeapProfile))
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment",
            [](PyClient& self) { xla::ThrowIfError(self.Defragment()); })
       .def("get_emit_python_callback_descriptor",
-           &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
-           py::arg("operand_shapes"), py::arg("result_shapes") = std::nullopt)
+           xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallbackDescriptor),
+           py::arg("callable"), py::arg("operand_shapes"),
+           py::arg("result_shapes") = std::nullopt)
       .def("make_python_callback_from_host_send_and_recv",
-           &PyClient::MakePythonCallbackUsingHostSendAndRecv,
+           xla::ValueOrThrowWrapper(
+               &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
            py::arg("recv_channel_ids"))
       // Deprecated: please use `get_emit_python_callback_descriptor` instead.
-      .def("emit_python_callback", &PyClient::EmitPythonCallback,
+      .def("emit_python_callback",
+           xla::ValueOrThrowWrapper(&PyClient::EmitPythonCallback),
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
            py::arg("result_shapes"), py::arg("operand_layouts") = std::nullopt,
            py::arg("has_side_effects") = false);
@@ -413,8 +421,8 @@ PYBIND11_MODULE(xla_extension, m) {
   // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",
         [](std::string platform_name)
-            -> StatusOr<std::unique_ptr<PjRtDeviceTopology>> {
-          return GetCApiTopology(platform_name);
+            -> std::unique_ptr<PjRtTopologyDescription> {
+          return xla::ValueOrThrow(GetCApiTopology(platform_name));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
@@ -428,7 +436,6 @@ PYBIND11_MODULE(xla_extension, m) {
   });
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
-  TF_CHECK_OK(PyBuffer::RegisterTypes(m));
   TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);
 
@@ -485,19 +492,24 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyLoadedExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyLoadedExecutable::SizeOfGeneratedCodeInBytes)
-      .def("get_compiled_memory_stats",
-           &PyLoadedExecutable::GetCompiledMemoryStats)
+      .def(
+          "get_compiled_memory_stats",
+          xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCompiledMemoryStats))
       .def("delete", &PyLoadedExecutable::Delete)
       .def("execute_sharded_on_local_devices",
-           &PyLoadedExecutable::ExecuteShardedOnLocalDevices,
+           xla::ValueOrThrowWrapper(
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           xla::ValueOrThrowWrapper(
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       // TODO(parkers): Switch execute_sharded_on_local_devices* to this.
-      .def("execute_sharded", &PyLoadedExecutable::ExecuteSharded,
+      .def("execute_sharded",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::ExecuteSharded),
            py::arg("arguments"), py::arg("with_tokens") = false)
-      .def("hlo_modules", &PyLoadedExecutable::HloModules)
+      .def("hlo_modules",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::HloModules))
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
@@ -524,14 +536,15 @@ PYBIND11_MODULE(xla_extension, m) {
   });
   sharded_token.def("get_token", &PyShardedToken::GetPyToken);
 
-  m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
+  m.def("buffer_to_dlpack_managed_tensor",
+        xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
         py::arg("buffer"), py::arg("take_ownership") = true);
   m.def(
       "dlpack_managed_tensor_to_buffer",
       [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
          std::shared_ptr<PyClient> gpu_client) {
-        return DLPackManagedTensorToBuffer(tensor, std::move(cpu_client),
-                                           std::move(gpu_client));
+        return xla::ValueOrThrow(DLPackManagedTensorToBuffer(
+            tensor, std::move(cpu_client), std::move(gpu_client)));
       },
       py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
       py::arg("gpu_backend") = nullptr);
@@ -596,8 +609,8 @@ PYBIND11_MODULE(xla_extension, m) {
           [](DistributedRuntimeClient& client, std::string key,
              int64_t timeout_in_ms) {
             py::gil_scoped_release gil_release;
-            return client.BlockingKeyValueGet(
-                key, absl::Milliseconds(timeout_in_ms));
+            return xla::ValueOrThrow(client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms)));
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       // Same as `blocking_key_value_get()`, but retrieves the raw Python byte
@@ -605,14 +618,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "blocking_key_value_get_bytes",
           [](DistributedRuntimeClient& client, std::string key,
-             int64_t timeout_in_ms) -> StatusOr<py::bytes> {
+             int64_t timeout_in_ms) -> py::bytes {
             py::gil_scoped_release gil_release;
-            xla::StatusOr<std::string> result = client.BlockingKeyValueGet(
-                key, absl::Milliseconds(timeout_in_ms));
-            if (!result.ok()) {
-              return result.status();
-            }
-            return py::bytes(*result);
+            std::string result = xla::ValueOrThrow(client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms)));
+            return py::bytes(result);
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       .def(
@@ -643,7 +653,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "key_value_dir_get",
           [](DistributedRuntimeClient& client, std::string key) {
             py::gil_scoped_release gil_release;
-            return client.KeyValueDirGet(key);
+            return xla::ValueOrThrow(client.KeyValueDirGet(key));
           },
           py::arg("key"))
       // Assumes that all values in the directory are Python byte objects.
@@ -652,17 +662,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "key_value_dir_get_bytes",
           [](DistributedRuntimeClient& client, std::string key)
-              -> StatusOr<std::vector<std::pair<std::string, py::bytes>>> {
+              -> std::vector<std::pair<std::string, py::bytes>> {
             py::gil_scoped_release gil_release;
-            xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
-                result = client.KeyValueDirGet(key);
-            if (!result.ok()) {
-              return result.status();
-            }
+            std::vector<std::pair<std::string, std::string>> result =
+                xla::ValueOrThrow(client.KeyValueDirGet(key));
             // Convert std::string values to py::bytes.
             std::vector<std::pair<std::string, py::bytes>> kvs;
-            kvs.reserve(result->size());
-            for (const auto& kv : *result) {
+            kvs.reserve(result.size());
+            for (const auto& kv : result) {
               kvs.push_back(std::pair(kv.first, py::bytes(kv.second)));
             }
             return kvs;
@@ -722,7 +729,7 @@ PYBIND11_MODULE(xla_extension, m) {
                                           bool coordinator_reported_failure)>>
              missed_heartbeat_callback,
          std::optional<bool> shutdown_on_destruction)
-          -> StatusOr<std::shared_ptr<DistributedRuntimeClient>> {
+          -> std::shared_ptr<DistributedRuntimeClient> {
         DistributedRuntimeClient::Options options;
         options.node_id = node_id;
         if (rpc_timeout.has_value()) {
@@ -764,23 +771,24 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("is_optimized_build", &IsOptimizedBuild);
 
-  m.def("json_to_pprof_profile", &JsonToPprofProfile,
+  m.def("json_to_pprof_profile", xla::ValueOrThrowWrapper(JsonToPprofProfile),
         "Encodes the JSON representation of a pprof Profile into its binary "
         "protocol buffer encoding.");
-  m.def("pprof_profile_to_json", &PprofProfileToJson,
+  m.def("pprof_profile_to_json", xla::ValueOrThrowWrapper(PprofProfileToJson),
         "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
         "representation");
 
-  py::class_<PjRtDeviceTopology>(m, "DeviceTopology")
-      .def_property_readonly(
-          "platform",
-          [](PjRtDeviceTopology& topology) { return topology.platform_name(); })
+  py::class_<PjRtTopologyDescription>(m, "DeviceTopology")
+      .def_property_readonly("platform",
+                             [](PjRtTopologyDescription& topology) {
+                               return topology.platform_name();
+                             })
       .def_property_readonly("platform_version",
-                             [](PjRtDeviceTopology& topology) {
+                             [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
                              })
       .def_property_readonly("device_attributes",
-                             [](PjRtDeviceTopology& topology) {
+                             [](PjRtTopologyDescription& topology) {
                                return py::cast(topology.DeviceAttributes());
                              });
 
@@ -796,7 +804,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "compile",
-      [](const PjRtDeviceTopology& topology, std::string mlir_module,
+      [](const PjRtTopologyDescription& topology, std::string mlir_module,
          CompileOptions options) -> std::shared_ptr<PjRtExecutable> {
         std::unique_ptr<PjRtExecutable> executable;
         std::optional<std::string> fingerprint;

@@ -361,7 +361,8 @@ void BuildJaxjitSubmodule(py::module& m) {
             return xla::SpanToTuple(absl::MakeConstSpan(sig.shape));
           })
       .def_readonly("weak_type", &xla::PyArgSignature::weak_type);
-  jitlib.def("_ArgSignatureOfValue", &xla::PyArgSignatureOfValue);
+  jitlib.def("_ArgSignatureOfValue",
+             xla::ValueOrThrowWrapper(xla::PyArgSignatureOfValue));
 
   jitlib.def("_is_float0", &xla::IsFloat0);
 }

@@ -31,9 +31,11 @@ struct GmlStPeelingResult {
 /// Rewrite a scf::ForallOp with bounds/step that potentially do not divide
 /// evenly into a scf::ForallOp where the step divides the iteration space
 /// evenly, followed by another scf::ForallOp for the last (partial)
-/// iteration (if any). This transformation is called "loop peeling".
+/// iteration (if any).  This transformation is called "loop peeling".
 ///
-/// This function peels all loops in the loop nest.
+/// These functions peel all loops in the loop nest by calling
+/// peelAndCanonicalizeGmlStLoop. Additionally, they mark all loops (main and
+/// remainder loops) as peeled, so the same loop is not rewritten a second time.
 GmlStPeelingResult peelAllLoops(scf::ForallOp loop,
                                 mlir::PatternRewriter &rewriter);
 

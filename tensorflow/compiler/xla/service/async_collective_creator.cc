@@ -110,14 +110,14 @@ StatusOr<ReplacedAsync> CreateAsyncCollectivePermute(
   return ReplacedAsync{start, done};
 }
 
-StatusOr<ReplacedAsync> CreateAsyncStartDone(HloInstruction* instruction) {
+StatusOr<ReplacedAsync> CreateAsyncStartDone(
+    HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
   HloComputation* computation = instruction->parent();
-  Shape sync_shape = ShapeUtil::MakeScalarShape(U32);
   TF_ASSIGN_OR_RETURN(
       HloInstruction * done,
-      computation->CreateAsyncInstructions(
-          instruction, {sync_shape, sync_shape},
-          HloInstruction::kMainExecutionThread, /*replace=*/false));
+      computation->CreateAsyncInstructions(instruction, context_shapes,
+                                           HloInstruction::kMainExecutionThread,
+                                           /*replace=*/false));
   HloInstruction* start = done->mutable_operand(0);
   return ReplacedAsync{start, done};
 }
@@ -170,7 +170,8 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
           break;
         case HloOpcode::kAllToAll:
         case HloOpcode::kReduceScatter:
-          async_pair = CreateAsyncStartDone(instruction);
+          async_pair = CreateAsyncStartDone(
+              instruction, config_.get_context_shapes(instruction));
           break;
         default:
           return InternalError("Unexpected opcode %s",
@@ -182,6 +183,16 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
       if (should_update_schedule) {
         replaced_pairs[instruction] = *async_pair;
       }
+
+      // Update control dependencies if present.
+      for (HloInstruction* pred : instruction->control_predecessors()) {
+        TF_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_pair->start));
+      }
+      for (HloInstruction* succ : instruction->control_successors()) {
+        TF_RETURN_IF_ERROR(async_pair->done->AddControlDependencyTo(succ));
+      }
+      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
           computation->ReplaceInstruction(instruction, async_pair->done),
           "replacing ", instruction->ToShortString());

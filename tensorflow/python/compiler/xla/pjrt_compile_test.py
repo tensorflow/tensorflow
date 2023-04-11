@@ -19,19 +19,20 @@ This feature is still under active development and is protected behind the
 """
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import errors
+from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
 
 
 class PjrtCompileTest(test.TestCase):
 
   # Tests compilation and execution of a jit_compiled function using PjRt.
   def test_xla_local_launch(self):
+    if not test.is_gpu_available() or not test.is_built_with_gpu_support():
+      test.skipTest("Test only applicable on GPU")
+
     @def_function.function(jit_compile=True)
-    def foo(x):
-      a = x + 1
-      return a
+    def foo(x, y):
+      return x + y + 1
 
     # Currently PjRt only supports compilation and execution for the XLA_GPU
     # device to unblock development. Support for non-XLA devices (CPU/GPU/single
@@ -40,8 +41,7 @@ class PjrtCompileTest(test.TestCase):
     # TODO(b/255826209): Modify the test as we progress towards supporting
     # non-XLA devices.
     with ops.device("/device:XLA_GPU:0"):
-      with self.assertRaises(errors.UnimplementedError):
-        _ = self.evaluate(foo(1))
+      self.assertEqual(self.evaluate(foo(1, 2)), 4)
 
 
 if __name__ == "__main__":

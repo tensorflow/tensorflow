@@ -256,7 +256,7 @@ def LHLOGPU_CollectivePermuteDoneOp: LHLOGPU_Op<"collective_permute_done"> {
 }
 
 def LHLOGPU_AllGatherStartOp :
-  LHLOGPU_AsyncCollectiveCommunicationOp<"all_gather_start", [SameOperandsElementType]> {
+  LHLOGPU_AsyncCollectiveCommunicationOp<"all_gather_start"> {
   let summary = "AllGatherStart operator";
   let description = [{
      Performs asynchronous concatenation across replicas.

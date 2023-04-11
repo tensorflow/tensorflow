@@ -557,7 +557,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function.call(forward_inputs)
+          forward_outputs = forward_function(*forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -1176,32 +1176,28 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """
     return self._call_impl(args, kwargs)
 
-  def _call_impl(self, args, kwargs, cancellation_manager=None):
+  def _call_impl(self, args, kwargs):
     """See `__call__` for details."""
     with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
       if self._function_spec is not None:
         try:
-          return self._call_with_structured_signature(args, kwargs,
-                                                      cancellation_manager)
+          return self._call_with_structured_signature(args, kwargs)
         except TypeError as structured_err:
           try:
-            return self._call_with_flat_signature(args, kwargs,
-                                                  cancellation_manager)
+            return self._call_with_flat_signature(args, kwargs)
           except TypeError:
             raise structured_err
 
-      return self._call_with_flat_signature(args, kwargs, cancellation_manager)
+      return self._call_with_flat_signature(args, kwargs)
 
-  def _call_with_flat_signature(self, args, kwargs, cancellation_manager):
+  def _call_with_flat_signature(self, args, kwargs):
     """Executes the wrapped function with the flat signature.
 
     Args:
       args: Positional arguments to the concrete function.
       kwargs: Keyword arguments to the concrete function.
-      cancellation_manager: A `CancellationManager` that can be used to cancel
-        function invocation.
 
     Returns:
       The result of applying the function on the Tensors/Variables contained in
@@ -1246,16 +1242,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         raise TypeError(f"{self._flat_signature_summary()}: expected argument "
                         f"#{i}(zero-based) to be a Tensor; "
                         f"got {type(arg).__name__} ({arg}).")
-    return self._call_flat(args, self.captured_inputs, cancellation_manager)
+    return self._call_flat(args, self.captured_inputs)
 
-  def _call_with_structured_signature(self, args, kwargs, cancellation_manager):
+  def _call_with_structured_signature(self, args, kwargs):
     """Executes the wrapped function with the structured signature.
 
     Args:
       args: Positional arguments to the concrete function.
       kwargs: Keyword arguments to the concrete function.
-      cancellation_manager: A `CancellationManager` that can be used to cancel
-        function invocation.
 
     Returns:
       The result of applying the function on the Tensors/Variables contained in
@@ -1268,10 +1262,9 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         self._function_spec.canonicalize_function_inputs(args, kwargs))
     return self._call_flat(
         filtered_flat_args,
-        captured_inputs=self.captured_inputs,
-        cancellation_manager=cancellation_manager)
+        captured_inputs=self.captured_inputs)
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
     """Executes the wrapped function.
 
     Args:
@@ -1282,9 +1275,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         calling this method.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
-      cancellation_manager: (Optional.) A `CancellationManager` that can be
-        used to cancel function invocation.
-
     Returns:
       The result of applying the TF function to `args`.
 
@@ -1349,40 +1339,21 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
-      return self._build_call_outputs(self._inference_function.call(
-          args, cancellation_manager=cancellation_manager))
+      return self._build_call_outputs(self._inference_function(*args))
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
         executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
-      flat_outputs = forward_function.call(
-          args_with_tangents, cancellation_manager=cancellation_manager)
+      flat_outputs = forward_function(*args_with_tangents)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function.call(args_with_tangents)
+        flat_outputs = forward_function(*args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
-
-  def _experimental_with_cancellation_manager(self, cancellation_manager):
-    """Returns a callable that invokes a cancellable version of this function.
-
-    Args:
-      cancellation_manager: A `CancellationManager` object that can be used to
-        cancel function invocation.
-
-    Returns:
-      A callable with the same signature as this concrete function.
-    """
-
-    def cancellable_call(*args, **kwargs):
-      return self._call_impl(
-          args, kwargs, cancellation_manager=cancellation_manager)
-
-    return cancellable_call
 
   @property
   def name(self):

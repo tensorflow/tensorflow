@@ -2373,6 +2373,11 @@ class Checkpoint(autotrackable.AutoTrackable):
     self._maybe_create_save_counter()
     return self._save_counter
 
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    if self._async_checkpointer_impl is not None:
+      self._async_checkpointer_impl.sync()
+
   def save(self, file_prefix, options=None):
     # pylint:disable=line-too-long
     """Saves a training checkpoint and provides basic checkpoint management.

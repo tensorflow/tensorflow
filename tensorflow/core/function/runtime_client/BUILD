@@ -25,10 +25,14 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/compiler/mlir/python:mlir",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime:device_mgr",
+        "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/framework:function_proto_cc",
@@ -100,8 +104,8 @@ tf_python_pybind_extension(
     srcs = ["runtime_client_pybind.cc"],
     deps = [
         ":runtime_client_headers",
-        "@pybind11",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/framework:function_proto_cc",

@@ -2564,6 +2564,7 @@ void Model::OptimizeHillClimbHelper(
       pair.second->value--;
     }
     if (!best_parameter) {
+      metrics::RecordTFDataAutotuneStoppingCriteria("local_maximum_reached");
       VLOG(2) << "Failed to find a tunable parameter that would further "
                  "decrease the output time. This suggests that the hill-climb "
                  "optimization got stuck in a local maximum. The optimization "

@@ -211,13 +211,13 @@ func.func @fused_matmul(%arg0: tensor<1x32xf32>, %arg1: tensor<32x10xf32>,
 // CHECK-LABEL: func @fused_matmul
 // CHECK-SAME:      (%[[ARG0:.*]]: tensor<1x32xf32>, %[[ARG1:.*]]: tensor<32x10xf32>
 // CHECK-SAME:      %[[ARG2:.*]]: tensor<10xf32>
-// CHECK:         %[[C0:.*]] = arith.constant 0
 // CHECK:         %[[EMPTY:.*]] = tensor.empty()
 // CHECK:         gml_st.fusion
 // CHECK-SAME:        (%[[ARG2_:.*]] = %[[ARG2]]: tensor<10xf32>
 // CHECK-SAME:        %[[ARG0_:.*]] = %[[ARG0]]: tensor<1x32xf32>
 // CHECK-SAME:        %[[ARG1_:.*]] = %[[ARG1]]: tensor<32x10xf32>
 // CHECK-SAME:        %[[EMPTY_:.*]] = %[[EMPTY]]: tensor<1x10xf32>
+// CHECK:           %[[C0:.*]] = arith.constant 0
 // CHECK:           %[[EXPANDED:.*]] = tensor.expand_shape %[[ARG2_]]
 // CHECK:           %[[TMP:.*]] = tensor.empty
 // CHECK:           %[[FILLED:.*]] = linalg.fill
@@ -403,9 +403,9 @@ func.func @shared_linalg_fill_dynamic(%input: tensor<?x?xf32>, %size : index)
 }
 
 // CHECK-LABEL:    func.func @shared_linalg_fill_dynamic
-// CHECK:          %[[CST:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:          %[[EMPTY:.*]] = tensor.empty
 // CHECK:          %[[FUSION:.*]] = gml_st.fusion
+// CHECK:            %[[CST:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:            %[[FILL:.*]] = linalg.fill
 // CHECK:            %[[REDUCED:.*]] = linalg.reduce {{.*}} outs(%[[FILL]]
 // CHECK:          %[[FUSION_0:.*]] = gml_st.fusion

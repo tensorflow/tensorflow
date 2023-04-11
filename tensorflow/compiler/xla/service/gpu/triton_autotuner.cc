@@ -515,11 +515,13 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    std::optional<LaunchDimensions> launch_dimensions =
+    StatusOr<LaunchDimensions> launch_dimensions =
         TritonWrapper(triton_fn_name_, to_compile, cc, dev_info,
                       autotune_config, &module, &MatMul);
-    if (!launch_dimensions.has_value()) {
-      // Out of shmem budget.
+    // Emission of individual variants is allowed to fail - shared memory limit
+    // is often exceeded. If all variants fail for some other reason this is
+    // caught later by having no results in the autotuner's output.
+    if (!launch_dimensions.ok()) {
       return {std::nullopt};
     }
 

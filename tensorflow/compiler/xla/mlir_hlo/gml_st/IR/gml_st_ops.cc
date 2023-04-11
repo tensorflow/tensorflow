@@ -141,21 +141,6 @@ ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-LogicalResult FusionOp::verify() {
-  llvm::SetVector<Value> valuesDefinedAbove;
-  getUsedValuesDefinedAbove(getRegion(), getRegion(), valuesDefinedAbove);
-
-  for (Value v : valuesDefinedAbove) {
-    auto *definingOp = v.getDefiningOp();
-
-    if (!isa_and_nonnull<arith::ConstantOp>(definingOp))
-      return emitOpError() << "using value defined outside the region that is "
-                              "not 'arith.constant'.";
-  }
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//

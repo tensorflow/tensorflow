@@ -42,10 +42,11 @@ enum class ResourceType {
   kAllGather = 2,
   kAllReduce = 3,
   kCollectivePermute = 4,
-  kSendRecv = 5,
-  kSendHost = 6,
-  kRecvHost = 7,
-  kNumResources = 8,
+  kReduceScatter = 5,
+  kSendRecv = 6,
+  kSendHost = 7,
+  kRecvHost = 8,
+  kNumResources = 9,
   kTargetDefinedResourcesBound = 10000,
 };
 
@@ -80,6 +81,7 @@ struct SchedulerConfig {
   int64_t all_to_all_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
   int64_t all_reduce_overlap_limit = 1;
+  int64_t reduce_scatter_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;
   int64_t send_recv_host_overlap_limit = 1;
   bool schedule_send_recvs = false;
@@ -105,6 +107,8 @@ class LatencyEstimator {
   // Returns the core frequency used in latency estimation.
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
+
+  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
@@ -181,7 +185,7 @@ class AsyncTracker {
 
   // Returns the hazard type that describes how to resolve the conflicts when
   // multiple instructions attempt to use the given resource type concurrently.
-  // Default resources have a hazard type of kSerial.
+  // Default resources have a hazard type of kUnshareable.
   virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
   explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
@@ -776,6 +780,14 @@ class LatencyHidingScheduler : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
 };
+
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
+                    // or kReduceScatter
+};
+
+CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo);
 
 }  // namespace xla
 

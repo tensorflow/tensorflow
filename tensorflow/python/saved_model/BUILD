@@ -404,6 +404,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:saved_model_exported_concrete",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/saved_model/registration",
@@ -412,6 +413,7 @@ py_strict_library(
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:trace_saveable_util",
+        "//tensorflow/python/types",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
@@ -535,7 +537,6 @@ cuda_py_test(
     deps = [
         ":load",
         ":save",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -551,6 +552,7 @@ cuda_py_test(
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/util:tf_decorator",
+        "@absl_py//absl/testing:parameterized",
     ] + if_google([
         "//tensorflow/cc/experimental/tf2:runtime_pybind",
     ]),
@@ -627,7 +629,6 @@ py_strict_library(
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:func_graph",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/util:nest",

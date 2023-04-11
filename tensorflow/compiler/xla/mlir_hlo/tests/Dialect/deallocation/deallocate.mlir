@@ -1,5 +1,10 @@
-// RUN: mlir-hlo-opt %s -allow-unregistered-dialect -hlo-deallocate | FileCheck %s
-// RUN: mlir-hlo-opt %s -allow-unregistered-dialect -hlo-deallocate -hlo-deallocation-simplification | FileCheck %s --check-prefix=CHECK-SIMPLE
+// RUN: mlir-hlo-opt %s --split-input-file --allow-unregistered-dialect \
+// RUN:     --hlo-deallocate | \
+// RUN: FileCheck %s
+
+// RUN: mlir-hlo-opt %s --split-input-file --allow-unregistered-dialect \
+// RUN:     --hlo-deallocate --hlo-deallocation-simplification | \
+// RUN: FileCheck %s --check-prefix=CHECK-SIMPLE
 
 func.func @loop_nested_alloc(
     %lb: index, %ub: index, %step: index,
@@ -75,26 +80,26 @@ func.func @nested_if() -> (memref<2xf32>, memref<2xf32>) {
 }
 
 // CHECK-LABEL: func @nested_if
-// CHECK:      %[[ALLOC0:.*]] = memref.alloc()
-// CHECK:      %[[ALLOC0_OWNED:.*]] = deallocation.own %[[ALLOC0]]
-// CHECK:      %[[ALLOC1:.*]] = memref.alloc()
-// CHECK:      %[[ALLOC1_OWNED:.*]] = deallocation.own %[[ALLOC1]]
-// CHECK:      %[[IF1:.*]]:2 = scf.if
-// CHECK-NEXT:   %[[ALLOC2:.*]] = memref.alloc()
-// CHECK-NEXT:   %[[ALLOC2_OWNED:.*]] = deallocation.own %[[ALLOC2]]
-// CHECK-NEXT:   scf.yield %[[ALLOC2]], %[[ALLOC2_OWNED]]
-// CHECK-NEXT: } else {
-// CHECK:        %[[IF2:.*]]:2 = scf.if
-// CHECK-NEXT:     %[[NULL:.*]] = deallocation.retain(%[[ALLOC0]]) of()
-// CHECK-NEXT:     scf.yield %[[ALLOC0]], %[[NULL]]
-// CHECK-NEXT:   } else {
-// CHECK-NEXT:     %[[NULL:.*]] = deallocation.retain(%[[ALLOC1]]) of()
-// CHECK-NEXT:     scf.yield %[[ALLOC1]], %[[NULL]]
-// CHECK-NEXT:   }
-// CHECK-NEXT:   scf.yield %[[IF2]]#0, %[[IF2]]#1
-// CHECK-NEXT: }
-// CHECK-NEXT: deallocation.retain(%[[ALLOC0]], %[[IF1]]#0) of(%[[ALLOC0_OWNED]], %[[ALLOC1_OWNED]], %[[IF1]]#1)
-// CHECK-NEXT: return %[[ALLOC0]], %[[IF1]]#0 : memref<2xf32>, memref<2xf32>
+// CHECK:       %[[ALLOC0:.*]] = memref.alloc()
+// CHECK:       %[[ALLOC0_OWNED:.*]] = deallocation.own %[[ALLOC0]]
+// CHECK:       %[[ALLOC1:.*]] = memref.alloc()
+// CHECK:       %[[ALLOC1_OWNED:.*]] = deallocation.own %[[ALLOC1]]
+// CHECK:       %[[IF1:.*]]:2 = scf.if
+// CHECK-NEXT:    %[[ALLOC2:.*]] = memref.alloc()
+// CHECK-NEXT:    %[[ALLOC2_OWNED:.*]] = deallocation.own %[[ALLOC2]]
+// CHECK-NEXT:    scf.yield %[[ALLOC2]], %[[ALLOC2_OWNED]]
+// CHECK-NEXT:  } else {
+// CHECK:         %[[IF2:.*]]:2 = scf.if
+// CHECK-NEXT:      %[[NULL:.*]] = deallocation.retain(%[[ALLOC0]]) of()
+// CHECK-NEXT:      scf.yield %[[ALLOC0]], %[[NULL]]
+// CHECK-NEXT:    } else {
+// CHECK-NEXT:      %[[NULL:.*]] = deallocation.retain(%[[ALLOC1]]) of()
+// CHECK-NEXT:      scf.yield %[[ALLOC1]], %[[NULL]]
+// CHECK-NEXT:    }
+// CHECK-NEXT:    scf.yield %[[IF2]]#0, %[[IF2]]#1
+// CHECK-NEXT:  }
+// CHECK-NEXT:  %[[RETAINED:.*]]:2 = deallocation.retain(%[[ALLOC0]], %[[IF1]]#0) of(%[[ALLOC0_OWNED]], %[[ALLOC1_OWNED]], %[[IF1]]#1)
+// CHECK-NEXT:  return %[[ALLOC0]], %[[IF1]]#0, %[[RETAINED]]#0, %[[RETAINED]]#1 : memref<2xf32>, memref<2xf32>, !deallocation.ownership, !deallocation.ownership
 
 // -----
 
@@ -221,6 +226,8 @@ func.func @yield_derived(%lb: index, %ub: index, %step: index) {
 // CHECK-SIMPLE:       test.use
 // CHECK-SIMPLE-NEXT:  memref.dealloc
 
+// -----
+
 func.func @unknown_op() {
   %c0 = arith.constant 0 : index
   %c512 = arith.constant 512 : index
@@ -301,6 +308,8 @@ func.func @realloc_in_if(%init: index) {
 // CHECK-NEXT: deallocation.retain() of(%[[NEW_ALLOC]]#1)
 // CHECK-NEXT: return
 
+// -----
+
 func.func @realloc_in_if_strange_but_ok(%size: index, %cond: i1) {
   %alloc = memref.alloc(%size) : memref<?xi32>
   scf.if %cond -> memref<?xi32> {
@@ -318,6 +327,8 @@ func.func @realloc_in_if_strange_but_ok(%size: index, %cond: i1) {
 // CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
 // CHECK-NEXT: %[[OWNED:.*]] = deallocation.own %[[ALLOC]]
 // CHECK-NOT: deallocation.retain() of(%[[OWNED]])
+
+// -----
 
 func.func @realloc_in_loop(%size: index, %lb: index, %ub: index, %step: index) {
   %alloc = memref.alloc(%size) : memref<?xi32>
@@ -344,6 +355,8 @@ func.func @realloc_in_loop(%size: index, %lb: index, %ub: index, %step: index) {
 // CHECK-NEXT: deallocation.retain() of(%[[FOR]]#1)
 // CHECK-NEXT: return
 
+// -----
+
 func.func @dealloc() {
   %alloc = memref.alloc() : memref<i32>
   "test.use"(%alloc) : (memref<i32>) -> ()
@@ -357,6 +370,8 @@ func.func @dealloc() {
 // CHECK-SIMPLE-NEXT: test.use
 // CHECK-SIMPLE-NEXT: memref.dealloc
 // CHECK-SIMPLE-NEXT: return
+
+// -----
 
 func.func @dealloc_in_loop(%lb: index, %ub: index, %step: index) {
   scf.for %i = %lb to %ub step %step {
@@ -376,6 +391,8 @@ func.func @dealloc_in_loop(%lb: index, %ub: index, %step: index) {
 // CHECK-SIMPLE-NEXT: }
 // CHECK-SIMPLE-NEXT: return
 
+// -----
+
 func.func @dealloc_around_loop(%lb: index, %ub: index, %step: index) {
   %alloc = memref.alloc() : memref<i32>
   scf.for %i = %lb to %ub step %step {
@@ -394,6 +411,8 @@ func.func @dealloc_around_loop(%lb: index, %ub: index, %step: index) {
 // CHECK-SIMPLE-NEXT: memref.dealloc
 // CHECK-SIMPLE-NEXT: return
 
+// -----
+
 func.func @memory_effect_no_free_or_alloc() {
   %alloc = memref.alloc() : memref<i32>
   %expand_shape = memref.expand_shape %alloc [] : memref<i32> into memref<1x1xi32>
@@ -407,3 +426,288 @@ func.func @memory_effect_no_free_or_alloc() {
 // CHECK-NEXT: memref.expand_shape
 // CHECK-NEXT: test.use
 // CHECK-NEXT: deallocation.retain
+
+// -----
+
+func.func @id(%arg0: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  return %arg0 : memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = call @id(%arg0) : (memref<1x2x3xf32>) -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK: @id(%[[ARG0:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[RETAIN:.*]] = deallocation.retain(%[[ARG0]]) of()
+// CHECK:   return %[[ARG0]], %[[RETAIN]]
+
+// CHECK: @user(%[[ARG0_0:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[OWNERSHIP:.*]]:2 = call @id(%[[ARG0_0]])
+// CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
+
+// -----
+
+func.func @id_select(%arg0: i1, %arg1: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = arith.select %arg0, %arg1, %arg1 : memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: i1, %arg1: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = call @id_select(%arg0, %arg1) : (i1, memref<1x2x3xf32>) -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK: @id_select(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[SELECT:.*]] = arith.select %[[ARG0]], %[[ARG1]], %[[ARG1]]
+// CHECK:   %[[RETAIN:.*]] = deallocation.retain(%[[SELECT]]) of()
+// CHECK:   return %[[SELECT]], %[[RETAIN]]
+
+// CHECK: @user(%[[ARG0_0:.*]]: i1, %[[ARG1_0:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[OWNERSHIP:.*]]:2 = call @id_select(%[[ARG0_0]], %[[ARG1_0]])
+// CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
+
+// -----
+
+func.func @ite(%arg0: i1, %arg1: memref<1x2x3xf32>, %arg2: memref<1x2x3xf32>)
+    -> memref<1x2x3xf32> {
+  %0 = scf.if %arg0 -> (memref<1x2x3xf32>) {
+    scf.yield %arg1 : memref<1x2x3xf32>
+  } else {
+    scf.yield %arg2 : memref<1x2x3xf32>
+  }
+  return %0 : memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: i1, %arg1: memref<1x2x3xf32>, %arg2: memref<1x2x3xf32>)
+    -> memref<1x2x3xf32> {
+  %0 = call @ite(%arg0, %arg1, %arg2)
+      : (i1, memref<1x2x3xf32>, memref<1x2x3xf32>) -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK: @ite(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: memref<1x2x3xf32>, %[[ARG2:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[IF:.*]]:2 = scf.if %[[ARG0]]
+// CHECK:     %[[RETAIN:.*]] = deallocation.retain(%[[ARG1]]) of()
+// CHECK:     scf.yield %[[ARG1]], %[[RETAIN]]
+// CHECK:   else
+// CHECK:     %[[RETAIN_0:.*]] = deallocation.retain(%[[ARG2]]) of()
+// CHECK:     scf.yield %[[ARG2]], %[[RETAIN_0]]
+// CHECK:   return %[[IF]]#0, %[[IF]]#1
+
+// CHECK: @user(%[[ARG0_0:.*]]: i1, %[[ARG1_0:.*]]: memref<1x2x3xf32>, %[[ARG2_0:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[OWNERSHIP:.*]]:2 = call @ite(%[[ARG0_0]], %[[ARG1_0]], %[[ARG2_0]])
+// CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
+
+// -----
+
+func.func @ite_select(%arg0: i1, %arg1: memref<1x2x3xf32>,
+    %arg2: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = arith.select %arg0, %arg1, %arg2 : memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: i1, %arg1: memref<1x2x3xf32>, %arg2: memref<1x2x3xf32>)
+    -> memref<1x2x3xf32> {
+  %0 = call @ite_select(%arg0, %arg1, %arg2)
+      : (i1, memref<1x2x3xf32>, memref<1x2x3xf32>) -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK: @ite_select(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: memref<1x2x3xf32>, %[[ARG2:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[SELECT:.*]] = arith.select %[[ARG0]], %[[ARG1]], %[[ARG2]]
+// CHECK:   %[[RETAIN:.*]] = deallocation.retain(%[[SELECT]]) of()
+// CHECK:   return %[[SELECT]], %[[RETAIN]]
+
+// CHECK: @user(%[[ARG0_0:.*]]: i1, %[[ARG1_0:.*]]: memref<1x2x3xf32>, %[[ARG2_0:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[OWNERSHIP:.*]]:2 = call @ite_select(%[[ARG0_0]], %[[ARG1_0]], %[[ARG2_0]])
+// CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
+
+// -----
+
+func.func @may_reuse(%arg0: i1, %arg1: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = scf.if %arg0 -> (memref<1x2x3xf32>) {
+    scf.yield %arg1 : memref<1x2x3xf32>
+  } else {
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+    scf.yield %alloc : memref<1x2x3xf32>
+  }
+  return %0 : memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: i1, %arg1: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = call @may_reuse(%arg0, %arg1) : (i1, memref<1x2x3xf32>)
+      -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK: @may_reuse(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[IF:.*]]:2 = scf.if %[[ARG0]]
+// CHECK:     %[[RETAIN:.*]] = deallocation.retain(%[[ARG1]]) of()
+// CHECK:     scf.yield %[[ARG1]], %[[RETAIN]]
+// CHECK:   else
+// CHECK:     %[[ALLOC:.*]] = memref.alloc
+// CHECK:     %[[OWN:.*]] = deallocation.own %[[ALLOC]]
+// CHECK:     scf.yield %[[ALLOC]], %[[OWN]]
+// CHECK:   return %[[IF]]#0, %[[IF]]#1
+
+// CHECK: @user(%[[ARG0_0:.*]]: i1, %[[ARG1_0:.*]]: memref<1x2x3xf32>)
+// CHECK:   %[[OWNERSHIP:.*]]:2 = call @may_reuse(%[[ARG0_0]], %[[ARG1_0]])
+// CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
+
+// -----
+
+func.func @insert(%arg0: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 7.000000e+00 : f32
+  memref.store %cst, %arg0[%c0, %c1, %c1] : memref<1x2x3xf32>
+  return %arg0 : memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = call @insert(%arg0) : (memref<1x2x3xf32>) -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK:     @insert(%[[ARG0:.*]]: memref<1x2x3xf32>)
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:   %[[CST:.*]] = arith.constant 7.0
+// CHECK:       memref.store %[[CST]], %[[ARG0]][%[[C0]], %[[C1]], %[[C1]]]
+// CHECK:       %[[RETAIN:.*]] = deallocation.retain(%[[ARG0]]) of()
+// CHECK:       return %[[ARG0]], %[[RETAIN]]
+
+// CHECK:     @user(%[[ARG0_0:.*]]: memref<1x2x3xf32>)
+// CHECK:       %[[OWNERSHIP:.*]]:2 = call @insert(%[[ARG0_0]])
+// CHECK:       return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
+
+// -----
+
+func.func @ite_no_yielded_buffers(%pred: i1) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 7.000000e+00 : f32
+  %outer_alloc = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+  scf.if %pred {
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+    memref.store %cst, %alloc[%c0, %c1, %c1] : memref<1x2x3xf32>
+    scf.yield
+  } else {
+    memref.store %cst, %outer_alloc[%c0, %c1, %c1] : memref<1x2x3xf32>
+    scf.yield
+  }
+  return
+}
+
+func.func @user(%arg0: i1) {
+  call @ite_no_yielded_buffers(%arg0) : (i1) -> ()
+  return
+}
+
+// CHECK:     @ite_no_yielded_buffers(%[[ARG0:.*]]: i1)
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:   %[[CST:.*]] = arith.constant 7.0
+// CHECK:       %[[ALLOC:.*]] = memref.alloc
+// CHECK:       %[[OWN:.*]] = deallocation.own %[[ALLOC]]
+// CHECK:       scf.if %[[ARG0]]
+// CHECK:         %[[ALLOC_0:.*]] = memref.alloc
+// CHECK:         %[[OWN_0:.*]] = deallocation.own %[[ALLOC_0]]
+// CHECK:         memref.store %[[CST]], %[[ALLOC_0]][%[[C0]], %[[C1]], %[[C1]]]
+// CHECK:         deallocation.retain() of(%[[OWN_0]])
+// CHECK:       else
+// CHECK:         memref.store %[[CST]], %[[ALLOC]][%[[C0]], %[[C1]], %[[C1]]]
+// CHECK:       deallocation.retain() of(%[[OWN]])
+// CHECK:       return
+
+// CHECK:     @user(%[[ARG0_0:.*]]: i1)
+// CHECK:       call @ite_no_yielded_buffers(%[[ARG0_0]])
+// CHECK:       return
+
+// -----
+
+func.func @may_reuse(%pred: i1, %arg: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %0 = scf.if %pred -> (memref<1x2x3xf32>) {
+    scf.yield %arg : memref<1x2x3xf32>
+  } else {
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+    scf.yield %alloc : memref<1x2x3xf32>
+  }
+  return %0 : memref<1x2x3xf32>
+}
+
+func.func @user(%pred: i1, %arg: memref<1x2x3xf32>) -> memref<1x2x3xf32> {
+  %may_escape_indirectly = memref.alloc() {alignment = 64 : i64} 
+      : memref<1x2x3xf32>
+  %0 = call @may_reuse(%pred, %may_escape_indirectly) : (i1, memref<1x2x3xf32>)
+      -> memref<1x2x3xf32>
+  return %0 : memref<1x2x3xf32>
+}
+
+// CHECK:        @may_reuse(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: memref<1x2x3xf32>) 
+// CHECK:          %[[IF:.*]]:2 = scf.if %[[ARG0]] -> (memref<1x2x3xf32>, !deallocation.ownership)
+// CHECK:            %[[RETAIN:.*]] = deallocation.retain(%[[ARG1]]) of() : (memref<1x2x3xf32>) -> !deallocation.ownership
+// CHECK:            scf.yield %[[ARG1]], %[[RETAIN]] : memref<1x2x3xf32>, !deallocation.ownership
+// CHECK:          else
+// CHECK:            %[[ALLOC:.*]] = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+// CHECK:            %[[OWN:.*]] = deallocation.own %[[ALLOC]] : memref<1x2x3xf32>
+// CHECK:            scf.yield %[[ALLOC]], %[[OWN]] : memref<1x2x3xf32>, !deallocation.ownership
+// CHECK:          return %[[IF]]#0, %[[IF]]#1 : memref<1x2x3xf32>, !deallocation.ownership
+
+// CHECK:        @user(%[[ARG0_0:.*]]: i1, %[[ARG1_0:.*]]: memref<1x2x3xf32>) -> (memref<1x2x3xf32>, !deallocation.ownership)
+// CHECK:          %[[ALLOC_0:.*]] = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+// CHECK:          %[[OWN_0:.*]] = deallocation.own %[[ALLOC_0]] : memref<1x2x3xf32>
+// CHECK:          %[[OWNERSHIP:.*]]:2 = call @may_reuse(%[[ARG0_0]], %[[ALLOC_0]]) : (i1, memref<1x2x3xf32>) -> (memref<1x2x3xf32>, !deallocation.ownership)
+// CHECK:          %[[RETAIN_0:.*]] = deallocation.retain(%[[OWNERSHIP]]#0) of(%[[OWN_0]], %[[OWNERSHIP]]#1) : (memref<1x2x3xf32>, !deallocation.ownership, !deallocation.ownership) -> !deallocation.ownership
+// CHECK:          return %[[OWNERSHIP]]#0, %[[RETAIN_0]] : memref<1x2x3xf32>, !deallocation.ownership
+
+// -----
+
+func.func @insert_may_reuse_and_forward(%arg0: i1, %arg1: memref<1x2x3xf32>)
+    -> (memref<1x2x3xf32>, memref<1x2x3xf32>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 7.000000e+00 : f32
+  %0 = scf.if %arg0 -> (memref<1x2x3xf32>) {
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+    memref.copy %arg1, %alloc : memref<1x2x3xf32> to memref<1x2x3xf32>
+    memref.store %cst, %alloc[%c0, %c1, %c1] : memref<1x2x3xf32>
+    scf.yield %alloc : memref<1x2x3xf32>
+  } else {
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x2x3xf32>
+    memref.store %cst, %alloc[%c0, %c1, %c1] : memref<1x2x3xf32>
+    scf.yield %alloc : memref<1x2x3xf32>
+  }
+  return %0, %arg1 : memref<1x2x3xf32>, memref<1x2x3xf32>
+}
+
+func.func @user(%arg0: i1, %arg1: memref<1x2x3xf32>)
+    -> (memref<1x2x3xf32>, memref<1x2x3xf32>) {
+  %5:2 = call @insert_may_reuse_and_forward(%arg0, %arg1)
+      : (i1, memref<1x2x3xf32>) -> (memref<1x2x3xf32>, memref<1x2x3xf32>)
+  return %5#0, %5#1 : memref<1x2x3xf32>, memref<1x2x3xf32>
+}
+
+// CHECK:     @insert_may_reuse_and_forward(%[[ARG0:.*]]: i1, %[[ARG1:.*]]: memref<1x2x3xf32>)
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:   %[[CST:.*]] = arith.constant 7.0
+// CHECK:       %[[IF:.*]]:2 = scf.if %[[ARG0]]
+// CHECK:         %[[ALLOC:.*]] = memref.alloc
+// CHECK:         %[[OWN:.*]] = deallocation.own %[[ALLOC]]
+// CHECK:         memref.copy %[[ARG1]], %[[ALLOC]]
+// CHECK:         memref.store %[[CST]], %[[ALLOC]][%[[C0]], %[[C1]], %[[C1]]]
+// CHECK:         scf.yield %[[ALLOC]], %[[OWN]]
+// CHECK:       else
+// CHECK:         %[[ALLOC_0:.*]] = memref.alloc
+// CHECK:         %[[OWN_0:.*]] = deallocation.own %[[ALLOC_0]]
+// CHECK:         memref.store %[[CST]], %[[ALLOC_0]][%[[C0]], %[[C1]], %[[C1]]]
+// CHECK:         scf.yield %[[ALLOC_0]], %[[OWN_0]]
+// CHECK:       %[[RETAIN:.*]] = deallocation.retain(%[[ARG1]]) of()
+// CHECK:       return %[[IF]]#0, %[[ARG1]], %[[IF]]#1, %[[RETAIN]]
+
+// CHECK:     @user(%[[ARG0_0:.*]]: i1, %[[ARG1_0:.*]]: memref<1x2x3xf32>)
+// CHECK:       %[[OWNERSHIP:.*]]:4 = call @insert_may_reuse_and_forward(%[[ARG0_0]], %[[ARG1_0]])
+// CHECK:       %[[RETAIN_0:.*]]:2 = deallocation.retain(%[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1) of(%[[OWNERSHIP]]#2, %[[OWNERSHIP]]#3)
+// CHECK:       return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1, %[[RETAIN_0]]#0, %[[RETAIN_0]]#1

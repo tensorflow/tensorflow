@@ -515,6 +515,11 @@ class Delegate {
                               TFLITE_XNNPACK_DELEGATE_FLAG_QS8)) != 0;
   }
 
+  bool support_dynamic_fully_connected_operator() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED) != 0;
+  }
+
   bool force_fp16() const {
 #ifdef XNNPACK_DELEGATE_FORCE_PRECISION_FP16
     return true;
@@ -3353,14 +3358,21 @@ class Subgraph {
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, filter_tensor,
-                                       node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, filter_tensor, 2,
                                            node->inputs->data[1]));
-    if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+    // Dynamic filter is supported, but only for FP32.
+    if (delegate.support_dynamic_fully_connected_operator() &&
+        filter_tensor.type == kTfLiteFloat32) {
+      TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
           logging_context, filter_tensor, node->inputs->data[1], node_index));
+    } else {
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+          delegate, logging_context, filter_tensor, node->inputs->data[1],
+          node_index));
+      if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
+        TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+            logging_context, filter_tensor, node->inputs->data[1], node_index));
+      }
     }
 
     int bias_tensor_id = -1;
@@ -3368,14 +3380,22 @@ class Subgraph {
       bias_tensor_id = node->inputs->data[2];
       if (bias_tensor_id >= 0) {
         const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
-        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
-            delegate, logging_context, bias_tensor, node->inputs->data[2],
-            node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
                                                node->inputs->data[2]));
-        if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
-          TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        // Dynamic bias is supported, but only for FP32.
+        if (delegate.support_dynamic_fully_connected_operator() &&
+            bias_tensor.type == kTfLiteFloat32) {
+          TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
               logging_context, bias_tensor, node->inputs->data[2], node_index));
+        } else {
+          TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
+              delegate, logging_context, bias_tensor, node->inputs->data[2],
+              node_index));
+          if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
+            TF_LITE_ENSURE_STATUS(
+                CheckTensorStaticAllocation(logging_context, bias_tensor,
+                                            node->inputs->data[2], node_index));
+          }
         }
       }
     }
@@ -6098,11 +6118,17 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 #ifdef XNNPACK_DELEGATE_ENABLE_QU8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
 #endif
+#ifdef XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
+#endif
 
   // Enable quantized inference for the delegate build used in unit tests.
+  // Enable FULLY_CONNECTED operator with dynamic weights for the delegate build
+  // used in unit tests.
 #ifdef XNNPACK_DELEGATE_TEST_MODE
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
 #endif  // XNNPACK_DELEGATE_TEST_MODE
 
   options.handle_variable_ops = false;

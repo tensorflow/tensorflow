@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tools for serializing `Function`s."""
 
-from tensorflow.core.function.capture import capture_container
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -127,7 +126,6 @@ def wrap_cached_variables(concrete_function):
   """
   outer_graph = func_graph_module.FuncGraph(
       "{}_no_cache".format(concrete_function.graph.name))
-  captures = concrete_function.graph._function_captures._by_val  # pylint: disable=protected-access
   mapped_captures = None
   remapped_captures = {}
 
@@ -140,11 +138,15 @@ def wrap_cached_variables(concrete_function):
         continue
       cached_variable = cached_variable()
       new_cached_value = cached_variable.read_value()
-      remapped_captures[id(capture)] = captures[id(capture)]
-      captures[id(capture)] = capture_container.CaptureContainer(
-          new_cached_value,
-          placeholder,
-          id(capture))
+      key = id(capture)
+      external = concrete_function.graph.function_captures.by_val_external[key]
+      internal = concrete_function.graph.function_captures.by_val_internal[key]
+      remapped_captures[key] = [external, internal]
+      concrete_function.graph.function_captures.add_or_replace(
+          key=key,
+          external=new_cached_value,
+          internal=placeholder,
+          is_by_ref=False)
       mapped_captures = True
 
   if not mapped_captures:
@@ -174,5 +176,10 @@ def wrap_cached_variables(concrete_function):
 
   # Return the captures to their original values
   for key, capture in remapped_captures.items():
-    captures[key] = capture
+    external, internal = capture
+    concrete_function.graph._function_captures.add_or_replace(  # pylint: disable=protected-access
+        key=key,
+        external=external,
+        internal=internal,
+        is_by_ref=False)
   return fn

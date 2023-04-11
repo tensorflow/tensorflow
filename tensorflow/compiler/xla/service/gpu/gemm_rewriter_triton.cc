@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <stack>
 #include <string>
@@ -24,11 +25,17 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -40,6 +47,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -224,7 +232,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
        ++out_dim) {
     if (operand_remaining_size >= out_dim->size) {
       if (operand_remaining_size % out_dim->size) {
-        return Unimplemented("Unsupported bitcast.");
+        return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
       }
       // Output dimension fragment completely fits into the operand one:
       // just copy it as is.
@@ -242,7 +250,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
         // If there is a remaining fragment of a previous operand dimension
         // assign it first.
         if (out_remaining_size % operand_remaining_size) {
-          return Unimplemented("Unsupported bitcast.");
+          return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
         }
         operand_dim_order.push_back(
             {out_dim->target_dim_number, subdim_index, operand_remaining_size});
@@ -260,7 +268,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
           // assign the remainder of the output and carry over the remainder
           // of the operand.
           if (operand_dim_size % out_remaining_size) {
-            return Unimplemented("Unsupported bitcast.");
+            return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
           }
           operand_remaining_size = operand_dim_size / out_remaining_size;
           new_fragment_size = out_remaining_size;
@@ -281,7 +289,7 @@ Status DimensionOrder::HandleBitcast(const HloInstruction* hlo) {
   int subdim_index = operand_dim_order.back().subdim_number + 1;
   while (operand_dim_iter != operand_shape.layout().minor_to_major().cend()) {
     if (operand_shape.dimensions(*operand_dim_iter) != 1) {
-      return Unimplemented("Unsupported bitcast.");
+      return Unimplemented("Unsupported bitcast: %s", hlo->ToString());
     }
     operand_dim_order.push_back(
         {operand_dim_order.back().target_dim_number, subdim_index, 1});
@@ -532,13 +540,28 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   Shape new_shape(shape.element_type(), {}, {}, {});
 
   // TODO(b/274775195): implement split-K with padding.
-  if (shape.dimensions(contracting_dim_idx) % tiling.split_k()) {
-    return Unimplemented("K dimension requires padding for split-K.");
+  if (tiling.split_k() > shape.dimensions(contracting_dim_idx)) {
+    return Cancelled("Too small total contracting dimension size.");
   }
-
+  const DotFusionAnalysis analysis(&dot);
+  int64_t size_to_split = tiling.split_k();
+  auto fragment = analysis.IterSpec(operand_number, contracting_dim_idx)[0]
+                      .subfragments.crbegin();
+  while (size_to_split > *fragment) {
+    if (size_to_split % *fragment) {
+      return Cancelled("Contracting dimension is too fragmented.");
+    }
+    size_to_split /= *fragment;
+    ++fragment;
+  }
+  if (*fragment % size_to_split) {
+    return Cancelled("Contracting dimension is too fragmented.");
+  }
   if (tiling.split_k() >
-      ceil(1.0 * shape.dimensions(contracting_dim_idx) / tiling.block_k())) {
-    return Cancelled("Too small contracting dimension.");
+      ceil(1.0 *
+           analysis.IterSpec(operand_number, contracting_dim_idx)[0].count /
+           tiling.block_k())) {
+    return Cancelled("Too small divisible part of the contracting dimension.");
   }
 
   for (int i = 0; i < shape.rank(); ++i) {
@@ -686,13 +709,14 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
         if (iter_spec.empty()) {
           // Previous parts of this dimension were degenerate -
           // so create the dimension here.
-          iter_spec.push_back({accumulated_stride, dim.size});
+          iter_spec.push_back({accumulated_stride, dim.size, {dim.size}});
         } else {
           // Contiguous dimension, split only logically. Merge it back.
           iter_spec.back().count *= dim.size;
+          iter_spec.back().subfragments.push_back(dim.size);
         }
       } else {
-        iter_spec.push_back({accumulated_stride, dim.size});
+        iter_spec.push_back({accumulated_stride, dim.size, {dim.size}});
       }
 
       accumulated_stride *= dim.size;

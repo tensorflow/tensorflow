@@ -41,6 +41,7 @@ cc_library(
     hdrs = ["dtensor_utils.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -316,13 +317,6 @@ cc_library(
         ":small_constant_optimization",
         ":tensor_layout",
         ":tpu_system_interface",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:tf_status_helper",
@@ -352,6 +346,13 @@ cc_library(
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/util:env_var",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ] + tf_dtensor_tpu_dependencies(),
 )
 

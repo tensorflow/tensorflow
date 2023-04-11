@@ -1012,7 +1012,7 @@ Would become the following ops (unimportant attribute, type are omitted):
     "tf_device.launch"() {
       "tf.B"() {_xla_outside_compilation = "cluster1"}
       tf_device.return
-    } {device = "TPU_REPLICATED_HOST"} : () -> ()
+    } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     "tf.C"()
     tf_device.return
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
@@ -1749,7 +1749,7 @@ will be rewritten as:
 
 ```mlir
 func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
-  %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
+  %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST_0 = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
     %1:2 = "tf_device.launch"() ( {
       %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
       tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>

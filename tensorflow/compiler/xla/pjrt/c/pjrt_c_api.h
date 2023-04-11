@@ -1200,67 +1200,68 @@ typedef PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
 
 // ------------------------------ Device Topology ------------------------------
 
-typedef struct PJRT_DeviceTopology PJRT_DeviceTopology;
+typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 
-struct PJRT_DeviceTopology_Create_Args {
+struct PJRT_TopologyDescription_Create_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;  // out
+  PJRT_TopologyDescription* topology;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Create_Args, topology);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Create_Args, topology);
 
-// Creates and initializes a new PJRT_DeviceTopology and returns in `topology`.
-typedef PJRT_Error* PJRT_DeviceTopology_Create(
-    PJRT_DeviceTopology_Create_Args* args);
+// Creates and initializes a new PJRT_TopologyDescription and returns in
+// `topology`.
+typedef PJRT_Error* PJRT_TopologyDescription_Create(
+    PJRT_TopologyDescription_Create_Args* args);
 
-struct PJRT_DeviceTopology_Destroy_Args {
+struct PJRT_TopologyDescription_Destroy_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;
+  PJRT_TopologyDescription* topology;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_Destroy_Args, topology);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Destroy_Args, topology);
 
 // Frees `topology`. `topology` can be nullptr.
-typedef PJRT_Error* PJRT_DeviceTopology_Destroy(
-    PJRT_DeviceTopology_Destroy_Args* args);
+typedef PJRT_Error* PJRT_TopologyDescription_Destroy(
+    PJRT_TopologyDescription_Destroy_Args* args);
 
-struct PJRT_DeviceTopology_PlatformVersion_Args {
+struct PJRT_TopologyDescription_PlatformVersion_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;
+  PJRT_TopologyDescription* topology;
   // `platform_version` has the same lifetime as `topology`. It's owned by
   // `topology`.
   const char* platform_version;  // out
   size_t platform_version_size;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformVersion_Args,
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_PlatformVersion_Args,
                           platform_version_size);
 
 // Returns a string containing human-readable, platform-specific version info
 // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
-typedef PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
-    PJRT_DeviceTopology_PlatformVersion_Args* args);
+typedef PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
+    PJRT_TopologyDescription_PlatformVersion_Args* args);
 
-struct PJRT_DeviceTopology_PlatformName_Args {
+struct PJRT_TopologyDescription_PlatformName_Args {
   size_t struct_size;
   void* priv;
-  PJRT_DeviceTopology* topology;
+  PJRT_TopologyDescription* topology;
   // `platform_name` has the same lifetime as `topology`. It is owned by
   // `topology`.
   const char* platform_name;  // out
   size_t platform_name_size;  // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceTopology_PlatformName_Args,
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_PlatformName_Args,
                           platform_name_size);
 
 // Returns a string that identifies the platform (e.g. "cpu", "gpu", "tpu").
-typedef PJRT_Error* PJRT_DeviceTopology_PlatformName(
-    PJRT_DeviceTopology_PlatformName_Args* args);
+typedef PJRT_Error* PJRT_TopologyDescription_PlatformName(
+    PJRT_TopologyDescription_PlatformName_Args* args);
 
 struct PJRT_Compile_Args {
   size_t struct_size;
   void* priv;
-  const PJRT_DeviceTopology* topology;
+  const PJRT_TopologyDescription* topology;
   // Only needs to stay alive for the duration of the Compile call.
   // `program->format` and `program->format_size` are owned by the caller.
   PJRT_Program* program;
@@ -1359,10 +1360,10 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_CurrentBytes);
 
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Create);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_Destroy);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformName);
-  _PJRT_API_STRUCT_FIELD(PJRT_DeviceTopology_PlatformVersion);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Create);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformName);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformVersion);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;

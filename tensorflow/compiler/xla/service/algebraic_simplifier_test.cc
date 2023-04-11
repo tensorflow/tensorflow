@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -9294,6 +9296,42 @@ TEST_F(AlgebraicSimplifierTest, MultiplyOfConvertedPred) {
   // Also run the HloVerifier on the resulting module to check that the
   // generated instructions don't have an invalid layout change now.
   EXPECT_TRUE(verifier().Run(m.get()).status().ok());
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcast) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4] broadcast(f32[2,4] parameter(0)), dimensions={1,3}
+     ROOT trans = f32[2,3,10,4] transpose(bcast), dimensions={1,2,0,3}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value());
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Broadcast(m::Parameter(0))
+              .WithPredicate([](const HloInstruction* instr) {
+                return instr->dimensions() == std::vector<int64_t>({0, 3});
+              })));
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4] broadcast(f32[2,4] parameter(0)), dimensions={1,3}
+     ROOT trans = f32[4,2,3,10] transpose(bcast), dimensions={3,1,2,0}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  bool changed =
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

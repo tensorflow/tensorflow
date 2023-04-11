@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "gml_st/transforms/fusion/fusion.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/Pass/Pass.h"
@@ -42,6 +46,12 @@ namespace {
 
 #define GEN_PASS_DEF_TRANSFORMREDUCEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
+
+struct Reduce1DTileSizes {
+  int64_t tileSize;
+  int64_t splitRatio;
+};
+using Reduce1DTileSizeComputationFn = std::function<Reduce1DTileSizes(int64_t)>;
 
 SmallVector<int64_t> getParallelDimTileSizes(int64_t reductionDim,
                                              int64_t parallelDimTileSize) {
@@ -81,12 +91,11 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
 struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
   using OpRewritePattern<linalg::ReduceOp>::OpRewritePattern;
 
-  explicit Reduce1DTransformPattern(MLIRContext *context, int64_t tileSize,
-                                    int64_t splitRatio,
+  explicit Reduce1DTransformPattern(MLIRContext *context,
+                                    Reduce1DTileSizeComputationFn tileSizeFn,
                                     PatternBenefit benefit = 1)
       : OpRewritePattern<linalg::ReduceOp>(context, benefit),
-        tileSize(tileSize),
-        splitRatio(splitRatio) {}
+        tileSizeFn(std::move(tileSizeFn)) {}
 
   LogicalResult matchAndRewrite(linalg::ReduceOp reduceOp,
                                 PatternRewriter &rewriter) const override {
@@ -94,10 +103,61 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
     }
-
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
       return failure();
 
+    int64_t inputSize =
+        reduceOp.getOperand(0).getType().cast<RankedTensorType>().getDimSize(0);
+    Reduce1DTileSizes tileSizes = tileSizeFn(inputSize);
+
+    // Rewrite as a tree reduction.
+    FailureOr<SplitReduce1DResult> splitReduce = rewriteReduce1D(
+        rewriter, reduceOp, tileSizes.tileSize, tileSizes.splitRatio);
+    if (failed(splitReduce)) {
+      return rewriter.notifyMatchFailure(reduceOp,
+                                         "failed to split reduction dimension");
+    }
+    scf::ForOp mainLoop = splitReduce->mainLoop;
+    scf::ForOp tailLoop = splitReduce->tailLoop;
+
+    // Fusion.
+    auto fusionFilterFn = [](Operation *op) {
+      return isa<linalg::FillOp, linalg::MapOp, thlo::ReverseOp>(op);
+    };
+    SmallVector<Block *> blocks;
+    if (mainLoop) blocks.push_back(mainLoop.getBody());
+    if (tailLoop) blocks.push_back(tailLoop.getBody());
+    fuseGreedily(rewriter, blocks, fusionFilterFn);
+
+    // Tiling to 1 and fusion in the tail loop.
+    if (tailLoop) {
+      for (auto reduOp :
+           llvm::to_vector(tailLoop.getBody()->getOps<linalg::ReduceOp>())) {
+        if (failed(tileUsingSCFForOpAndFuseGreedily(
+                rewriter, reduOp, getSCFTilingOptions({1}), fusionFilterFn))) {
+          return failure();
+        }
+      }
+    }
+    return success();
+  }
+
+ private:
+  struct SplitReduce1DResult {
+    scf::ForOp mainLoop;
+    scf::ForOp tailLoop;
+    linalg::ReduceOp horizontalReduce;
+    Value result;
+  };
+  // Split reduction tensor<N*tile_size+M x elem_type> -> tensor<elem_type> into
+  //  * scf.for that reduces
+  //    tensor<N*tile_size> -> tensor<split_ratio x elem_type>
+  //  * horizontal reduce tensor<split_ratio x elem_type> -> tensor<elem_type>
+  //  * scf.for that reduces the remaining M elements.
+  FailureOr<SplitReduce1DResult> rewriteReduce1D(PatternRewriter &rewriter,
+                                                 linalg::ReduceOp reduceOp,
+                                                 int64_t tileSize,
+                                                 int64_t splitRatio) const {
     // 0-d tensor with the neutral elements.
     auto fillOp = reduceOp.getInits().front().getDefiningOp<linalg::FillOp>();
     if (!fillOp)
@@ -113,14 +173,21 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
     // Input.
     Value input = reduceOp.getInputs().front();
-    Value inputSize = rewriter.create<tensor::DimOp>(loc, input, 0);
+    FailureOr<OpFoldResult> inputSizeOfr =
+        tensor::createDimValue(rewriter, loc, input, 0);
+    if (failed(inputSizeOfr))
+      return rewriter.notifyMatchFailure(reduceOp, "cannot get input size");
 
     // Loop boundaries.
     //   tileableBound = inputSize - inputSize % tileSize
     //   remainderSize = inputSize - tileableBound
-    Value tileableBound = getTileableBound(rewriter, loc, inputSize);
-    Value remainderSize =
-        getRemainderSize(rewriter, loc, tileableBound, inputSize);
+    OpFoldResult tileableBoundOfr =
+        getTileableBound(rewriter, loc, *inputSizeOfr, tileSize);
+    Value tileableBoundValue =
+        getValueOrCreateConstantIndexOp(rewriter, loc, tileableBoundOfr);
+
+    OpFoldResult remainderSize =
+        getRemainderSize(rewriter, loc, tileableBoundOfr, *inputSizeOfr);
 
     // Create tensor<SPLIT_RATIOxELEM_TYPE> with neutral elements for tile loop
     // init.
@@ -131,89 +198,104 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         rewriter.create<linalg::FillOp>(loc, neutralValue, emptyVector)
             .getResult(0);
 
-    auto tiledLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
-                                    ValueRange inits) {
-      // Tile input as tensor<TILE_SIZExELEM_TYPE> and reshape into
-      // tensor<(TILE_SIZE/SPLIT_RATIO)xSPLIT_RATIOxELEM_TYPE>.
-      Value inputSlice = tileAndReshapeInput(b, loc, iv, input, elementType);
-
-      tensor::ExtractSliceOp initSlice = create1DSlice(
-          b, loc, inits.front(), b.getIndexAttr(0), b.getIndexAttr(splitRatio));
-
-      // Create `linalg.reduce` to combine
-      // `tensor<(TILE_SIZE/SPLIT_RATIO)xSPLIT_RATIOxELEM_TYPE> input with the
-      // `tensor<SPLIT_RATIOxELEM_TYPE>` accumulator.
-      auto tiledReduceOp = b.create<linalg::ReduceOp>(
-          loc, ValueRange{inputSlice}, ValueRange{initSlice},
-          /*dimensions=*/SmallVector<int64_t>{0},
-          /*bodyBuilder=*/nullptr, linalg::getPrunedAttributeList(reduceOp));
-      OpBuilder::InsertionGuard g(rewriter);
-      Region &region = tiledReduceOp.getRegion();
-      rewriter.cloneRegionBefore(reduceOp.getRegion(), region, region.end());
-      setLabel(tiledReduceOp, kTransformedLabel);
-
-      b.create<scf::YieldOp>(loc, tiledReduceOp.getResults());
-    };
-
     // Create a tiled loop
-    auto tiledLoop =
-        rewriter.create<scf::ForOp>(loc, zero, tileableBound, tileSizeValue,
-                                    filledVector, tiledLoopBodyBuilder);
-    setLabel(tiledLoop, kPerfectlyTiledLoopLabel);
+    SplitReduce1DResult splitResult;
+    splitResult.result = fillOp.getResult(0);
 
-    // Create `linalg.reduce` from tensor<SPLIT_RATIOxELEM_TYPE> to
-    // tensor<ELEM_TYPE>.
-    auto horizontalReduce =
-        cloneReduceOp(rewriter, reduceOp, tiledLoop.getResult(0),
-                      reduceOp.getInits().front());
+    std::optional<int64_t> tileableBoundConstant =
+        getConstantIntValue(tileableBoundOfr);
+    if (!tileableBoundConstant || tileableBoundConstant != 0) {
+      auto tiledLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
+                                      ValueRange inits) {
+        // Tile input as tensor<TILE_SIZExELEM_TYPE> and reshape into
+        // tensor<(TILE_SIZE/SPLIT_RATIO)xSPLIT_RATIOxELEM_TYPE>.
+        Value inputSlice = tileAndReshapeInput(b, loc, iv, input, elementType,
+                                               tileSize, splitRatio);
 
-    auto remainderLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
-                                        ValueRange inits) {
-      Value inputSlice = create1DSlice(b, loc, input, iv, remainderSize);
+        tensor::ExtractSliceOp initSlice =
+            create1DSlice(b, loc, inits.front(), b.getIndexAttr(0),
+                          b.getIndexAttr(splitRatio));
 
-      Value initSlice = b.create<tensor::ExtractSliceOp>(
-          loc, inits.front(), /*offsets=*/SmallVector<OpFoldResult>{},
-          /*sizes=*/SmallVector<OpFoldResult>{},
-          /*strides=*/SmallVector<OpFoldResult>{});
+        // Create `linalg.reduce` to combine
+        // `tensor<(TILE_SIZE/SPLIT_RATIO)xSPLIT_RATIOxELEM_TYPE> input with the
+        // `tensor<SPLIT_RATIOxELEM_TYPE>` accumulator.
+        auto tiledReduceOp = b.create<linalg::ReduceOp>(
+            loc, ValueRange{inputSlice}, ValueRange{initSlice},
+            /*dimensions=*/SmallVector<int64_t>{0},
+            /*bodyBuilder=*/nullptr, linalg::getPrunedAttributeList(reduceOp));
+        OpBuilder::InsertionGuard g(rewriter);
+        Region &region = tiledReduceOp.getRegion();
+        rewriter.cloneRegionBefore(reduceOp.getRegion(), region, region.end());
+        setLabel(tiledReduceOp, kTransformedLabel);
 
-      auto newReduce = cloneReduceOp(b, reduceOp, inputSlice, initSlice);
-      b.create<scf::YieldOp>(loc, newReduce);
-    };
+        b.create<scf::YieldOp>(loc, tiledReduceOp.getResults());
+      };
+
+      splitResult.mainLoop = rewriter.create<scf::ForOp>(
+          loc, zero, tileableBoundValue, tileSizeValue, filledVector,
+          tiledLoopBodyBuilder);
+      setLabel(splitResult.mainLoop, kPerfectlyTiledLoopLabel);
+
+      // Create `linalg.reduce` from tensor<SPLIT_RATIOxELEM_TYPE> to
+      // tensor<ELEM_TYPE>.
+      splitResult.horizontalReduce =
+          cloneReduceOp(rewriter, reduceOp, splitResult.mainLoop.getResult(0),
+                        reduceOp.getInits().front());
+      splitResult.result = splitResult.horizontalReduce.getResult(0);
+    }
 
     // Combine `horizontal reduce` with the tail of the input. The tail is
     // always smaller than TILE_SIZE.
-    auto remainderLoop =
-        rewriter
-            .create<scf::ForOp>(loc, tileableBound, inputSize, tileSizeValue,
-                                horizontalReduce, remainderLoopBodyBuilder)
-            .getResult(0);
+    std::optional<int64_t> tripCount = constantTripCount(
+        tileableBoundOfr, *inputSizeOfr, rewriter.getIndexAttr(tileSize));
+    scf::ForOp remainderLoop;
+    if (!tripCount || *tripCount > 0) {
+      auto remainderLoopBodyBuilder = [&](OpBuilder &b, Location loc, Value iv,
+                                          ValueRange inits) {
+        Value inputSlice = create1DSlice(b, loc, input, iv, remainderSize);
 
-    rewriter.replaceOp(reduceOp, remainderLoop);
+        Value initSlice = b.create<tensor::ExtractSliceOp>(
+            loc, inits.front(), /*offsets=*/SmallVector<OpFoldResult>{},
+            /*sizes=*/SmallVector<OpFoldResult>{},
+            /*strides=*/SmallVector<OpFoldResult>{});
 
-    return success();
+        linalg::ReduceOp newReduce =
+            cloneReduceOp(b, reduceOp, inputSlice, initSlice);
+        b.create<scf::YieldOp>(loc, newReduce->getResults());
+      };
+      splitResult.tailLoop = rewriter.create<scf::ForOp>(
+          loc, tileableBoundValue,
+          getValueOrCreateConstantIndexOp(rewriter, loc, *inputSizeOfr),
+          tileSizeValue, splitResult.result, remainderLoopBodyBuilder);
+      splitResult.result = splitResult.tailLoop.getResult(0);
+    }
+    rewriter.replaceOp(reduceOp, splitResult.result);
+    return splitResult;
   }
 
- private:
-  Value getTileableBound(OpBuilder &b, Location loc, Value inputSize) const {
-    if (tileSize == 1) return inputSize;
+  OpFoldResult getTileableBound(OpBuilder &b, Location loc,
+                                OpFoldResult inputSizeOfr,
+                                int64_t tileSize) const {
+    if (tileSize == 1) return inputSizeOfr;
 
-    auto inputSizeInt = getConstantIntValue(inputSize);
-    if (inputSizeInt && *inputSizeInt % tileSize == 0) return inputSize;
+    auto inputSizeInt = getConstantIntValue(inputSizeOfr);
+    if (inputSizeInt && *inputSizeInt < tileSize) return b.getIndexAttr(0);
 
     AffineExpr sym0;
     bindSymbols(b.getContext(), sym0);
 
     auto modMap = AffineMap::get(0, 1, {sym0 - sym0 % tileSize});
-    return b.createOrFold<AffineApplyOp>(loc, modMap, ValueRange{inputSize});
+    return makeComposedFoldedAffineApply(b, loc, modMap, inputSizeOfr);
   }
 
-  Value getRemainderSize(OpBuilder &b, Location loc, Value tileableBound,
-                         Value inputSize) const {
+  OpFoldResult getRemainderSize(OpBuilder &b, Location loc,
+                                OpFoldResult tileableBoundOfr,
+                                OpFoldResult inputSize) const {
     AffineExpr sym0, sym1;
     bindSymbols(b.getContext(), sym0, sym1);
     auto diffMap = AffineMap::get(0, 2, {sym1 - sym0});
-    return b.create<AffineApplyOp>(loc, diffMap,
-                                   ValueRange{tileableBound, inputSize});
+    return makeComposedFoldedAffineApply(b, loc, diffMap,
+                                         {tileableBoundOfr, inputSize});
   }
 
   tensor::ExtractSliceOp create1DSlice(OpBuilder &b, Location loc, Value source,
@@ -227,19 +309,20 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                             strides);
   }
 
-  Value cloneReduceOp(OpBuilder &b, linalg::ReduceOp reduceOp,
-                      ValueRange newInputs, Value newInit) const {
+  linalg::ReduceOp cloneReduceOp(OpBuilder &b, linalg::ReduceOp reduceOp,
+                                 ValueRange newInputs, Value newInit) const {
     IRMapping bvm;
     bvm.map(reduceOp.getInputs(), newInputs);
     bvm.map(reduceOp.getInits(), ValueRange{newInit});
 
     auto *newReduceOp = b.clone(*reduceOp.getOperation(), bvm);
     setLabel(newReduceOp, kTransformedLabel);
-    return newReduceOp->getResult(0);
+    return cast<linalg::ReduceOp>(newReduceOp);
   }
 
   Value tileAndReshapeInput(OpBuilder &b, Location loc, Value iv, Value input,
-                            Type elementType) const {
+                            Type elementType, int64_t tileSize,
+                            int64_t splitRatio) const {
     Value inputSlice =
         create1DSlice(b, loc, input, iv, b.getIndexAttr(tileSize));
 
@@ -249,8 +332,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     return b.create<tensor::ExpandShapeOp>(loc, reshapeType, inputSlice, ri);
   }
 
-  int64_t tileSize;
-  int64_t splitRatio;
+  Reduce1DTileSizeComputationFn tileSizeFn;
 };
 
 /// Pattern to tile `linalg.reduce` and fuse `linalg.fill` into generated
@@ -423,7 +505,19 @@ struct TransformReduceForCpuPass
     MLIRContext *ctx = &getContext();
 
     RewritePatternSet patterns(ctx);
-    patterns.add<Reduce1DTransformPattern>(ctx, tileSize1D, splitRatio1D);
+    Reduce1DTileSizeComputationFn tilingHeuristic;
+    if (enableHeuristic) {
+      tilingHeuristic = [](int64_t size) {
+        if (!ShapedType::isDynamic(size) && size > 96)
+          return Reduce1DTileSizes{32, 8};
+        return Reduce1DTileSizes{8, 8};
+      };
+    } else {
+      tilingHeuristic = [=](int64_t) {
+        return Reduce1DTileSizes{tileSize1D, splitRatio1D};
+      };
+    }
+    patterns.add<Reduce1DTransformPattern>(ctx, std::move(tilingHeuristic));
     patterns.add<Reduce2DTransformPattern>(ctx, parallelDimTileSize2D,
                                            reductionDimTileSize2D);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))

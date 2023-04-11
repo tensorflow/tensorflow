@@ -64,17 +64,17 @@ class Tf2XlaRewriter {
 
   // Create a unique function name for the given translated op and ensure
   // it doesn't exist in the parent module op.
-  tsl::StatusOr<std::string> CreateUniqueTranslatedFunctionName();
+  tsl::StatusOr<std::string> CreateUniqueTranslatedFunctionName(
+      std::string candidate_name);
+
+  // Renames computations to unique function names that dont' have clashes
+  // in this op's module.
+  tsl::Status CreateUniqueComputationNames(xla::XlaComputation& computation);
 
   // Import the given XlaComputation into the parent module. Returns the given
   // generated function.
   tsl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
       xla::XlaComputation& computation);
-
-  // Given the XlaComputation, return a new ModuleOp with MHLO that contains
-  // the translated XlaComputation HLO.
-  tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-  CreateModuleFromXlaComputation(xla::XlaComputation& computation);
 
   // Prepares OpKernelContext params common to all the ops.
   // Emits an error on failure.

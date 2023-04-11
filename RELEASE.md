@@ -49,6 +49,7 @@
     *   Add 8-bit/16-bit/32-bit int/uint support for the built-in op `right_shift`
     *   Add reference implementation for 16-bit int unquantized `add`.
     *   Add reference implementation for 16-bit int and 32-bit unsigned int unquantized `mul`.
+    *   `add_op` supports broadcasting up to 6 dimensions.
 
 *   `tf.keras`
 
@@ -127,6 +128,13 @@
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+*   `tf.Variable`
+
+    *   Changed resource variables to inherit from `tf.compat.v2.Variable`
+        instead of `tf.compat.v1.Variable`. Some checks for 
+        `isinstance(v, tf.compat.v1.Variable)` that previously returned True
+        may now return False.
 
 *   `tf.distribute`
 

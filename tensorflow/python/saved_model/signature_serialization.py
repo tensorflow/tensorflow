@@ -143,7 +143,7 @@ def canonicalize_signatures(signatures):
       signature_name_changes = _get_signature_name_changes(signature_function)
       if signature_name_changes:
         num_normalized_signatures_counter += 1
-        logging.warning(
+        logging.info(
             "Function `%s` contains input name(s) %s with unsupported "
             "characters which will be renamed to %s in the SavedModel.",
             compat.as_str(signature_function.graph.name),

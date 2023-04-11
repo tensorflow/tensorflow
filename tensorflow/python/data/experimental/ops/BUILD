@@ -82,6 +82,7 @@ py_library(
     srcs = [
         "distributed_save_op.py",
     ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/saved_model:nested_structure_coder",

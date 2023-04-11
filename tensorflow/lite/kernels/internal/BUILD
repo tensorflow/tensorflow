@@ -934,8 +934,8 @@ cc_library(
     deps = [
         ":cpu_check",
         ":tensor_utils_no_eigen",
-        "//third_party/eigen3",
         "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -1285,6 +1285,17 @@ cc_test(
     deps = [
         ":common",
         ":reduce_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "runtime_shape_test",
+    srcs = ["runtime_shape_test.cc"],
+    deps = [
+        ":types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

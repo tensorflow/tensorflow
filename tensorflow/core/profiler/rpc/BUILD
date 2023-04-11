@@ -41,9 +41,6 @@ cc_library(
         ],
     ),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -56,6 +53,9 @@ cc_library(
         "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -79,10 +79,10 @@ cc_library(
     ],
     deps = [
         ":profiler_service_impl",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

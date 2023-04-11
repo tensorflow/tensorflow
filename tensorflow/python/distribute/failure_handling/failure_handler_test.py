@@ -228,7 +228,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           if api_wrapping_train:
             preemption_handler.run(distributed_train_step, epoch, step)
           else:
-            preemption_handler._save_checkpoint_if_preempted()
+            preemption_handler.save_checkpoint_if_preempted()
             distributed_train_step(epoch, step)
         # Add some randomness to when preemption actually happens. We should
         # trigger it for sure if the training is coming to an end and it hasn't

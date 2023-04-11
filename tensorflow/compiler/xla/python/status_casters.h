@@ -148,34 +148,73 @@ T ValueOrThrow(StatusOr<T> v) {
   return std::move(v).value();
 }
 
-}  // namespace xla
+template <typename Sig, typename F>
+struct ValueOrThrowWrapper;
 
-// This namespace is a documented pybind11 extension point.
-// Caution: Unusually for Google code, this code uses C++ exceptions because
-// they are the only mechanism for reporting cast failures to pybind11. However,
-// the exceptions are local to the binding code.
-namespace pybind11 {
-namespace detail {
+template <typename F>
+ValueOrThrowWrapper(F) -> ValueOrThrowWrapper<decltype(&F::operator()), F>;
 
-template <typename T>
-struct type_caster<xla::StatusOr<T>> {
- public:
-  using value_conv = make_caster<T>;
+template <typename R, typename... Args>
+ValueOrThrowWrapper(xla::StatusOr<R> (&)(Args...))
+    -> ValueOrThrowWrapper<xla::StatusOr<R>(Args...),
+                           xla::StatusOr<R> (&)(Args...)>;
 
-  PYBIND11_TYPE_CASTER(xla::StatusOr<T>,
-                       _("StatusOr[") + value_conv::name + _("]"));
+template <typename C, typename R, typename... Args>
+ValueOrThrowWrapper(xla::StatusOr<R> (C::*)(Args...))
+    -> ValueOrThrowWrapper<xla::StatusOr<R>(Args...), C>;
 
-  static handle cast(xla::StatusOr<T> src, return_value_policy policy,
-                     handle parent) {
-    if (!src.ok()) {
-      throw xla::XlaRuntimeError(src.status());
-    }
-    return value_conv::cast(std::forward<xla::StatusOr<T>>(src).value(), policy,
-                            parent);
+// Deduction guide for const methods.
+template <typename C, typename R, typename... Args>
+ValueOrThrowWrapper(xla::StatusOr<R> (C::*)(Args...) const)
+    -> ValueOrThrowWrapper<xla::StatusOr<R>(Args...) const, C>;
+
+template <typename R, typename... Args>
+struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...),
+                           xla::StatusOr<R> (&)(Args...)> {
+  explicit ValueOrThrowWrapper(xla::StatusOr<R> (&f)(Args...)) : func(f) {}
+  R operator()(Args... args) {
+    return xla::ValueOrThrow(func(std::forward<Args>(args)...));
   }
+  xla::StatusOr<R> (&func)(Args...);
+};
+template <typename R, typename C, typename... Args, typename F>
+struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...), F> {
+  explicit ValueOrThrowWrapper(F&& f) : func(std::move(f)) {}
+  R operator()(Args... args) {
+    return xla::ValueOrThrow(func(std::forward<Args>(args)...));
+  }
+  F func;
+};
+template <typename R, typename C, typename... Args, typename F>
+struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...) const, F> {
+  explicit ValueOrThrowWrapper(F&& f) : func(std::move(f)) {}
+  R operator()(Args... args) const {
+    return xla::ValueOrThrow(func(std::forward<Args>(args)...));
+  }
+  F func;
 };
 
-}  // namespace detail
-}  // namespace pybind11
+// For unbound nonstatic member functions, non-const and const versions.
+// `ptmf` stands for "pointer to member function".
+template <typename R, typename C, typename... Args>
+struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...), C> {
+  explicit ValueOrThrowWrapper(xla::StatusOr<R> (C::*ptmf)(Args...))
+      : ptmf(ptmf) {}
+  R operator()(C& instance, Args... args) {
+    return xla::ValueOrThrow((instance.*ptmf)(std::forward<Args>(args)...));
+  }
+  xla::StatusOr<R> (C::*ptmf)(Args...);
+};
+template <typename R, typename C, typename... Args>
+struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...) const, C> {
+  explicit ValueOrThrowWrapper(xla::StatusOr<R> (C::*ptmf)(Args...) const)
+      : ptmf(ptmf) {}
+  R operator()(const C& instance, Args... args) const {
+    return xla::ValueOrThrow((instance.*ptmf)(std::forward<Args>(args)...));
+  }
+  xla::StatusOr<R> (C::*ptmf)(Args...) const;
+};
+
+}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_STATUS_CASTERS_H_

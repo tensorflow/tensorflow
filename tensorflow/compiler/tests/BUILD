@@ -1919,7 +1919,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:variable_v1",
         "@six_archive//:six",
     ],
 )

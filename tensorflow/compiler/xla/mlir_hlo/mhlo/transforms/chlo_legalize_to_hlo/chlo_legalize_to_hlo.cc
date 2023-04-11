@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -261,11 +262,14 @@ template <typename FTy>
 Value materializePolynomialApproximation(ConversionPatternRewriter &rewriter,
                                          Location loc, Value x,
                                          ArrayRef<FTy> coefficients) {
-  Value poly = chlo::getConstantLike(rewriter, loc, 0.0, x);
-  for (FTy c : coefficients) {
+  if (coefficients.empty()) return chlo::getConstantLike(rewriter, loc, 0.0, x);
+
+  Value poly = chlo::getConstantLike(rewriter, loc, coefficients[0], x);
+  for (size_t i = 1; i < coefficients.size(); ++i) {
     poly = rewriter.create<mhlo::MulOp>(loc, x.getType(), poly, x);
     poly = rewriter.create<mhlo::AddOp>(
-        loc, x.getType(), poly, chlo::getConstantLike(rewriter, loc, c, x));
+        loc, x.getType(), poly,
+        chlo::getConstantLike(rewriter, loc, coefficients[i], x));
   }
   return poly;
 }

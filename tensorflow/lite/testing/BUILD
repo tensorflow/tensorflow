@@ -92,11 +92,11 @@ _test_size_override = {
         ":tflite_driver",
         ":tflite_driver_delegate_providers",
         ":util",
-        "@com_google_googletest//:gtest",
-        "@com_googlesource_code_re2//:re2",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_googletest//:gtest",
+        "@com_googlesource_code_re2//:re2",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",
@@ -266,7 +266,6 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
-        "@com_google_absl//absl/strings",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -281,6 +280,7 @@ cc_library(
         "//tensorflow/lite/kernels/parse_example",
         "//tensorflow/lite/kernels/perception:perception_ops",
         "//tensorflow/lite/tools/evaluation:utils",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:ios": [],
         "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
@@ -386,9 +386,9 @@ cc_library(
         ":join",
         ":split",
         ":test_runner",
+        "//tensorflow/lite:string_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite:string_util",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:core_cpu",
