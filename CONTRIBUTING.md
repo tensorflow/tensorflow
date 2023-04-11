@@ -23,26 +23,26 @@ Before sending your pull requests, make sure you do the following:
 
 - As a contributor, you submit a New PR on GitHub.
 - We inspect every incoming PR and add certain labels to the PR such as `size:`,
-  `comp:` etc.  At this stage we check if the PR is valid and meets certain
+  `comp:` etc.  At this stage, we check if the PR is valid and meets certain
   quality requirements. For example, we check if the CLA is signed, PR has
   sufficient description, if applicable unit tests are added, if it is a
-  reasonable contribution (meaning it is not a single liner cosmetic PR).
+  reasonable contribution (meaning it is not a single-liner cosmetic PR).
 
 **2. Valid?**
 
 - If the PR passes all the quality checks then we go ahead and assign a
   reviewer.
 - If the PR didn't meet the validation criteria, we request for additional
-  changes to be made to PR to pass quality checks and send it back or on a rare
-  occassion we may reject it.
+  changes to be made to the PR to pass quality checks and send it back or on a rare
+  occasion we may reject it.
 
 **3. Review**
 
-- For Valid PR, reviewer (person familiar with the code/functionality) checks if
+- For Valid PR, the reviewer (person familiar with the code/functionality) checks if
   the PR looks good or needs additional changes.
-- If all looks good, reviewer would approve the PR.
+- If all looks good, the reviewer would approve the PR.
 - If a change is needed, the contributor is requested to make suggested change.
-- You make the change and submit for the review again.
+- You make the change and submit it for review again.
 - This cycle repeats itself till the PR gets approved.
 - Note: As a friendly reminder we may reach out to you if the PR is awaiting
   your response for more than 2 weeks.
@@ -309,7 +309,7 @@ There are two ways to test the code in the docstring locally:
     This will run it using your installed version of TensorFlow. To be sure
     you're running the same code that you're testing:
 
-    *   Use an up to date [tf-nightly](https://pypi.org/project/tf-nightly/)
+    *   Use an up-to-date [tf-nightly](https://pypi.org/project/tf-nightly/)
         `pip install -U tf-nightly`
     *   Rebase your pull request onto a recent pull from
         [TensorFlow's](https://github.com/tensorflow/tensorflow) master branch.
