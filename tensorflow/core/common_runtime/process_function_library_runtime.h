@@ -215,7 +215,7 @@ class ProcessFunctionLibraryRuntime {
 
   // Initialize the set of local and remote devices and corresponding flr for op
   // device selection.
-  void InitializeDeviceAndFlr(int stream_id);
+  void InitializeDeviceAndFlr(int stream_id = -1);
 
   const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 

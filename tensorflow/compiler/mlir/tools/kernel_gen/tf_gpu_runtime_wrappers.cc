@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/platform/logging.h"
@@ -143,9 +145,13 @@ extern "C" void _mlir_ciface_tf_launch_kernel(void *ctx, void *module_blob,
     return;
   }
   GPURuntimeCache *cache = nullptr;
+#if GOOGLE_CUDA
   auto *gpu_executor = static_cast<stream_executor::gpu::GpuExecutor *>(
       op_kernel_ctx->op_device_context()->stream()->parent()->implementation());
   int ctx_id = gpu_executor->gpu_context()->id();
+#else
+  int ctx_id = 0;
+#endif
   OP_REQUIRES_OK(
       op_kernel_ctx,
       rm->LookupOrCreate<GPURuntimeCache>(

@@ -216,11 +216,17 @@ class DeviceNameUtils {
   static Status DeviceNameToCpuDeviceName(const std::string& device_name,
                                           std::string* host_device_name);
 
+  // Returns name of the device from the stream-encoded name if the
+  // multi-stream is enabled. Otherwise returns the input name.
   static std::string GetDeviceNameFromStreamDeviceName(
       const std::string& device_name);
 
+  // Returns device ordinal of the device from the stream-encoded name if the
+  // multi-stream is enabled.
   static int DecodeDeviceFromStreamDeviceName(const std::string& device_name);
 
+  // Returns stream that is used from the stream-encoded name if the
+  // multi-stream is enabled.
   static int DecodeStreamFromStreamDeviceName(const std::string& device_name);
 };
 

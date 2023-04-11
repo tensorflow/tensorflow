@@ -198,6 +198,15 @@ class DynamicDeviceMgr : public DeviceMgr {
   int NumDeviceType(const string& type) const override;
   int NumDevices() const override;
   Device* HostCPU() const override;
+  int RequireStreamGroup(const Device* device) const override { return -1; }
+  void ReleaseStreamGroup(const Device* device,
+                          const int stream_id) const override {}
+  size_t GetMaxStreamNum() const override { return 0; }
+  size_t GetStreamNum(const Device* device) const override { return 0; }
+  Device* LookupStream(const Device* device,
+                       const int stream_id) const override {
+    return const_cast<Device*>(device);
+  }
 
   // Add devices to device manager. Returns error for repeated device names.
   Status AddDevices(std::vector<std::unique_ptr<Device>> devices);
