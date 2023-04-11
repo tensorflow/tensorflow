@@ -519,9 +519,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    mlir::MLIRContext mlir_context;
     StatusOr<LaunchDimensions> launch_dimensions =
         TritonWrapper(triton_fn_name_, to_compile, cc, dev_info,
-                      autotune_config, &module, &MatMul);
+                      autotune_config, &module, &MatMul, mlir_context);
     // Emission of individual variants is allowed to fail - shared memory limit
     // is often exceeded. If all variants fail for some other reason this is
     // caught later by having no results in the autotuner's output.
