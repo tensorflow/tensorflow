@@ -31,7 +31,7 @@ TMP_WORK_DIR = "tmp_work_dir_placeholder"
 NO_WORK_DIR = ""
 # We use a faster than normal heartbeat interval so that tests run faster.
 TEST_HEARTBEAT_INTERVAL_MS = 100
-TEST_DISPATCHER_TIMEOUT_MS = 1000
+TEST_DISPATCHER_TIMEOUT_MS = 5000
 TEST_WORKER_TIMEOUT_MS = 200
 TEST_JOB_GC_CHECK_INTERNAL_MS = 1000
 PROTOCOL = "grpc"

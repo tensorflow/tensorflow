@@ -231,12 +231,19 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
+    get_stream_assignments(cluster, n)  # Block until all workers have streams.
     cluster.restart_dispatcher()
-    self._wait_for_snapshot(cluster)
-    self.assertTrue(os.path.exists(os.path.join(self._path, "DONE")))
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
 
-  def _wait_for_snapshot(self, cluster):
-    while not os.path.exists(os.path.join(self._path, "DONE")):
+  def _snapshot_is_done(self):
+    return os.path.exists(os.path.join(self._path, "DONE"))
+
+  def _snapshot_has_error(self):
+    return os.path.exists(os.path.join(self._path, "ERROR"))
+
+  def _wait_for_snapshot(self):
+    while not (self._snapshot_is_done() or self._snapshot_has_error()):
       time.sleep(0.1)
 
 
