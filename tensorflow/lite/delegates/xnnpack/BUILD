@@ -111,7 +111,7 @@ config_setting(
 cc_library(
     name = "tflite_with_xnnpack_dynamic_fully_connected_default",
     compatible_with = get_compatible_with_portable(),
-    defines = ["XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED=1"],
+    defines = [],
 )
 
 cc_library(
