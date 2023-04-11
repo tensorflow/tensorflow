@@ -920,7 +920,10 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     std::vector<PJRT_Buffer**>& c_output_lists,
     std::optional<std::vector<PJRT_Event*>>& device_complete_events,
     SendRecvCallbackData& callback_data) {
-  if (!options.use_major_to_minor_data_layout_for_callbacks) {
+  bool using_host_callbacks =
+      !options.send_callbacks.empty() || !options.recv_callbacks.empty();
+  if (using_host_callbacks &&
+      !options.use_major_to_minor_data_layout_for_callbacks) {
     return Unimplemented(
         "PJRT C API doesn't support "
         "ExecuteOptions::use_major_to_minor_data_layout_for_callbacks = false");
@@ -936,8 +939,7 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.num_devices = argument_handles.size();
   CHECK_GT(args.num_devices, 0);
   args.num_args = argument_handles[0].size();
-  if (device_complete_events.has_value() || !options.send_callbacks.empty() ||
-      !options.recv_callbacks.empty()) {
+  if (device_complete_events.has_value() || using_host_callbacks) {
     device_complete_events->resize(args.num_devices);
     args.device_complete_events = device_complete_events->data();
   } else {
