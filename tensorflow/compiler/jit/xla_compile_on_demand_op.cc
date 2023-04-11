@@ -24,11 +24,14 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
+#include "tensorflow/compiler/jit/variable_info.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -37,36 +40,41 @@ namespace tensorflow {
 namespace {
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+using PjRtDeviceCompiler =
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
-// Clears and sets `args` with the XlaCompiler::Arguments built by reading
-// constants, inputs and resource variables from `ctx`. Stores the resource
-// variable snapshots in `variable_args`.
-Status BuildXlaCompilerArguments(OpKernelContext* ctx,
-                                 ResourceVarsSnapshot* variable_args,
-                                 std::vector<XlaCompiler::Argument>* args) {
-  TF_ASSIGN_OR_RETURN(std::vector<int> constant_input_indices,
-                      GetConstantInputIndicesFromContext(ctx));
-  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
-
-  std::vector<int> variables_indices =
-      GetResourceVariableIndicesFromContext(ctx);
-  args->clear();
-  {
-    std::vector<VariableInfo> variable_infos;
-    TF_RETURN_IF_ERROR(
-        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
-                                   inputs, variables_indices, &variable_infos));
-
-    TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
-    TF_RETURN_IF_ERROR(SnapshotResourceVariables(
-        ctx, variables_indices, variable_infos, variable_args));
-
-    TF_ASSIGN_OR_RETURN(*args,
-                        XlaComputationLaunchContext::BuildXlaCompilerArguments(
-                            constant_input_indices, inputs, variable_infos,
-                            static_cast<Device*>(ctx->device())));
+XlaCompiler::CompileOptions GetCompileOptions(bool for_pjrt = false) {
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+  if (for_pjrt) {
+    compile_options.use_tuple_arg = false;
   }
 
+  return compile_options;
+}
+
+// Gets `variables` from `ctx`, locks them and builds XlaCompiler::Arguments
+// using them. Stores the arguments in `args`. `variables` and `args` passed in
+// will be cleared before populating them.
+Status GetAndLockVariablesAndBuildXlaCompilerArguments(
+    const OpKernelContext& ctx, const std::vector<const Tensor*>& inputs,
+    const std::vector<int>& constant_indices,
+    const std::vector<int>& variable_indices,
+    std::vector<VariableInfo>* variables,
+    std::vector<XlaCompiler::Argument>* args) {
+  variables->clear();
+  args->clear();
+  TF_RETURN_IF_ERROR(GetVariableInfosFromInputs(ctx.resource_manager(),
+                                                ctx.device(), inputs,
+                                                variable_indices, variables));
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(*variables)));
+  TF_ASSIGN_OR_RETURN(*args,
+                      XlaComputationLaunchContext::BuildXlaCompilerArguments(
+                          constant_indices, inputs, *variables,
+                          static_cast<Device*>(ctx.device())));
   return OkStatus();
 }
 }  // namespace
@@ -137,6 +145,43 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
 
 Status XlaCompileOnDemandOp::Compile(
     const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
+    PjRtDeviceCompiler** pjrt_device_compiler,
+    DeviceCompilationProfiler** profiler,
+    const XlaCompiler::CompilationResult** result,
+    xla::PjRtLoadedExecutable** executable) {
+  // We store information about the JIT-compiled XLA computation
+  // in the ResourceMgr.
+  ResourceMgr* rm = ctx->resource_manager();
+  if (!rm) {
+    return errors::Internal("No resource manager.");
+  }
+
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
+      rm->default_container(), "pjrt_device_compiler", pjrt_device_compiler,
+      [&](PjRtDeviceCompiler** pjrt_device_compiler) {
+        return BuildPjRtDeviceCompiler(platform_info_, ctx->function_library(),
+                                       pjrt_device_compiler);
+      }));
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
+      rm->default_container(), "pjrt_device_compilation_profiler", profiler,
+      [](DeviceCompilationProfiler** profiler) {
+        *profiler = new DeviceCompilationProfiler();
+        return OkStatus();
+      }));
+
+  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
+      *(ctx->function_library()), ctx->device(), platform_info_);
+  // No detailed logging for on demand op.
+  options.detailed_logging = false;
+  XlaCompiler::CompileOptions compile_options = GetCompileOptions(true);
+
+  return (*pjrt_device_compiler)
+      ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
+                                result, executable);
+}
+
+Status XlaCompileOnDemandOp::Compile(
+    const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
     XlaDeviceCompiler** xla_device_compiler,
     DeviceCompilationProfiler** profiler,
     const XlaCompiler::CompilationResult** result,
@@ -166,11 +211,7 @@ Status XlaCompileOnDemandOp::Compile(
       platform_info_, /*has_ref_vars=*/true);
   // No detailed logging from on demand op.
   options.detailed_logging = false;
-  XlaCompiler::CompileOptions compile_options;
-  compile_options.is_entry_computation = true;
-  // Optimization: where possible, have the computation return a naked array
-  // rather than a one-element tuple.
-  compile_options.always_return_tuple = false;
+  XlaCompiler::CompileOptions compile_options = GetCompileOptions();
 
   return (*xla_device_compiler)
       ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
@@ -181,26 +222,72 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   const XlaCompiler::CompilationResult* result;
   DeviceCompilationProfiler* profiler;
 
-  XlaDeviceCompiler* xla_device_compiler;
-  xla::LocalExecutable* executable;
-
   OP_REQUIRES(ctx, ctx->function_library(),
               errors::Internal("Function library missing"));
 
-  ResourceVarsSnapshot variable_args;
-  std::vector<XlaCompiler::Argument> args;
-  OP_REQUIRES_OK(ctx, BuildXlaCompilerArguments(ctx, &variable_args, &args));
+  // Get constants, inputs and variables from the OpKernelContext.
+  auto constant_indices_or = GetConstantInputIndicesFromContext(ctx);
+  OP_REQUIRES_OK(ctx, constant_indices_or.status());
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
+  std::vector<int> variable_indices =
+      GetResourceVariableIndicesFromContext(ctx);
 
-  OP_REQUIRES_OK(ctx, Compile(args, ctx, &xla_device_compiler, &profiler,
-                              &result, &executable));
+  if (UsePjRtForSingleDeviceCompilation()) {
+    std::vector<VariableInfo> variables;
+    std::vector<XlaCompiler::Argument> args;
+    // Lock variables for the whole duration of compile + execute.
+    OP_REQUIRES_OK(ctx, GetAndLockVariablesAndBuildXlaCompilerArguments(
+                            *ctx, inputs, *constant_indices_or,
+                            variable_indices, &variables, &args));
 
-  // Hold the reference to the XLA device compiler and profiler during
-  // evaluation. (We could probably free them sooner because the ResourceMgr
-  // will retain references, but this is more obviously correct.)
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
-  core::ScopedUnref profiler_ref(profiler);
-  OP_REQUIRES_OK(
-      ctx, Run(variable_args, result, xla_device_compiler, executable, ctx));
+    PjRtDeviceCompiler* pjrt_device_compiler;
+    xla::PjRtLoadedExecutable* pjrt_executable;
+    OP_REQUIRES_OK(ctx, Compile(args, ctx, &pjrt_device_compiler, &profiler,
+                                &result, &pjrt_executable));
+    // Hold the reference to the XLA device compiler and profiler during
+    // evaluation. (We could probably free them sooner because the ResourceMgr
+    // will retain references, but this is more obviously correct.)
+    core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+    core::ScopedUnref profiler_ref(profiler);
+
+    VLOG(2) << "Compiled op with PJRT: " << ctx->status();
+    VLOG(2) << "result != nullptr: " << (result != nullptr);
+    VLOG(2) << "pjrt_executable != nullptr: " << (pjrt_executable != nullptr);
+    VLOG(2) << "Executing with PJRT ...";
+
+    OP_REQUIRES_OK(ctx,
+                   RunPjRtExecutable(*pjrt_device_compiler->client(), inputs,
+                                     variables, *result, pjrt_executable, ctx));
+
+    VLOG(2) << "Completed executing with PJRT!";
+  } else {
+    ResourceVarsSnapshot variable_args;
+    std::vector<XlaCompiler::Argument> args;
+    // Lock variables only for generating XlaCompiler::Arguments and then
+    // release them.
+    {
+      std::vector<VariableInfo> variables;
+      OP_REQUIRES_OK(ctx, GetAndLockVariablesAndBuildXlaCompilerArguments(
+                              *ctx, inputs, *constant_indices_or,
+                              variable_indices, &variables, &args));
+      OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, variable_indices,
+                                                    variables, &variable_args));
+    }
+
+    XlaDeviceCompiler* xla_device_compiler;
+    xla::LocalExecutable* executable;
+    OP_REQUIRES_OK(ctx, Compile(args, ctx, &xla_device_compiler, &profiler,
+                                &result, &executable));
+    // Hold the reference to the XLA device compiler and profiler during
+    // evaluation. (We could probably free them sooner because the ResourceMgr
+    // will retain references, but this is more obviously correct.)
+    core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+    core::ScopedUnref profiler_ref(profiler);
+
+    // Locks are acquired again when populating the `ctx` outputs.
+    OP_REQUIRES_OK(
+        ctx, Run(variable_args, result, xla_device_compiler, executable, ctx));
+  }
 }
 
 }  // namespace tensorflow

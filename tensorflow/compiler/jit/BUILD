@@ -341,6 +341,7 @@ cc_library(
         ":device_compilation_profiler",
         ":jit_compilation_passes",
         ":xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
     ],
 )
 
