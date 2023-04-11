@@ -892,8 +892,9 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
     std::optional<xla::PjRtFuture<xla::Status>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
-    if (args->executable->get()->num_partitions() == 1 &&
-        args->executable->get()->num_replicas() == 1) {
+    if (args->executable->get()
+            ->GetCompileOptions()
+            ->compile_portable_executable) {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
           args->executable->get()->ExecutePortable(
