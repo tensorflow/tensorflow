@@ -185,14 +185,14 @@ PYBIND11_MODULE(xla_extension, m) {
                              "Deprecated; please use process_index")
       .def_property_readonly("task_id", &PjRtDevice::process_index,
                              "Deprecated; please use process_index")
-      .def_property_readonly("platform",
-                             [](const ClientAndPtr<PjRtDevice>& device) {
-                               return device.client->platform_name();
-                             })
-      .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
-          "client",
-          [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
+          "platform",
+          [](py::object self) { return self.attr("client").attr("platform"); })
+      .def_property_readonly("device_kind", &PjRtDevice::device_kind)
+      .def_property_readonly("client",
+                             [](const ClientAndPtr<PjRtDevice>& device) {
+                               return device.client();
+                             })
       .def("__str__", &PjRtDevice::DebugString)
       .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
