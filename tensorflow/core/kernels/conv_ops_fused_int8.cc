@@ -261,7 +261,7 @@ struct LaunchFusedConv2DOpCpuInt8Helper {
         }
 
         // (2) Side input.
-        if (side_input_scale != 0.0f) {
+        if (side_input_scale != 0.0f && side_input_ptr != nullptr) {
           const T* side_input_ptr = side_input_base + col * stride;
           TempT* conv_output_ptr = conv_output.data();
           for (int idx = 0; idx < num_rows; ++idx) {
