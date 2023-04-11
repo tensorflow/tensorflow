@@ -172,6 +172,9 @@ class TestCluster:
       work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._worker_shutdown_quiet_period_ms = worker_shutdown_quiet_period_ms
     self._data_transfer_protocol = data_transfer_protocol
+    self._job_gc_check_interval_ms = job_gc_check_interval_ms
+    self._job_gc_timeout_ms = job_gc_timeout_ms
+    self._worker_timeout_ms = worker_timeout_ms
     self.dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
             port=dispatcher_port,
@@ -211,6 +214,9 @@ class TestCluster:
     # pylint: disable=protected-access
     self.dispatcher._stop()
 
+  def restart_worker(self, index):
+    self.workers[index].restart()
+
   def stop_worker(self, index):
     self.workers[index].stop()
 
@@ -235,7 +241,12 @@ class TestCluster:
             port=port,
             work_dir=self.dispatcher._config.work_dir,
             protocol=PROTOCOL,
-            fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode))
+            fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode,
+            job_gc_check_interval_ms=self._job_gc_check_interval_ms,
+            job_gc_timeout_ms=self._job_gc_timeout_ms,
+            worker_timeout_ms=self._worker_timeout_ms,
+        )
+    )
 
   def num_registered_workers(self):
     return self.dispatcher._num_workers()

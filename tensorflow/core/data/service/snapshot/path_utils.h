@@ -71,6 +71,10 @@ tsl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> ParseChunkFilename(
 std::string StreamDoneFilePath(absl::string_view snapshot_path,
                                int64_t stream_index);
 
+// Returns the path of the owner_worker file of a snapshot stream.
+std::string StreamWorkerFilePath(absl::string_view snapshot_path,
+                                 int64_t stream_index);
+
 // Returns the path of the DONE file of a snapshot.
 std::string SnapshotDoneFilePath(absl::string_view snapshot_path);
 

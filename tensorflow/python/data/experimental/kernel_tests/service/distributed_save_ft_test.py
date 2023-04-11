@@ -14,6 +14,7 @@
 # ==============================================================================
 """Fault tolerance tests for tf.data service snapshots."""
 import os
+import pathlib
 import tempfile
 import time
 
@@ -79,18 +80,27 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     )
     return cluster, ds
 
-  def splits_dir(self, stream_idx=0):
+  def splits_dir(self, stream_idx=0, worker=0):
+    stream_name = f"stream_{stream_idx}"
+    self._make_stream_dir(stream_name, worker=worker)
     return os.path.join(
         self._path,
         "streams",
-        f"stream_{stream_idx}",
+        stream_name,
         "splits",
     )
 
-  def source_dir(self, stream_idx=0, source_idx=0):
+  def source_dir(self, stream_idx=0, source_idx=0, worker=0):
     return os.path.join(
-        self.splits_dir(stream_idx),
+        self.splits_dir(stream_idx, worker=worker),
         f"source_{source_idx}",
+    )
+
+  def _make_stream_dir(self, stream_name, worker=0):
+    stream_dir = os.path.join(self._path, "streams", stream_name)
+    os.makedirs(stream_dir)
+    pathlib.Path(os.path.join(stream_dir, "owner_worker")).write_text(
+        f"{worker}"
     )
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -118,7 +128,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   )
   def testSnapshotRecoveryFailsWithBadStreamName(self, bad_stream_dir_name):
     cluster, _ = self.setup(num_workers=0)
-    os.makedirs(os.path.join(self._path, "streams", bad_stream_dir_name))
+    self._make_stream_dir(bad_stream_dir_name)
     with self.assertRaisesRegex(ValueError, "can't parse"):
       cluster.restart_dispatcher()
 
@@ -190,8 +200,18 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithDuplicateGlobalIndexInSplitName(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(stream_idx=0), "split_0_1"))
-    write_file(os.path.join(self.source_dir(stream_idx=1), "split_0_1"))
+    write_file(
+        os.path.join(self.source_dir(stream_idx=1, worker=1), "split_0_1")
+    )
     with self.assertRaisesRegex(ValueError, "found duplicate global"):
+      cluster.restart_dispatcher()
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSnapshotRecoveryFailsWithDuplicateWorkerAssignment(self):
+    cluster, _ = self.setup(num_workers=0)
+    write_file(os.path.join(self.source_dir(stream_idx=0), "split_0_1"))
+    write_file(os.path.join(self.source_dir(stream_idx=1), "split_0_1"))
+    with self.assertRaisesRegex(ValueError, "worker is already assigned"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -209,30 +229,13 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertCountEqual([stream.index for stream in streams], range(n))
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testOrphanGetsReassigned(self):
-    self.skipTest(
-        "TODO(b/250921378): Support worker re-assignment when leases "
-        "are implemented."
-    )
-    n = 5
-    cluster, _ = self.setup(num_workers=n, ds_size=10000)
-    assignments = get_stream_assignments(cluster, n)
-    cluster.stop_worker(0)
-    while cluster.snapshot_streams(self._path)[assignments[0]].state != _ORPHAN:
-      time.sleep(0.1)
-    cluster.add_worker(start=True)
-    get_stream_assignment(cluster, n)
-    self.assertCountEqual(
-        [stream.index for stream in cluster.snapshot_streams(self._path)],
-        range(n),
-    )
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
     get_stream_assignments(cluster, n)  # Block until all workers have streams.
+    cluster.stop_worker(0)
     cluster.restart_dispatcher()
+    cluster.restart_worker(0)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
 

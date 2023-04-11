@@ -160,6 +160,11 @@ TEST(PathUtilsTest, StreamDoneFilePath) {
               MatchesRegex("/path/to/snapshot.streams.stream_0.DONE"));
 }
 
+TEST(PathUtilsTest, StreamWorkerFilePath) {
+  EXPECT_THAT(StreamWorkerFilePath("/path/to/snapshot", /*stream_index=*/0),
+              MatchesRegex("/path/to/snapshot.streams.stream_0.owner_worker"));
+}
+
 TEST(PathUtilsTest, SnapshotDoneFilePath) {
   EXPECT_THAT(SnapshotDoneFilePath("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.DONE"));
