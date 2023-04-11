@@ -42,3 +42,14 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:timespan",
     ],
 )
+
+cc_library(
+    name = "trace_viewer_color",
+    srcs = ["trace_viewer_color.cc"],
+    hdrs = ["trace_viewer_color.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
