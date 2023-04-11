@@ -1674,6 +1674,7 @@ py_library(
         ":list_ops",
         ":map_ops",
         ":tensor_array_ops",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:auto_control_deps_utils",
