@@ -40,6 +40,7 @@ limitations under the License.
 #include "learning/infra/mira/mlrt/interpreter/execute.h"
 #include "absl/base/call_once.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -942,6 +943,8 @@ GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder() const {
 
 Status GraphExecutor::LoadedClientGraph::UpdateCost(
     const CostRecorder& cost_recorder, const Runtime& runtime) {
+  LOG(INFO) << "TFRT updating op costs of loaded client graph (" << this << ") "
+            << name_;
   // Move to function scope to reduce memory footprint.
   auto tfrt_mlir = std::move(tfrt_mlir_);
   auto tf_mlir_with_op_keys = std::move(tf_mlir_with_op_keys_);
