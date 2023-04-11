@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
+#include "tensorflow/lite/async/backend_async_kernel_interface.h"
 
 #include <vector>
 
-#include "tensorflow/lite/core/async/c/async_kernel.h"
-#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/async/c/async_kernel.h"
+#include "tensorflow/lite/async/c/types.h"
 
 namespace tflite {
 namespace delegates {
