@@ -17,7 +17,7 @@ py_library(
         ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -27,8 +27,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:c_api_util",
-        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -51,8 +51,8 @@ py_library(
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -90,6 +90,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":tfprof_logger",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -103,6 +104,7 @@ py_library(
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python/util:_pywrap_tfprof",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -127,6 +129,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -156,6 +159,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python/profiler/internal:flops_registry",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -183,6 +187,8 @@ py_library(
     deps = [
         ":model_analyzer",
         ":tfprof_logger",
+        "//tensorflow/python/util:_pywrap_tfprof",
+        "//tensorflow/python/util:compat",
     ],
 )
 

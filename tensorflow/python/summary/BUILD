@@ -38,7 +38,8 @@ py_library(
         "//tensorflow/python/summary/writer",
         "//tensorflow/python/summary/writer:writer_cache",
         "//tensorflow/python/training:training_util",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
