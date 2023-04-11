@@ -318,7 +318,7 @@ StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
   if (task_id == 0) {
-    // Overwrite xla_dump_to only if its not empty, to preserve `xla_dump_to`
+    // Overwrite xla_dump_to only if it's not empty, to preserve `xla_dump_to`
     // from parsed XLA_FLAGS env (already populated in debug_options).
     if (!raw_options.xla_dump_to.empty()) {
       debug_options.set_xla_dump_to(raw_options.xla_dump_to);
@@ -1048,6 +1048,9 @@ FunctionalHloRunner::RunInternal(
             << repeat << ").";
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
+      if (running_options.profiler != nullptr) {
+        running_options.profiler->CreateSession();
+      }
     }
     TF_ASSIGN_OR_RETURN(output_buffers,
                         executable->Execute(argument_ptrs, execute_options));
@@ -1072,6 +1075,10 @@ FunctionalHloRunner::RunInternal(
       }
     }
   }
+  if (running_options.profiler != nullptr) {
+    running_options.profiler->UploadSession();
+  }
+
   TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
