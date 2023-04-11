@@ -45,8 +45,9 @@ func.func @map_dense_constant_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
 
 // -----
 
-func.func @map_dense_constant_operand_complex(%arg: tensor<32xcomplex<f64>>) -> tensor<32xcomplex<f64>> {
-  %c0 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<32xcomplex<f64>>
+func.func @map_dense_constant_operand_complex(%arg: tensor<32xcomplex<f64>>)
+    -> tensor<32xcomplex<f64>> {
+  %c0 = arith.constant dense<(1.0000e+00,0.0000e+00)> : tensor<32xcomplex<f64>>
   %init = tensor.empty() : tensor<32xcomplex<f64>>
 
   %res = linalg.map { complex.add }
@@ -56,7 +57,14 @@ func.func @map_dense_constant_operand_complex(%arg: tensor<32xcomplex<f64>>) -> 
 }
 
 // CHECK-LABEL:  @map_dense_constant_operand_complex
-// CHECK: linalg.map { complex.add }
+// CHECK-SAME:       (%[[ARG:.*]]: tensor<32xcomplex<f64>>)
+// CHECK-DAG:      %[[CST:.*]] = complex.constant
+// CHECK-DAG:      %[[INIT:.*]] = tensor.empty
+// CHECK:          linalg.map
+// CHECK-SAME:       ins(%[[ARG]]
+// CHECK-SAME:       outs(%[[INIT]]
+// CHECK-NEXT:       (%[[BBARG:.*]]: complex<f64>)
+// CHECK-NEXT:         complex.add %[[BBARG]], %[[CST]]
 
 // -----
 
