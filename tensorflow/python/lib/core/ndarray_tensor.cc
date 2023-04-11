@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
 #include "tensorflow/tsl/python/lib/core/float8.h"
 

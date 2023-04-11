@@ -34,6 +34,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import stack
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
@@ -854,7 +855,7 @@ class BaseSession(SessionInterface):
     Returns:
       A context manager using this session as the default session.
     """
-    return ops.default_session(self)
+    return stack.default_session(self)
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Runs operations and evaluates tensors in `fetches`.

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
 #define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
 
+#include <optional>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -74,7 +75,7 @@ xla::Status ConvertRegionToComputation(mlir::Region* region,
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.
-llvm::Optional<::xla::XlaOp> CreateXlaOperator(
+std::optional<::xla::XlaOp> CreateXlaOperator(
     mlir::Operation* op,
     llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
 

@@ -109,14 +109,6 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
-    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
-      return n;
-    }
-    return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {

@@ -66,7 +66,11 @@ def cuda_default_copts():
         ["-O3"]
     ) + cuda_compiler(
         if_cuda_clang = [ "-Xcuda-fatbinary", "--compress-all"],
-        if_nvcc = [ "-Xcuda-fatbinary=--compress-all"]
+        if_nvcc = [
+            "-Xcuda-fatbinary=--compress-all",
+            # Ensure that NVCC matches clang's constexpr behavior.
+            "--expt-relaxed-constexpr"
+        ]
     )
 
 def cuda_gpu_architectures():

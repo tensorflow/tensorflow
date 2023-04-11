@@ -32,6 +32,7 @@ cc_library(
         "hlo_evaluator_typed_visitor_half.cc",
         "hlo_evaluator_typed_visitor_int16.cc",
         "hlo_evaluator_typed_visitor_int32.cc",
+        "hlo_evaluator_typed_visitor_int4.cc",
         "hlo_evaluator_typed_visitor_int64.cc",
         "hlo_evaluator_typed_visitor_int8.cc",
         "hlo_evaluator_typed_visitor_uint16.cc",

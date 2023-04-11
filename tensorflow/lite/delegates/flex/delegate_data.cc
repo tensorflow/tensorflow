@@ -134,7 +134,7 @@ tensorflow::Status GetSubgraphNamesForFunctionExecution(
               .AsVector();
       // TODO(b/181352924): Use proto arena if we see performance regression.
       if (!node_def.ParseFromString(v[1].AsString().str())) {
-        return tensorflow::Status(tensorflow::error::INTERNAL,
+        return tensorflow::Status(absl::StatusCode::kInternal,
                                   "could not parse NodeDef");
       }
       // Loop through all the attributes in this node to check if it has
@@ -208,7 +208,7 @@ tensorflow::Status DelegateData::Prepare(
   }
   if (flex_delegate == nullptr && main_subgraph != nullptr) {
     return tensorflow::Status(
-        tensorflow::error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         "flex_delegate must be non-null when main_subgraph is provided.");
   }
 

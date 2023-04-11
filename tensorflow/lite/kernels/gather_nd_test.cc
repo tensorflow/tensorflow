@@ -356,6 +356,19 @@ TEST(GatherNdOpTest, Int64Int64) {
               ElementsAreArray({-2LL, 2LL, 2LL, 3LL, 3LL, -3LL}));
 }
 
+TEST(GatherNdOpTest, Float32Int16) {
+  GatherNdOpModel m({TensorType_FLOAT32, {3, 2, 3}},
+                    {TensorType_INT16, {2, 2}});
+  m.SetInput<float>({1.1, -1.2, 1.3, -2.1, 2.2, 2.3,   //
+                     3.1, 3.2, -3.3, -4.1, -4.2, 4.3,  //
+                     5.1, -5.2, 5.3, 6.1, -6.2, 6.3});
+  m.SetPositions<int16_t>({0, 1, 1, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray({-2.1, 2.2, 2.3, 3.1, 3.2, -3.3}));
+}
+
 TEST(GatherNdOpTest, StringInt32) {
   GatherNdOpModel m({TensorType_STRING, {3, 2, 3}}, {TensorType_INT32, {2, 2}});
   m.SetInput<std::string>({"A", "B", "C",  //

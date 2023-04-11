@@ -43,7 +43,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import logging_ops
@@ -382,7 +382,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           1: (lambda: do_inference("/device:TPU:1", inference_fn, 1)),
       }
       branch_index = inference_iteration.assign_add(1, use_locking=True) % 2
-      return control_flow_ops.switch_case(branch_index, branch_fns)
+      return control_flow_switch_case.switch_case(branch_index, branch_fns)
 
     self.assertAllEqual(2., run_inference(1))  # Use TPU core 0.
     self.assertAllEqual(3., run_inference(1))  # Use TPU core 1.
@@ -765,6 +765,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
           trainable=False,
           synchronization=variables.VariableSynchronization.ON_READ,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+
+    self.assertFalse(w._is_mirrored())
 
     @def_function.function
     def run(iterator):

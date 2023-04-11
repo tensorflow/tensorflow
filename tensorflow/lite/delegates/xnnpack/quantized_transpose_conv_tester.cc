@@ -89,13 +89,11 @@ void QuantizedTransposeConvTester::Test(TfLiteDelegate* delegate) const {
       std::bind(std::uniform_int_distribution<int32_t>(0, 255), rng);
   uint8_t* default_input_data = reinterpret_cast<uint8_t*>(
       default_interpreter->input_tensor(0)->data.data);
-  std::generate(default_input_data, default_input_data + input_data_size,
-                std::ref(uint8rng));
+  std::generate_n(default_input_data, input_data_size, std::ref(uint8rng));
 
   uint8_t* xnnpack_input_data = reinterpret_cast<uint8_t*>(
       delegate_interpreter->input_tensor(0)->data.data);
-  std::copy(default_input_data, default_input_data + input_data_size,
-            xnnpack_input_data);
+  std::copy_n(default_input_data, input_data_size, xnnpack_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);

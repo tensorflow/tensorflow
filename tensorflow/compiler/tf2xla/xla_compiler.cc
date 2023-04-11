@@ -124,6 +124,10 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
   return std::make_pair(std::move(arg_shardings), std::move(retval_shardings));
 }
 
+// Due to the wonkiness with Resource Cleanup, changing how resources are
+// cleaned up here need to change how resources are cleaned up in
+// graph_compiler_test.
+// LINT.IfChange(ExecuteGraph)
 Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
                     XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
                     int64_t step_id) {
@@ -150,6 +154,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   step_container.reset();
   return status;
 }
+// LINT.ThenChange(//tensorflow/compiler/tf2xla/graph_compiler_test.cc)
 
 // Builds the XLA computation.
 // - `args` is the list of input arguments
@@ -1382,11 +1387,38 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 
 }  // namespace
 
+// A temporary dummy stack trace, used to identify locations where stack trace
+// info is being lost, and to clarify how stack trace info is otherwise being
+// handled in individual passes. This class and its usage below will be removed
+// once we have robust end-to-end metadata handling.
+// TODO(b/265059672): Remove when end-to-end stack trace handling is in place
+class DummyStackTrace : public AbstractStackTrace {
+  absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+
+  StackFrame LastUserFrame() const override { return frames_.back(); }
+
+  std::string ToString(const TracePrintingOptions& opts) const override {
+    auto frame = LastUserFrame();
+    return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
+                        frame.function_name);
+  }
+
+  std::vector<StackFrame> frames_{
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
+};
+
 Status XlaCompiler::CompileGraph(
     const XlaCompiler::CompileOptions& options, string const& name,
     std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
     CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
+
+  DummyStackTrace stack_trace;
+  for (auto node : graph->nodes()) {
+    if (node->GetStackTrace() == nullptr) {
+      node->SetStackTrace(std::make_shared<DummyStackTrace>(stack_trace));
+    }
+  }
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));

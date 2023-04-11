@@ -345,10 +345,6 @@ string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
-int64_t RootDataset::CardinalityInternal() const {
-  return input_->Cardinality();
-}
-
 int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
   return input_->Cardinality(options);
 }
@@ -409,7 +405,7 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   };
   core::RefCountPtr<DatasetBase> rewritten_output;
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, &rewritten_output);
+                            /*record_fingerprint=*/false, &rewritten_output);
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);

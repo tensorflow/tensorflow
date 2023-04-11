@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -153,6 +156,15 @@ class KernelFallbackCompatRequestState {
     cost_recorder_ = cost_recorder;
   }
 
+  // Nullable.
+  tfrt::ResourceContext* client_graph_resource_context() const {
+    return client_graph_resource_context_;
+  }
+  void set_client_graph_resource_context(
+      tfrt::ResourceContext* client_graph_resource_context) {
+    client_graph_resource_context_ = client_graph_resource_context;
+  }
+
  private:
   int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
@@ -190,7 +202,25 @@ class KernelFallbackCompatRequestState {
 
   // Records the cost per op.
   tensorflow::tfrt_stub::CostRecorder* cost_recorder_ = nullptr;
+
+  tfrt::ResourceContext* client_graph_resource_context_ = nullptr;
 };
+
+// Set up fallback context with common tensorflow states such as devices,
+// function library runtime. They will be forwarded to tensorflow::OpKernel as
+// in tensorflow::Executor. If `runner` is nullptr, internally it will use a
+// default runner that executes tasks in the caller thread.
+Status SetUpKernelFallbackCompatRequestContext(
+    tfrt::RequestContextBuilder* builder,
+    const tensorflow::DeviceMgr* device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime* pflr,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array,
+    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
+    const std::optional<SessionMetadata>& model_metadata = std::nullopt,
+    std::function<void(std::function<void()>)>* runner = nullptr,
+    tfrt_stub::CostRecorder* cost_recorder = nullptr,
+    tfrt::ResourceContext* client_graph_resource_context = nullptr);
 
 }  // namespace tfd
 }  // namespace tensorflow

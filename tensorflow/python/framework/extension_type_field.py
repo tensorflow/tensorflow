@@ -73,6 +73,16 @@ class Sentinel(object):
 _NoneType = type(None)
 
 
+def _issubclass(cls, clsinfo):
+  """Internal issubclass that doesn't raise TypeError."""
+  try:
+    return issubclass(cls, clsinfo)
+  except TypeError:
+    # issubclass with GenericAlias instances raises TypeError. For example,
+    # `issubclass(tuple[int], composite_tensor.CompositeTensor)`.
+    return False
+
+
 # ==============================================================================
 # ExtensionTypeField
 # ==============================================================================
@@ -146,7 +156,7 @@ def validate_field_value_type(value_type,
     return
   elif (value_type in (ops.Tensor, tensor_shape.TensorShape) or
         (isinstance(value_type, type) and
-         issubclass(value_type, composite_tensor.CompositeTensor))):
+         _issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
       raise TypeError(f'Mapping had a key {value_type.__name__!r} with type '
                       f'{type(value_type).__name__!r}')
@@ -280,7 +290,7 @@ def _convert_value(value, expected_type, path,
   if expected_type is ops.Tensor:
     return _convert_tensor(value, path, context)
   elif (isinstance(expected_type, type) and
-        issubclass(expected_type, composite_tensor.CompositeTensor)):
+        _issubclass(expected_type, composite_tensor.CompositeTensor)):
     return _convert_composite_tensor(value, expected_type, path, context)
   elif expected_type is tensor_shape.TensorShape:
     try:
@@ -338,7 +348,7 @@ def _convert_composite_tensor(value, expected_type, path, context):
   """Converts `value` to a value of type `expected_type`."""
   if context == _ConversionContext.SPEC:
     if not (isinstance(value, type_spec.TypeSpec) and
-            issubclass(value.value_type, expected_type)):
+            _issubclass(value.value_type, expected_type)):
       raise TypeError(f'{"".join(path)}: expected a TypeSpec for '
                       f'{expected_type.__name__!r}, got '
                       f'{type(value).__name__!r}')

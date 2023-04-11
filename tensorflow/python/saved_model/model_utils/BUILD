@@ -79,12 +79,14 @@ py_strict_library(
         ":mode_keys",
         "//tensorflow/python:op_selector",
         "//tensorflow/python:platform",
-        "//tensorflow/python:util",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:object_identity",
     ],
 )
 
@@ -113,7 +115,7 @@ py_strict_library(
     name = "mode_keys",
     srcs = ["mode_keys.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:util"],
+    deps = ["//tensorflow/python/util:compat"],
 )
 
 py_strict_test(

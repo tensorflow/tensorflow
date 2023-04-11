@@ -54,7 +54,7 @@ class [[nodiscard]] Status;
 typedef SourceLocationImpl SourceLocation;
 
 namespace errors {
-typedef ::tensorflow::error::Code Code;
+typedef absl::StatusCode Code;
 }  // namespace errors
 namespace error {
 typedef ::tensorflow::error::Code Code;
@@ -104,9 +104,6 @@ class Status {
   /// human-readable string containing more detailed information.
   Status(absl::StatusCode code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
-  // Deprecated constructor using the Tensorflow protobuf enum error code.
-  Status(tsl::errors::Code code, absl::string_view msg,
-         SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -119,13 +116,21 @@ class Status {
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
 
-  tsl::error::Code code() const {
-    return ok() ? tensorflow::error::OK : state_->code;
+  absl::StatusCode code() const {
+    return ok() ? absl::StatusCode::kOk : state_->code;
   }
+  int raw_code() const { return static_cast<int>(code()); }
 
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
+  // Status::message()
+  //
+  // Returns the error message associated with this error code, if available.
+  // Note that this message rarely describes the error code.  It is not unusual
+  // for the error message to be the empty string. As a result, prefer
+  // `operator<<` or `Status::ToString()` for debug logging.
+  absl::string_view message() const;
 
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;
@@ -216,15 +221,6 @@ class Status {
       absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
       const;
 
-  // Sets the stack frame associated with this status object.
-  // Stack traces are only kept and returned via GetStackTrace() if
-  // !this->ok().
-  void SetStackTrace(std::vector<StackFrame>);
-
-  // Retrieve an associated stack frame for a non-OK status that was
-  // set via SetStackTrace().
-  std::vector<StackFrame> GetStackTrace() const;
-
   absl::Span<const SourceLocation> GetSourceLocations() const;
 
  private:
@@ -239,11 +235,10 @@ class Status {
     State(const State&) TF_ATTRIBUTE_NOINLINE = default;
     State& operator=(const State&) TF_ATTRIBUTE_NOINLINE = default;
 
-    tsl::error::Code code;
+    absl::StatusCode code;
     std::string msg;
     std::unordered_map<std::string, absl::Cord> payloads;
     absl::InlinedVector<SourceLocation, 4> source_locations;
-    std::vector<StackFrame> stack_trace;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -370,7 +365,8 @@ typedef std::function<void(const Status&)> StatusCallback;
 extern tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
                                              const char* msg);
 
-std::string error_name(error::Code code);
+// Prefer using `absl::StatusCodeToString`.
+std::string error_name(absl::StatusCode code);
 
 inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   if (v.ok()) return nullptr;

@@ -180,6 +180,33 @@ class ExtractImagePatchesGradTest(test.TestCase, parameterized.TestCase):
   def test_AllNone_Gradient(self):
     self._VariableShapeGradient([None, None, None, None])
 
+  def testJitCompile(self):
+    import tensorflow as tf
+
+    with test_util.AbstractGradientTape(use_tape=True) as tape:
+      shape = (4, 512, 512, 1)
+      ksize = 5
+
+      images = variables.Variable(np.random.uniform(size=shape), name='inputs')
+      tape.watch(images)
+
+      # Github issues: #59058, #59061
+      # tf.image.extract_image_patches() does not support backward pass
+      # when compiled with XLA.
+      extract_image_patches_jit = tf.function(
+          array_ops.extract_image_patches, jit_compile=True
+      )
+      patches = extract_image_patches_jit(
+          images,
+          ksizes=[1, ksize, ksize, 1],
+          strides=[1] * 4,
+          rates=[1] * 4,
+          padding='SAME',
+      )
+
+      gradients = tape.gradient(patches, images)
+      self.assertIsNotNone(gradients)
+
 
 if __name__ == '__main__':
   test.main()

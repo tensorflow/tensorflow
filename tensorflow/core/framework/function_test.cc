@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -1050,10 +1051,15 @@ TEST(FunctionLibraryDefinitionTest, Find) {
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
+  EXPECT_EQ(lib_def.FindRecord("XTimes16").get(), nullptr);
 
   auto found = lib_def.Find("XTimesTwo");
+  auto found_record = lib_def.FindRecord("XTimesTwo");
   ASSERT_NE(found, nullptr);
+  ASSERT_NE(found_record.get(), nullptr);
   EXPECT_EQ(test::function::XTimesTwo().DebugString(), found->DebugString());
+  EXPECT_EQ(test::function::XTimesTwo().DebugString(),
+            found_record->fdef().DebugString());
 }
 
 TEST(FunctionLibraryDefinitionTest, LookUp) {
@@ -1500,6 +1506,17 @@ TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
   OptimizedFunctionGraph proto;
   lib_def.AddOptimizedFunctionGraph("test", proto);
   EXPECT_NE(lib_def.FindOptimizedFunctionGraph("test"), nullptr);
+}
+
+TEST(FunctionLibraryDefinitionTest, MoveTest) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  const OptimizedFunctionGraph proto;
+  lib_def.AddOptimizedFunctionGraph("test", proto);
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+
+  FunctionLibraryDefinition copy_lib_def = std::move(lib_def);
+  EXPECT_TRUE(copy_lib_def.Contains("XTimesTwo"));
+  EXPECT_NE(copy_lib_def.FindOptimizedFunctionGraph("test"), nullptr);
 }
 
 // TODO(skyewm): this could be more thorough

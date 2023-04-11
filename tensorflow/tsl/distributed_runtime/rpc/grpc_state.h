@@ -193,7 +193,7 @@ class RPCState : public GrpcClientCQTag {
       // Always treat gRPC cancellation as a derived error. This ensures that
       // other error types are preferred during status aggregation. (gRPC
       // cancellation messages do not contain the original status message).
-      if (s.code() == tensorflow::error::Code::CANCELLED) {
+      if (s.code() == absl::StatusCode::kCancelled) {
         s = StatusGroup::MakeDerived(s);
       }
 

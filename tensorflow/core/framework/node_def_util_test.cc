@@ -876,7 +876,7 @@ TEST(AttachDef, AllowMultipleFormattedNode) {
   a.set_name("a");
   NodeDef b;
   b.set_name("b");
-  Status s = Status(error::CANCELLED, "Error");
+  Status s = Status(absl::StatusCode::kCancelled, "Error");
   Status s2 = AttachDef(s, a, true);
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
   Status s3 = AttachDef(s2, b, true);
@@ -888,7 +888,7 @@ TEST(AttachDef, DisallowMultipleFormattedNode) {
   a.set_name("a");
   NodeDef b;
   b.set_name("b");
-  Status s = Status(error::CANCELLED, "Error");
+  Status s = Status(absl::StatusCode::kCancelled, "Error");
   Status s2 = AttachDef(s, a, false);
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
   Status s3 = AttachDef(s2, b, false);

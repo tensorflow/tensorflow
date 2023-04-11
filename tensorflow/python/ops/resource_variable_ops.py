@@ -333,7 +333,7 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-class BaseResourceVariable(variables.VariableV1, core.Tensor):
+class BaseResourceVariable(variables.Variable, core.Tensor):
   """A python variable from an existing handle."""
 
   # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
@@ -2440,55 +2440,6 @@ def _GatherGrad(op, grad):
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
   return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
-
-
-def _to_proto_fn(v, export_scope=None):
-  """Converts Variable and ResourceVariable to VariableDef for collections."""
-  return v.to_proto(export_scope=export_scope)
-
-
-def _from_proto_fn(v, import_scope=None):
-  """Creates Variable or ResourceVariable from VariableDef as needed."""
-  if v.is_resource:
-    return ResourceVariable.from_proto(v, import_scope=import_scope)
-  return variables.Variable.from_proto(v, import_scope=import_scope)
-
-
-ops.register_proto_function(
-    ops.GraphKeys.GLOBAL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.TRAINABLE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.LOCAL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.MODEL_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.GLOBAL_STEP,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
-ops.register_proto_function(
-    ops.GraphKeys.METRIC_VARIABLES,
-    proto_type=variable_pb2.VariableDef,
-    to_proto=_to_proto_fn,
-    from_proto=_from_proto_fn)
 
 
 @tf_export("__internal__.ops.is_resource_variable", v1=[])

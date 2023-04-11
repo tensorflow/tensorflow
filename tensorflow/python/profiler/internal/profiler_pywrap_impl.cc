@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
+#include "tensorflow/tsl/profiler/rpc/client/capture_profile.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -228,7 +228,7 @@ tensorflow::Status Trace(
   TF_RETURN_IF_ERROR(ValidateOptions(opts));
 
   {
-    TF_RETURN_IF_ERROR(tensorflow::profiler::CaptureRemoteTrace(
+    TF_RETURN_IF_ERROR(tsl::profiler::CaptureRemoteTrace(
         logdir, num_tracing_attempts, opts, is_cloud_tpu_session));
   }
   return OkStatus();
@@ -239,9 +239,9 @@ tensorflow::Status Monitor(const char* service_addr, int duration_ms,
                            tensorflow::string* result) {
   TF_RETURN_IF_ERROR(ValidateHostPortPair(service_addr));
   {
-    TF_RETURN_IF_ERROR(tensorflow::profiler::Monitor(
-        service_addr, duration_ms, monitoring_level, display_timestamp,
-        result));
+    TF_RETURN_IF_ERROR(tsl::profiler::Monitor(service_addr, duration_ms,
+                                              monitoring_level,
+                                              display_timestamp, result));
   }
   return OkStatus();
 }
@@ -275,7 +275,7 @@ tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   tensorflow::Status status;
   status = session_->CollectData(&xspace);
   session_.reset();
-  status = tensorflow::profiler::ExportToTensorBoard(xspace, logdir_);
+  status = tsl::profiler::ExportToTensorBoard(xspace, logdir_);
   return status;
 }
 

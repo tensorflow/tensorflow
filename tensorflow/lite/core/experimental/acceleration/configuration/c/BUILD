@@ -25,6 +25,10 @@ load(
     "gpu_plugin_visibility_allowlist",
     "xnnpack_plugin_visibility_allowlist",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -72,13 +76,14 @@ cc_test(
         "//conditions:default": [],
     }),
     linkopts = gpu_delegate_linkopts(),
+    tags = tf_gpu_tests_tags(),
     deps = select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [":gpu_plugin"],
         "//conditions:default": [],
     }) + [
-        "@com_google_googletest//:gtest_main",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

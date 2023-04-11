@@ -82,9 +82,9 @@ func.func @multiple_fusions(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // -----
 
 func.func @cst_defined_above() -> tensor<1x10xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
   %0 = tensor.empty() : tensor<1x10xf32>
   %1 = gml_st.fusion (%arg3 = %0 : tensor<1x10xf32>) {
+    %cst = arith.constant 0.000000e+00 : f32
     %2 = linalg.fill ins(%cst : f32) outs(%arg3 : tensor<1x10xf32>) -> tensor<1x10xf32>
     gml_st.yield %2 : tensor<1x10xf32>
   } { some_attr = 123 } : tensor<1x10xf32>
@@ -94,8 +94,8 @@ func.func @cst_defined_above() -> tensor<1x10xf32> {
 // CHECK-LABEL: @cst_defined_above_fusion_0
 // CHECK-SAME:      %[[ARG0:.*]]: tensor<1x10xf32>
 // CHECK-SAME:      attributes {fusion}
-// CHECK-DAG:     %[[CST:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:         %[[FUSION:.*]] = gml_st.fusion (%[[ARG1:.*]] = %[[ARG0]]: tensor<1x10xf32>) {
+// CHECK:           %[[CST:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:           %[[FILL:.*]] = linalg.fill ins(%[[CST]] : f32) outs(%[[ARG1]] : tensor<1x10xf32>)
 // CHECK:           gml_st.yield %[[FILL]]
 // CHECK:         } {some_attr = 123 : i64}

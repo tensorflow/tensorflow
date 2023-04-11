@@ -1,12 +1,14 @@
 # Description: StreamExecutor Interface for TPUs
 
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//learning/brain/experimental/dtensor:__subpackages__",
         "//learning/brain/google/xla/kernels:__subpackages__",
+        "//learning/brain/research/pjrt:__subpackages__",
         "//learning/brain/tfrc/executor:__subpackages__",
         "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
         "//learning/brain/tfrt/tpu_plugin:__subpackages__",
@@ -18,7 +20,7 @@ package(
         "//tensorflow/core/common_runtime/next_pluggable_device:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 

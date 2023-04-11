@@ -52,6 +52,12 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};
       }
+    } else if (function_name.contains("einsum")) {
+      spec->coeff_op_quant_dim[1] = -1;
+      if (function_name.contains("with_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
     } else if (function_name.contains("conv3d")) {
       spec->coeff_op_quant_dim[1] = 4;
       if (function_name.contains("with_bias")) {

@@ -328,9 +328,7 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kWhile;
-                    });
+                    HloPredicateIsOp<HloOpcode::kWhile>);
   }
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
 

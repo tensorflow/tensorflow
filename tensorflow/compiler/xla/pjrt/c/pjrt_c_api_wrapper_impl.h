@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -104,12 +105,22 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
-struct PJRT_DeviceTopology {
-  std::unique_ptr<xla::PjRtDeviceTopology> topology;
+struct PJRT_TopologyDescription {
+  std::unique_ptr<xla::PjRtTopologyDescription> topology;
+};
+
+struct PJRT_TransferMetadata {
+  // Decompose xla::Shape into C API type fields, without any Tuple information.
+  // TODO(b/238999986) support other `xla::Shape` fields when they are fully
+  // implemented.
+  xla::Shape device_shape;
+};
+
+struct PJRT_CopyToDeviceStream {
+  std::unique_ptr<xla::CopyToDeviceStream> stream;
 };
 
 namespace pjrt {
-
 // C API definitions
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
@@ -195,11 +206,21 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
 
-PJRT_Error* PJRT_DeviceTopology_Destroy(PJRT_DeviceTopology_Destroy_Args* args);
-PJRT_Error* PJRT_DeviceTopology_PlatformName(
-    PJRT_DeviceTopology_PlatformName_Args* args);
-PJRT_Error* PJRT_DeviceTopology_PlatformVersion(
-    PJRT_DeviceTopology_PlatformVersion_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
+    PJRT_CopyToDeviceStream_AddChunk_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
+    PJRT_CopyToDeviceStream_TotalBytes_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_GranuleSize(
+    PJRT_CopyToDeviceStream_GranuleSize_Args* args);
+PJRT_Error* PJRT_CopyToDeviceStream_CurrentBytes(
+    PJRT_CopyToDeviceStream_CurrentBytes_Args* args);
+
+PJRT_Error* PJRT_TopologyDescription_Destroy(
+    PJRT_TopologyDescription_Destroy_Args* args);
+PJRT_Error* PJRT_TopologyDescription_PlatformName(
+    PJRT_TopologyDescription_PlatformName_Args* args);
+PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
+    PJRT_TopologyDescription_PlatformVersion_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
@@ -237,9 +258,9 @@ std::string ProgramFormatErrorMsg(absl::string_view program_format);
 
 // Creates a C PJRT topology from a C++ PJRT topology.
 // The returned topology is owned by the caller and
-// should be destroyed with PJRT_DeviceTopology_Destroy.
-PJRT_DeviceTopology* CreateWrapperDeviceTopology(
-    std::unique_ptr<xla::PjRtDeviceTopology> cpp_topology);
+// should be destroyed with PJRT_TopologyDescription_Destroy.
+PJRT_TopologyDescription* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology);
 
 // Creates a C PJRT client from a C++ PJRT client and creates C PJRT devices
 // from cpp_client's devices. The returned client is owned by the caller and
@@ -250,7 +271,7 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
 // pjrt_c_api_wrapper_impl.
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
-    PJRT_DeviceTopology_Create* topology_create_fn) {
+    PJRT_TopologyDescription_Create* topology_create_fn) {
   return PJRT_Api{
       .struct_size = PJRT_Api_STRUCT_SIZE,
       .priv = nullptr,
@@ -331,12 +352,22 @@ constexpr PJRT_Api CreatePjrtApi(
       .PJRT_Buffer_ReadyEvent = pjrt::PJRT_Buffer_ReadyEvent,
       .PJRT_Buffer_UnsafePointer = pjrt::PJRT_Buffer_UnsafePointer,
 
-      .PJRT_DeviceTopology_Create = topology_create_fn,
-      .PJRT_DeviceTopology_Destroy = pjrt::PJRT_DeviceTopology_Destroy,
-      .PJRT_DeviceTopology_PlatformName =
-          pjrt::PJRT_DeviceTopology_PlatformName,
-      .PJRT_DeviceTopology_PlatformVersion =
-          pjrt::PJRT_DeviceTopology_PlatformVersion,
+      .PJRT_CopyToDeviceStream_AddChunk =
+          pjrt::PJRT_CopyToDeviceStream_AddChunk,
+      .PJRT_CopyToDeviceStream_TotalBytes =
+          pjrt::PJRT_CopyToDeviceStream_TotalBytes,
+      .PJRT_CopyToDeviceStream_GranuleSize =
+          pjrt::PJRT_CopyToDeviceStream_GranuleSize,
+      .PJRT_CopyToDeviceStream_CurrentBytes =
+          pjrt::PJRT_CopyToDeviceStream_CurrentBytes,
+
+      .PJRT_TopologyDescription_Create = topology_create_fn,
+      .PJRT_TopologyDescription_Destroy =
+          pjrt::PJRT_TopologyDescription_Destroy,
+      .PJRT_TopologyDescription_PlatformName =
+          pjrt::PJRT_TopologyDescription_PlatformName,
+      .PJRT_TopologyDescription_PlatformVersion =
+          pjrt::PJRT_TopologyDescription_PlatformVersion,
 
       .PJRT_Compile = pjrt::PJRT_Compile,
   };

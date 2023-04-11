@@ -133,7 +133,7 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   llvm::SmallVector<llvm::Value *> args;
   args.reserve(llvm::size(func->args()));
 
-  for (auto &indexed_arg : llvm::enumerate(func->args())) {
+  for (const auto &indexed_arg : llvm::enumerate(func->args())) {
     llvm::Type *art_ty = indexed_arg.value().getType();
 
     llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(
@@ -218,6 +218,8 @@ std::unique_ptr<llvm::MemoryBuffer> ExecutionEngineObjectCache::stealObject(
 
 // -------------------------------------------------------------------------- //
 
+// llvm_ir::DumpToString() is not used here, because we don't want to add too
+// many dependencies to the runtime.
 std::string ToString(const llvm::Error &err) {
   std::string str;
   llvm::raw_string_ostream(str) << err;
@@ -255,8 +257,8 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   // TODO(ezhulenev): We should have out own optimizing transformer pipelines
   // for different Xla backends, e.g. there is absolutely no need to run
   // SLV vectorizer for Xla Gpi host side executable.
-  auto transformer = options.make_optimizing_transformer(
-      llvm::CodeGenOpt::Default, /*sizeLevel=*/0, options.target_machine);
+  auto transformer =
+      options.make_optimizing_transformer(options.target_machine);
   if (auto err = transformer(module_ptr))
     return InternalError("failed to run optimization pipeline: %s",
                          ToString(err));

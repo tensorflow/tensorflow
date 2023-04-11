@@ -79,6 +79,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -169,7 +170,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
@@ -472,6 +472,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/eager:rendezvous_cache",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -779,8 +780,8 @@ tf_cuda_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = tf_cuda_tests_tags() + [
         "manual",
-        "notap",  # Memory leak due to b/62910646
         "noguitar",  # Memory leak due to b/62910646
+        "notap",  # Memory leak due to b/62910646
     ],
     deps = [
         ":master",

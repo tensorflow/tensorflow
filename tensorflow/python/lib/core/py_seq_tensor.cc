@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,7 +35,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 namespace tensorflow {
 namespace {
 

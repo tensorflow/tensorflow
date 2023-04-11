@@ -36,7 +36,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
@@ -50,6 +51,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.training import training
 
 
@@ -180,7 +182,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNotNone(t.gradient(result, v))
         return 1.0
 
-      control_flow_ops.while_loop(lambda i: False, body, [1.0])
+      while_loop.while_loop(lambda i: False, body, [1.0])
 
   def testWhereGradient(self):
     # Note: where is special because only some of its arguments are of
@@ -834,7 +836,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     with backprop.GradientTape() as g:
       g.watch(x)
-      y = control_flow_ops.cond(x < x, true_fn, false_fn)
+      y = tf_cond.cond(x < x, true_fn, false_fn)
 
     if not context.executing_eagerly():
       with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
@@ -857,7 +859,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     with backprop.GradientTape() as g:
       g.watch([x])
-      _, y = control_flow_ops.while_loop(cond, body, [i, x])
+      _, y = while_loop.while_loop(cond, body, [i, x])
 
     if not context.executing_eagerly():
       with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
@@ -1229,7 +1231,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     def fn():
       a = math_ops.add(x.value(), 1.0)
       # Make sure convert_to_tensor works correctly with list of TensorNodes.
-      b = array_ops.stack([a, a], axis=0)
+      b = array_ops_stack.stack([a, a], axis=0)
       return math_ops.reduce_mean(b)
 
     grad = backprop.implicit_grad(fn)()[0][0]
@@ -1723,7 +1725,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         i = constant_op.constant(0.0)
         c = lambda y, i: i < 10.
         b = lambda y, i: (inner(y), i + 1.0)
-        y, i = control_flow_ops.while_loop(c, b, [y, i])
+        y, i = while_loop.while_loop(c, b, [y, i])
 
         return y
 
@@ -1931,7 +1933,7 @@ class JacobianTest(test.TestCase):
 
     @def_function.function
     def f(x):
-      y = control_flow_ops.cond(x > 0., lambda: x**3., lambda: x**2.)
+      y = tf_cond.cond(x > 0., lambda: x**3., lambda: x**2.)
       return y
 
     with backprop.GradientTape(persistent=True) as tape:
@@ -1944,6 +1946,29 @@ class JacobianTest(test.TestCase):
     self.assertAllClose(6., jacobian)
     jacobian_pfor = tape.jacobian(grad, x, experimental_use_pfor=True)
     self.assertAllClose(6., jacobian_pfor)
+
+  def test_empty_tensor_consistent_jacobian(self):
+    variable = variables.Variable(1.0)
+    inputs = (
+        constant_op.constant(np.random.uniform(size=(0, 4))),
+        constant_op.constant(np.random.uniform(size=(0, 3))),
+    )
+    with backprop.GradientTape(persistent=True) as tape:
+      outputs = variable * math_ops.cast(
+          array_ops.concat(inputs, axis=-1), dtypes.float32
+      )
+
+    jacobians_pfor = tape.jacobian(
+        outputs,
+        variable,
+        experimental_use_pfor=True,
+    )
+    jacobians_loop = tape.jacobian(
+        outputs,
+        variable,
+        experimental_use_pfor=False,
+    )
+    self.assertAllClose(jacobians_pfor, jacobians_loop)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1958,7 +1983,7 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       z = x * x * y
     batch_jacobian = g.batch_jacobian(
         z, x, experimental_use_pfor=experimental_use_pfor)
-    answer = array_ops.stack(
+    answer = array_ops_stack.stack(
         [array_ops.diag(2 * x[0] * y[0]),
          array_ops.diag(2 * x[1] * y[1])])
     return batch_jacobian, answer

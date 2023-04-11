@@ -19,10 +19,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/lite/core/shims/c/c_api.h"
-#include "tensorflow/lite/core/shims/c/c_api_opaque.h"
-#include "tensorflow/lite/core/shims/c/c_api_types.h"
-#include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
 namespace tflite {
@@ -177,17 +178,39 @@ int helpers::CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor) {
 bool SampleStableDelegate::IsNodeSupportedByDelegate(
     const TfLiteRegistrationExternal* registration_external,
     const TfLiteOpaqueNode* node, TfLiteOpaqueContext* context) const {
-  if (kTfLiteBuiltinAdd !=
-          TfLiteRegistrationExternalGetBuiltInCode(registration_external) &&
-      kTfLiteBuiltinSub !=
-          TfLiteRegistrationExternalGetBuiltInCode(registration_external))
+  TfLiteBuiltinOperator builtin_operator =
+      TfLiteRegistrationExternalGetBuiltInCode(registration_external);
+  void* builtin_data = TfLiteOpaqueNodeGetBuiltinData(node);
+  if (builtin_operator == kTfLiteBuiltinAdd) {
+    TfLiteAddParams* params = reinterpret_cast<TfLiteAddParams*>(builtin_data);
+    if (!params || params->activation != kTfLiteActNone) return false;
+  } else if (builtin_operator == kTfLiteBuiltinSub) {
+    TfLiteSubParams* params = reinterpret_cast<TfLiteSubParams*>(builtin_data);
+    if (!params || params->activation != kTfLiteActNone) return false;
+  } else {
     return false;
+  }
 
-  // This delegate only supports float32 types.
-  for (int i = 0; i < TfLiteOpaqueNodeNumberOfInputs(node); ++i) {
-    const TfLiteOpaqueTensor* tensor =
-        TfLiteOpaqueNodeGetInput(context, node, i);
-    if (TfLiteOpaqueTensorType(tensor) != kTfLiteFloat32) return false;
+  // The delegate only accepts two inputs with float32 type.
+  if (TfLiteOpaqueNodeNumberOfInputs(node) != 2) return false;
+  const TfLiteOpaqueTensor* tensor_1 =
+      TfLiteOpaqueNodeGetInput(context, node, 0);
+  const TfLiteOpaqueTensor* tensor_2 =
+      TfLiteOpaqueNodeGetInput(context, node, 1);
+  if (!tensor_1 || TfLiteOpaqueTensorType(tensor_1) != kTfLiteFloat32)
+    return false;
+  if (!tensor_2 || TfLiteOpaqueTensorType(tensor_2) != kTfLiteFloat32)
+    return false;
+  // The delegate doesn't support broadcasting; it requires both inputs to have
+  // the same shape.
+  if (TfLiteOpaqueTensorNumDims(tensor_1) !=
+      TfLiteOpaqueTensorNumDims(tensor_2))
+    return false;
+  for (int i = 0; i < TfLiteOpaqueTensorNumDims(tensor_1); ++i) {
+    if (TfLiteOpaqueTensorDim(tensor_1, i) !=
+        TfLiteOpaqueTensorDim(tensor_2, i)) {
+      return false;
+    }
   }
 
   return true;

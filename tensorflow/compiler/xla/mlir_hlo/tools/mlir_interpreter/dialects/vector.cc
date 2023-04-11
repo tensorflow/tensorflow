@@ -712,11 +712,6 @@ InterpreterValue transferRead(InterpreterState& state,
                               ArrayRef<int64_t> offsets,
                               const InterpreterValue& padding,
                               std::optional<TensorOrMemref<bool>> mask) {
-  if (transfer.getVectorType().getElementType().isInteger(1)) {
-    state.addFailure("cannot transfer directly to i1 vector");
-    return {};
-  }
-
   auto* maskChannel = state.getTopScope()->getSideChannel<MaskSideChannel>(
       /*optional=*/true);
   if (maskChannel) {
@@ -767,11 +762,6 @@ llvm::SmallVector<InterpreterValue> transferWrite(
     InterpreterState& state, vector::TransferWriteOp transfer,
     InterpreterValue src, InterpreterValue dst, ArrayRef<int64_t> offsets,
     std::optional<TensorOrMemref<bool>> mask) {
-  if (transfer.getVectorType().getElementType().isInteger(1)) {
-    state.addFailure("cannot transfer directly from i1 vector");
-    return {};
-  }
-
   if (auto* maskChannel = state.getTopScope()->getSideChannel<MaskSideChannel>(
           /*optional=*/true)) {
     if (mask) {

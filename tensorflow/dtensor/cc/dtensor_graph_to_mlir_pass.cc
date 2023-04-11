@@ -73,6 +73,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 DTensorMlirPassRunner::ImportGraphToMlir(
     const DeviceSet& device_set, bool is_func,
+    const dtensor::Mesh& default_mesh,
     const FunctionLibraryDefinition& flib_def, const Graph& graph,
     Fprint128 cache_key) {
   GraphDebugInfo debug_info;
@@ -96,6 +97,9 @@ DTensorMlirPassRunner::ImportGraphToMlir(
   // Adds DTensor attributes to ModuleOp.
   mlir::ModuleOp module = module_ref.value().get();
   AddDevicesToOp(module, &device_set);
+
+  module->setAttr(dtensor::kCustomDefaultMeshAttr,
+                  mlir::StringAttr::get(&context_, default_mesh.ToString()));
 
   // Tag the module for logging or not depending on flag.
   if (!is_func && !dtensor::LogOpByOp())

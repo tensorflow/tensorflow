@@ -24,7 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
@@ -42,7 +42,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     del config
     global_step = training_util.get_or_create_global_step()
     update_global_step_op = global_step.assign_add(1)
-    latest_feature = variables.VariableV1(
+    latest_feature = variable_v1.VariableV1(
         0, name='latest_feature', dtype=dtypes.int64)
     store_latest_feature_op = latest_feature.assign(features)
     ops.add_to_collection('my_vars', global_step)

@@ -28,7 +28,7 @@ namespace {
 const char kDeviceAttr[] = "device";
 const char kDeviceGpu[] = "GPU";
 
-llvm::Optional<std::string> GetOpDevice(mlir::Operation *op) {
+std::optional<std::string> GetOpDevice(mlir::Operation *op) {
   mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
   if (!device || device.getValue().empty()) {
     return std::nullopt;
@@ -46,7 +46,7 @@ llvm::Optional<std::string> GetOpDevice(mlir::Operation *op) {
 }  // namespace
 
 bool IsOnGpuDevice(mlir::Operation *op) {
-  llvm::Optional<std::string> device = GetOpDevice(op);
+  std::optional<std::string> device = GetOpDevice(op);
   if (!device) return false;
   return *device == kDeviceGpu;
 }

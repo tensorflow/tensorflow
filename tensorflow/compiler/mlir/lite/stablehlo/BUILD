@@ -132,7 +132,7 @@ cc_library(
         ":stablehlo_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
@@ -199,7 +199,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
-        "//tensorflow/compiler/mlir/xla:tf_xla_passes",
+        "//tensorflow/compiler/mlir/tf2xla:tf_xla_passes",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
@@ -318,6 +318,33 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_tf_xla_call_module_to_stablehlo_pass",
+    srcs = [
+        "transforms/legalize_tf_xla_call_module_to_stablehlo_pass.cc",
+    ],
+    hdrs = [
+        "transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:vhlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "optimize",
     srcs = [
         "transforms/optimize.cc",
@@ -362,7 +389,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/mlir/xla:legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla:legalize_tf",
         "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
@@ -387,6 +414,7 @@ tf_cc_binary(
     deps = [
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":stablehlo_tfl",
         ":tf_stablehlo",

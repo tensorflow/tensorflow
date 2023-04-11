@@ -58,7 +58,7 @@ class FuncOpConverter : public OpConversionPattern<func::FuncOp> {
   }
 };
 
-llvm::Optional<Value> FindOpKernelContext(Operation *op) {
+std::optional<Value> FindOpKernelContext(Operation *op) {
   auto func = op->getParentOfType<func::FuncOp>();
   if (func.getNumArguments() == 0) {
     return std::nullopt;
@@ -78,7 +78,7 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
   LogicalResult matchAndRewrite(
       memref::AllocOp alloc, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    llvm::Optional<Value> ctx = FindOpKernelContext(alloc);
+    std::optional<Value> ctx = FindOpKernelContext(alloc);
     if (!ctx) return failure();
 
     // Symbolic operands that bind to the symbols of the memref's layout map are
@@ -110,7 +110,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
   LogicalResult matchAndRewrite(
       memref::DeallocOp dealloc, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    llvm::Optional<Value> ctx = FindOpKernelContext(dealloc);
+    std::optional<Value> ctx = FindOpKernelContext(dealloc);
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
@@ -133,7 +133,7 @@ struct AssertOpConverter : public OpConversionPattern<cf::AssertOp> {
   LogicalResult matchAndRewrite(
       cf::AssertOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    llvm::Optional<Value> ctx = FindOpKernelContext(op);
+    std::optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
@@ -149,7 +149,7 @@ struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
   LogicalResult matchAndRewrite(
       JITExecuteOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
-    llvm::Optional<Value> ctx = FindOpKernelContext(op);
+    std::optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<JITExecuteOp>(
         op, op.getResult().getType(), *ctx, op.getCallable(), op.getInputs());
@@ -166,7 +166,7 @@ struct JITCompileFromStrOpConverter
   LogicalResult matchAndRewrite(
       JITCompileFromStrOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
-    llvm::Optional<Value> ctx = FindOpKernelContext(op);
+    std::optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<JITCompileFromStrOp>(
         op, rewriter.getType<JITCallableType>(), *ctx, op->getAttrs());

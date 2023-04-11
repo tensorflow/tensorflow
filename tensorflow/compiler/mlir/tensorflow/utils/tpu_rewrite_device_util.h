@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -35,7 +35,6 @@ limitations under the License.
 namespace tensorflow {
 using tsl::StatusOr;
 
-inline constexpr absl::string_view kTPUReplicatedHost = "TPU_REPLICATED_HOST";
 inline constexpr absl::string_view kNumCoresPerReplicaAttr =
     "num_cores_per_replica";
 inline constexpr absl::string_view kTopologyAttr = "topology";
@@ -75,7 +74,7 @@ struct TPUDeviceAssignment {
 
   std::string compilation_device;
   TPUDevicesAndHosts tpu_devices;
-  llvm::Optional<xla::DeviceAssignmentProto> xla_device_assignment;
+  std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
 };
 
 // Extracts device coordinates from a device assignment attribute on an op.
@@ -238,17 +237,25 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
     int num_cores_per_replica, llvm::StringRef topology_attr,
     llvm::ArrayRef<int64_t> device_assignment_attr);
 
-// Virtual device is used for evice assignment for executing ops on a specified
-// logical core.
+// Virtual device name of the passed logical core. The logical core is the index
+// of a core within a replica.
 std::string GetDeviceAliasForLogicalCore(int core_index);
+
+// Virtual device name of the host that is associated with the passed logical
+// core. The logical core is the index of a core within a replica.
+std::string GetDeviceAliasForHostOfLogicalCore(int core_index);
 
 // Returns true if cluster contains model parallelism based on
 // `num_cores_per_replica_attribute`. Otherwise returns false.
 bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 
-// Parses TPU compilation and execution devices from a TPU cluster and returns
-// the host device for the head and tail computations. If the TPU computation is
-// replicated, kTPUReplicatedHost is returned instead.
+// Returns true if the devices list contain any TPU devices
+bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices);
+
+// Parses XLA compilation and execution devices from a tf_device.cluster and
+// returns the host device for the head and tail computations. For TPU device,
+// if the computation is replicated, GetDeviceAliasForHostOfLogicalCore(0) is
+// returned instead.
 mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device);
@@ -258,6 +265,11 @@ bool IsTPUDevice(llvm::StringRef device);
 
 // Checks if a device string is a TPU replicated core device.
 bool IsTPUReplicatedCore(llvm::StringRef device);
+
+// Checks if `type` is allowed for XLA. String and resources are not XLA types.
+// There are other TF types that are not XLA types which will be removed by
+// successive passes in TF/XLA bridge phase 2.
+bool TypeValidForXLA(const mlir::Type& type);
 
 }  // namespace tensorflow
 

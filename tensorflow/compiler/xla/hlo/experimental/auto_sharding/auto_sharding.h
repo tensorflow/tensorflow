@@ -251,6 +251,12 @@ struct AutoShardingOption {
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
+    if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 2) {
+      return tsl::errors::OutOfRange(
+          absl::StrCat("the auto-sharding pass currently does not support ",
+                       "more than two shardable dims: device_mesh_shape=",
+                       absl::StrJoin(device_mesh_shape, ",")));
+    }
     if (device_mesh_alpha.empty()) {
       // Generates simple device_mesh_alpha based on the size of
       // device_mesh_shape.
@@ -334,8 +340,16 @@ class AutoSharding : public HloModulePass {
   //     tensorflow/compiler/xla/pjrt/utils.cc
   Status CanonicalizeLayouts(HloModule* module);
 
+  // Returns the optimal objective value that the ILP solver computes
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
  private:
   AutoShardingOption option_;
+
+  // The optimal objective value that the ILP solver computes
+  double solver_optimal_objective_value_;
 };
 
 namespace spmd {
@@ -421,7 +435,6 @@ bool HasReduceScatterOpportunity(
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
 }  // namespace spmd
 }  // namespace xla
 

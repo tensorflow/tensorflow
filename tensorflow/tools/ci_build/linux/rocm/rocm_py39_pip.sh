@@ -55,7 +55,7 @@ else
 fi
 
 # # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py39,-no_rocm'${TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC}
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_rocm'${TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC}
 export TF_BUILD_FLAGS="--config=release_base "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
  --test_env=TF2_BEHAVIOR=1 \

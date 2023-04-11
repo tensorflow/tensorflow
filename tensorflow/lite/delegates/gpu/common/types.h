@@ -39,6 +39,8 @@ class alignas(2) half {
 
   explicit half(float other) { bits = fp16_ieee_from_fp32_value(other); }
 
+  half& operator=(const half& other) = default;
+
   void operator=(float f) { *this = half(f); }
 
   operator float() const { return fp16_ieee_to_fp32_value(bits); }

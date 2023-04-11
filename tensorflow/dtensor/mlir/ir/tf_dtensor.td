@@ -72,7 +72,7 @@ def Tf_DTensorRecv : TF_Op<"DTensorRecv", []> {
  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_DTensorLayout: TF_Op<"DTensorLayout", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
+def TF_DTensorLayout: TF_Op<"DTensorLayout", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure, TF_AllTypesMatch<["input", "output"]>, TF_MustExecute, TF_NoConstantFold]> {
   let summary = [{
     Represents computational layout of an input tensor.
     }];
@@ -647,6 +647,30 @@ def TF_DTensorAllGatherOp : TF_Op<"DTensorAllGather", [Pure]> {
   let description = [{
 This op takes both an input and an output layout. The output layout must be less
 sharded than the input layout.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$input,
+    DTensor_LayoutAttr:$input_layout,
+    DTensor_LayoutAttr:$output_layout
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
+def TF_DTensorAllToAllOp : TF_Op<"DTensorAllToAll", [Pure]> {
+  let summary = "Mutually exchanges the input to match the given layout.";
+
+  let description = [{
+This op takes both an input and an output layout. There can be one mesh
+dimension which is becoming unsharded in one axis while becoming sharded 
+in another axis."
   }];
 
   let arguments = (ins

@@ -334,7 +334,7 @@ void DoInfoCommand(const HloModule& module,
     std::cout << "HloInstruction " << instr->name() << std::endl;
     std::cout << "  Parent computation: " << instr->parent()->name()
               << std::endl;
-    std::cout << "  Opcode: " << HloOpcodeString(instr->opcode()) << std::endl;
+    std::cout << "  Opcode: " << instr->opcode() << std::endl;
     std::cout << "  Shape: " << ShapeUtil::HumanStringWithLayout(instr->shape())
               << std::endl;
     std::cout << "  Metadata:" << std::endl;
@@ -400,10 +400,15 @@ void DoExtractCommand(const HloModule& module,
   }
 
   auto extracted_module = ExtractModule(instr, height);
-  std::cout << extracted_module->ToString(
-                   HloPrintOptions::ShortParsable().set_print_backend_config(
-                       hlo_render_options.show_backend_config))
-            << std::endl;
+  std::string module_str = extracted_module->ToString(
+      HloPrintOptions::ShortParsable().set_print_backend_config(
+          hlo_render_options.show_backend_config));
+
+  std::string outfile_name =
+      tsl::io::GetTempFilename(absl::StrCat(node_name, "-extracted.hlo"));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), outfile_name, module_str));
+  std::cout << outfile_name << std::endl;
 }
 
 // Checks if there is a use-def path from `from` to `to`.

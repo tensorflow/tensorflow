@@ -5,7 +5,6 @@ cc_library(
     srcs = [
         "func.cc",
         "general.cc",
-        "gml_st.cc",
         "scf.cc",
     ],
     visibility = ["//visibility:public"],
@@ -15,6 +14,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",

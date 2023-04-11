@@ -33,6 +33,7 @@ package(
         # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
         "//tensorflow/tsl/lib:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
+        # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -55,6 +56,7 @@ exports_files(
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
         "kernel_def_util.h",
+        "local_rendezvous.h",
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
@@ -481,9 +483,9 @@ cc_library(
     deps = [
         ":numeric_types",
         ":type_traits",
+        "//tensorflow/tsl/framework:allocator",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/tsl/framework:allocator",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
@@ -545,6 +547,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1030,11 +1033,10 @@ cc_library(
         "full_type_util.h",
     ],
     visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
         # Necessary for calling REGISTER_OP with SetTypeConstructor
         # http://yaqs/4779722181477138432
         "//intelligence/brella/analytics/sql/tensorflow:__pkg__",
+        "//tensorflow:__subpackages__",
     ],
     deps = [
         ":attr_value_proto_cc",
@@ -1061,6 +1063,7 @@ cc_library(
     deps = [
         ":full_type_proto_cc",
         ":full_type_util",
+        ":loose_headers",
         ":op_def_builder",
         ":op_def_util",
         "//tensorflow/core:core_stringpiece",
@@ -1345,6 +1348,7 @@ tf_cc_tests(
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",

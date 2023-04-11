@@ -55,6 +55,10 @@ TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 TF_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
 // Name of XPlane that contains events from python tracer.
 TF_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
+// Name of XPlane that contains kTrace thread-switch events
+TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
+// Name of XPlane that contains kTrace system calls.
+TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
@@ -316,6 +320,8 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
+bool IsTensorCorePlaneName(absl::string_view plane_name);
+
 absl::optional<int64_t> FindStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.
@@ -393,6 +399,22 @@ class XFlow {
 
   static_assert(sizeof(encoded_) == sizeof(uint64_t), "Must be 64 bits.");
 };
+
+// String constants for XProf TraceMes for DCN Messages.
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnReceive;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSend;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSendFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleTopologyDiscovery;
+TF_CONST_INIT extern const absl::string_view kMegaScaleBarrier;
+TF_CONST_INIT extern const absl::string_view kMegaScaleHostCommand;
+TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferFinished;
+TF_CONST_INIT extern const char kXProfMetadataKey[];
+TF_CONST_INIT extern const char kXProfMetadataFlow[];
+TF_CONST_INIT extern const char kXProfMetadataTransfers[];
+TF_CONST_INIT extern const char kXProfMetadataBufferSize[];
 
 }  // namespace profiler
 }  // namespace tsl

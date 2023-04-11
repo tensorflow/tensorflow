@@ -119,37 +119,6 @@ class TypesTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIs(dtypes.complex64.real_dtype, dtypes.float32)
     self.assertIs(dtypes.complex128.real_dtype, dtypes.float64)
 
-  @parameterized.parameters([
-      dtypes.int32_w,
-      dtypes.int64_w,
-      dtypes.float32_w,
-      dtypes.float64_w,
-      dtypes.complex128_w,
-  ])
-  def testWeakTypeAsDtype(self, dt):
-    self.assertIs(dt, dtypes.as_dtype(dt))
-
-  @parameterized.parameters([
-      (dtypes.int32_w, dtypes.int32),
-      (dtypes.int64_w, dtypes.int64),
-      (dtypes.float32_w, dtypes.float32),
-      (dtypes.float64_w, dtypes.float64),
-      (dtypes.complex128_w, dtypes.complex128),
-  ])
-  def testWeakTypeNotEqualsToStrongType(self, dt_w, dt):
-    self.assertNotEqual(dt_w, dt)
-    self.assertNotEqual(dt, dt_w)
-
-  @parameterized.parameters([
-      dtypes.int32_w,
-      dtypes.int64_w,
-      dtypes.float32_w,
-      dtypes.float64_w,
-      dtypes.complex128_w,
-  ])
-  def testWeakTypeRepr(self, dt):
-    self.assertIn("weak_type=True", repr(dt))
-
   def testStringConversion(self):
     self.assertIs(dtypes.float32, dtypes.as_dtype("float32"))
     self.assertIs(dtypes.float64, dtypes.as_dtype("float64"))

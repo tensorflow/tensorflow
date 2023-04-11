@@ -18,7 +18,7 @@ import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -145,11 +145,14 @@ def piecewise_constant(x, boundaries, values, name=None):
   the learning rate value across different invocations of optimizer functions.
   @end_compatibility
   """
-  boundaries = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
-                                  nest.flatten(boundaries))
-  values = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
-                              nest.flatten(values))
-  x_recomp = ops.convert_to_tensor_v2_with_dispatch(x)
+  boundaries = nest.map_structure(
+      tensor_conversion.convert_to_tensor_v2_with_dispatch,
+      nest.flatten(boundaries),
+  )
+  values = nest.map_structure(
+      tensor_conversion.convert_to_tensor_v2_with_dispatch, nest.flatten(values)
+  )
+  x_recomp = tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
   # Avoid explicit conversion to x's dtype. This could result in faulty
   # comparisons, for example if floats are converted to integers.
   for i, b in enumerate(boundaries):

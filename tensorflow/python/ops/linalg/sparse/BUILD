@@ -1,3 +1,5 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
 # Description: Sparse CSR support for TensorFlow.
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
@@ -17,23 +19,77 @@ tf_gen_op_wrapper_py(
 
 py_library(
     name = "sparse",
-    srcs = [
-        "__init__.py",
-        "conjugate_gradient.py",
-        "sparse.py",
-        "sparse_csr_matrix_grad.py",
-        "sparse_csr_matrix_ops.py",
-    ],
+    deprecation = "This target has been split. Depend on the sub-targets instead.",
     srcs_version = "PY3",
+    deps = [
+        ":__init__",
+        ":conjugate_gradient",
+        ":sparse_csr_matrix_grad",
+        ":sparse_csr_matrix_ops",
+        ":sparse_py",
+        "//tensorflow/python/framework:composite_tensor",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "sparse_py",
+    srcs = ["sparse.py"],
+    deps = [
+        ":conjugate_gradient",
+        ":sparse_csr_matrix_grad",
+        ":sparse_csr_matrix_ops",
+    ],
+)
+
+py_strict_library(
+    name = "sparse_csr_matrix_grad",
+    srcs = ["sparse_csr_matrix_grad.py"],
+    deps = [
+        ":sparse_csr_matrix_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+    ],
+)
+
+py_strict_library(
+    name = "__init__",
+    srcs = ["__init__.py"],
+)
+
+py_strict_library(
+    name = "conjugate_gradient",
+    srcs = ["conjugate_gradient.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:while_loop",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "sparse_csr_matrix_ops",
+    srcs = ["sparse_csr_matrix_ops.py"],
     deps = [
         ":gen_sparse_csr_matrix_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/ops/linalg:linalg_impl",
-        "//third_party/py/numpy",
     ],
 )

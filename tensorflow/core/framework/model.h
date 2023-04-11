@@ -944,8 +944,18 @@ class Model {
                           CancellationManager* cancellation_manager);
 
   // This is the first part of the stage-based optimization that optimizes
-  // tunable parallelism parameters.
-  void OptimizeStageBasedParallelism(
+  // tunable parallelism parameters for async interleave many nodes only. We
+  // separately optimize async interleave many nodes more aggressively because
+  // the variance of IO is difficult to predict.
+  void OptimizeStageBasedAsyncInterleaveManyNodes(
+      std::shared_ptr<Node> snapshot,
+      const OptimizationParams& optimization_params,
+      CancellationManager* cancellation_manager);
+
+  // This is the second part of the stage-based optimization that optimizes
+  // tunable parallelism parameters for all nodes other than async interleave
+  // many nodes.
+  void OptimizeStageBasedNonAsyncInterleaveManyNodes(
       std::shared_ptr<Node> snapshot, double target_time_nsec,
       const OptimizationParams& optimization_params,
       CancellationManager* cancellation_manager);
@@ -1056,13 +1066,14 @@ class ModelTiming {
   // to be a vector of model nodes in reversed BFS manner.
   void ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes);
 
-  // Computes the total time of a node that is not an async interleave node.
+  // Computes the first input total time of an interleave node.
+  double ComputeInterleaveManyFirstInputTotalTime(const Node& node);
+
+  // Computes the total time of a node of any type other than async interleave.
   void ComputeNonAsyncInterleaveManyTotalTime(const Node& node);
 
   // Computes the total time of an async interleave node.
   void ComputeAsyncInterleaveManyTotalTime(const Node& node);
-  // Computes the first input total time of an async interleave node.
-  double ComputeAsyncInterleaveManyFirstInputTotalTime(const Node& node);
   // Computes the interleaved inputs' total time of an async interleave node.
   double ComputeAsyncInterleaveManyInterleavedInputsTotalTime(const Node& node);
 

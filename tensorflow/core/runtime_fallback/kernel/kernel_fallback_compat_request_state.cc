@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -141,6 +145,43 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
               new RefCountedIntraProcessRendezvous(device_manager)),
           runner_table, resource_array, user_intra_op_threadpool,
           model_metadata, pflr) {}
+
+static std::function<void(std::function<void()>)>* GetDefaultRunner() {
+  static auto* const default_runner =
+      new std::function<void(std::function<void()>)>(
+          [](const std::function<void()>& f) { f(); });
+  return default_runner;
+}
+
+Status SetUpKernelFallbackCompatRequestContext(
+    tfrt::RequestContextBuilder* builder,
+    const tensorflow::DeviceMgr* device_manager,
+    const tensorflow::ProcessFunctionLibraryRuntime* pflr,
+    tfrt_stub::OpKernelRunnerTable* runner_table,
+    FallbackResourceArray* resource_array,
+    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
+    const absl::optional<SessionMetadata>& model_metadata,
+    std::function<void(std::function<void()>)>* runner,
+    tfrt_stub::CostRecorder* cost_recorder,
+    tfrt::ResourceContext* client_graph_resource_context) {
+  DCHECK(builder);
+  DCHECK(device_manager);
+  DCHECK(pflr);
+  DCHECK(runner_table);
+  DCHECK(resource_array);
+
+  auto& fallback_request_state =
+      builder->context_data().emplace<KernelFallbackCompatRequestState>(
+          runner ? runner : GetDefaultRunner(), device_manager, builder->id(),
+          runner_table, resource_array, user_intra_op_threadpool,
+          model_metadata, pflr);
+
+  fallback_request_state.set_cost_recorder(cost_recorder);
+  fallback_request_state.set_client_graph_resource_context(
+      client_graph_resource_context);
+
+  return OkStatus();
+}
 
 }  // namespace tfd
 }  // namespace tensorflow

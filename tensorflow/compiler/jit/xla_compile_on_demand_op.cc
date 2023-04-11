@@ -17,14 +17,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 
+#include <map>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
-#include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
-#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -36,13 +37,45 @@ namespace tensorflow {
 namespace {
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+
+// Clears and sets `args` with the XlaCompiler::Arguments built by reading
+// constants, inputs and resource variables from `ctx`. Stores the resource
+// variable snapshots in `variable_args`.
+Status BuildXlaCompilerArguments(OpKernelContext* ctx,
+                                 ResourceVarsSnapshot* variable_args,
+                                 std::vector<XlaCompiler::Argument>* args) {
+  TF_ASSIGN_OR_RETURN(std::vector<int> constant_input_indices,
+                      GetConstantInputIndicesFromContext(ctx));
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
+
+  std::vector<int> variables_indices =
+      GetResourceVariableIndicesFromContext(ctx);
+  args->clear();
+  {
+    std::vector<VariableInfo> variable_infos;
+    TF_RETURN_IF_ERROR(
+        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                   inputs, variables_indices, &variable_infos));
+
+    TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
+    TF_RETURN_IF_ERROR(SnapshotResourceVariables(
+        ctx, variables_indices, variable_infos, variable_args));
+
+    TF_ASSIGN_OR_RETURN(*args,
+                        XlaComputationLaunchContext::BuildXlaCompilerArguments(
+                            constant_input_indices, inputs, variable_infos,
+                            static_cast<Device*>(ctx->device())));
+  }
+
+  return OkStatus();
+}
 }  // namespace
 
-Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
-                                 XlaDeviceCompiler* xla_device_compiler,
+Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
                                  const XlaCompiler::CompilationResult* result,
+                                 const XlaDeviceCompiler* xla_device_compiler,
                                  xla::LocalExecutable* executable,
-                                 const ResourceVarsSnapshot& variable_args) {
+                                 OpKernelContext* ctx) {
   xla::LocalClient* client =
       static_cast<xla::LocalClient*>(xla_device_compiler->client());
 
@@ -103,14 +136,11 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 }
 
 Status XlaCompileOnDemandOp::Compile(
-    OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
+    const std::vector<XlaCompiler::Argument>& args, OpKernelContext* ctx,
     XlaDeviceCompiler** xla_device_compiler,
-    DeviceCompilationProfiler** profiler, ResourceVarsSnapshot* variable_args,
+    DeviceCompilationProfiler** profiler,
+    const XlaCompiler::CompilationResult** result,
     xla::LocalExecutable** executable) {
-  TF_ASSIGN_OR_RETURN(std::vector<int> constant_input_indices,
-                      GetConstantInputIndicesFromContext(ctx));
-  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
-
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
   ResourceMgr* rm = ctx->resource_manager();
@@ -142,40 +172,27 @@ Status XlaCompileOnDemandOp::Compile(
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
 
-  std::vector<int> variables_indices =
-      GetResourceVariableIndicesFromContext(ctx);
-  StatusOr<std::vector<XlaCompiler::Argument>> args;
-  {
-    std::vector<VariableInfo> variable_infos;
-    TF_RETURN_IF_ERROR(
-        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
-                                   inputs, variables_indices, &variable_infos));
-
-    TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
-    TF_RETURN_IF_ERROR(SnapshotResourceVariables(
-        ctx, variables_indices, variable_infos, variable_args));
-
-    args = XlaComputationLaunchContext::BuildXlaCompilerArguments(
-        constant_input_indices, inputs, variable_infos,
-        static_cast<Device*>(ctx->device()));
-    TF_RETURN_IF_ERROR(args.status());
-  }
-
   return (*xla_device_compiler)
-      ->CompileSingleOpIfNeeded(options, *args, compile_options, ctx, *profiler,
+      ->CompileSingleOpIfNeeded(options, args, compile_options, ctx, *profiler,
                                 result, executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   const XlaCompiler::CompilationResult* result;
-  xla::LocalExecutable* executable;
-  ResourceVarsSnapshot variable_args;
-  XlaDeviceCompiler* xla_device_compiler;
   DeviceCompilationProfiler* profiler;
+
+  XlaDeviceCompiler* xla_device_compiler;
+  xla::LocalExecutable* executable;
+
   OP_REQUIRES(ctx, ctx->function_library(),
               errors::Internal("Function library missing"));
-  OP_REQUIRES_OK(ctx, Compile(ctx, &result, &xla_device_compiler, &profiler,
-                              &variable_args, &executable));
+
+  ResourceVarsSnapshot variable_args;
+  std::vector<XlaCompiler::Argument> args;
+  OP_REQUIRES_OK(ctx, BuildXlaCompilerArguments(ctx, &variable_args, &args));
+
+  OP_REQUIRES_OK(ctx, Compile(args, ctx, &xla_device_compiler, &profiler,
+                              &result, &executable));
 
   // Hold the reference to the XLA device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
@@ -183,7 +200,7 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
   core::ScopedUnref profiler_ref(profiler);
   OP_REQUIRES_OK(
-      ctx, Run(ctx, xla_device_compiler, result, executable, variable_args));
+      ctx, Run(variable_args, result, xla_device_compiler, executable, ctx));
 }
 
 }  // namespace tensorflow

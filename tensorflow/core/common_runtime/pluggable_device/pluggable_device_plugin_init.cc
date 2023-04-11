@@ -99,7 +99,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   DeviceFactory::Register(device_type,
                           std::make_unique<NextPluggableDeviceFactory>(
                               device_type, compilation_device_name),
-                          /*priority=*/200, /*is_pluggable_device=*/false);
+                          /*priority=*/200, /*is_pluggable_device=*/true);
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();

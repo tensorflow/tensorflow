@@ -39,7 +39,7 @@ namespace tac {
 // attribute on the CallOp means what it actually looks for.
 constexpr char kInterfaceNameAttr[] = "tac.interface_name";
 
-inline llvm::Optional<std::string> GetInterFaceName(Operation* op) {
+inline std::optional<std::string> GetInterFaceName(Operation* op) {
   auto name_attr = op->getAttrOfType<StringAttr>(kInterfaceNameAttr);
   if (!name_attr) return std::nullopt;
   return name_attr.getValue().str();

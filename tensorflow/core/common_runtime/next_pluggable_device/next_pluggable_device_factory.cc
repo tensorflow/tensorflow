@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -68,6 +69,11 @@ Status NextPluggableDeviceFactory::CreateDevices(
         std::make_unique<NextPluggableDevice>(session_options, options);
     devices->push_back(std::move(device));
   }
+
+  // PjRtCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
+  // runs it.
+  RegisterPjRtCompileOnDemand(device_type_.c_str(),
+                              compilation_device_name_.c_str());
 
   LOG(INFO) << "Created " << device_count
             << " TensorFlow NextPluggableDevices. "

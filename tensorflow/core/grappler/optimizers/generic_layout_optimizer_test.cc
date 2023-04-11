@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -193,7 +194,11 @@ class GenericLayoutOptimizerTest : public GrapplerTest {
     TF_ASSERT_OK(virtual_cluster_->Provision());
   }
 
-  void TearDown() override { TF_ASSERT_OK(virtual_cluster_->Shutdown()); }
+  void TearDown() override {
+    TF_ASSERT_OK(virtual_cluster_->Shutdown());
+    // Turn TensorFloat-32 back on since some tests disable it
+    tsl::enable_tensor_float_32_execution(true);
+  }
 
   std::unique_ptr<Cluster> virtual_cluster_;
 };
@@ -297,6 +302,7 @@ TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
 #if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
 #endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  tsl::enable_tensor_float_32_execution(false);  // NOLINT
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv =
       SimpleConv2D(&s, 4, 2, "VALID", "/job:w/replica:0/task:0/device:GPU:0");
@@ -417,6 +423,7 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
+  tsl::enable_tensor_float_32_execution(false);
   Scope scope =
       Scope::NewRootScope().WithDevice(absl::StrCat("/device:", DEVICE, ":0"));
   auto conv = SimpleConv2D(&scope, 4, 2, "VALID",

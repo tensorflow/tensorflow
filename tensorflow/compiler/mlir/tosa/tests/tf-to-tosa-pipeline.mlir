@@ -473,6 +473,22 @@ func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_sign
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<8x33xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1xf32>}
+// CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<1x1xf32>}
+// CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1xf32>}
+// CHECK: %[[VAL_4:.*]] = "tosa.greater"(%[[VAL_0]], %[[VAL_1]])
+// CHECK: %[[VAL_5:.*]] = "tosa.greater"(%[[VAL_1]], %[[VAL_0]])
+// CHECK: %[[VAL_6:.*]] = "tosa.select"(%[[VAL_5]], %[[VAL_2]], %[[VAL_1]])
+// CHECK: %[[VAL_7:.*]] = "tosa.select"(%[[VAL_4]], %[[VAL_3]], %[[VAL_6]])
+func.func @test_sign(%arg0: tensor<8x33xf32>) -> tensor<8x33xf32> {
+  %0 = "tf.Sign"(%arg0) : (tensor<8x33xf32>) -> tensor<8x33xf32>
+    func.return %0 : tensor<8x33xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_sigmoid
 // CHECK: %[[VAR0:.*]] = "tosa.sigmoid"(%arg0)
 func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
@@ -730,10 +746,12 @@ func.func @test_elu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_softmax
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.exp"(%arg0)
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reduce_sum"(%[[VAR0]]) {axis = 2 : i64}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.reciprocal"(%[[VAR1]])
-// CHECK: %[[VAR3:.*]] = "tosa.mul"(%[[VAR0]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_max"(%arg0)
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.sub"(%arg0, %[[VAR0]])
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.exp"(%[[VAR1]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.reduce_sum"(%[[VAR2]]) {axis = 2 : i64}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reciprocal"(%[[VAR3]])
+// CHECK: %[[VAR5:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR4]]) {shift = 0 : i32}
 func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Softmax"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %2 : tensor<13x21x3xf32>

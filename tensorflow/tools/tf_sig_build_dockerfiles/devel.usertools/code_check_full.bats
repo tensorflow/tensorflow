@@ -151,8 +151,6 @@ _test_lib$
 //tensorflow:no_tensorflow_py_deps
 //tensorflow/tools/pip_package:win_pip_package_marker
 //tensorflow/core:image_testdata
-//tensorflow/core/lib/lmdb:lmdb_testdata
-//tensorflow/core/lib/lmdb/testdata:lmdb_testdata
 //tensorflow/core/kernels/cloud:bigquery_reader_ops
 //tensorflow/python:extra_py_tests_deps
 //tensorflow/python:mixed_precision

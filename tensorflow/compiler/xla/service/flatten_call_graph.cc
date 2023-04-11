@@ -66,12 +66,11 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       computation->RemoveAsyncInstruction(instruction);
       instruction->ReplaceCalledComputations(
           [&](HloComputation*) { return new_computation; });
-      new_computation->AddAsyncInstruction(instruction);
+      new_computation->AddAsyncInstruction(*instruction);
       break;
     }
     default:
-      LOG(FATAL) << "unexpected opcode: "
-                 << HloOpcodeString(instruction->opcode());
+      LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
   }
 }
 

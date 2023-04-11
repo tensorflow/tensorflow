@@ -157,7 +157,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
                      compile_status.error_message());
 
     tpu::CompilationResultProto proto;
-    proto.set_status_code(compile_status.code());
+    proto.set_status_code(static_cast<error::Code>(compile_status.code()));
     proto.set_status_error_message(TruncateMessage(new_error_message, 128));
     status_payload = proto.SerializeAsString();
 
@@ -180,7 +180,7 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
   Status status = CompileLocallyAndFillHostCacheInternal(
       flib_runtime, session_metadata, mesh_state, dynamic_shapes,
       guaranteed_constants, key, tpu_program_group);
-  OkOrSetErrorCounterPayload(
+  tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
   return status;
 }
@@ -403,7 +403,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
            .has_value()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
-    proto.set_status_code(status.code());
+    proto.set_status_code(static_cast<error::Code>(status.code()));
     if (!status.ok()) {
       proto.set_status_error_message(TruncateMessage(
           absl::StrCat("Compilation failure: ", status.error_message()), 128));
