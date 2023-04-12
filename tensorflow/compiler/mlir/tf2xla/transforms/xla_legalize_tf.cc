@@ -742,6 +742,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
   static const llvm::DenseSet<mlir::TypeID>* ops =
       new llvm::DenseSet<mlir::TypeID>{
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
+    TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AtanOp>(),
     TypeID::get<TF::AvgPool3DOp>(),
     TypeID::get<TF::BiasAddGradOp>(),
