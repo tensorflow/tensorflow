@@ -504,10 +504,21 @@ void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
-                                  float val) {
-  auto const_type =
-      tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
-  auto const_attr = DenseElementsAttr::get(const_type, val);
+                                  float val, int rank) {
+  assert(rank >= 0);
+  mlir::RankedTensorType const_type;
+  mlir::DenseElementsAttr const_attr;
+  auto element_type = rewriter.getF32Type();
+  if (rank == 0) {
+    const_type = tensorflow::GetTypeFromTFTensorShape({}, element_type);
+    const_attr = DenseElementsAttr::get(const_type, val);
+  } else {
+    std::vector<int64_t> shape(rank, 1);
+    const_type = tensorflow::GetTypeFromTFTensorShape(llvm::ArrayRef(shape),
+                                                      element_type);
+    std::vector<float> values(1, val);
+    const_attr = DenseElementsAttr::get(const_type, llvm::ArrayRef(values));
+  }
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -516,10 +527,21 @@ Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
 
 // Create a 32-bit integer constant operator from an int
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
-                                  int32_t val) {
-  auto const_type =
-      tensorflow::GetTypeFromTFTensorShape({}, rewriter.getIntegerType(32));
-  auto const_attr = DenseElementsAttr::get(const_type, val);
+                                  int32_t val, int rank) {
+  assert(rank >= 0);
+  mlir::RankedTensorType const_type;
+  mlir::DenseElementsAttr const_attr;
+  auto element_type = rewriter.getIntegerType(32);
+  if (rank == 0) {
+    const_type = tensorflow::GetTypeFromTFTensorShape({}, element_type);
+    const_attr = DenseElementsAttr::get(const_type, val);
+  } else {
+    std::vector<int64_t> shape(rank, 1);
+    const_type = tensorflow::GetTypeFromTFTensorShape(llvm::ArrayRef(shape),
+                                                      element_type);
+    std::vector<int32_t> values(1, val);
+    const_attr = DenseElementsAttr::get(const_type, llvm::ArrayRef(values));
+  }
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -529,12 +551,23 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 // Create an expected bitwidth integer constant operator based on the type
 // parameter.
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
-                                  int64_t val) {
+                                  int64_t val, int rank) {
+  assert(rank >= 0);
+  assert(type.isa<IntegerType>());
+  mlir::RankedTensorType const_type;
+  mlir::DenseElementsAttr const_attr;
   auto bit_width = type.getIntOrFloatBitWidth();
-  auto const_type = tensorflow::GetTypeFromTFTensorShape(
-      {}, builder.getIntegerType(bit_width));
-  auto const_attr =
-      SplatElementsAttr::get(const_type, builder.getIntegerAttr(type, val));
+  auto element_type = builder.getIntegerType(bit_width);
+  if (rank == 0) {
+    const_type = tensorflow::GetTypeFromTFTensorShape({}, element_type);
+    const_attr = DenseElementsAttr::get(const_type, val);
+  } else {
+    std::vector<int64_t> shape(rank, 1);
+    const_type = tensorflow::GetTypeFromTFTensorShape(llvm::ArrayRef(shape),
+                                                      element_type);
+    std::vector<int32_t> values(1, val);
+    const_attr = DenseElementsAttr::get(const_type, llvm::ArrayRef(values));
+  }
 
   auto const_op =
       builder.create<tosa::ConstOp>(builder.getLoc(), const_type, const_attr);
@@ -836,6 +869,5 @@ void TrimQuantizedIntegerRange(UniformQuantizedType dtype, int64_t& val_min,
   TrimQuantizedIntegerRangeMin(dtype, val_min);
   TrimQuantizedIntegerRangeMax(dtype, val_max);
 }
-
 }  // namespace tosa
 }  // namespace mlir
