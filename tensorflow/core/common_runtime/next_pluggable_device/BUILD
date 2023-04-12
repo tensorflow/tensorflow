@@ -60,7 +60,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 

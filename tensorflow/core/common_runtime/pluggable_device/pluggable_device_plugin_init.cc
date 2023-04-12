@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <memory>
+#include <string>
 
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -78,8 +81,11 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   }
   auto init_fn = reinterpret_cast<TFNPDInitPluginFn>(dso_symbol);
   string device_type, compilation_device_name;
-  TF_RETURN_IF_ERROR(InitNextPluggableDevicePlugin(init_fn, &device_type,
-                                                   &compilation_device_name));
+  TF_ASSIGN_OR_RETURN(auto init_params, InitNextPluggableDevicePlugin(init_fn));
+  device_type = std::string(init_params.device_type);
+  compilation_device_name = std::string(init_params.compilation_device_name);
+  int priority = init_params.priority;
+  bool is_pluggable_device = init_params.is_pluggable_device;
 
   // Loads the PJRT plugin.
   // TODO(b/265301627): use LoadPjrtPlugin when it supports windows.
@@ -99,7 +105,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   DeviceFactory::Register(device_type,
                           std::make_unique<NextPluggableDeviceFactory>(
                               device_type, compilation_device_name),
-                          /*priority=*/200, /*is_pluggable_device=*/true);
+                          priority, is_pluggable_device);
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();
