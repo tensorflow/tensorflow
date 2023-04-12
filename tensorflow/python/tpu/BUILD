@@ -140,7 +140,6 @@ py_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
-        "_tpu_estimator_embedding.py",
         "error_handling.py",
         "tpu_config.py",
         "tpu_context.py",
