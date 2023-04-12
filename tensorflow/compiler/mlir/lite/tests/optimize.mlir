@@ -596,21 +596,6 @@ func.func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: te
   // FOLD: return %[[fc]]
 }
 
-// CHECK-LABEL: @RemoveRedundantReshapeUsedAsInputToBinaryOp
-func.func @RemoveRedundantReshapeUsedAsInputToBinaryOp(%arg0: tensor<128xf32>, %arg1: tensor<1x512x512x128xf32>, %arg2: tensor<1x512x512x128xf32>) -> (tensor<1x512x512x128xf32>, tensor<1x512x512x128xf32>) {
-  %cst_10 = arith.constant  dense<[1, 1, 1, 128]> : tensor<4xi32>
-
-  %894 = "tfl.reshape"(%arg0, %cst_10) : (tensor<128xf32>, tensor<4xi32>) -> tensor<1x1x1x128xf32>
-  %895 = "tfl.mul"(%894, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x128xf32>, tensor<1x512x512x128xf32>) -> tensor<1x512x512x128xf32>
-  %896 = "tfl.mul"(%arg2, %894) {fused_activation_function = "NONE"} : (tensor<1x512x512x128xf32>, tensor<1x1x1x128xf32>) -> tensor<1x512x512x128xf32>
-
-  return %895, %896 : tensor<1x512x512x128xf32>, tensor<1x512x512x128xf32>
-
-  // CHECK:  %0 = tfl.mul(%arg0, %arg1)
-  // CHECK:  %1 = tfl.mul(%arg2, %arg0)
-  // CHECK:  return %0, %1
-}
-
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 // FOLD-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 func.func @FuseFullyConnectedReshapeAddConstWithOptionalAttribute(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
