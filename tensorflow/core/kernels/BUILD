@@ -3945,6 +3945,7 @@ tf_kernel_library(
     srcs = [
         "conv_grad_filter_ops.cc",
         "conv_grad_filter_ops_3d.cc",
+        "conv_grad_filter_ops_launcher.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_input_ops_3d.cc",
         "conv_grad_input_ops_bfloat16.cc",
@@ -6428,6 +6429,7 @@ filegroup(
         "conv_2d.h",
         "conv_grad_filter_ops.cc",
         "conv_grad_filter_ops_3d.cc",
+        "conv_grad_filter_ops_launcher.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_input_ops.h",
         "conv_grad_input_ops_3d.cc",
