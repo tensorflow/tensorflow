@@ -86,8 +86,13 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
   options.device_ordinal = device_base->parsed_name().id;
   options.flib_def = function_library.GetFunctionLibraryDefinition();
   options.graph_def_version = function_library.graph_def_version();
-  if (platform_info.xla_device_metadata()) {
-    auto metadata = platform_info.xla_device_metadata();
+  if (const auto* metadata = platform_info.xla_device_metadata();
+      metadata != nullptr) {
+    options.device_type = metadata->jit_device_type();
+    options.shape_determination_fns =
+        metadata->default_shape_determination_fns();
+  } else if (const auto* metadata = platform_info.pjrt_device_metadata();
+             metadata != nullptr) {
     options.device_type = metadata->jit_device_type();
     options.shape_determination_fns =
         metadata->default_shape_determination_fns();

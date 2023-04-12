@@ -46,20 +46,26 @@ static DeviceAttributes BuildNextPluggableDeviceAttributes(
 
 NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
                                          const Options& options)
-    : LocalDevice(session_options,
-                  BuildNextPluggableDeviceAttributes(options.device_name_prefix,
-                                                     options.device_name,
-                                                     options.device_ordinal)),
-      device_ordinal_(options.device_ordinal),
-      compilation_device_type_(options.compilation_device_name) {
+    : PjRtBaseDevice(
+          session_options,
+          PjRtBaseDevice::Options(options.device_name_prefix,
+                                  options.device_name, options.device_ordinal,
+                                  options.compilation_device_name,
+                                  options.shape_determination_fns)),
+      device_ordinal_(options.device_ordinal) {
   allocator_ = std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
   if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
     // TODO(b/262472386) Support shape_determination_fns through
     // TFNPD_XlaShapeToDeviceShapeRepresentation.
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
-        UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
-    device_context_ = core::RefCountPtr<DeviceContext>(
-        new PjRtDeviceContext(shape_representation_fns));
+    if (!options.shape_determination_fns.empty()) {
+      device_context_ = core::RefCountPtr<DeviceContext>(
+          new PjRtDeviceContext(options.shape_determination_fns[0]));
+    } else {
+      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+          UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+      device_context_ = core::RefCountPtr<DeviceContext>(
+          new PjRtDeviceContext(shape_determination_fns));
+    }
   } else {
     device_context_ = core::RefCountPtr<DeviceContext>(
         new NextPluggableDeviceContext(device_ordinal_));
