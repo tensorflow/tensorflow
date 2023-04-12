@@ -2499,7 +2499,7 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // a4 = sub(a2, a3);
-  // a5 = mul(a4,rhs)
+  // a5 = mul(a4, rhs)
   // return a5;
 
   RankedTensorType output_type =
