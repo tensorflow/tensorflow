@@ -139,6 +139,73 @@ func.func @double_buffer_while(%lb: index, %ub: index, %step: index) {
 
 // -----
 
+func.func @double_buffer_while_before(%lb: index, %ub: index, %step: index) {
+  %init = memref.alloc() : memref<f32>
+  %0 = scf.while (%arg0 = %init) : (memref<f32>) -> (memref<f32>) {
+    %0 = "test.make_condition"() : () -> i1
+    %alloc = memref.alloc() : memref<f32>
+    "test.use"(%arg0, %alloc) : (memref<f32>, memref<f32>) -> ()
+    memref.dealloc %arg0 : memref<f32>
+    scf.condition(%0) %alloc : memref<f32>
+  } do {
+  ^bb0(%arg0: memref<f32>):
+    scf.yield %arg0 : memref<f32>
+  }
+  memref.dealloc %0 : memref<f32>
+  return
+}
+
+// CHECK-LABEL: @double_buffer_while_before
+// CHECK-NEXT:  %[[ALLOC0:.*]] = memref.alloca
+// CHECK-NEXT:  %[[ALLOC1:.*]] = memref.alloca
+// CHECK-NEXT:  scf.while (%[[A:.*]] = %[[ALLOC0]], %[[B:.*]] = %[[ALLOC1]])
+// CHECK-NEXT:    make_condition
+// CHECK-NEXT:    "test.use"(%[[A]], %[[B]])
+// CHECK-NEXT:    condition{{.*}} %[[B]], %[[A]]
+// CHECK-NEXT:  } do {
+// CHECK-NEXT:  ^bb0
+// CHECK-NEXT:    scf.yield %[[A]], %[[B]]
+// CHECK-NEXT:  }
+
+
+// -----
+
+func.func @double_buffer_while_both(%lb: index, %ub: index, %step: index) {
+  %init = memref.alloc() : memref<f32>
+  %0 = scf.while (%arg0 = %init) : (memref<f32>) -> (memref<f32>) {
+    %0 = "test.make_condition"() : () -> i1
+    %alloc = memref.alloc() : memref<f32>
+    "test.use"(%arg0, %alloc) : (memref<f32>, memref<f32>) -> ()
+    memref.dealloc %arg0 : memref<f32>
+    scf.condition(%0) %alloc : memref<f32>
+  } do {
+  ^bb0(%arg0: memref<f32>):
+    %alloc = memref.alloc() : memref<f32>
+    "test.use"(%arg0, %alloc) : (memref<f32>, memref<f32>) -> ()
+    memref.dealloc %arg0 : memref<f32>
+    scf.yield %alloc : memref<f32>
+  }
+  memref.dealloc %0 : memref<f32>
+  return
+}
+
+// CHECK-LABEL: @double_buffer_while_both
+// CHECK-NEXT:  %[[ALLOC0:.*]] = memref.alloca
+// CHECK-NEXT:  %[[ALLOC1:.*]] = memref.alloca
+// TODO(jreiffers): eliminate the unnecessary third alloc.
+// CHECK-NEXT:  %[[ALLOC2:.*]] = memref.alloca
+// CHECK-NEXT:  scf.while (%[[A:.*]] = %[[ALLOC0]], %[[B:.*]] = %[[ALLOC1]], %[[C:.*]] = %[[ALLOC2]])
+// CHECK-NEXT:    make_condition
+// CHECK-NEXT:    "test.use"(%[[A]], %[[B]])
+// CHECK-NEXT:    condition{{.*}} %[[B]], %[[A]], %[[C]]
+// CHECK-NEXT:  } do {
+// CHECK-NEXT:  ^bb0
+// CHECK-NEXT:    "test.use"(%[[A]], %[[C]])
+// CHECK-NEXT:    scf.yield %[[C]], %[[B]], %[[A]]
+// CHECK-NEXT:  }
+
+// -----
+
 func.func @simplify_loop_dealloc() {
   %a = memref.alloc() : memref<f32>
   %a_owned = deallocation.own %a : memref<f32>
