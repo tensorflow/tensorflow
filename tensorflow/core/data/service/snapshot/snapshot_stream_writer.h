@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -36,6 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+constexpr int64_t kDefaultMaxChunkSizeBytes = 2 * (size_t{1} << 30);  // 2GB
 
 struct SnapshotWriterParams {
   // The directory path of the snapshot. See the comment on SnapshotStreamWriter
@@ -81,10 +84,6 @@ struct SnapshotWriterParams {
         "SnapshotWriterParams { base_path: $0, stream: $1, compression: $2 }",
         snapshot_path, stream_index, compression);
   }
-
- private:
-  static constexpr int64_t kDefaultMaxChunkSizeBytes =
-      2 * (size_t{1} << 30);  // 2GB
 };
 
 // Responsible for writing one snapshot stream, which is organized as following:

@@ -64,8 +64,6 @@ StatusOr<int64_t> GetFileIndex(const std::string& filename,
 
 }  // namespace
 
-constexpr int64_t SnapshotWriterParams::kDefaultMaxChunkSizeBytes;
-
 SnapshotStreamWriter::SnapshotStreamWriter(
     const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
     : params_(params), iterator_(std::move(iterator)) {
