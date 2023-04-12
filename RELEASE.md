@@ -18,6 +18,9 @@
        modifying H5 files saved by Keras under a `.keras` extension.
        If this breaks you, simply add `save_format="h5"` to your `.save()` call
        to revert back to the prior behavior.
+    *  Added `keras.utils.TimedThread` utility to run a timed thread every x
+       seconds. It can be used to run a threaded function alongside model
+       training or any other snippet of code.
 
 * The LMDB kernels have been changed to return an error. This is in preparation
   for completely removing them from TensorFlow. The LMDB dependency that these
