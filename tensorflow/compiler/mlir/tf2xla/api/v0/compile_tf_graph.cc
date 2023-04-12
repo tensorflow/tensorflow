@@ -52,13 +52,13 @@ using ::tensorflow::tpu::ShardingAndIndex;
 
 auto* phase2_bridge_compilation_status =
     tensorflow::monitoring::Counter<1>::New(
-        "/tensorflow/core/tf2xla/v0/"
-        "bridge_phase2_compilation_status", /*metric_name*/
+        "/tensorflow/core/tf2xla/api/v0/"
+        "phase2_compilation_status", /*metric_name*/
         "Tracks the compilation status of the non-mlir bridge",
         /* metric description */ "status" /* metric label */);
 
 auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
-    {"/tensorflow/core/tf2xla/v0/bridge_phase_2_compilation_time",
+    {"/tensorflow/core/tf2xla/api/v0/phase2_compilation_time",
      "The wall-clock time spent on executing graphs in milliseconds.",
      "configuration"},
     // Power of 1.5 with bucket count 45 (> 23 hours)
