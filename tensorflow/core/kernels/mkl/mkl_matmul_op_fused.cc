@@ -129,7 +129,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
-
+    auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
+    MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -256,8 +257,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
-      MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
       UserScratchPad<unsigned char> scratch_pad;
