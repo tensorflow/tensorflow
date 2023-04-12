@@ -4813,10 +4813,10 @@ class Subgraph {
                                  size[i], output_shape->data[i], i, node_index);
         return kTfLiteError;
       }
-      if (begin[i] + size[i] >= input_shape->data[i]) {
+      if (begin[i] + size[i] > input_shape->data[i]) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                  "begin + size (%" PRId64 " + %" PRId64
-                                 ") must be less input "
+                                 ") must not be greater than input "
                                  "dimension %d in SLICE node #%d",
                                  begin[i], size[i], input_shape->data[i],
                                  node_index);
