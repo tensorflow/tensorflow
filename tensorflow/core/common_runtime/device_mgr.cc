@@ -168,25 +168,27 @@ void StaticDeviceMgr::InitStreamDevice() {
   std::unordered_map<int, size_t> gpu_id2num;
   std::unordered_map<int, size_t> cpu_id2num;
   for (auto& d : devices_) {
-    if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
-      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
-      if (gpu_id2num.find(idx) == gpu_id2num.end()) {
-        gpu_id2num[idx] = 1;
+    tsl::StatusOr<int> idx =
+        DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
+    if (idx.ok()) {
+      if (d->parsed_name().type.find("STREAM_GPU_") != string::npos) {
+        if (gpu_id2num.find(idx.value()) == gpu_id2num.end()) {
+          gpu_id2num[idx.value()] = 1;
+        } else {
+          ++gpu_id2num[idx.value()];
+        }
       } else {
-        ++gpu_id2num[idx];
-      }
-    } else if (d->parsed_name().type.find("STREAM_CPU") != string::npos) {
-      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
-      if (cpu_id2num.find(idx) == cpu_id2num.end()) {
-        cpu_id2num[idx] = 1;
-      } else {
-        ++cpu_id2num[idx];
+        if (cpu_id2num.find(idx.value()) == cpu_id2num.end()) {
+          cpu_id2num[idx.value()] = 1;
+        } else {
+          ++cpu_id2num[idx.value()];
+        }
       }
     }
   }
 
   mutex_lock l(mgrs_mu_);
-  // Create Stream Group Managers and Map for GPUs.
+  // Create stream group map and managers.
   Device* gpu;
   for (auto& item : gpu_id2num) {
     TF_CHECK_OK(
@@ -198,28 +200,22 @@ void StaticDeviceMgr::InitStreamDevice() {
       stream_group_mgrs_[gpu] = absl::make_unique<StreamGroupMgr>(item.second);
     }
   }
-  for (auto& d : devices_) {
-    if (d->parsed_name().type.find("STREAM_GPU") != string::npos) {
-      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
-      TF_CHECK_OK(LookupDevice(strings::StrCat("/device:GPU:", idx), &gpu));
-      stream_device_map_[gpu][d->parsed_name().id] = d.get();
-      d->SetRealDevice(gpu);
-    }
-  }
-
-  // Create Stream Group Map for CPUs.
   Device* cpu;
   for (auto& item : cpu_id2num) {
     TF_CHECK_OK(
         LookupDevice(strings::StrCat("/device:CPU:", item.first), &cpu));
     stream_device_map_[cpu] = std::vector<Device*>(item.second);
   }
+
+  // Fill in the stream group map and set real device.
+  Device* real_device;
   for (auto& d : devices_) {
-    if (d->parsed_name().type.find("STREAM_CPU") != string::npos) {
-      int idx = DeviceNameUtils::DecodeDeviceFromStreamDeviceName(d->name());
-      TF_CHECK_OK(LookupDevice(strings::StrCat("/device:CPU:", idx), &cpu));
-      stream_device_map_[cpu][d->parsed_name().id] = d.get();
-      d->SetRealDevice(cpu);
+    tsl::StatusOr<string> name =
+        DeviceNameUtils::GetDeviceNameFromStreamDeviceName(d->name());
+    if (name.ok()) {
+      TF_CHECK_OK(LookupDevice(name.value(), &real_device));
+      stream_device_map_[real_device][d->parsed_name().id] = d.get();
+      d->SetRealDevice(real_device);
     }
   }
 }

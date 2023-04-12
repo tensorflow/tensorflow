@@ -261,6 +261,7 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:stringpiece",
     ],
 )
