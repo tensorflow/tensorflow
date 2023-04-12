@@ -112,7 +112,12 @@ def make_space_to_batch_nd_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(
+            parameters["dtype"],
+            parameters["input_shape"],
+            min_value=-1.0,
+            max_value=1.0,
+        )
     ]
     if not parameters["constant_block_shape"]:
       values.append(np.array(parameters["block_shape"]))
