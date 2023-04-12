@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -333,6 +334,7 @@ std::string ExperimentalRunPassPipeline(const std::string& mlir_txt,
   RegisterPasses();
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
