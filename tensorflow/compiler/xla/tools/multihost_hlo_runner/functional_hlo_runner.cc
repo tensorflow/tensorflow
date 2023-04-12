@@ -925,8 +925,7 @@ std::vector<std::vector<PjRtBuffer*>> CreateArgumentPointersBasedOnAliasing(
 }
 
 std::vector<Shape> GetArgumentShapes(const HloModule& module) {
-  const std::vector<HloInstruction*>& params =
-      module.entry_computation()->parameter_instructions();
+  const auto& params = module.entry_computation()->parameter_instructions();
   std::vector<Shape> argument_shapes;
   argument_shapes.reserve(params.size());
   for (int i = 0; i < static_cast<int>(params.size()); ++i) {
