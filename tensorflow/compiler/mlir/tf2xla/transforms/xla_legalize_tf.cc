@@ -1015,7 +1015,7 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
             ConvertUniformQuantizedClipByValueOp>(context);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
     std::optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,

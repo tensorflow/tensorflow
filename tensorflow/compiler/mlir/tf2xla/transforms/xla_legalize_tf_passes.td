@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
+def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{

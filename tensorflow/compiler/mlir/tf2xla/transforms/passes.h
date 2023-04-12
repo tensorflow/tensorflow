@@ -46,7 +46,10 @@ namespace mhlo {
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
 /// used.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
+/// Note: This is a module pass because when legalizing with TF2XLA fallback,
+/// functions are imported into the module. Importing functions into a
+/// module is not thread safe.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     bool allow_partial_conversion = false, bool legalize_chlo = true,
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
