@@ -67,7 +67,7 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
-  options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
+  options.setFunctionBoundaryTypeConversion(LayoutMapOption::IdentityLayoutMap);
   options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
