@@ -446,9 +446,10 @@ StatusOr<LaunchDimensions> MatMul(
   const int block_m = config.block_m();
   const int block_k = config.block_k();
   const int block_n = config.block_n();
-  CHECK_GE(block_m, 32);
-  CHECK_GE(block_k, 32);
-  CHECK_GE(block_n, 32);
+
+  CHECK_GE(block_m, 16);
+  CHECK_GE(block_k, 16);
+  CHECK_GE(block_n, 16);
 
   VLOG(3) << block_m << " " << block_k << " " << block_n << " "
           << config.num_warps() << " " << config.num_stages();

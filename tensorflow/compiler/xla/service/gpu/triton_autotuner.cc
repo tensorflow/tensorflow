@@ -120,7 +120,11 @@ GetPossibleMatmulAutotuneConfigs() {
           GemmKey(64, 32, 64, 1, 4, 4),    GemmKey(32, 128, 32, 1, 4, 4),
           GemmKey(64, 32, 64, 1, 2, 8),    GemmKey(128, 128, 32, 1, 4, 4),
           GemmKey(32, 32, 256, 1, 1, 4),   GemmKey(64, 32, 32, 16, 1, 4),
-          GemmKey(32, 64, 64, 4, 1, 4),    GemmKey(128, 128, 64, 4, 1, 4)};
+          GemmKey(32, 64, 64, 4, 1, 4),    GemmKey(128, 128, 64, 4, 1, 4),
+          GemmKey(16, 16, 256, 1, 1, 4),   GemmKey(16, 128, 32, 16, 1, 4),
+          GemmKey(16, 64, 128, 1, 1, 4),   GemmKey(16, 128, 32, 8, 1, 4),
+          GemmKey(16, 16, 512, 1, 1, 4),   GemmKey(32, 16, 512, 1, 1, 4),
+          GemmKey(16, 16, 256, 1, 3, 4)};
 }
 
 // We assume that the string representation is general enough for caching
