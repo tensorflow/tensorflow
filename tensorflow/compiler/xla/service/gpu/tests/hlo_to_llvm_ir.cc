@@ -17,15 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 #endif
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-=======
->>>>>>> 2589785a1e9c9317ee9f2fad4de6cbcd03ba0405
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"

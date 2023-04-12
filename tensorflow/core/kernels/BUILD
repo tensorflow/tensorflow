@@ -32,13 +32,12 @@ load(
     "mkl_deps",
 )
 load(
-<<<<<<< HEAD
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-=======
+)
+load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_onednn_v3",
->>>>>>> 2589785a1e9c9317ee9f2fad4de6cbcd03ba0405
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
