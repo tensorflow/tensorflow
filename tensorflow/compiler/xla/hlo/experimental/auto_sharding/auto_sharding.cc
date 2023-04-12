@@ -931,14 +931,17 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
               input_shardings.push_back(input_sharding_or.value());
             }
             StrategyVector* operand_strategies;
+            Shape operand_shape;
             if (ins->opcode() == HloOpcode::kGetTupleElement) {
               operand_strategies =
                   strategy_map.at(operand)->childs[ins->tuple_index()].get();
+              operand_shape = operand->shape().tuple_shapes(ins->tuple_index());
             } else {
               operand_strategies = strategy_map.at(operand).get();
+              operand_shape = operand->shape();
             }
             std::vector<double> in_resharding_costs =
-                ReshardingCostVector(operand_strategies, operand->shape(),
+                ReshardingCostVector(operand_strategies, operand_shape,
                                      existing_sharding, cluster_env);
             // If there is only one option for resharding, and the cost
             // computed for that option is kInfinityCost, set the cost to
