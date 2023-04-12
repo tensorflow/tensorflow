@@ -3573,8 +3573,8 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
     TF_RETURN_IF_ERROR(PreprocessGraphDef(nullptr, &preprocessed_graphdef));
   }
 
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, preprocessed_graphdef, &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
 
   NameUniquifier function_name_uniquifier(graph.flib_def());
   SavedModelObjectGraphImporter importer(graph.flib_def(), debug_info, specs,
@@ -3628,7 +3628,7 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const MLIRImportOptions& import_options,
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info) {
     DCHECK(meta_graph_def);
-    GraphDef graph_def = meta_graph_def->graph_def();
+    GraphDef graph_def(meta_graph_def->graph_def());
     auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
     if (import_options.upgrade_legacy) {
@@ -3639,8 +3639,8 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
     GraphConstructorOptions graph_ctor_options;
     graph_ctor_options.allow_internal_ops = true;
     graph_ctor_options.add_default_attributes = true;
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToGraph(graph_ctor_options, graph_def, graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        graph_ctor_options, std::move(graph_def), graph.get()));
 
     if (import_options.upgrade_legacy) {
       // TODO(jpienaar): Remove need to const_cast.
