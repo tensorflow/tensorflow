@@ -2015,17 +2015,35 @@ class Subgraph {
 
   static TfLiteStatus CheckShapeTensorShape(TfLiteContext* context,
                                             const TfLiteTensor& tensor,
-                                            int tensor_index,
+                                            bool squeeze_dims, int tensor_index,
                                             BuiltinOperator op_type,
                                             int node_index) {
-    if (NumDimensions(&tensor) != 1) {
-      TF_LITE_MAYBE_KERNEL_LOG(context,
-                               "unexpected number of shape dimensions (%d) in "
-                               "shape tensor #%d in %s node #%d: "
-                               "expected a 1D tensor",
-                               NumDimensions(&tensor), tensor_index,
-                               EnumNameBuiltinOperator(op_type), node_index);
-      return kTfLiteError;
+    const int num_dims = NumDimensions(&tensor);
+    if (num_dims != 1) {
+      if (squeeze_dims) {
+        for (int i = 0; i < num_dims - 1; i++) {
+          if (tensor.dims->data[i] != 1) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                context,
+                "unexpected non-unit (%s) shape dimension #%d in shape tensor "
+                "#%d in %s node #%d: expected %d leading dimensions of the %dD "
+                "tensor to be 1",
+                tensor.dims->data[i], i, tensor_index,
+                EnumNameBuiltinOperator(op_type), node_index, num_dims - 1,
+                num_dims);
+            return kTfLiteError;
+          }
+        }
+      } else {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context,
+            "unexpected number of shape dimensions (%d) in "
+            "shape tensor #%d in %s node #%d: "
+            "expected a 1D tensor",
+            num_dims, tensor_index, EnumNameBuiltinOperator(op_type),
+            node_index);
+        return kTfLiteError;
+      }
     }
     return kTfLiteOk;
   }
@@ -4539,8 +4557,8 @@ class Subgraph {
                                             kTfLiteInt32, node->inputs->data[1],
                                             node_index));
       TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-          logging_context, shape_tensor, node->inputs->data[1],
-          BuiltinOperator_RESHAPE, node_index));
+          logging_context, shape_tensor, /*squeeze_dims=*/true,
+          node->inputs->data[1], BuiltinOperator_RESHAPE, node_index));
       TF_LITE_ENSURE_STATUS(CheckTensorStaticOrPersistentRoAllocation(
           logging_context, shape_tensor, node->inputs->data[1], node_index));
     }
@@ -4599,8 +4617,8 @@ class Subgraph {
                                           kTfLiteInt32, node->inputs->data[1],
                                           node_index));
     TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, shape_tensor, node->inputs->data[1],
-        BuiltinOperator_RESIZE_BILINEAR, node_index));
+        logging_context, shape_tensor, /*squeeze_dims=*/false,
+        node->inputs->data[1], BuiltinOperator_RESIZE_BILINEAR, node_index));
     if (SizeOfDimension(&shape_tensor, 0) != 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -4705,18 +4723,18 @@ class Subgraph {
     const TfLiteTensor& size_tensor = tensors[size_tensor_index];
     const TfLiteTensor& output_tensor = tensors[output_tensor_index];
 
-    TF_LITE_ENSURE_STATUS(
-        CheckShapeTensorShape(logging_context, begin_tensor, begin_tensor_index,
-                              BuiltinOperator_SLICE, node_index));
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, begin_tensor, /*squeeze_dims=*/false,
+        begin_tensor_index, BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, begin_tensor, begin_tensor_index,
         BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorInt32OrInt64Type(
         logging_context, begin_tensor, begin_tensor_index, node_index));
 
-    TF_LITE_ENSURE_STATUS(
-        CheckShapeTensorShape(logging_context, size_tensor, size_tensor_index,
-                              BuiltinOperator_SLICE, node_index));
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, size_tensor, /*squeeze_dims=*/false, size_tensor_index,
+        BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, size_tensor, size_tensor_index, BuiltinOperator_SLICE,
         node_index));
@@ -5262,8 +5280,8 @@ class Subgraph {
     const TfLiteTensor& stride_tensor = tensors[stride_tensor_index];
 
     TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, stride_tensor, stride_tensor_index,
-        BuiltinOperator_STRIDED_SLICE, node_index));
+        logging_context, stride_tensor, /*squeeze_dims=*/false,
+        stride_tensor_index, BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, stride_tensor, stride_tensor_index,
         BuiltinOperator_STRIDED_SLICE, node_index));
@@ -5299,9 +5317,9 @@ class Subgraph {
     const TfLiteTensor& end_tensor = tensors[end_tensor_index];
     const TfLiteTensor& output_tensor = tensors[output_tensor_index];
 
-    TF_LITE_ENSURE_STATUS(
-        CheckShapeTensorShape(logging_context, begin_tensor, begin_tensor_index,
-                              BuiltinOperator_STRIDED_SLICE, node_index));
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, begin_tensor, /*squeeze_dims=*/false,
+        begin_tensor_index, BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, begin_tensor, begin_tensor_index,
         BuiltinOperator_STRIDED_SLICE, node_index));
@@ -5310,9 +5328,9 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(logging_context, begin_tensor,
                                                begin_tensor_index, node_index));
 
-    TF_LITE_ENSURE_STATUS(
-        CheckShapeTensorShape(logging_context, end_tensor, end_tensor_index,
-                              BuiltinOperator_STRIDED_SLICE, node_index));
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, end_tensor, /*squeeze_dims=*/false, end_tensor_index,
+        BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, end_tensor, end_tensor_index,
         BuiltinOperator_STRIDED_SLICE, node_index));
@@ -5487,8 +5505,8 @@ class Subgraph {
         CheckTensorType(logging_context, output_shape_tensor, kTfLiteInt32,
                         output_shape_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, output_shape_tensor, output_shape_tensor_index,
-        BuiltinOperator_TRANSPOSE, node_index));
+        logging_context, output_shape_tensor, /*squeeze_dims=*/false,
+        output_shape_tensor_index, BuiltinOperator_TRANSPOSE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, output_shape_tensor, output_shape_tensor_index,
         BuiltinOperator_TRANSPOSE_CONV, node_index));
