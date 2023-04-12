@@ -265,8 +265,7 @@ Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
   if (absl::c_all_of(streams_, [](const Stream& stream) {
-        return stream.state == Stream::State::kDone ||
-               stream.state == Stream::State::kInactive;
+        return stream.state == Stream::State::kDone;
       })) {
     mode_ = Mode::kDone;
     TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(SnapshotDoneFilePath(path_),
@@ -428,24 +427,11 @@ Status SnapshotManager::GetSnapshotStreams(
   for (int64_t i = 0; i < streams_.size(); ++i) {
     SnapshotStreamInfo* stream = response.add_streams();
     stream->set_index(i);
-    if (streams_[i].state == Stream::State::kInactive) {
-      stream->set_state(SnapshotStreamInfo::ORPHAN);
-    } else {
-      stream->set_state(streams_[i].state == Stream::State::kDone
-                            ? SnapshotStreamInfo::DONE
-                            : SnapshotStreamInfo::ASSIGNED);
-    }
+    stream->set_state(streams_[i].state == Stream::State::kDone
+                          ? SnapshotStreamInfo::DONE
+                          : SnapshotStreamInfo::ASSIGNED);
   }
   return OkStatus();
-}
-
-void SnapshotManager::HandleMissingWorker(const std::string& worker_address) {
-  if (auto it = assignments_.find(worker_address); it != assignments_.end()) {
-    LOG(INFO) << "marking stream " << it->second
-              << " inactive due to lost worker " << worker_address;
-    streams_[it->second].state = Stream::State::kInactive;
-    dead_workers_.insert(worker_address);
-  }
 }
 
 }  // namespace data

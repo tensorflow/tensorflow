@@ -1219,6 +1219,7 @@ Status DataServiceDispatcherImpl::ReleaseMissingClients()
   return OkStatus();
 }
 
+// TODO(b/250921378): Once snapshots have leases, inform snapshot managers.
 void DataServiceDispatcherImpl::DetectMissingWorkers()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64_t now = env_->NowMicros();
@@ -1226,9 +1227,6 @@ void DataServiceDispatcherImpl::DetectMissingWorkers()
        it != latest_worker_heartbeats_time_.end();) {
     if (absl::FromUnixMicros(now) >
         it->second + absl::Milliseconds(config_.worker_timeout_ms())) {
-      for (const auto& [ignore, snapshot_manager] : snapshots_) {
-        snapshot_manager->HandleMissingWorker(it->first);
-      }
       LOG(INFO) << "Lost worker " << it->first << " due to timeout";
       latest_worker_heartbeats_time_.erase(it++);
     } else {
