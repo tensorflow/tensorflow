@@ -1158,16 +1158,10 @@ cc_library_with_tflite(
 # Defines CreateOpResolver with all builtin ops.
 cc_library_with_tflite(
     name = "create_op_resolver_with_builtin_ops",
-    srcs = ["create_op_resolver_with_builtin_ops.cc"],
     hdrs = ["create_op_resolver.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    deps = [
-        ":mutable_op_resolver",
-        ":op_resolver",
-        "//tensorflow/lite/core:create_op_resolver_header",
-        "//tensorflow/lite/core/kernels:builtin_ops",
-    ],
+    deps = ["//tensorflow/lite/core:create_op_resolver_with_builtin_ops"],
     # Some targets only have an implicit dependency on CreateOpResolver.
     # This avoids warnings about backwards references when linking.
     alwayslink = True,
