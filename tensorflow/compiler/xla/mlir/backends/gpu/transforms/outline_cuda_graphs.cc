@@ -415,10 +415,11 @@ void OutlineCudaGraphsPass::runOnOperation() {
 
   if (cuda_graph_level_ >= 1) {
     // Enable capturing fusions and memcpies.
+    // TOOD(b/277766474): Memcpies are temporarily disabled since they cause
+    // cupti to deadlock. Re-enable after it is fixed.
     patterns.emplace_back(new LaunchFuncOpCapture());
     patterns.emplace_back(new ConstantOpCapture());
     patterns.emplace_back(new ViewOpCapture());
-    patterns.emplace_back(new MemcpyOpCapture());
   }
 
   if (cuda_graph_level_ >= 2) {
