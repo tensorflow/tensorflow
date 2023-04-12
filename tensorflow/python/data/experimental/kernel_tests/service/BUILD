@@ -214,6 +214,7 @@ tf_py_test(
     name = "distributed_save_test",
     size = "medium",
     srcs = ["distributed_save_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_combinations",
