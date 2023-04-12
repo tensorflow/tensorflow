@@ -58,6 +58,22 @@ TEST(PathUtilsTest, SplitPath) {
           "/path/to/snapshot.streams.stream_0.splits.source_1.split_2_3"));
 }
 
+TEST(PathUtilsTest, ParseStreamDirectoryName) {
+  EXPECT_THAT(ParseStreamDirectoryName("stream_1"), IsOkAndHolds(1));
+}
+
+TEST(PathUtilsTest, InvalidStreamDirectoryName) {
+  EXPECT_THAT(ParseStreamDirectoryName(""),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected stream_<stream_index>")));
+  EXPECT_THAT(ParseStreamDirectoryName("stream_-1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected stream_<stream_index>")));
+  EXPECT_THAT(ParseStreamDirectoryName("chunk_1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected stream_<stream_index>")));
+}
+
 TEST(PathUtilsTest, ParseSplitFilename) {
   EXPECT_THAT(ParseSplitFilename("split_0_1"), IsOkAndHolds(Pair(0, 1)));
 }
