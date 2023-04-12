@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -188,7 +189,7 @@ enum class GpuResourceType {
   kNumTargetResources = 1,
 };
 
-// GPU async tracker maps all collectives onto a async stream resource.
+// GPU async tracker maps all collectives onto an async stream resource.
 class GpuAsyncTracker : public AsyncTracker {
  public:
   explicit GpuAsyncTracker(const SchedulerConfig& config)
@@ -308,9 +309,21 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                                            !enable_latency_hiding_scheduler));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
+  // Tag the module with its 128 bit fingeprint. The fingerprint should include
+  // instruction name with ids
+  std::string fingerprint = module->GetFingerprint128(
+      HloPrintOptions::Canonical().set_print_backend_config(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
+  root->add_frontend_attributes(attributes);
+  VLOG(1) << "Fingerprint before LHS for module " << module->name() << " = "
+          << fingerprint;
+
   if (!enable_latency_hiding_scheduler) {
     return OkStatus();
   }
+
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
   auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
   auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
