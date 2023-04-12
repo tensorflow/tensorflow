@@ -116,6 +116,11 @@ opt<bool> elide_large_elements_attrs(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+opt<bool> debug_info(
+    "debug-info", llvm::cl::desc("Inclide MLIR debug location info in output."),
+    llvm::cl::Optional, llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 opt<bool> allow_tf("allow-tf", llvm::cl::desc("Allow TF dialect."),
                    llvm::cl::Optional, llvm::cl::init(false));
 
@@ -217,6 +222,9 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   std::string result;
   llvm::raw_string_ostream os(result);
   OpPrintingFlags printing_flags;
+  if (debug_info) {
+    printing_flags.enableDebugInfo();
+  }
   if (elide_large_elements_attrs) {
     printing_flags.elideLargeElementsAttrs();
   }
