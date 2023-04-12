@@ -2213,7 +2213,11 @@ class Subgraph {
     // messages are passed to TFLite. When we detect supported operations
     // (subgraph is null), logging context is null, and error messages are
     // supressed.
+#ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
+    TfLiteContext* logging_context = context;
+#else
     TfLiteContext* logging_context = subgraph == nullptr ? nullptr : context;
+#endif
     switch (registration->builtin_code) {
       case kTfLiteBuiltinAbs:
         return VisitAbsNode(subgraph, delegate, logging_context, node_index,
@@ -2499,10 +2503,22 @@ class Subgraph {
           return VisitMediaPipeUnpoolingNode(subgraph, delegate, context,
                                              node_index, node, context->tensors,
                                              &pool_params, xnnpack_tensors);
+        } else {
+#ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
+          TF_LITE_KERNEL_LOG(
+              context, "unsupported custom operator type \"%s\" in node #%d",
+              registration->custom_name, node_index);
+#endif  // XNNPACK_DELEGATE_ENABLE_LOGGING
         }
         return kTfLiteError;
       }
       default:
+#ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
+        TF_LITE_KERNEL_LOG(context, "unsupported operator type %s in node #%d",
+                           EnumNameBuiltinOperator(static_cast<BuiltinOperator>(
+                               registration->builtin_code)),
+                           node_index);
+#endif  // XNNPACK_DELEGATE_ENABLE_LOGGING
         return kTfLiteError;
     }
   }
