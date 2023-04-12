@@ -612,7 +612,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                                StreamCallback callback,
                                                void* data) {
   // Note: flags param is required to be zero according to CUDA 6.0.
-  CUresult res = cuStreamAddCallback(stream, callback, data, 0 /* = flags */);
+  CUresult res = cuLaunchHostFunc(stream, callback, data);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "unable to add host callback: " << ToString(res);
     return false;
