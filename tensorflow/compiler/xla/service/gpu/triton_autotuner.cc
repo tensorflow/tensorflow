@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -65,7 +66,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
@@ -527,8 +527,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     const GpuDeviceInfo gpu_device_info =
         GetGpuDeviceInfo(device_config.stream_exec);
 
-    std::unique_ptr<HloModule> new_hlo_module =
-        ExtractModule(original_computation.FusionInstruction(), /*height=*/0);
+    std::unique_ptr<HloModule> new_hlo_module = ExtractInstructionIntoNewModule(
+        *original_computation.FusionInstruction());
+
     new_hlo_module->set_config(original_computation.parent()->config());
     DebugOptions options =
         original_computation.parent()->config().debug_options();
@@ -630,6 +631,29 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 };
 
 }  // anonymous namespace
+
+std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
+    const HloInstruction& hlo) {
+  auto new_hlo_module = std::make_unique<HloModule>(
+      "extracted", HloModuleConfig{},
+      std::make_unique<CompilationEnvironments>(hlo.GetModule()->comp_envs()));
+  int parameter_number = 0;
+  HloComputation::Builder builder("entry_computation");
+  HloCloneContext clone_context(new_hlo_module.get());
+  std::vector<HloInstruction*> new_operands;
+  for (const HloInstruction* operand : hlo.operands()) {
+    std::unique_ptr<HloInstruction> new_parameter =
+        HloInstruction::CreateParameter(parameter_number, operand->shape(),
+                                        operand->name());
+    ++parameter_number;
+    new_operands.push_back(builder.AddInstruction(std::move(new_parameter)));
+  }
+  std::unique_ptr<HloInstruction> new_instruction =
+      hlo.CloneWithNewOperands(hlo.shape(), new_operands, &clone_context);
+  builder.AddInstruction(std::move(new_instruction));
+  new_hlo_module->AddEntryComputation(builder.Build());
+  return new_hlo_module;
+}
 
 StatusOr<bool> TritonAutotuner::Run(
     HloModule* module,
