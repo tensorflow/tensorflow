@@ -100,8 +100,6 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   auto init_pjrt_fn = reinterpret_cast<pjrt::PjrtApiInitFn>(dso_symbol);
   TF_RETURN_IF_ERROR(pjrt::InitPjrtPlugin(init_pjrt_fn, device_type));
 
-  // TODO(b/265303775): consider let NextPluggableDevice decide the priority in
-  // TFNPDInitPluginFn.
   DeviceFactory::Register(device_type,
                           std::make_unique<NextPluggableDeviceFactory>(
                               device_type, compilation_device_name),
