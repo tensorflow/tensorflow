@@ -812,10 +812,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("platform_version",
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
-                             })
-      .def_property_readonly("device_attributes",
-                             [](PjRtTopologyDescription& topology) {
-                               return py::cast(topology.DeviceAttributes());
                              });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")

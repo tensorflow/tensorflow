@@ -94,15 +94,9 @@ using PjRtValueType =
     std::variant<std::string, int64_t, std::vector<int64_t>, float>;
 using PjRtDeviceAttribute = PjRtValueType;
 
-class PjRtDevice {
+class PjRtDeviceDescription {
  public:
-  virtual ~PjRtDevice() = default;
-
-  // Return the client that owns this device.
-  virtual PjRtClient* client() const = 0;
-
-  // Whether client can issue command to this device.
-  virtual bool IsAddressable() const = 0;
+  virtual ~PjRtDeviceDescription() = default;
 
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
@@ -116,11 +110,6 @@ class PjRtDevice {
   // process_index as the client.
   virtual int process_index() const = 0;
 
-  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
-  // which GPU when interacting with non-JAX code. In general, not guaranteed to
-  // be dense, and -1 if undefined.
-  virtual int local_hardware_id() const = 0;
-
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
   // compatible compilation.
@@ -133,6 +122,72 @@ class PjRtDevice {
   // Debug string suitable for reading by end users, should be reasonably terse,
   // for example: "CpuDevice(id=0)".
   virtual absl::string_view ToString() const = 0;
+
+  // Returns vendor specific attributes about the device. For example the model
+  // number of a GPU, or the mesh coordinates of a TPU device. The returned
+  // reference will remain valid for the lifetime of the PjRtDevice.
+  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+  Attributes() const = 0;
+};
+
+class PjRtDevice {
+ public:
+  virtual ~PjRtDevice() = default;
+
+  // Return the client that owns this device.
+  virtual PjRtClient* client() const = 0;
+
+  // Whether client can issue command to this device.
+  virtual bool IsAddressable() const = 0;
+
+  virtual const PjRtDeviceDescription& description() const {
+    LOG(FATAL) << "PjRtDeviceDescription not available (must override "
+                  "PjRtDevice::description).";
+  }
+
+  // The ID of this device. IDs are unique among devices of this type
+  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
+  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
+  virtual int id() const { return description().id(); }
+
+  // The index of the process that this device belongs to, i.e. is addressable
+  // from. This is not always identical to PjRtClient::process_index() in a
+  // multi-process setting, where each client can see devices from all
+  // processes, but only a subset of them are addressable and have the same
+  // process_index as the client.
+  virtual int process_index() const { return description().process_index(); }
+
+  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
+  // which GPU when interacting with non-JAX code. In general, not guaranteed to
+  // be dense, and -1 if undefined.
+  virtual int local_hardware_id() const = 0;
+
+  // A vendor-dependent string that uniquely identifies the kind of device,
+  // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
+  // compatible compilation.
+  virtual absl::string_view device_kind() const {
+    return description().device_kind();
+  }
+
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current device unambiguously.
+  virtual absl::string_view DebugString() const {
+    return description().DebugString();
+  }
+
+  // Debug string suitable for reading by end users, should be reasonably terse,
+  // for example: "CpuDevice(id=0)".
+  virtual absl::string_view ToString() const {
+    return description().ToString();
+  }
+
+  // Returns vendor specific attributes about the device. For example the model
+  // number of a GPU, or the mesh coordinates of a TPU device. The returned
+  // reference will remain valid for the lifetime of the PjRtDevice.
+  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+  Attributes() const {
+    return description().Attributes();
+  }
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the
@@ -148,12 +203,6 @@ class PjRtDevice {
 
   // Transfer and return a value of the given shape from the outfeed queue.
   virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) = 0;
-
-  // Returns vendor specific attributes about the device. For example the model
-  // number of a GPU, or the mesh coordinates of a TPU device. The returned
-  // reference will remain valid for the lifetime of the PjRtDevice.
-  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-  Attributes() const = 0;
 
   // Returns allocator stats for the device. Only some PjRtDevice
   // implementations support allocator_stats, and those that do not will return
@@ -1243,7 +1292,7 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   //
   // The following Execute*() methods will donate the input buffer to the
   // execution if it is specified in the executable. Donation is usually
-  // implemented as a transaction: it is acquired in the begining and committed
+  // implemented as a transaction: it is acquired in the beginning and committed
   // when the device execution is successully launched. Concurrent donations
   // might either block or return failures.
   //

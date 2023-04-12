@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -34,6 +35,10 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
       return "not_registered";
     }
     absl::string_view platform_version() const override { return "test"; }
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+    DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
   };
   PjRtTestTopology topology;
 
@@ -50,6 +55,10 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     PjRtPlatformId platform_id() const override { return 0; }
     absl::string_view platform_name() const override { return "registered"; }
     absl::string_view platform_version() const override { return "test"; }
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+    DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
   };
   PjRtTestTopology topology;
 

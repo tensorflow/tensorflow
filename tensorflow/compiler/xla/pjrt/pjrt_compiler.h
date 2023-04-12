@@ -49,14 +49,9 @@ class PjRtTopologyDescription {
   // If non-null, overrides the compiler for this topology.
   virtual std::optional<PjRtCompiler*> compiler() const { return std::nullopt; }
 
-  // If not-null, returns vendor specific attributes about each device. For
-  // example, the model number of a GPU, or the mesh coordinates of a TPU
-  // device.
-  virtual std::optional<
-      std::vector<absl::flat_hash_map<std::string, PjRtDeviceAttribute>>>
-  DeviceAttributes() const {
-    return std::nullopt;
-  }
+  // Returns an unordered list of descriptions for all devices in this topology.
+  virtual std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+  DeviceDescriptions() const = 0;
 };
 
 // Abstract interface that all registered compilers must implement.
