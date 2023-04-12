@@ -150,9 +150,9 @@ tsl_gpu_library(
     hdrs = [
         "gpu_init.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:status",
     ] + if_static(
