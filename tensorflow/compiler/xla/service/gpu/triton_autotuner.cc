@@ -145,7 +145,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
 
 struct TritonTilingWrapper {
-  AutotuneResult::TritonGemmKey key;
+  const AutotuneResult::TritonGemmKey key;
 
   template <typename H>
   friend H AbslHashValue(H h, const TritonTilingWrapper& w) {
@@ -215,7 +215,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     }
 
     TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
-                        AutotuneMatmul(hlo->called_computations()[0]));
+                        AutotuneMatmul(*hlo->called_computations()[0]));
 
     TF_RET_CHECK(autotune_result.has_triton());
     AutotuneResult::TritonGemmKey tiling = autotune_result.triton();
@@ -231,11 +231,11 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
  private:
   // Autotune a tiling for a given matmul fusion.
-  StatusOr<AutotuneResult> AutotuneMatmul(HloComputation* fusion) {
+  StatusOr<AutotuneResult> AutotuneMatmul(const HloComputation& fusion) {
     if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
       const std::string& device_description = deviceless_config->model_str;
       AutotuneCacheKey key =
-          std::make_tuple(ToCanonicalString(fusion), device_description);
+          std::make_tuple(ToCanonicalString(&fusion), device_description);
       if (AutotuneResult* autotune_result = TryFindInCache(key)) {
         return *autotune_result;
       }
@@ -248,7 +248,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         device_config.stream_exec->GetDeviceDescription().model_str();
 
     AutotuneCacheKey key =
-        std::make_tuple(ToCanonicalString(fusion), device_description);
+        std::make_tuple(ToCanonicalString(&fusion), device_description);
     if (AutotuneResult* autotune_result = TryFindInCache(key)) {
       return *autotune_result;
     }
@@ -272,18 +272,18 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   }
 
   StatusOr<AutotuneResult> AutotuneMatmulNoCache(
-      HloComputation* fusion, const DeviceConfig& device_config) {
+      const HloComputation& fusion, const DeviceConfig& device_config) {
     se::StreamExecutor* stream_exec = device_config.stream_exec;
     if (!stream_exec->SynchronizeAllActivity()) {
       return InternalError("Failed to synchronize GPU for autotuning.");
     }
 
-    HloInstruction* root = fusion->root_instruction();
+    HloInstruction* root = fusion.root_instruction();
     TF_ASSIGN_OR_RETURN(
         se::Stream* const stream,
         device_config.allocator->GetStream(stream_exec->device_ordinal()));
 
-    const DebugOptions debug_opts = fusion->parent()->config().debug_options();
+    const DebugOptions debug_opts = fusion.parent()->config().debug_options();
     const AutotuneConfig autotune_cfg = GetConfig(debug_opts);
 
     std::vector<AutotuneResult> results;
@@ -302,7 +302,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
           rz_allocator.AllocateBytes(ShapeUtil::ByteSizeOf(root->shape())));
     }
 
-    BufferComparator comparator(root->shape(), fusion->parent()->config());
+    BufferComparator comparator(root->shape(), fusion.parent()->config());
 
     const std::vector<AutotuneResult::TritonGemmKey> configurations =
         GetPossibleMatmulAutotuneConfigs();
@@ -325,7 +325,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     std::vector<se::DeviceMemoryBase> inputs;
     int64_t rng_state = 0;
-    for (const HloInstruction* param : fusion->parameter_instructions()) {
+    for (const HloInstruction* param : fusion.parameter_instructions()) {
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryBase param_buffer,
           CreateBuffer(rz_allocator, ShapeUtil::ByteSizeOf(param->shape()),
@@ -409,7 +409,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   // Returns `true` if run successfully, `false` if the tiling has to be
   // skipped.
   StatusOr<std::optional<absl::Duration>> RunMatmulWithConfig(
-      HloComputation* hlo_computation,
+      const HloComputation& hlo_computation,
       const AutotuneResult::TritonGemmKey& autotune_config,
       const DeviceConfig& device_config, se::Stream* stream,
       absl::Span<se::DeviceMemoryBase const> input_buffers,
@@ -479,9 +479,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   // computation cache. Returns a raw pointer into the map to avoid copying the
   // values. Returning `nullptr` means that the kernel could not be generated.
   StatusOr<CompilationResult*> Compile(
-      HloComputation* hlo_computation, const DeviceConfig& device_config,
+      const HloComputation& hlo_computation, const DeviceConfig& device_config,
       const AutotuneResult::TritonGemmKey& autotune_config) {
-    CompilationKey key = std::make_pair(ToCanonicalString(hlo_computation),
+    CompilationKey key = std::make_pair(ToCanonicalString(&hlo_computation),
                                         TritonTilingWrapper{autotune_config});
 
     // TODO(b/266210099): Avoid duplication.
@@ -500,7 +500,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     TF_ASSIGN_OR_RETURN(
         std::optional<CompilationResult> res,
-        CompileNoCache(*hlo_computation, device_config, autotune_config));
+        CompileNoCache(hlo_computation, device_config, autotune_config));
     {
       absl::MutexLock lock(&compilation_cache_mutex);
       auto [it2, inserted] = compilation_cache.emplace(key, res);
