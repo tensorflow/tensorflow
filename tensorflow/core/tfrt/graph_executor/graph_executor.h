@@ -22,16 +22,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
 #include "learning/infra/mira/mlrt/bytecode/bytecode.h"
-#include "learning/infra/mira/mlrt/bytecode/executable.h"
 #include "learning/infra/mira/mlrt/interpreter/context.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
@@ -98,12 +97,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const FallbackState& fallback_state,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
     CostRecorder* cost_recorder = nullptr);
-
-// Compiles MLIR in TF executor dialect to MLRT bytecode executable.
-StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module,
-    const CostRecorder* cost_recorder = nullptr,
-    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
 
 // Runs a MLRT function for executing tensorflow graphs.
 tensorflow::Status RunMlrtFunction(
@@ -277,6 +270,11 @@ class GraphExecutor {
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
+  StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
+      mlir::ModuleOp module,
+      mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) const;
+  StatusOr<mlrt::bc::Buffer> CompileMlirModuleWithOpKeysToByteCode(
+      mlir::ModuleOp module, const CostRecorder& cost_recorder) const;
 
   tensorflow::Status InitBef(
       LoadedClientGraph* loaded_client_graph,
