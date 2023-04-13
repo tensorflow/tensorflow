@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <string>
 
-#include "llvm/Support/Host.h"
+#include "llvm/TargetParser/Host.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
