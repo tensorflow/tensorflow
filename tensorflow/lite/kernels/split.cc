@@ -87,7 +87,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16 ||
-                     input_type == kTfLiteInt32);
+                     input_type == kTfLiteInt32 || input_type == kTfLiteInt64);
   for (int i = 0; i < NumOutputs(node); ++i) {
     TfLiteTensor* tensor;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &tensor));
@@ -158,6 +158,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_SPLIT(int32_t);
       break;
     }
+    case kTfLiteInt64: {
+      TF_LITE_SPLIT(int64_t);
+      break;
+    }     
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
                          TfLiteTypeGetName(op_context.input->type));
