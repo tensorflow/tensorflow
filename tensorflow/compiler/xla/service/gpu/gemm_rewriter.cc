@@ -1191,7 +1191,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    // cuBLASLt doesn't supprt F32 vector bias, thus convert to BF16.
+    // cuBLASLt doesn't support F32 vector bias, thus convert to BF16.
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
       if (bias->shape().element_type() == F32) {
         Shape bf16_shape = bias->shape();
