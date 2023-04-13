@@ -196,7 +196,7 @@ FailureOr<mhlo::ConstantOp> CreateConstantOp(UniformQuantizedOp op,
   tensorflow::Status status =
       tensorflow::mangling_util::DemangleTensor(tensor_view, &tensor_proto);
   if (!status.ok()) {
-    return rewriter.notifyMatchFailure(op, status.error_message());
+    return rewriter.notifyMatchFailure(op, status.message());
   }
 
   tensorflow::Tensor t;
