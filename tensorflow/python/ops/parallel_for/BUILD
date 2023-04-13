@@ -47,7 +47,6 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:smart_cond",
-        "//tensorflow/python/ops/signal",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
