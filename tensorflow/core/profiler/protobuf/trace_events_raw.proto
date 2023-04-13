@@ -1,0 +1,49 @@
+// This defines the RawData attachment to the TraceEvent proto.
+// It is in a separate file to avoid all consumers needing these dependencies.
+
+syntax = "proto2";
+
+package tensorflow.profiler;
+
+option cc_enable_arenas = true;
+
+// RawData contains raw data that can be used to attach further details to a
+// TraceEvent. TraceEvents store this raw data in serialized form so it can be
+// decoded on demand. This can improve performance as TraceEvents are often
+// subject to filtering and only a small subset actually needs to be decoded.
+// NEXT ID: 3
+message RawData {
+  oneof raw_data {
+    DmaActivity dma_activity = 1;
+    TraceEventArguments args = 2;
+  }
+}
+
+// DmaActivity can be used to add DMA details to a trace event.
+message DmaActivity {
+  optional uint64 start_time_cycles = 1;
+  optional uint64 end_time_cycles = 2;
+  optional uint64 kilobytes = 4;
+  optional uint32 mesh_chip_id = 5;
+  optional uint32 core_id = 11;
+  optional uint64 dma_address = 6;
+  optional uint32 multicast = 8;
+  optional uint32 segmented = 9;
+  optional uint64 temporary = 10;  // temporary field, not saved to .sstable.
+  reserved 3;
+}
+
+// Generic trace event arguments.
+message TraceEventArguments {
+  message Argument {
+    optional string name = 1;
+    oneof value {
+      string str_value = 2;
+      uint64 uint_value = 3;
+      int64 int_value = 5;
+      double double_value = 4;
+      fixed64 ref_value = 6;  // string type but stored in metadata.
+    }
+  }
+  repeated Argument arg = 1;
+}
