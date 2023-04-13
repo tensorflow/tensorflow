@@ -869,7 +869,10 @@ tf_python_pybind_extension(
     #    }),
     #    static_deps = tf_python_pybind_static_deps(),
     features = ["-layering_check"],
-    visibility = ["//tensorflow/python/training:__subpackages__"],
+    visibility = [
+        "//tensorflow/python/checkpoint:__subpackages__",
+        "//tensorflow/python/training:__subpackages__",
+    ],
     deps = [
         ":pywrap_saved_model_headers",
         "//tensorflow/cc/experimental/libexport:save",
