@@ -11,11 +11,12 @@ option cc_enable_arenas = true;
 // TraceEvent. TraceEvents store this raw data in serialized form so it can be
 // decoded on demand. This can improve performance as TraceEvents are often
 // subject to filtering and only a small subset actually needs to be decoded.
-// NEXT ID: 3
+// NEXT ID: 4
 message RawData {
   oneof raw_data {
     DmaActivity dma_activity = 1;
     TraceEventArguments args = 2;
+    TpuTraceData tpu_data = 3;  // Never used. For the ease of template code.
   }
 }
 
@@ -46,4 +47,8 @@ message TraceEventArguments {
     }
   }
   repeated Argument arg = 1;
+}
+
+message TpuTraceData {
+  optional uint32 dummy = 1;
 }

@@ -53,3 +53,21 @@ cc_library(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+cc_library(
+    name = "trace_events_to_json",
+    srcs = ["trace_events_to_json.cc"],
+    hdrs = ["trace_events_to_json.h"],
+    deps = [
+        ":trace_viewer_color",
+        "//tensorflow/core/profiler/lib:context_types",
+        "//tensorflow/core/profiler/protobuf:task_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_raw_proto_cc",
+        "//tensorflow/core/profiler/utils:timespan",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
