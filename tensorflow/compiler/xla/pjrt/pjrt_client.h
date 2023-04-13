@@ -1185,8 +1185,8 @@ class PjRtBuffer {
   Status BlockHostUntilReady() {
     auto s = GetReadyFuture().Await();
     // Fix up error string because some clients rely on it.
-    if (!s.ok() && s.error_message() ==
-                       "GetReadyFuture() called on deleted or donated buffer") {
+    if (!s.ok() &&
+        s.message() == "GetReadyFuture() called on deleted or donated buffer") {
       return InvalidArgument(
           "BlockHostUntilReady() called on deleted or donated buffer");
     }

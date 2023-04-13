@@ -2029,7 +2029,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
         done_event.SetError(absl::InternalError(absl::StrFormat(
             "failed to synchronize send operation with a stream: %s",
-            st.error_message())));
+            st.message())));
         return;
       }
 
@@ -2598,7 +2598,7 @@ PjRtStreamExecutorExecutable::Execute(
                "terminated. Aborting process to work around deadlock. "
                "Failure message (there may have been multiple failures, see "
                "the error log for all failures): \n\n"
-            << first_failure_status.error_message();
+            << first_failure_status.message();
       }
     }
   }

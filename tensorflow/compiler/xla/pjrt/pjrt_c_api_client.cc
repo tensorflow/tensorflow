@@ -750,9 +750,9 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
                                        ::pjrt::ConvertToCppChunk(*chunk),
                                        total_size_in_bytes, done);
     if (!status.ok()) {
+      absl::string_view message = status.message();
       return (*callback_error)(pjrt::StatusCodeToPjrtErrorCode(status.code()),
-                               status.error_message().data(),
-                               status.error_message().size());
+                               message.data(), message.size());
     }
     return nullptr;
   };

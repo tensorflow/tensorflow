@@ -245,7 +245,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
-          stream_to_sync, block_status.error_message());
+          stream_to_sync, block_status.message());
     }
   }
 
@@ -394,7 +394,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
       StatusOr<se::OwningDeviceMemory> buffer =
           memory_allocator->Allocate(device_ordinal, buffer_size);
       if (!buffer.ok()) {
-        return ResourceExhausted("%s\n%s\n", buffer.status().error_message(),
+        return ResourceExhausted("%s\n%s\n", buffer.status().message(),
                                  verbose_buffer_assignment_string_dumper_());
       }
       buffer_address = buffer->Release();
@@ -663,7 +663,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             memory_allocator->Allocate(device_ordinal, allocation_size);
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
-                                   allocated_buffer.status().error_message(),
+                                   allocated_buffer.status().message(),
                                    verbose_buffer_assignment_string_dumper_());
         }
         result_buffer = allocated_buffer->Release();
