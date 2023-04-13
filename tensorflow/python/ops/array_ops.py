@@ -2067,6 +2067,74 @@ def unique(x, out_idx=dtypes.int32, name=None):
 unique.__doc__ = gen_array_ops.unique.__doc__
 
 
+@tf_export("raw_ops.UniqueV2")
+@dispatch.add_dispatch_support
+def unique_v2(x, axis, out_idx=dtypes.int32, name=None):
+  """Finds unique elements along an axis of a tensor.
+
+  This operation either returns a tensor `y` containing unique elements
+  along the `axis` of a tensor. The returned unique elements is sorted
+  in the same order as they occur along `axis` in `x`.
+  This operation also returns a tensor `idx` that is the same size as
+  the number of the elements in `x` along the `axis` dimension. It
+  contains the index in the unique output `y`.
+  In other words, for an `1-D` tensor `x` with `axis = None:
+
+  `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+  For example:
+
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
+  >>> y
+  <tf.Tensor([1 2 4 7 8], shape=(5,), dtype=int32)>
+  >>> idx
+  <tf.Tensor([0 0 1 2 2 2 3 4 4], shape=(9,), dtype=int32)>
+
+  For an `2-D` tensor `x` with `axis = 0`:
+
+  >>> x = tf.constant([[1, 0, 0],
+  ...                 [1, 0, 0],
+  ...                 [2, 0, 0]])
+  >>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[0])
+  >>> y
+  tf.Tensor([[1 0 0]
+            [2 0 0]], shape=(2, 3), dtype=int32)
+  >>> idx
+  tf.Tensor([0 0 1], shape=(3,), dtype=int32)
+
+  For an `2-D` tensor `x` with `axis = 1`:
+
+  >>> x = tf.constant([[1, 0, 0],
+  ...                 [1, 0, 0],
+  ...                 [2, 0, 0]])
+  >>> y, idx = tf.raw_ops.UniqueV2(x=x, axis=[1])
+  >>> y
+  tf.Tensor([[1 0]
+            [1 0]
+            [2 0]], shape=(3, 2), dtype=int32)
+  >>> idx
+  tf.Tensor([0 1 1], shape=(3,), dtype=int32)
+
+
+  Args:
+    x: A `Tensor`.
+    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      A `Tensor` of type `int32` (default: None). The axis of the Tensor to
+      find the unique elements.
+    out_idx: An optional `tf.DType` from: `tf.int32, tf.int64`.
+      Defaults to `tf.int32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of `Tensor` objects (y, idx).
+
+    y: A `Tensor`. Has the same type as `x`.
+    idx: A `Tensor` of type `out_idx`.
+  """
+  return gen_array_ops.unique_v2(x, axis, out_idx, name)
+
+
 @tf_export("unique_with_counts")
 @dispatch.add_dispatch_support
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
