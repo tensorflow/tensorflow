@@ -17,7 +17,7 @@ py_library(
     name = "atomic_function",
     srcs = ["atomic_function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:functional_ops",
@@ -40,7 +40,7 @@ py_library(
     name = "monomorphic_function",
     srcs = ["monomorphic_function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":atomic_function",
         ":attributes",
@@ -83,7 +83,7 @@ py_library(
     name = "tracing_compiler",
     srcs = ["tracing_compiler.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow/python/eager:__pkg__"],
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
         ":function_context",
@@ -296,7 +296,7 @@ py_library(
     deps = [
         ":atomic_function",
         ":eager_function_run",
-        ":tracing_compiler",
+        ":polymorphic_function",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
