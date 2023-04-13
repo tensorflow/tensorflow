@@ -53,6 +53,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/TargetParser/X86TargetParser.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -1088,8 +1089,13 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   options.outline_with_xla_framework = true;
   options.experimental_deallocation =
       GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
-  // TODO(b/271126383): The flag should depend on the lowering target.
-  options.enable_avx2 = true;
+  options.enable_avx2 = [&] {
+    // Derive whether this is an x86 CPU with AVX2 enabled.
+    if (!target.getTargetTriple().isX86()) return false;
+    llvm::SmallVector<llvm::StringRef> cpu_features;
+    llvm::X86::getFeaturesForCPU(target.getTargetCPU(), cpu_features);
+    return llvm::is_contained(cpu_features, "avx2");
+  }();
   options.cpu_name = target.getTargetCPU();
   if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
     options.enable_fusion_outlining = true;
