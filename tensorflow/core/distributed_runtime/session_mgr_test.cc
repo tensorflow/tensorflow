@@ -252,8 +252,7 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);
   EXPECT_TRUE(errors::IsAborted(s));
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "Session handle is not found"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Session handle is not found"));
   EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }
 
