@@ -96,7 +96,8 @@ std::optional<ScfForBounds> extractForBounds(mhlo::WhileOp op) {
   if (!compare ||
       compare.getComparisonDirection() != mhlo::ComparisonDirection::LT ||
       compare.getRhs().getParentBlock() == &cond ||
-      !getElementTypeOrSelf(compare.getLhs().getType()).isIntOrIndex()) {
+      !getElementTypeOrSelf(compare.getLhs().getType())
+           .isSignlessIntOrIndex()) {
     return std::nullopt;
   }
 
