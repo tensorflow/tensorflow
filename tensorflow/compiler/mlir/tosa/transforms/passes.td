@@ -95,3 +95,9 @@ def LowerGlobalTensors :
   let constructor = "createLowerGlobalTensorsPass()";
 }
 
+def RetainCallOnceFuncs :
+    Pass<"tflite-retain-call-once-funcs", "mlir::ModuleOp"> {
+  let summary = "Guarantees that functions used by tfl.call_once are retained.";
+  let constructor = "createRetainCallOnceFuncsPass()";
+}
+

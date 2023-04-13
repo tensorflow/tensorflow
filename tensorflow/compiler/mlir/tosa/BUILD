@@ -183,6 +183,7 @@ cc_library(
         "transforms/legalize_tfl.cc",
         "transforms/lower_complex_types.cc",
         "transforms/lower_global_tensors.cc",
+        "transforms/retain_call_once_funcs.cc",
         "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
     ],
