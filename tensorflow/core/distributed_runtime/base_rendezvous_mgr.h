@@ -92,7 +92,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
                    Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
-  void Cleanup(int64_t step_id) override { cache_.Remove(step_id); }
+  void Cleanup(int64_t step_id) override { cache_.RemoveAndAbort(step_id); }
 
   // Remove all rendezvous instances owned by the rendezvous_mgr.
   void CleanupAll() override { cache_.RemoveAll(); }
