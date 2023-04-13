@@ -570,7 +570,8 @@ message CPUSettings {
   optional int32 num_threads = 1 [default = -1];
 }
 
-// Arm NN delegate option
+// Arm NN delegate delegate_options
+// More information about Arm NN delegate options can be found in https://arm-software.github.io/armnn/latest/delegate.xhtml
 message ArmNNSettings {
   optional string delegate_options = 1;
 }
