@@ -2290,7 +2290,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: count is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -2336,7 +2336,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: data is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -2382,7 +2382,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: while is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));

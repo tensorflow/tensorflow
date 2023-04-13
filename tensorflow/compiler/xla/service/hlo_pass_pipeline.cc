@@ -137,8 +137,8 @@ Status HloPassPipeline::RunInvariantCheckers(
       XLA_VLOG_LINES(2, hlo->ToString());
       return tsl::errors::CreateWithUpdatedMessage(
           changed_status.status(),
-          absl::StrCat(changed_status.status().error_message(),
-                       "\n\nFailed after ", after_pass_name));
+          absl::StrCat(changed_status.status().message(), "\n\nFailed after ",
+                       after_pass_name));
     }
     TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";

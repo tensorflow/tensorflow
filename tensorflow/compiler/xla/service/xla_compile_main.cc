@@ -213,7 +213,7 @@ int main(int argc, char* argv[]) {
       module_path, output_path, platform, gpu_target_config_path,
       autotune_results_path);
   if (!result.ok()) {
-    LOG(ERROR) << "Compilation failed: " << result.error_message();
+    LOG(ERROR) << "Compilation failed: " << result.message();
     return 1;
   }
 
