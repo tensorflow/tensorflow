@@ -528,12 +528,12 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   // On Android the log message below is used for diagnosing delegation success
   // also in production builds. Use VERBOSE here so that the logging is turned
   // off in production builds on other platforms.
-  TFLITE_LOG_PROD(
-      tflite::TFLITE_LOG_VERBOSE,
-      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions "
-      "for the whole graph.",
-      nodes_to_replace->size, GetDelegateKernalName(registration),
-      node_subsets.size());
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
+                  "Replacing %d out of %d node(s) with delegate (%s) node, "
+                  "yielding %zu partitions "
+                  "for the whole graph.",
+                  nodes_to_replace->size, execution_plan_.size(),
+                  GetDelegateKernalName(registration), node_subsets.size());
 
   execution_plan_.clear();
 

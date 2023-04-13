@@ -63,6 +63,17 @@ class GpuHloScheduleTest : public HloTestBase {
     return std::make_unique<HloModule>(
         "test_module", GetModuleConfig(enable_latency_hiding_scheduler));
   }
+
+  static bool HasValidFingerprint(HloModule* module) {
+    // Verify that the fingerprint of HLO prior to LHS is present.
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    const FrontendAttributes& attrs = root->frontend_attributes();
+    auto it = attrs.map().find(kFingerprintBeforeLHS);
+
+    // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
+    return it != attrs.map().end() && it->second.size() == 128 / 4;
+  }
 };
 
 // Test of a single stream, where data dependencies fully determine the
@@ -89,6 +100,7 @@ TEST_F(GpuHloScheduleTest, SequentialMatMul) {
   EXPECT_TRUE(order.ExecutesBefore(z, dot1));
   EXPECT_TRUE(order.ExecutesBefore(z, dot2));
   EXPECT_TRUE(order.ExecutesBefore(dot1, dot2));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 // Test of a single stream, where data dependencies do not fully determine the
@@ -118,6 +130,7 @@ TEST_F(GpuHloScheduleTest, SequentialAdd) {
   EXPECT_TRUE(order.ExecutesBefore(z, add2));
   EXPECT_TRUE(order.ExecutesBefore(add1, add2));
   EXPECT_TRUE(order.ExecutesBefore(add2, add3));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
@@ -177,6 +190,7 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
   // LATEST is in effect.
   EXPECT_TRUE(order.ExecutesBefore(add3, blocking_call));
   EXPECT_TRUE(order.ExecutesBefore(blocking_call, add4));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
@@ -232,6 +246,7 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   // Test that all_reduce_done is scheduled after add3.
   EXPECT_TRUE(order.ExecutesBefore(add3, collective_permute_done));
   EXPECT_TRUE(order.ExecutesBefore(collective_permute_done, add4));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_F(GpuHloScheduleTest, LHSCostModel) {
@@ -300,6 +315,7 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
   EXPECT_EQ(count_between_pairs.size(), 2);
   EXPECT_GT(count_between_pairs[0], 0);
   EXPECT_GT(count_between_pairs[1], 0);
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 class GpuHloScheduleParameterizedTest
@@ -376,6 +392,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   // Test that all_reduce_done is scheduled after add3.
   EXPECT_TRUE(order.ExecutesBefore(add3, all_reduce_done));
   EXPECT_TRUE(order.ExecutesBefore(all_reduce_done, add4));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
@@ -446,6 +463,7 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
 
   const uint32_t expected_max_in_flight = enable_gpu_async_tracker ? 1 : 2;
   EXPECT_EQ(expected_max_in_flight, max_in_flight);
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,

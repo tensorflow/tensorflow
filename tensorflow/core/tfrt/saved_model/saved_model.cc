@@ -31,6 +31,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/infra/mira/mlrt/bytecode/bytecode.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -593,6 +594,13 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   options.graph_execution_options.compile_options
       .fuse_get_resource_ops_in_hoisting =
       !options.graph_execution_options.enable_mlrt;
+
+  if (options.graph_execution_options.enable_mlrt) {
+    options.lazy_loading_use_graph_executor = options.enable_lazy_loading;
+    LOG(INFO) << "lazy_loading_use_graph_executor is updated to be the same as "
+                 "enable_lazy_loading: "
+              << options.enable_lazy_loading;
+  }
 }
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(

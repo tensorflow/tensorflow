@@ -58,6 +58,7 @@ Operation *findRootElementwiseOp(Operation *op, FusionFilterFn fusionFilterFn) {
     for (OpOperand &use : rootOp->getUses()) {
       Operation *owner = use.getOwner();
       if (!fusionFilterFn(owner)) continue;
+      if (hasLabel(owner, kTransformedLabel)) continue;
       if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(owner)) {
         if (llvm::is_contained(dpsOp.getDpsInitOperands(), &use)) continue;
       }

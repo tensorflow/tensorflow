@@ -120,14 +120,13 @@ def find_function_to_export(saveable_view):
 def canonicalize_signatures(signatures):
   """Converts `signatures` into a dictionary of concrete functions."""
   if signatures is None:
-    return {}, {}, {}
+    return {}, {}
   if not isinstance(signatures, collections_abc.Mapping):
     signatures = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signatures}
   num_normalized_signatures_counter = 0
   concrete_signatures = {}
   wrapped_functions = {}
-  defaults = {}
   for signature_key, function in signatures.items():
     original_function = signature_function = _get_signature(function)
     if signature_function is None:
@@ -194,17 +193,7 @@ def canonicalize_signatures(signatures):
     # pylint: enable=protected-access
     concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
-    if (
-        hasattr(function, "_function_spec")
-        and hasattr(function._function_spec, "fullargspec")  # pylint: disable=protected-access
-        and function._function_spec.fullargspec.defaults  # pylint: disable=protected-access
-    ):
-      defaults[signature_key] = (
-          function._function_spec.fullargspec.defaults.defaults  # pylint: disable=protected-access
-      )  # pylint: disable=protected-access
-    else:
-      defaults[signature_key] = None
-  return concrete_signatures, wrapped_functions, defaults
+  return concrete_signatures, wrapped_functions
 
 
 def _normalize_outputs(outputs, function_name, signature_key):

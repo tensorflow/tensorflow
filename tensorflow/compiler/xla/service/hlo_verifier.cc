@@ -2285,8 +2285,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
   // Fused root instruction and fused parameters must all be owned by the
   // fusion computation.
   bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters =
-      fusion->fused_parameters();
+  const auto& fused_parameters = fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
   for (auto* instruction : fused_computation->instructions()) {

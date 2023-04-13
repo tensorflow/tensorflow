@@ -82,13 +82,6 @@ class SnapshotManager {
                                GetSnapshotSplitResponse& response);
   tsl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
 
-  // Checks for a stream that should move from `assignments_` to `orphans_` due
-  // to its assigned worker having stopped heartbeating.
-  void HandleMissingWorker(const std::string& worker_address);
-  // Checks for streams that should move from `unknowns_` to `orphans_` due to
-  // the dispatcher not having gotten a heartbeat from an assigned worker.
-  void UpdateStreams();
-
  private:
   SnapshotManager(
       absl::string_view path, Env* env,
@@ -149,8 +142,6 @@ class SnapshotManager {
     enum class State {
       // The stream is not finished and the worker is heartbeating.
       kActive,
-      // The stream is not finished and the worker is not heartbeating.
-      kInactive,
       // The stream is finished.
       kDone,
     };

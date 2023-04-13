@@ -317,10 +317,6 @@ class LayoutAssignment : public HloModulePass {
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
-  LayoutConstraints& mutable_computation_constraints(
-      const HloComputation* computation) {
-    return *FindOrDie(computation_layouts_, computation);
-  }
   LayoutConstraints* mutable_computation_constraints(
       HloComputation* computation) {
     auto it = computation_layouts_.find(computation);

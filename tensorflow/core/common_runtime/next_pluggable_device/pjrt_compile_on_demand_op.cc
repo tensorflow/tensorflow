@@ -19,73 +19,20 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
-
-static StatusOr<xla::Shape> DeviceShapeRepresentation(
-    const TensorShape& shape, DataType type, bool use_fast_memory,
-    XlaLayoutPreference layout_preference) {
-  xla::Shape xla_shape;
-  TF_RETURN_IF_ERROR(
-      tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
-  ApiConverter::StackHelper<XLA_Shape> c_xla_shape(xla_shape);
-  ApiConverter::StackHelper<XLA_Shape> c_device_shape;
-  TF_Status* tf_status = TF_NewStatus();
-  TfnpdApi()->TFNPD_XlaShapeToDeviceShapeRepresentation(
-      &c_xla_shape.value, type, use_fast_memory,
-      ConvertToCXlaLayoutPreference(layout_preference), &c_device_shape.value,
-      tf_status);
-  const Status status = StatusFromTF_Status(tf_status);
-  TF_DeleteStatus(tf_status);
-  TF_RETURN_IF_ERROR(status);
-  return c_device_shape.AsCpp<xla::Shape>();
-}
-
-// LINT.IfChange
-static XlaCompiler::Options GenerateXlaCompilerOptions(
-    const FunctionLibraryRuntime& function_library, DeviceBase* device_base) {
-  XlaCompiler::Options options;
-  options.device_ordinal = GetDeviceOrdinal(device_base);
-  options.flib_def = function_library.GetFunctionLibraryDefinition();
-  options.graph_def_version = function_library.graph_def_version();
-  auto* next_pluggable_device =
-      dynamic_cast<NextPluggableDevice*>(device_base->UnderlyingDevice());
-  // TODO(b/267499840): support setting compilation device type and
-  // shape_determination_fns for non-NextPluggableDevice case.
-  // TODO(b/273348427): Set these fields in a XlaDevice::Metadata and set
-  // XlaCompiler::Options using the XlaDevice::Metadata instead.
-  // XlaDevice::Metadata should be moved out of XlaDevice and made more general
-  // so that it could be used with other devices that support XLA compilation
-  // (eg. NextPluggableDevice).
-  if (next_pluggable_device != nullptr) {
-    options.device_type =
-        DeviceType(next_pluggable_device->GetCompilationDeviceType());
-    options.shape_determination_fns =
-        XlaShapeLayoutHelpers::ShapeDeterminationFns{UseNoPreferenceLayoutFn(),
-                                                     DeviceShapeRepresentation};
-  }
-  options.allow_cpu_custom_calls = false;
-  options.alias_passthrough_params = false;
-  options.detailed_logging = false;
-  return options;
-}
-// LINT.ThenChange(//tensorflow/compiler/jit/xla_compiler_options_util.cc)
 
 Status PjRtCompileOnDemandOp::Compile(
     OpKernelContext* ctx, xla::PjRtClient* pjrt_client,
@@ -94,7 +41,8 @@ Status PjRtCompileOnDemandOp::Compile(
     std::unique_ptr<xla::PjRtLoadedExecutable>* executable) {
   // TODO(b/260798754): use caching when it is ready.
   const XlaCompiler::Options options =
-      GenerateXlaCompilerOptions(*ctx->function_library(), ctx->device());
+      GenerateCompilerOptionsForPjRt(*ctx->function_library(), ctx->device(),
+                                     XlaPlatformInfoFromDevice(ctx->device()));
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
   compile_options.use_tuple_arg = false;

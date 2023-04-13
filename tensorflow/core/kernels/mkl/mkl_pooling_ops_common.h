@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "dnnl.hpp"
+#include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #ifdef DNNL_AARCH64_USE_ACL

@@ -76,6 +76,19 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
       absl::StrCat("split_", local_index, "_", global_index));
 }
 
+tsl::StatusOr<int64_t> ParseStreamDirectoryName(
+    absl::string_view stream_directory_name) {
+  std::vector<std::string> tokens = absl::StrSplit(stream_directory_name, '_');
+  int64_t stream_index = 0;
+  if (tokens.size() != 2 || tokens[0] != "stream" ||
+      !absl::SimpleAtoi(tokens[1], &stream_index) || stream_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid stream directory name: ", stream_directory_name,
+        ". Expected stream_<stream_index>.");
+  }
+  return stream_index;
+}
+
 tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
     absl::string_view split_filename) {
   std::vector<std::string> tokens = absl::StrSplit(split_filename, '_');

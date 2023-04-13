@@ -588,15 +588,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
-  return OptimizedFunctionGraphInfo{
-      function_name,
-      std::move(graph),
-      std::move(reachable_lib_def),
-      node_name_to_control_ret,
-      std::move(ret_types),
-      ret_nodes.size(),
+  return OptimizedFunctionGraphInfo(
+      function_name, std::move(graph), std::move(reachable_lib_def),
+      node_name_to_control_ret, ret_types, ret_nodes.size(),
       env->NowMicros() - graph_optimization_start_time_usecs,
-      optimization_source};
+      optimization_source);
 }
 
 StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(

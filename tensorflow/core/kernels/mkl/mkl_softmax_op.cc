@@ -254,6 +254,7 @@ class MklSoftmaxOp : public OpKernel {
       fwdParams.aarch64_counter =
           MklSoftmaxPrimitiveFactory<T>::IncrementCounter();
 #endif
+      MklDnnThreadPool eigen_tp(context);
       MklSoftmaxPrimitive<T>* softmax_fwd =
           MklSoftmaxPrimitiveFactory<T>::Get(fwdParams);
 
@@ -263,7 +264,7 @@ class MklSoftmaxOp : public OpKernel {
       const T* src_data = src_tensor.flat<T>().data();
       T* dst_data = reinterpret_cast<T*>(output_tensor->flat<T>().data());
       std::shared_ptr<stream> fwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, softmax_fwd->GetEngine()));
       softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
     } catch (dnnl::error& e) {

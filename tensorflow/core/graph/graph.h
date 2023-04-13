@@ -71,8 +71,8 @@ struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;     // Declared below
-class NodeIter;         // Declared below
+class NeighborIter;  // Declared below
+class NodeIter;      // Declared below
 
 // Indicates where the graph instance is originated from.
 enum class ConstructionContext {
@@ -666,10 +666,24 @@ class Graph {
   int num_edges() const { return num_edges_; }
 
   // Serialize the nodes starting at `from_node_id` to a GraphDef.
-  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
+  // `include_flib_def` indicates whether the function library will be populated
+  // in the `graph_def`. `include_flib_def` should be usually set to true so
+  // that the populated `graph_def` will be complete. Setting `include_flib_def`
+  // to false would mean that the returned `graph_def` is incomplete and may
+  // contain references to functions whose definition is not included. It can
+  // make sense to do this in cases where the caller already has a copy of the
+  // function library.
+  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
+                          bool include_flib_def = true) const;
 
-  // Serialize to a GraphDef.
-  void ToGraphDef(GraphDef* graph_def) const;
+  // Serialize to a GraphDef. `include_flib_def` indicates whether the function
+  // library will be populated in the `graph_def`. `include_flib_def` should be
+  // usually set to true so that the populated `graph_def` will be complete.
+  // Setting `include_flib_def` to false would mean that the returned
+  // `graph_def` is incomplete and may contain references to functions whose
+  // definition is not included. It can make sense to do this in cases where the
+  // caller already has a copy of the function library.
+  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true) const;
 
   // This version can be called from debugger to inspect the graph content.
   // Use the previous version outside debug context for efficiency reasons.

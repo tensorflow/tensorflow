@@ -238,6 +238,16 @@ absl::string_view Status::message() const {
   }
 }
 
+const absl::string_view kEmptyString = "";
+
+const char* NullTerminatedMessage(const Status& status) {
+  auto message = status.message();
+  if (message.empty()) {
+    return kEmptyString.data();
+  }
+  return message.data();
+}
+
 std::string error_name(absl::StatusCode code) {
   switch (code) {
     case absl::StatusCode::kOk:

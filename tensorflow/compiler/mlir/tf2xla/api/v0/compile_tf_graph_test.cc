@@ -37,10 +37,10 @@ using ::tensorflow::tpu::ShardingAndIndex;
 using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
-    "/tensorflow/core/tf2xla/v0/bridge_phase_2_compilation_time";
+    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_time";
 
 static constexpr char kCompilationStatusStreamzName[] =
-    "/tensorflow/core/tf2xla/v0/bridge_phase2_compilation_status";
+    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_status";
 
 MlirToHloArgs CreateTestMlirToHloArgs() {
   static constexpr char kMlirModuleStr[] = R"(

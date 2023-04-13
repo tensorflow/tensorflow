@@ -1696,7 +1696,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       clone = called_computation()->AddInstruction(
           instruction_to_append->Clone(/*suffix=*/""));
     }
-    const std::vector<HloInstruction*>& called_computation_parameters =
+    const auto& called_computation_parameters =
         called_computation()->parameter_instructions();
     for (int64_t operand_num = 0; operand_num < operand_count();
          ++operand_num) {
@@ -1727,7 +1727,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   // Reread the parameters in the computation.
-  const std::vector<HloInstruction*>& called_computation_parameters =
+  const auto& called_computation_parameters =
       called_computation()->parameter_instructions();
 
   // Add each operand of the clone as an operand of the callable instruction.
@@ -2130,8 +2130,8 @@ HloInstruction* HloFusionInstruction::fused_parameter(
       parameter_number);
 }
 
-const std::vector<HloInstruction*>& HloFusionInstruction::fused_parameters()
-    const {
+const HloInstruction::InstructionVector&
+HloFusionInstruction::fused_parameters() const {
   return fused_instructions_computation()->parameter_instructions();
 }
 

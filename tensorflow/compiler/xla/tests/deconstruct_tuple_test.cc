@@ -184,6 +184,10 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
+  }
+
   XlaBuilder builder(TestName());
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});

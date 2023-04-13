@@ -177,7 +177,7 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     const auto op_key_attr =
         op->getAttrOfType<mlir::IntegerAttr>(kOpKeyAttrName);
     if (op_key_attr) {
-      cost_map_[op] = cost_recorder_->GetCostNanosecond(op_key_attr.getInt());
+      cost_map_[op] = cost_recorder_->GetCost(op_key_attr.getInt());
       return;
     }
   }

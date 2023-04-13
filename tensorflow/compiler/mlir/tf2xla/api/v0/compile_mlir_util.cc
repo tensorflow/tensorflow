@@ -335,7 +335,7 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
   // in VerifyTFXLALegalization that full conversion happened.
   // TODO(b/188389290): Cleanup allow_partial_conversion as a legalization
   // parameter.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+  pm.addPass(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, legalize_chlo,
       /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
 

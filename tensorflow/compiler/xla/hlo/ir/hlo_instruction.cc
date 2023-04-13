@@ -4766,7 +4766,8 @@ HloInstruction* HloInstruction::fused_parameter(
   return Cast<HloFusionInstruction>(this)->fused_parameter(parameter_number);
 }
 
-const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+const HloInstruction::InstructionVector& HloInstruction::fused_parameters()
+    const {
   return Cast<HloFusionInstruction>(this)->fused_parameters();
 }
 

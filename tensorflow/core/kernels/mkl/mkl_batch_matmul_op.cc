@@ -140,7 +140,7 @@ class BatchMatMulMkl : public OpKernel {
                                          out_shape, adj_x_, adj_y_);
 
     this->ExtendMklMatMulParams(ctx, *params);
-
+    MklDnnThreadPool eigen_tp(ctx);
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim =
         MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
@@ -194,7 +194,6 @@ class BatchMatMulMkl : public OpKernel {
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
     if (fused_ops_.size() > 0) {
       void* mul_data = nullptr;
