@@ -123,7 +123,7 @@ void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
       "PJRT_Error_Destroy_Args", PJRT_Error_Destroy_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
-    LOG(ERROR) << struct_size_check.error_message();
+    LOG(ERROR) << struct_size_check.message();
   }
   if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
     delete args->error;
@@ -135,12 +135,12 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
       "PJRT_Error_Message_Args", PJRT_Error_Message_Args_STRUCT_SIZE,
       args->struct_size);
   if (!struct_size_check.ok()) {
-    LOG(ERROR) << struct_size_check.error_message();
+    LOG(ERROR) << struct_size_check.message();
   }
   if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
     const xla::Status* status = &args->error->status;
-    args->message = status->error_message().data();
-    args->message_size = status->error_message().size();
+    args->message = status->message().data();
+    args->message_size = status->message().size();
   }
 }
 

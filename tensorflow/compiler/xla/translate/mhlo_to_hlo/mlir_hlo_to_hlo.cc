@@ -2745,7 +2745,7 @@ LogicalResult ConvertToHloModule::Lower(
                 options_.layout_preference_fn, options_.shape_representation_fn,
                 ret_shardings[index], /*fast_mem=*/false);
         if (!reshape.ok())
-          return inst->emitError() << reshape.status().error_message();
+          return inst->emitError() << reshape.status().message();
 
         returns[index] = reshape.value();
       }
@@ -2923,7 +2923,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
                                       : XlaLayoutPreference::kNoPreference;
     if (!layout_preference_status.ok())
       return block->getParentOp()->emitError()
-             << layout_preference_status.status().error_message();
+             << layout_preference_status.status().message();
 
     auto arg_shape_status = options_.shape_representation_fn
                                 ? options_.shape_representation_fn(
@@ -2932,7 +2932,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
                                 : arg_shape;
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
-             << arg_shape_status.status().error_message();
+             << arg_shape_status.status().message();
 
     arg_shape = std::move(arg_shape_status.value());
 
@@ -2956,14 +2956,14 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
       auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
       if (!hlo_sharding.ok())
         return block->getParentOp()->emitError()
-               << hlo_sharding.status().error_message();
+               << hlo_sharding.status().message();
 
       auto status = RewriteLayoutWithShardedShape(
           hlo_sharding.value(), /*use_fast_memory=*/false,
           options_.layout_preference_fn, options_.shape_representation_fn,
           &(*arg_shapes)[arg_sharding.index()]);
       if (!status.ok())
-        return block->getParentOp()->emitError() << status.error_message();
+        return block->getParentOp()->emitError() << status.message();
 
       *sharding.add_tuple_shardings() = *arg_sharding.value();
     }
@@ -3096,8 +3096,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
   if (!computation_or.ok()) {
-    block->back().emitError(
-        llvm::Twine(computation_or.status().error_message()));
+    block->back().emitError(llvm::Twine(computation_or.status().message()));
     return failure();
   }
   *result = std::move(computation_or.value());

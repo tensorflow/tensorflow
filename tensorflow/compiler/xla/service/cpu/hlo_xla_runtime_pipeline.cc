@@ -329,7 +329,7 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
       Status status = CreateHloXlaPipeline(pm, options);
       if (!status.ok()) {
         LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                   << status.error_message();
+                   << status.message();
       }
     });
 
