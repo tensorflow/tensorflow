@@ -88,3 +88,10 @@ def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::fu
   let constructor = "createDequantizeTFLSoftmaxPass()";
   let dependentDialects = ["mlir::TFL::TFLDialect", "quantfork::QuantizationForkDialect"];
 }
+
+def LowerGlobalTensors :
+    Pass<"tflite-lower-global-tensors", "mlir::ModuleOp"> {
+  let summary = "Lowers TFLite global tensors to MLProgram dialect variables.";
+  let constructor = "createLowerGlobalTensorsPass()";
+}
+
