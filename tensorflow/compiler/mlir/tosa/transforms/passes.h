@@ -58,13 +58,16 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
 
 std::unique_ptr<OperationPass<ModuleOp>> createLowerGlobalTensorsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createRetainCallOnceFuncsPass();
+std::unique_ptr<OperationPass<ModuleOp>> createStripModuleMetadataPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexTypesPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createStripFunctionMetadataPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass();
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_CLASSES
 #define GEN_PASS_DECL_TOSALEGALIZETFPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFLPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFTFLPASS
@@ -75,6 +78,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass();
 #define GEN_PASS_DECL_TOSADEQUANTIZETFLSOFTMAXPASS
 #define GEN_PASS_DECL_LOWERGLOBALTENSORS
 #define GEN_PASS_DECL_RETAINCALLONCEFUNCS
+#define GEN_PASS_DECL_STRIPFUNCTIONMETADATA
+#define GEN_PASS_DECL_STRIPMODULEMETADATA
 
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 

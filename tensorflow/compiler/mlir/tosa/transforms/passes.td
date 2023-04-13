@@ -101,3 +101,15 @@ def RetainCallOnceFuncs :
   let constructor = "createRetainCallOnceFuncsPass()";
 }
 
+def StripFunctionMetadata :
+    Pass<"tosa-tflite-strip-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripFunctionMetadataPass()";
+}
+
+def StripModuleMetadata :
+    Pass<"tosa-tflite-strip-module-metadata", "mlir::ModuleOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripModuleMetadataPass()";
+}
+
