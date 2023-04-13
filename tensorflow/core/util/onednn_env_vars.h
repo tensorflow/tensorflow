@@ -19,8 +19,6 @@ limitations under the License.
 
 #include <string>
 
-using std::string;
-
 namespace tensorflow {
 
 bool AreWeightsFrozen();
@@ -29,7 +27,7 @@ bool UseSystemAlloc();
 
 bool ThreadPoolUseCallerThread();
 
-string FPMathModeSetting();
+std::string FPMathModeSetting();
 }  // namespace tensorflow
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
