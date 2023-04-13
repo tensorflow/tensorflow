@@ -3,7 +3,6 @@ rocm-libs
 rocm-dev
 miopen-hip 
 miopen-hip-dev
-miopengemm
 rocblas
 rocblas-dev
 rocsolver-dev
@@ -24,6 +23,7 @@ colordiff
 curl
 ffmpeg
 git
+gpg-agent
 jq
 less
 libcurl3-dev
