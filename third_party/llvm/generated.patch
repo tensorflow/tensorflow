@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/unittests/AST/ASTImporterTest.cpp b/clang/unittests/AST/ASTImporterTest.cpp
---- a/clang/unittests/AST/ASTImporterTest.cpp
-+++ b/clang/unittests/AST/ASTImporterTest.cpp
-@@ -8624,7 +8624,6 @@
- 
-       auto X = 0 ? (RPX1){} : (RPY1){};
-       )";
--  Decl *ToTU = getToTuDecl("", Lang_CXX11);
-   Decl *FromTU = getTuDecl(Code, Lang_CXX11);
- 
-   auto *FromX =
