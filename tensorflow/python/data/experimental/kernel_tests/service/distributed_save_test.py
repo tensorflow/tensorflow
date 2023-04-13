@@ -176,6 +176,19 @@ class DistributedSaveTest(
     self.assertDatasetProduces(dataset, list(range(10)))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testDuplicateSnapshot(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "already started or completed"):
+      self.evaluate(
+          distributed_save_op.distributed_save(
+              dataset, self._test_dir, cluster.dispatcher_address()))
+      self.evaluate(
+          distributed_save_op.distributed_save(
+              dataset, self._test_dir, cluster.dispatcher_address()))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testWorkerFailure(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     components = np.array([1.0, 2.0, 3.0, np.nan, 5.0]).astype(np.float32)
