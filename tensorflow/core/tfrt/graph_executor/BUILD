@@ -1,4 +1,6 @@
+load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +22,7 @@ cc_library(
     srcs = ["graph_execution_options.cc"],
     hdrs = ["graph_execution_options.h"],
     deps = [
+        ":config_cc_proto",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core/protobuf:for_core_protos_cc",
@@ -140,6 +143,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "config",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    deps = [
+        ":config_cc_proto",
+        "//google/protobuf:any_cc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 tf_cc_test(
     name = "synchronous_graph_executor_test",
     srcs = ["synchronous_graph_executor_test.cc"],
@@ -152,5 +167,42 @@ tf_cc_test(
         "//tensorflow/core/tfrt/utils:error_util",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//cpp_tests:common",
+    ],
+)
+
+proto_library(
+    name = "config_proto",
+    srcs = ["config.proto"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//google/protobuf:any"],
+)
+
+proto_library(
+    name = "test_config_proto",
+    testonly = True,
+    srcs = ["test_config.proto"],
+)
+
+cc_proto_library(
+    name = "test_config_cc_proto",
+    testonly = True,
+    deps = [":test_config_proto"],
+)
+
+cc_proto_library(
+    name = "config_cc_proto",
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [":config_proto"],
+)
+
+tf_cc_test(
+    name = "config_test",
+    srcs = ["config_test.cc"],
+    deps = [
+        ":config",
+        ":config_cc_proto",
+        ":test_config_cc_proto",
+        "@com_google_googletest//:gtest_main",
     ],
 )
