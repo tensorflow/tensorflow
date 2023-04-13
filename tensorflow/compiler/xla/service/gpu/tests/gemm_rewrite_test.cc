@@ -4198,7 +4198,6 @@ class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
       return;
     }
     EXPECT_TRUE(RunAndCompare(hlo_text, error_spec));
-
     // Most FP8 tests directly create a GemmRewriter and check the output.
     // Here, also run the entire HLO pass pipeline to ensure no other passes
     // interfere with GemmRewriter's pattern matching.
@@ -5256,6 +5255,76 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"BIAS\"
 ; CHECK:           }"
+      )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDVectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
+#endif
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[4,16,16] parameter(0)
+      y = f8e4m3fn[16,32] parameter(1)
+      b = f32[32] parameter(2)
+      b_f16 = f16[32] convert(b)
+      b_bcast = f16[4,16,32] broadcast(b_f16), dimensions={2}
+      x_f16 = f16[4,16,16] convert(x)
+      y_f16 = f16[16,32] convert(y)
+      x_scale = f16[] parameter(3)
+      y_scale = f16[] parameter(4)
+      x_scale_bcast = f16[4,16,16] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f16[16,32] broadcast(y_scale), dimensions={}
+      x_unscaled = f16[4,16,16] multiply(x_f16, x_scale_bcast)
+      x_unscaled_bitcast = f16[64,16] bitcast(x_unscaled)
+      y_unscaled = f16[16,32] multiply(y_f16, y_scale_bcast)
+      dot_a = f16[64,32] dot(x_unscaled_bitcast, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot_a_bitcast = f16[4,16,32]{2,1,0} bitcast(dot_a)
+      ROOT out = f16[4,16,32] add(dot_a_bitcast, b_bcast)
+          }
+
+)";
+
+  CheckFp8IfOnHopper(hlo_text, ErrorSpec{0.1, 0.1});
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[4,16,16], y: f8e4m3fn[16,32], b: f32[32], x_scale: f16[], y_scale: f16[]) -> f16[4,16,32] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[4,16,16]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f8e4m3fn[64,16]{1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[32,16]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[B:%[^ ]+]] = f32[32]{0} parameter(2)
+; CHECK-NEXT:    [[B_F16:%[^ ]+]] = f16[32]{0} convert([[B]])
+; CHECK-NEXT:    [[B_BCAST:%[^ ]+]] = f16[4,16,32]{2,1,0} broadcast([[B_F16]]), dimensions={2}
+; CHECK-NEXT:    [[B_BITCAST:%[^ ]+]] = f16[64,32]{1,0} bitcast([[B_BCAST]])
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
+; CHECK-NEXT:    [[P2_CV:%[^ ]+]] = f32[] convert([[P2]])
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
+; CHECK-NEXT:    [[P3_CV:%[^ ]+]] = f32[] convert([[P3]])
+; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = f16[64,32]{1,0} custom-call([[P0_BITCAST]], [[P1_TRANSPOSE]], [[B_BITCAST]], [[P2_CV]], [[P3_CV]], /*index=5*/[[C]], [[C]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":1
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f16[4,16,32]{2,1,0} bitcast([[GEMM]])
       )");
 }
 

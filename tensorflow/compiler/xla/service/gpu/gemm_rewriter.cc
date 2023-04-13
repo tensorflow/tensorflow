@@ -1106,7 +1106,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
+    HloInstruction* broadcast_bias = MaybeConstantFoldBias(bias);
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+      operands.at(2) = broadcast_bias;
+    } else {
+      operands.insert(operands.begin() + 2, broadcast_bias);
+    }
 
     std::unique_ptr<HloInstruction> fused_op =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
