@@ -89,10 +89,34 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 }
 
 class PjRtClient;
+class PjRtDevice;
 
 using PjRtValueType =
     std::variant<std::string, int64_t, std::vector<int64_t>, float>;
 using PjRtDeviceAttribute = PjRtValueType;
+
+class PjRtMemorySpace {
+ public:
+  virtual ~PjRtMemorySpace() = default;
+
+  // The owner of this memory space.
+  virtual PjRtClient* client() const = 0;
+
+  // The devices that this memory space is attached to.
+  virtual absl::Span<PjRtDevice* const> devices() const = 0;
+
+  // The ID of this memory space. IDs are unique among memory spaces of this
+  // type.
+  virtual int id() const = 0;
+
+  // A platform-dependent string that uniquely identifies the kind of the
+  // memory space.
+  virtual absl::string_view memory_space_kind() const = 0;
+
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current memory space unambiguously.
+  virtual absl::string_view DebugString() const = 0;
+};
 
 class PjRtDeviceDescription {
  public:
@@ -209,6 +233,11 @@ class PjRtDevice {
   // an Unimplemented error.
   virtual StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
     return Unimplemented("GetAllocatorStats is not supported");
+  }
+
+  // Returns all memory spaces attached to this device.
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
+    return {};
   }
 };
 
@@ -488,6 +517,11 @@ class PjRtClient {
   virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
 
+  // Return all memory spaces owned by the client.
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
+    return {};
+  }
+
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
 
@@ -732,11 +766,35 @@ class PjRtClient {
         platform_name());
   }
 
+  // TODO(b/277820585): remove BufferFromHostBuffer with PjRtDevice after the
+  // migration is done.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostBuffer with PjRtMemorySpace is not implemented on "
+        "platform: ",
+        platform_name());
+  }
+
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) = 0;
+
+  // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
+  // migration is done.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
+        "platform: ",
+        platform_name());
+  }
 
   // Creates a PjRtBuffer that is a non-owned view of an on-device
   // buffer (typically allocated by another library).
@@ -858,6 +916,8 @@ class PjRtBuffer {
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
   virtual StatusOr<Shape> logical_on_device_shape() = 0;
+  virtual PjRtMemorySpace* memory_space() const { return nullptr; }
+  // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
 
