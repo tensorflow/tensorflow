@@ -1166,6 +1166,12 @@ region and hoists them out. It also makes `tf.Shape` ops replicate invariant
 if possible. This currently updates or replaces `tf.Shape` ops of replicated
 arguments, either tensors or resources.
 
+The primary benefit of the pass is to hoist `num_replicas` `_TPUCompile`s
+into a single `_TPUCompile`.
+
+This pass assumes that when a `tf.Shape` directly inputs from `replicate`
+params, then it is the same shape across replicas.
+
 For example, the following
 
 ```mlir
