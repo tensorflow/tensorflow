@@ -39,24 +39,27 @@ Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
   const char* grouping_name = GetGroupingName(grouping);
 
-  auto dump_graph = [&](std::string func_name, const std::string& tag,
-                        bool bypass_filter) {
+  auto dump_graph = [&](std::string func_name, const std::string& group,
+                        const std::string& tag, bool bypass_filter) {
     if (func_name.empty()) func_name = "unknown_graph";
 
     if (options.graph) {
-      DUMP_GRAPH(func_name, tag, options.graph->get(), options.flib_def,
-                 bypass_filter);
+      DEBUG_DATA_DUMPER()->DumpGraph(func_name, group, tag,
+                                     options.graph->get(), options.flib_def,
+                                     bypass_filter);
     }
     if (options.partition_graphs) {
       for (auto& part : *options.partition_graphs) {
-        DUMP_GRAPH(func_name + "_partition_" + part.first, tag,
-                   part.second.get(), options.flib_def, bypass_filter);
+        DEBUG_DATA_DUMPER()->DumpGraph(func_name + "_partition_" + part.first,
+                                       group, tag, part.second.get(),
+                                       options.flib_def, bypass_filter);
       }
     }
   };
 
-  dump_graph(options.debug_filename_prefix,
-             strings::StrCat("before_grouping_", grouping_name), VLOG_IS_ON(3));
+  dump_graph(options.debug_filename_prefix, kDebugGroupMain,
+             strings::StrCat("before_opt_group_", grouping_name),
+             VLOG_IS_ON(3));
 
   auto group = groups_.find(grouping);
   if (group != groups_.end()) {
@@ -80,8 +83,8 @@ Status OptimizationPassRegistry::RunGrouping(
         if (!s.ok()) return s;
         pass_timings.ReportAndStop();
 
-        dump_graph(options.debug_filename_prefix,
-                   strings::StrCat("after_group_", grouping_name, "_phase_",
+        dump_graph(options.debug_filename_prefix, kDebugGroupGraphOptPass,
+                   strings::StrCat("after_opt_group_", grouping_name, "_phase_",
                                    phase.first, "_", pass->name()),
                    VLOG_IS_ON(5));
       }
@@ -95,8 +98,8 @@ Status OptimizationPassRegistry::RunGrouping(
             << (*options.graph)->num_edges();
   }
 
-  dump_graph(options.debug_filename_prefix,
-             strings::StrCat("after_grouping_", grouping_name),
+  dump_graph(options.debug_filename_prefix, kDebugGroupMain,
+             strings::StrCat("after_opt_group_", grouping_name),
              VLOG_IS_ON(3) || (VLOG_IS_ON(2) &&
                                grouping == Grouping::POST_REWRITE_FOR_EXEC));
 

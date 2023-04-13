@@ -450,7 +450,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
-  DUMP_OP_CREATION_STACKTRACES(function_name, "op_stacktraces", graph.get());
+  DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
+      function_name, kDebugGroupOpStacktrace, "initial", graph.get());
 
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
@@ -462,7 +463,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   }
 
   // Dump the initial graph.
-  DUMP_GRAPH(function_name, "initial", graph.get(), &reachable_lib_def, false);
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain, "initial",
+                                 graph.get(), &reachable_lib_def, false);
 
   // Mark and assign device for each node in the graph to be compiled by
   // specified device.
@@ -539,8 +541,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       options.shape_inference_on_tfe_dialect_import;
   optimization_options.debug_filename_prefix = function_name;
 
-  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get(),
-             &reachable_lib_def, false);
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_pre_placement_passes", graph.get(),
+                                 &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -548,24 +551,27 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  DUMP_GRAPH(function_name, "before_placer", graph.get(), &reachable_lib_def,
-             false);
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_placer", graph.get(),
+                                 &reachable_lib_def, false);
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
-  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get(),
-             &reachable_lib_def, false);
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_post_placement_passes", graph.get(),
+                                 &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
 
   if (options.optimize_graph_fn) {
-    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get(),
-               &reachable_lib_def, false);
+    DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                   "before_graph_optimization", graph.get(),
+                                   &reachable_lib_def, false);
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
         &reachable_lib_def, dev_set, cpu_device, &graph);
@@ -573,18 +579,21 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
     }
-    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get(),
-               &reachable_lib_def, false);
+    DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                   "after_graph_optimization", graph.get(),
+                                   &reachable_lib_def, false);
   }
 
-  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get(),
-             &reachable_lib_def, false);
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_post_rewrite_for_exec_passes",
+                                 graph.get(), &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   }
-  DUMP_GRAPH(function_name, "after_post_rewrite_for_exec_passes", graph.get(),
-             &reachable_lib_def, false);
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "after_post_rewrite_for_exec_passes",
+                                 graph.get(), &reachable_lib_def, false);
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
@@ -708,8 +717,9 @@ PreprocessAndPartitionGraph(
   }
 
   // Dump graph before the partition starts.
-  DUMP_GRAPH(function_name, "before_partition", graph.get(), lib_def,
-             VLOG_IS_ON(4));
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_partition", graph.get(), lib_def,
+                                 VLOG_IS_ON(4));
 
   // Partition the graph.
   auto device_name_to_subgraphs =
@@ -722,8 +732,9 @@ PreprocessAndPartitionGraph(
     std::string partitioned_func_name =
         absl::StrCat(function_name, "_partition_" + pair.first);
     const auto* optimized_subgraph = pair.second.get();
-    DUMP_GRAPH(partitioned_func_name, "before_partition_passes",
-               optimized_subgraph, lib_def, false);
+    DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
+                                   "before_partition_passes",
+                                   optimized_subgraph, lib_def, false);
   }
 
   // Doing post-partitioning passes.
@@ -749,8 +760,9 @@ PreprocessAndPartitionGraph(
     std::string partitioned_func_name =
         absl::StrCat(function_name, "_partition_" + pair.first);
     const auto* optimized_subgraph = pair.second.get();
-    DUMP_GRAPH(partitioned_func_name, "after_partition_passes",
-               optimized_subgraph, lib_def, false);
+    DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
+                                   "after_partition_passes", optimized_subgraph,
+                                   lib_def, false);
   }
 
   return std::move(device_name_to_subgraphs);

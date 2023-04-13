@@ -520,22 +520,26 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   CreateConvertMlirToXlaHloPipeline(tf2xla, device_type, enable_op_fallback,
                                     custom_legalization_passes);
 
-  if (SHOULD_DUMP(module_name.str()) || VLOG_IS_ON(1)) {
+  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain) ||
+      VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "legalize_hlo_before"), module_op,
-        "", &tf2xla);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "legalize_hlo_before"),
+        module_op, "", &tf2xla);
   }
 
-  if (VLOG_IS_ON(2) || SHOULD_DUMP(module_name.str())) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           module_name.str(), kDebugGroupBridgePhase2)) {
     // Print the whole module after each pass which requires disabling
     // multi-threading as well.
     module_op.getContext()->disableMultithreading();
     tf2xla.enableIRPrinting(
         std::make_unique<::tensorflow::DataDumperLoggerConfig>(
             [module_name](const std::string& pass_tag_name) {
-              return GET_DUMP_FILENAME(module_name.str(), pass_tag_name);
+              return DEBUG_DATA_DUMPER()->GetDumpFilename(
+                  module_name.str(), kDebugGroupBridgePhase2, pass_tag_name);
             },
-            "bridge_phase_2_",
+            "",
             /*print_module_scope=*/true));
   }
 
@@ -552,10 +556,12 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
     return error_handler.Combine(status);
   }
 
-  if (SHOULD_DUMP(module_name.str()) || VLOG_IS_ON(1)) {
+  if (DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain) ||
+      VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile(
-        GET_DUMP_FILENAME(module_name.str(), "legalize_hlo_after"), module_op,
-        "", &tf2xla);
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "legalize_hlo_after"),
+        module_op, "", &tf2xla);
   }
 
   Status status = error_handler.ConsumeStatus();

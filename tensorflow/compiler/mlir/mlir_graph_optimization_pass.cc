@@ -242,10 +242,12 @@ Status MlirFunctionOptimizationPass::Run(
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    if (SHOULD_DUMP(function_name) || VLOG_IS_ON(1)) {
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
       ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(function_name,
-                            llvm::formatv("mlir_{0}_before", name)),
+          DEBUG_DATA_DUMPER()->GetDumpFilename(
+              function_name, kDebugGroupMain,
+              llvm::formatv("mlir_{0}_before", name)),
           *module_ref, llvm::StringRef(), nullptr);
     }
 
@@ -313,11 +315,12 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    if (SHOULD_DUMP(function_name) || VLOG_IS_ON(1)) {
-      ::tensorflow::DumpMlirOpToFile(
-          GET_DUMP_FILENAME(function_name,
-                            llvm::formatv("mlir_{0}_after", name)),
-          *module_ref, llvm::StringRef(), nullptr);
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(DEBUG_DATA_DUMPER()->GetDumpFilename(
+                                         function_name, kDebugGroupMain,
+                                         llvm::formatv("mlir_{0}_after", name)),
+                                     *module_ref, llvm::StringRef(), nullptr);
     }
   }
 
