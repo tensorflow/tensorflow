@@ -164,7 +164,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               ContainsRegex("global data handle .* is not a tuple"));
 }
 
@@ -196,7 +196,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().error_message(),
+  EXPECT_THAT(result_status.status().message(),
               HasSubstr("Deconstructing nested tuples is not implemented"));
 }
 
