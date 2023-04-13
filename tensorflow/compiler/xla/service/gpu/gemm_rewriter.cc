@@ -522,11 +522,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
     //
-    if (Match(instr,
-              m::AddAnyOrder(
-                  m::Bitcast(CublasLtMatmul(&existing_gemm).WithOneUser())
-                      .WithOneUser(),
-                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+    if (Match(
+            instr,
+            m::AddAnyOrder(
+                m::Bitcast(CublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
+                    .WithOneUser(),
+                m::Broadcast(&bias, m::Op()).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(
           HloInstruction * new_add,
           MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
@@ -557,7 +558,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // transformation, but it doesn't hurt anything.
     if (Match(instr,
               m::AddAnyOrder(
-                  m::Bitcast(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
+                  m::Bitcast(
+                      GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser())
                       .WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       HloInstruction *new_bitcast =
@@ -573,8 +575,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (Match(instr,
-              m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
-                             m::Op(&bias).WithPredicate(is_not_broadcast)))) {
+              m::AddAnyOrder(
+                  GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
+                  m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
