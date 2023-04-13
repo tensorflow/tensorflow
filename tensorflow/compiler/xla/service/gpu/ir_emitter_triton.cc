@@ -695,9 +695,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
     absl::string_view fn_name, const HloComputation* hlo_computation,
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
-    LaunchDimensionsGenerator generator) {
-  // TODO(b/264317991): Pass in a context instead if this becomes to slow.
-  mlir::MLIRContext mlir_context;
+    LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));

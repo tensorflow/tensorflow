@@ -74,6 +74,7 @@ ENTRY entry {
       GetGpuDeviceInfo(backend().default_stream_executor());
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
 
   tensorflow::AutotuneResult::TritonGemmKey config;
   config.set_block_m(512);
@@ -85,7 +86,7 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_computation,
                     GetCudaComputeCapability(), dev_info, config, &llvm_module,
-                    &MatMul),
+                    &MatMul, mlir_context),
       tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
                              "Requires too much shared memory: 1310720"));
 
@@ -94,7 +95,7 @@ ENTRY entry {
   config.set_block_k(32);
   TF_EXPECT_OK(TritonWrapper("test_fn", triton_dot_computation,
                              GetCudaComputeCapability(), dev_info, config,
-                             &llvm_module, &MatMul)
+                             &llvm_module, &MatMul, mlir_context)
                    .status());
 }
 
@@ -202,7 +203,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%transpose{{[^)]*}}, %p0)
+; CHECK: fusion(%transpose.2, %p0)
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config="{\"block_m\":\"
 )");

@@ -41,7 +41,9 @@ using xla::runtime::CustomCall;
 using xla::runtime::FlatMemrefView;
 using xla::runtime::StridedMemrefView;
 
-static Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
+namespace {
+
+Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
   if (count != 0) {
     VLOG(3) << "Running each collective " << count << " times\n";
   }
@@ -52,7 +54,7 @@ static Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
 }
 
 #if XLA_ENABLE_XCCL
-static StatusOr<NcclComm::Lock> GetNcclComm(
+StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values) {
@@ -75,7 +77,7 @@ static StatusOr<NcclComm::Lock> GetNcclComm(
 }
 #endif  // XLA_ENABLE_XCCL
 
-static StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
+StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     CustomCall::RemainingArgs& args) {
   // Add MemRef arguments as buffer arguments.
   const int buffer_pairs = args.size() / 2;
@@ -97,58 +99,10 @@ static StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
   return device_buffers;
 }
 
-//===----------------------------------------------------------------------===//
-// Collectives support library.
-//===----------------------------------------------------------------------===//
-
-static int64_t Key(int32_t uid, int32_t device_ordinal) {
-  return static_cast<int64_t>(uid) << 32 | device_ordinal;
-}
-
-AsyncCollectivesSupport::AsyncCollectivesSupport(se::Stream* async_comm_stream)
-    : async_comm_stream_(async_comm_stream) {}
-
-absl::Status CollectivesSupport::MaybeBlockAfterFirstRun(int32_t uid,
-                                                         int32_t device_ordinal,
-                                                         se::Stream* stream) {
-  bool block = [&] {
-    absl::MutexLock lock(&mutex_);
-    return executed_.insert(Key(uid, device_ordinal)).second;
-  }();
-  return block ? ToAbslStatus(stream->BlockHostUntilDone()) : absl::OkStatus();
-}
-
-absl::Status AsyncCollectivesSupport::RecordEvent(int32_t uid) {
-  // Create an event on the async stream for the completion of the collective.
-  se::Event done_event(async_comm_stream_->parent());
-  if (!done_event.Init()) return absl::InternalError("Failed to create event");
-  async_comm_stream_->ThenRecordEvent(&done_event);
-
-  absl::MutexLock lock(&mutex_);
-  auto [_, was_inserted] = done_events_.insert({uid, std::move(done_event)});
-  if (!was_inserted) {
-    return absl::InternalError(absl::StrFormat(
-        "Async done event has not been consumed (uid=%d, device_ordinal=%d)",
-        uid, async_comm_stream_->parent()->device_ordinal()));
-  }
-  return absl::OkStatus();
-}
-
-absl::StatusOr<se::Event> AsyncCollectivesSupport::PopEvent(int32_t uid) {
-  absl::MutexLock lock(&mutex_);
-  auto done_event = done_events_.extract(uid);
-  if (!done_event) {
-    return absl::InternalError(absl::StrFormat(
-        "Async done event was not found (uid=%d, device_ordinal=%d)", uid,
-        async_comm_stream_->parent()->device_ordinal()));
-  }
-  return std::move(done_event.mapped());
-}
-
-static absl::Status AsyncDoneImpl(
-    const ServiceExecutableRunOptions* run_options,
-    CollectivesSupport* collectives, AsyncCollectivesSupport* async_collectives,
-    const char* op_name, int32_t uid) {
+absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
+                           CollectivesSupport* collectives,
+                           AsyncCollectivesSupport* async_collectives,
+                           const char* op_name, int32_t uid) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running " << op_name;
   se::Stream* stream = run_options->stream();
@@ -169,7 +123,7 @@ static absl::Status AsyncDoneImpl(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-static absl::Status CollectivePermuteImplCommon(
+absl::Status CollectivePermuteImplCommon(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
@@ -222,7 +176,7 @@ static absl::Status CollectivePermuteImplCommon(
 }
 #endif  // XLA_ENABLE_XCCL
 
-static absl::Status CollectivePermuteImpl(
+absl::Status CollectivePermuteImpl(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, CollectivesSupport* collectives,
     CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
@@ -264,7 +218,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // CollectivePermuteStart.
 //===----------------------------------------------------------------------===//
 
-static absl::Status CollectivePermuteStartImpl(
+absl::Status CollectivePermuteStartImpl(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options,
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
@@ -326,7 +280,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-static absl::Status AllGatherImplCommon(
+absl::Status AllGatherImplCommon(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
@@ -347,12 +301,13 @@ static absl::Status AllGatherImplCommon(
 }
 #endif  // XLA_ENABLE_XCCL
 
-static absl::Status AllGatherImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CollectivesSupport* collectives,
-    CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
-    int64_t op_id, absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+absl::Status AllGatherImpl(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           CollectivesSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, int64_t op_id,
+                           absl::Span<const int64_t> replica_group_offsets,
+                           absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGather";
   se::Stream* stream = run_options->stream();
@@ -385,13 +340,14 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllGatherStart.
 //===----------------------------------------------------------------------===//
 
-static absl::Status AllGatherStartImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options,
-    AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
-    int64_t group_mode, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, int32_t uid) {
+absl::Status AllGatherStartImpl(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                AsyncCollectivesSupport* async_collectives,
+                                CustomCall::RemainingArgs args,
+                                int64_t group_mode, int64_t op_id,
+                                absl::Span<const int64_t> replica_group_offsets,
+                                absl::Span<const int64_t> replica_group_values,
+                                int32_t uid) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGatherStart";
   se::Stream* stream = run_options->stream();
@@ -442,7 +398,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-static absl::Status AllReduceImplCommon(
+absl::Status AllReduceImplCommon(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
@@ -465,13 +421,14 @@ static absl::Status AllReduceImplCommon(
 }
 #endif  // XLA_ENABLE_XCCL
 
-static absl::Status AllReduceImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CollectivesSupport* collectives,
-    CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
-    int64_t op_id, int64_t reduction_kind,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+absl::Status AllReduceImpl(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           CollectivesSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, int64_t op_id,
+                           int64_t reduction_kind,
+                           absl::Span<const int64_t> replica_group_offsets,
+                           absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
@@ -506,13 +463,15 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllReduceStart.
 //===----------------------------------------------------------------------===//
 
-static absl::Status AllReduceStartImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options,
-    AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
-    int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, int32_t uid) {
+absl::Status AllReduceStartImpl(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                AsyncCollectivesSupport* async_collectives,
+                                CustomCall::RemainingArgs args,
+                                int64_t group_mode, int64_t op_id,
+                                int64_t reduction_kind,
+                                absl::Span<const int64_t> replica_group_offsets,
+                                absl::Span<const int64_t> replica_group_values,
+                                int32_t uid) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -564,7 +523,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-static absl::Status AllToAllImplCommon(
+absl::Status AllToAllImplCommon(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode,
@@ -588,13 +547,14 @@ static absl::Status AllToAllImplCommon(
 }
 #endif  // XLA_ENABLE_XCCL
 
-static absl::Status AllToAllImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CollectivesSupport* collectives,
-    CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
-    bool has_split_dimension, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
+                          const DebugOptions* debug_options,
+                          CollectivesSupport* collectives,
+                          CustomCall::RemainingArgs args, int32_t uid,
+                          int64_t group_mode, bool has_split_dimension,
+                          int64_t op_id,
+                          absl::Span<const int64_t> replica_group_offsets,
+                          absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
@@ -627,13 +587,14 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 // AllToAllStart.
 //===----------------------------------------------------------------------===//
-static absl::Status AllToAllStartImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options,
-    AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+absl::Status AllToAllStartImpl(const ServiceExecutableRunOptions* run_options,
+                               const DebugOptions* debug_options,
+                               AsyncCollectivesSupport* async_collectives,
+                               CustomCall::RemainingArgs args, int32_t uid,
+                               int64_t group_mode, bool has_split_dimension,
+                               int64_t op_id,
+                               absl::Span<const int64_t> replica_group_offsets,
+                               absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAllStart";
   se::Stream* stream = run_options->stream();
@@ -684,7 +645,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-static absl::Status ReduceScatterImplCommon(
+absl::Status ReduceScatterImplCommon(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
@@ -707,13 +668,14 @@ static absl::Status ReduceScatterImplCommon(
 }
 #endif  // XLA_ENABLE_XCCL
 
-static absl::Status ReduceScatterImpl(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, CollectivesSupport* collectives,
-    CustomCall::RemainingArgs args, int32_t uid, int64_t group_mode,
-    int64_t op_id, int64_t reduction_kind,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+absl::Status ReduceScatterImpl(const ServiceExecutableRunOptions* run_options,
+                               const DebugOptions* debug_options,
+                               CollectivesSupport* collectives,
+                               CustomCall::RemainingArgs args, int32_t uid,
+                               int64_t group_mode, int64_t op_id,
+                               int64_t reduction_kind,
+                               absl::Span<const int64_t> replica_group_offsets,
+                               absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
@@ -747,7 +709,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // ReduceScatterStart.
 //===----------------------------------------------------------------------===//
 
-static absl::Status ReduceScatterStartImpl(
+absl::Status ReduceScatterStartImpl(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options,
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
@@ -804,7 +766,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // ReplicaId.
 //===----------------------------------------------------------------------===//
 
-static absl::Status ReplicaPartitionIdImpl(
+absl::Status ReplicaPartitionIdImpl(
     const ServiceExecutableRunOptions* run_options, FlatMemrefView result,
     bool is_replica_id) {
   VLOG(3) << "Running " << (is_replica_id ? "ReplicaId" : "PartitionId");
@@ -825,8 +787,8 @@ static absl::Status ReplicaPartitionIdImpl(
   return absl::OkStatus();
 }
 
-static absl::Status ReplicaIdImpl(
-    const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
+absl::Status ReplicaIdImpl(const ServiceExecutableRunOptions* run_options,
+                           FlatMemrefView result) {
   return ReplicaPartitionIdImpl(run_options, result, /*is_replica_id=*/true);
 }
 
@@ -840,8 +802,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // PartitionId.
 //===----------------------------------------------------------------------===//
 
-static absl::Status PartitionIdImpl(
-    const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
+absl::Status PartitionIdImpl(const ServiceExecutableRunOptions* run_options,
+                             FlatMemrefView result) {
   return ReplicaPartitionIdImpl(run_options, result, /*is_replica_id=*/false);
 }
 
@@ -852,6 +814,56 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Arg<FlatMemrefView>());
 
 //===----------------------------------------------------------------------===//
+
+int64_t Key(int32_t uid, int32_t device_ordinal) {
+  return static_cast<int64_t>(uid) << 32 | device_ordinal;
+}
+
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// Collectives support library.
+//===----------------------------------------------------------------------===//
+
+absl::Status CollectivesSupport::MaybeBlockAfterFirstRun(int32_t uid,
+                                                         int32_t device_ordinal,
+                                                         se::Stream* stream) {
+  bool block = [&] {
+    absl::MutexLock lock(&mutex_);
+    return executed_.insert(Key(uid, device_ordinal)).second;
+  }();
+  return block ? ToAbslStatus(stream->BlockHostUntilDone()) : absl::OkStatus();
+}
+
+AsyncCollectivesSupport::AsyncCollectivesSupport(se::Stream* async_comm_stream)
+    : async_comm_stream_(async_comm_stream) {}
+
+absl::Status AsyncCollectivesSupport::RecordEvent(int32_t uid) {
+  // Create an event on the async stream for the completion of the collective.
+  se::Event done_event(async_comm_stream_->parent());
+  if (!done_event.Init()) return absl::InternalError("Failed to create event");
+  async_comm_stream_->ThenRecordEvent(&done_event);
+
+  absl::MutexLock lock(&mutex_);
+  auto [_, was_inserted] = done_events_.insert({uid, std::move(done_event)});
+  if (!was_inserted) {
+    return absl::InternalError(absl::StrFormat(
+        "Async done event has not been consumed (uid=%d, device_ordinal=%d)",
+        uid, async_comm_stream_->parent()->device_ordinal()));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<se::Event> AsyncCollectivesSupport::PopEvent(int32_t uid) {
+  absl::MutexLock lock(&mutex_);
+  auto done_event = done_events_.extract(uid);
+  if (!done_event) {
+    return absl::InternalError(absl::StrFormat(
+        "Async done event was not found (uid=%d, device_ordinal=%d)", uid,
+        async_comm_stream_->parent()->device_ordinal()));
+  }
+  return std::move(done_event.mapped());
+}
 
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {

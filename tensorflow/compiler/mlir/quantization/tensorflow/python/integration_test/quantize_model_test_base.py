@@ -42,6 +42,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
@@ -83,6 +84,27 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       for filename in files:
         total += os.path.getsize(os.path.join(root, filename))
     return total
+
+  def _any_log_contains(
+      self, substring: str, log_record_list: List['logging.LogRecord']
+  ) -> bool:
+    """Returns True if any of the log contains a given substring.
+
+    Args:
+      substring: A piece of string to check whether it exists in the log
+        message.
+      log_record_list: A list of `absl.logging.LogRecord`s.
+
+    Returns:
+      True if and only if the substring exists in any of the log in
+      `log_record_list`.
+    """
+    return any(
+        map(
+            lambda log_record: substring in str(log_record.message),
+            log_record_list,
+        )
+    )
 
   def assertSizeRatioGreaterThan(
       self, path_a: str, path_b: str, threshold: float

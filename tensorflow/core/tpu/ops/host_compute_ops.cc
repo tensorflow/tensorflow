@@ -31,6 +31,7 @@ REGISTER_OP("_XlaHostComputeMlir")
     .Attr("send_key: string")
     .Attr("recv_key: string")
     .Attr("host_mlir_module: string=\"\"")
+    .Attr("manual_sharding: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       return ::tensorflow::shape_inference::UnknownShape(c);
     })

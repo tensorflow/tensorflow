@@ -223,7 +223,9 @@ build:monolithic --define framework_shared_object=false
 build:monolithic --define tsl_protobuf_header_only=false
 build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
-# Please note that MKL on MacOS or windows is still not supported.
+build:linux --define=build_with_onednn_v2=true
+
+# Please note that MKL on MacOS is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true

@@ -25,9 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/import_model.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
 #include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/infra/mira/mlrt/bytecode/bytecode.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -64,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -685,11 +688,11 @@ SavedModelImpl::LoadSavedModel(Options options,
     GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                   meta_graph_def.signature_def(), options);
   }
-  tfrt::BefBuffer bef;
   mlrt::bc::Buffer bytecode;
+  tfrt::BefBuffer bef;
   if (options.graph_execution_options.enable_mlrt) {
     ASSIGN_OR_RETURN_IN_COMPILE(
-        bytecode, CompileMlirModuleToByteCode(
+        bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                       options.graph_execution_options.compile_options,
                       mlir_module.get()));
   } else {

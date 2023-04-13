@@ -31,7 +31,10 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:object_identity",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -52,6 +55,7 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )

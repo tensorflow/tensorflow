@@ -298,6 +298,100 @@ TEST(FullyConnected, FP16WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
+TEST(FullyConnected, DynamicWeights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .DynamicWeights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, DynamicWeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .DynamicWeights()
+      .NoBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, DynamicBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .DynamicBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, DynamicWeightsAndBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .DynamicWeights()
+      .DynamicBias()
+      .Test(xnnpack_delegate.get());
+}
+
 TEST(FullyConnected, TensorWiseQuantizedInt8Weights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

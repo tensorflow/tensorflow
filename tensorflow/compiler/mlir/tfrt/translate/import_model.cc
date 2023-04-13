@@ -16,21 +16,26 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
 #include <deque>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -187,46 +192,12 @@ Status ConvertTfMlirToRuntimeExecutable(
   // Lower MLIR TF Dialect to MLIR TFRT CoreRT dialect.
   mlir::PassManager pm(module.getContext());
 
-  tensorflow::TfrtPipelineOptions pass_options;
-  if (!options.default_device.empty()) {
-    pass_options.default_device = options.default_device;
-  }
-  if (!options.force_data_format.empty()) {
-    pass_options.force_data_format = options.force_data_format;
-  }
-
-  // TODO(b/187991150): Consider only decomposing read-only resource variable
-  // ops.
-  pass_options.decompose_resource_ops = options.decompose_resource_ops;
-  pass_options.enable_optimizer = options.enable_optimizer;
-  pass_options.target_tpurt =
-      (options.device_target == TfrtDeviceInfraTarget::kTpurt);
-  pass_options.target_gpu =
-      (options.device_target == TfrtDeviceInfraTarget::kGpu);
-  pass_options.use_bridge_for_gpu = options.use_bridge_for_gpu;
-  pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
-  pass_options.use_tpu_host_allocator_for_inputs =
-      options.use_tpu_host_allocator_for_inputs;
-  pass_options.tpu_allow_unpadded_batch = options.tpu_allow_unpadded_batch;
-  pass_options.sink_in_invariant_ops = options.sink_in_invariant_ops;
-  pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
-  pass_options.fuse_get_resource_ops_in_hoisting =
-      options.fuse_get_resource_ops_in_hoisting;
-  pass_options.func_use_fallback_tensor = true;
-  pass_options.enable_while_parallel_iterations =
-      options.enable_while_parallel_iterations;
-  pass_options.auto_fusion_oplist = options.auto_fusion_oplist;
-  pass_options.auto_fusion_min_cluster_size =
-      options.auto_fusion_min_cluster_size;
-  pass_options.cost_threshold = options.cost_threshold;
-  pass_options.upper_cost_threshold = options.upper_cost_threshold;
-  pass_options.merge_inter_dependent_streams =
-      options.merge_inter_dependent_streams;
+  auto pipeline_options = GetTfrtPipelineOptions(options);
 
   TF_RETURN_IF_ERROR(
-      tensorflow::CreateTFExecutorToTFPipeline(pm, pass_options));
+      tensorflow::CreateTFExecutorToTFPipeline(pm, *pipeline_options));
 
-  auto status = emit_executable(pm, module, pass_options);
+  auto status = emit_executable(pm, module, *pipeline_options);
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tfrt_dialect", module);
@@ -245,9 +216,13 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
         tensorflow::CreateTfToTfrtPipeline(pm, options);
 
-        if (mlir::failed(pm.run(module)))
+        if (mlir::failed(pm.run(module))) {
+          if (VLOG_IS_ON(1)) {
+            tensorflow::DumpMlirOpToFile("tf_to_corert_failure", module);
+          }
           return diag_handler.Combine(tensorflow::errors::Internal(
               "failed to lower TF Dialect to CoreRT dialect."));
+        }
 
         *bef_buffer =
             tfrt::ConvertMLIRToBEF(module, /*disable_optional_sections=*/true);
@@ -259,6 +234,47 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
         return OkStatus();
       },
       fallback_state);
+}
+
+std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
+    const TfrtCompileOptions& options) {
+  auto pipeline_options = std::make_unique<tensorflow::TfrtPipelineOptions>();
+  if (!options.default_device.empty()) {
+    pipeline_options->default_device = options.default_device;
+  }
+  if (!options.force_data_format.empty()) {
+    pipeline_options->force_data_format = options.force_data_format;
+  }
+
+  // TODO(b/187991150): Consider only decomposing read-only resource variable
+  // ops.
+  pipeline_options->decompose_resource_ops = options.decompose_resource_ops;
+  pipeline_options->enable_optimizer = options.enable_optimizer;
+  pipeline_options->target_tpurt =
+      (options.device_target == TfrtDeviceInfraTarget::kTpurt);
+  pipeline_options->target_gpu =
+      (options.device_target == TfrtDeviceInfraTarget::kGpu);
+  pipeline_options->use_bridge_for_gpu = options.use_bridge_for_gpu;
+  pipeline_options->tpu_fuse_ops = options.tpu_fuse_ops;
+  pipeline_options->use_tpu_host_allocator_for_inputs =
+      options.use_tpu_host_allocator_for_inputs;
+  pipeline_options->tpu_allow_unpadded_batch = options.tpu_allow_unpadded_batch;
+  pipeline_options->sink_in_invariant_ops = options.sink_in_invariant_ops;
+  pipeline_options->hoist_invariant_ops = options.hoist_invariant_ops;
+  pipeline_options->fuse_get_resource_ops_in_hoisting =
+      options.fuse_get_resource_ops_in_hoisting;
+  pipeline_options->func_use_fallback_tensor = true;
+  pipeline_options->enable_while_parallel_iterations =
+      options.enable_while_parallel_iterations;
+  pipeline_options->auto_fusion_oplist = options.auto_fusion_oplist;
+  pipeline_options->auto_fusion_min_cluster_size =
+      options.auto_fusion_min_cluster_size;
+  pipeline_options->cost_threshold = options.cost_threshold;
+  pipeline_options->upper_cost_threshold = options.upper_cost_threshold;
+  pipeline_options->merge_inter_dependent_streams =
+      options.merge_inter_dependent_streams;
+
+  return pipeline_options;
 }
 
 }  // namespace tensorflow

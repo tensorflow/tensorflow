@@ -37,6 +37,8 @@ void OptimizationPassRegistry::Register(
 
 Status OptimizationPassRegistry::RunGrouping(
     Grouping grouping, const GraphOptimizationPassOptions& options) {
+  const char* grouping_name = GetGroupingName(grouping);
+
   auto dump_graph = [&](std::string func_name, const std::string& tag,
                         bool bypass_filter) {
     if (func_name.empty()) func_name = "unknown_graph";
@@ -54,7 +56,7 @@ Status OptimizationPassRegistry::RunGrouping(
   };
 
   dump_graph(options.debug_filename_prefix,
-             strings::StrCat("before_grouping_", grouping), VLOG_IS_ON(3));
+             strings::StrCat("before_grouping_", grouping_name), VLOG_IS_ON(3));
 
   auto group = groups_.find(grouping);
   if (group != groups_.end()) {
@@ -79,7 +81,7 @@ Status OptimizationPassRegistry::RunGrouping(
         pass_timings.ReportAndStop();
 
         dump_graph(options.debug_filename_prefix,
-                   strings::StrCat("after_group_", grouping, "_phase_",
+                   strings::StrCat("after_group_", grouping_name, "_phase_",
                                    phase.first, "_", pass->name()),
                    VLOG_IS_ON(5));
       }
@@ -94,7 +96,7 @@ Status OptimizationPassRegistry::RunGrouping(
   }
 
   dump_graph(options.debug_filename_prefix,
-             strings::StrCat("after_grouping_", grouping),
+             strings::StrCat("after_grouping_", grouping_name),
              VLOG_IS_ON(3) || (VLOG_IS_ON(2) &&
                                grouping == Grouping::POST_REWRITE_FOR_EXEC));
 

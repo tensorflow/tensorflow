@@ -341,6 +341,7 @@ cc_library(
         ":device_compilation_profiler",
         ":jit_compilation_passes",
         ":xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
     ],
 )
 
@@ -1428,6 +1429,19 @@ cc_library(
     deps = [
         ":device_compiler_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_base_device",
+    srcs = ["pjrt_base_device.cc"],
+    hdrs = ["pjrt_base_device.h"],
+    # Public visibility is needed for external TF/XLA backends.
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:layout_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:local_device",
     ],
 )
 

@@ -301,6 +301,32 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     output, = f.get_concrete_function().outputs
     self.assertEqual([2], output.shape)
 
+  def testUnpackInvalidInput(self):
+    # Test for b/255629824
+    with self.assertRaisesRegex(TypeError, "Expecting a Tensor"):
+      api.unpack(
+          **{
+              "tensor": [[
+                  41.8684053521925,
+                  731.610023060566,
+                  356.0701500440248,
+                  9.62928117100512,
+                  185.0041559439026,
+                  225.87663065861508,
+                  450.2403652750002,
+                  268.7273627027147,
+              ]]
+          }
+      )
+
+  def testIsDTensorInvalidInput(self):
+    # Test for b/272381211
+    self.assertFalse(api.fetch_layout(**{"tensor": -1024}))
+
+  def testFetchLayoutInvalidInput(self):
+    # Test for b/272381211
+    self.assertIsNone(api.fetch_layout(**{"tensor": -1024}))
+
   def testFetchLayoutForDVariablesReturnsCorrectLayout(self):
     layout = Layout.replicated(self.mesh, 2)
     with api._dtensor_device()._experimental_default_mesh(self.mesh):
@@ -377,9 +403,12 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     with api.default_mesh(cpu0_mesh):
       a = constant_op.constant(1.0)
       b = array_ops.ones(shape=(3, 3))
-    # FIXME(b/274647196): This shall eventually become a DTensor on cpu0_mesh.
-    self.assertIn("CPU:0", b.device)
+
+    self.assertFalse(api.is_dtensor(a))
     self.assertIn("CPU:0", a.device)
+
+    self.assertTrue(api.is_dtensor(b))
+    self.assertEqual(api.fetch_layout(b).mesh, cpu0_mesh)
 
 
 class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):

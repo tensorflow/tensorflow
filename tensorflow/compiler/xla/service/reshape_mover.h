@@ -20,19 +20,10 @@ limitations under the License.
 
 namespace xla {
 
-// This pass sinks kReshape and kTranspose operations (known as "rearrange" ops)
-// down through elementwise ops:
-//
-//   op(rearrange(x), rearrange(y)) => rearrange(op(x, y)).
-//
-// We also handle the case where one of the operands is not itself a rearrange
-// op but can be trivially rearranged.  For example:
-//
-//   op(rearrange(x), broadcast(scalar_y)) =>
-//   rearrange(x, broadcast'(scalar_y)).
-//
-// This pass should be run to a fixed point.  It also expects algsimp to be run
-// after each iteration.
+// A pass which moves Reshapes and Transposes to let later passes combine them.
+// This now only moves them outputward across elementwise ops all whose operands
+// are equivalent Reshapes or Transposes, but in future could potentially move
+// them inputward also.
 class ReshapeMover : public HloModulePass {
  public:
   absl::string_view name() const override { return "reshape-mover"; }

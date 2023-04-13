@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -569,10 +570,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
   StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       optimized_graph_proto == nullptr
-          ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
-                                  lib_def_, composite_devices, cpu_device,
-                                  default_device, env_,
-                                  OptimizedFunctionGraph::JIT)
+          ? OptimizeFunctionGraphOrReadFromFileCache(
+                function_name, attrs, options, *dev_set, lib_def_,
+                composite_devices, cpu_device, default_device, env_)
           : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 

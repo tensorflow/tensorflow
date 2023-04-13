@@ -1,4 +1,6 @@
-// RUN: mlir-hlo-opt %s --xla-cpu-transform-batch-matmul | FileCheck %s
+// RUN: mlir-hlo-opt %s \
+// RUN:   --gml-st-cpu-tiling-pipeline=matmul-tile-sizes=4,4,4 \
+// RUN: | FileCheck %s
 
 func.func @batch_matmul(%lhs: tensor<8x64x32xf32>,
                         %rhs: tensor<8x32x64xf32>) -> tensor<8x64x64xf32> {
@@ -9,11 +11,25 @@ func.func @batch_matmul(%lhs: tensor<8x64x32xf32>,
   %39 = linalg.batch_matmul ins(%lhs, %rhs : tensor<8x64x32xf32>,
     tensor<8x32x64xf32>) outs(%38 : tensor<8x64x64xf32>) -> tensor<8x64x64xf32>
 
-  func.return %39 : tensor<8x64x64xf32>}
-
+  func.return %39 : tensor<8x64x64xf32>
+}
 // CHECK-LABEL: @batch_matmul
-// CHECK:       scf.forall
-// CHECK:         linalg.fill
-// CHECK:         linalg.matmul
-// CHECK-SAME:      tensor<64x32xf32>, tensor<32x64xf32>
-// CHECK-SAME:      tensor<64x64xf32>) -> tensor<64x64xf32>
+
+// CHECK:      scf.for
+// CHECK-DAG:    tensor.collapse_shape
+// CHECK-SAME:       : tensor<1x64x32xf32> into tensor<64x32xf32>
+// CHECK-DAG:    tensor.collapse_shape
+// CHECK-SAME:       : tensor<1x32x64xf32> into tensor<32x64xf32>
+// CHECK-DAG:    tensor.collapse_shape
+// CHECK-SAME:       : tensor<1x64x64xf32> into tensor<64x64xf32>
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            scf.for
+// CHECK:              vector.contract
+// CHECK-SAME:           : vector<4x4xf32>, vector<4x4xf32> into vector<4x4xf32>
+// CHECK:              scf.yield %{{.*}} : vector<4x4xf32>
+// CHECK:            scf.yield %{{.*}} : tensor<64x64xf32>
+// CHECK:          scf.yield %{{.*}} : tensor<64x64xf32>
+// CHECK:        %expanded = tensor.expand_shape
+// CHECK:          : tensor<64x64xf32> into tensor<1x64x64xf32>
+// CHECK:        scf.yield %inserted_slice : tensor<8x64x64xf32>

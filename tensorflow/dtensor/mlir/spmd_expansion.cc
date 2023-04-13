@@ -207,7 +207,8 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
           arg_layout.status().error_message()));
 
     // XLA SPMD will handle argument shape updating for us.
-    if (arg_layout->mesh().use_xla_spmd()) {
+    if (arg_layout->mesh().IsSingleDevice() ||
+        arg_layout->mesh().use_xla_spmd()) {
       continue;
     }
 

@@ -32,9 +32,9 @@ class PjRtCompiler;
 // TODO(b/240299401): Move CompileOptions to this file.
 
 // Abstract interface to represent device topology that is used by the compiler.
-class PjRtDeviceTopology {
+class PjRtTopologyDescription {
  public:
-  virtual ~PjRtDeviceTopology() {}
+  virtual ~PjRtTopologyDescription() = default;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
@@ -68,12 +68,12 @@ class PjRtCompiler {
   // PjRtExecutable must be loaded by a compatible client before execution.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -94,12 +94,12 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // compilation failure.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
-    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
-    const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 }  // namespace xla
 

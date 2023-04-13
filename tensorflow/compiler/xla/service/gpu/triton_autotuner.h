@@ -27,8 +27,8 @@ namespace gpu {
 class TritonAutotuner : public HloModulePass {
  public:
   explicit TritonAutotuner(const AutotuningConfig& config,
-                           int num_extra_threads = 0)
-      : config_(config), num_extra_threads_(num_extra_threads) {}
+                           tsl::thread::ThreadPool* thread_pool)
+      : config_(config), thread_pool_(thread_pool) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
@@ -44,7 +44,7 @@ class TritonAutotuner : public HloModulePass {
 
  private:
   AutotuningConfig config_;
-  int num_extra_threads_;
+  tsl::thread::ThreadPool* thread_pool_;
 };
 
 }  // namespace gpu

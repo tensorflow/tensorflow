@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
@@ -1053,6 +1055,68 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
   return true;
 }
 
+using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
+
+// Removes boolean tensor inputs from the EagerOperation and returns them.
+// Currently this is only useful to invoke when small_constants_optimizer is
+// enabled because the runtime will have equivalent FunctionDefs of the original
+// tf.function without the boolean tensor input.
+StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
+  BoolTensorInputs result;
+  if (!op->is_function()) return result;
+  // Extract tensor inputs.
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  if (!op->TensorHandleInputs(&inputs).ok()) return result;
+  // Extract the FunctionDef.
+  const FunctionDef* fdef = op->EagerContext().GetFunctionDef(op->Name());
+  if (fdef == nullptr) return result;
+  // Ensure the number of inputs matches the specification in the FunctionDef.
+  if (fdef->signature().input_arg_size() != inputs->size()) return result;
+
+  // Remove all boolean inputs.
+  absl::InlinedVector<TensorHandle*, 4> stripped_inputs;
+  for (int32_t i = 0; i < fdef->signature().input_arg_size(); ++i) {
+    const auto& input_arg = fdef->signature().input_arg(i);
+    // Identify non-boolean inputs to this EagerOperation.
+    if (input_arg.type() != DT_BOOL) {
+      stripped_inputs.push_back(inputs->at(i));
+      continue;
+    }
+    // Identify boolean inputs to this EagerOperation that are on host.
+    const TensorHandle* handle = inputs->at(i);
+    Status s;
+    const char* input_device = handle->DeviceType(&s);
+    if (!s.ok() || !absl::StrContains(input_device, "CPU")) {
+      return errors::InvalidArgument(
+          "Expecting boolean tensor to be on host when "
+          "small_constants_optimizer is enabled.");
+    }
+    const Tensor* tensor;
+    TF_RETURN_IF_ERROR(handle->Tensor(&tensor));
+    // small_constant_optimizer does not handle non-scalar boolean inputs.
+    if (tensor->NumElements() != 1) {
+      stripped_inputs.push_back(inputs->at(i));
+      continue;
+    }
+    const bool input_value = tensor->scalar<bool>()();
+    result.emplace_back(input_arg.name(), input_value);
+  }
+
+  // If we were able to identify all boolean inputs, update the op's inputs.
+  op->Clear();
+  for (auto* input : stripped_inputs) {
+    TF_RETURN_IF_ERROR(op->AddInput(input));
+  }
+  return result;
+}
+
+bool IsSmallConstantOptimizationEnabled(const EagerOperation& op) {
+  if (!op.is_function()) return false;
+  const FunctionDef* fdef = op.EagerContext().GetFunctionDef(op.Name());
+  if (fdef == nullptr) return false;
+  return small_constants_optimizer::IsSmallConstantOptimizationEnabled(*fdef);
+}
+
 StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
@@ -1201,6 +1265,18 @@ Status GetOrCreateKernelAndDevice(
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
+
+  // Update the EagerOperation with information about the boolean input tensors
+  // when small constant optimization is enabled.
+  if (IsSmallConstantOptimizationEnabled(*op)) {
+    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs, RemoveBoolInputs(op));
+    string folded_name = op->Name();
+    for (const auto& [input_name, input_value] : bool_inputs) {
+      folded_name = small_constants_optimizer::FoldedFunctionName(
+          folded_name, input_name, input_value);
+    }
+    op->UpdateName(folded_name);
+  }
 
   // Set the EagerOperation's device prior to extracting the input_device_ptrs
   // to avoid any redundant H2D/D2H copies.

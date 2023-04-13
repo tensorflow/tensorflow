@@ -150,6 +150,38 @@ bool IsTailOfShape(Type type1, Type type2) {
   return std::equal(i1, e1, i2);
 }
 
+// This function removes explicit broadcasting on type1 and returns whether if
+// the reduced `type1` dimensions are the same as the ending dimensions
+// of `type2`.
+bool IsReducedTailOfShape(Type type1, Type type2) {
+  auto tail_type = type1.dyn_cast<ShapedType>();
+  auto full_type = type2.dyn_cast<ShapedType>();
+  if (!tail_type || !full_type || !tail_type.hasRank() || !full_type.hasRank())
+    return false;
+
+  auto i1 = tail_type.getShape().rbegin();
+  auto reduced_e1 = tail_type.getShape().rend();
+  auto i2 = full_type.getShape().rbegin();
+
+  while ((std::distance(i1, reduced_e1) > 0) && (*(reduced_e1 - 1) == 1)) {
+    reduced_e1--;
+  }
+
+  return (std::distance(i1, reduced_e1) > 0) &&
+         (std::distance(i1, reduced_e1) <= full_type.getRank()) &&
+         (std::equal(i1, reduced_e1, i2));
+}
+
+// Check if the value of the last dimension of type1 is equal to the number of
+// elements in type2. This is a required condition to flatten type2 to form a
+// 1D array and allow the binaryOp handle the broadcasting implicitly.
+bool IsLastDimEqualToNumElements(Type type1, Type type2) {
+  return (type1.cast<ShapedType>().getRank() >= 1 &&
+          type1.cast<ShapedType>().getDimSize(
+              type1.cast<ShapedType>().getRank() - 1) ==
+              type2.cast<ShapedType>().getNumElements());
+}
+
 bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
                                       const ArrayRef<int64_t> elements_shape,
                                       bool is_depthwise) {

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
@@ -180,8 +181,9 @@ static StatusOr<se::DeviceMemoryBase> CreateBuffer(
 
 class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
  public:
-  TritonAutotunerVisitor(const AutotuningConfig& config, int num_extra_threads)
-      : config_(config), num_extra_threads_(num_extra_threads) {}
+  TritonAutotunerVisitor(const AutotuningConfig& config,
+                         tsl::thread::ThreadPool* thread_pool)
+      : config_(config), thread_pool_(thread_pool) {}
 
   Status HandleFusion(HloInstruction* hlo) override {
     if (hlo->raw_backend_config_string() != kTritonGemmBackendConfig) {
@@ -280,20 +282,23 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     BufferComparator comparator(root->shape(), fusion->parent()->config());
 
+    const std::vector<AutotuneResult::TritonGemmKey> configurations =
+        GetPossibleMatmulAutotuneConfigs();
+
     // Pre-compile all versions first using the thread pool.
-    if (num_extra_threads_ > 0) {
-      tsl::thread::ThreadPool thread_pool(
-          tsl::Env::Default(), "compilation_pool", num_extra_threads_);
-      for (const AutotuneResult::TritonGemmKey& conf :
-           GetPossibleMatmulAutotuneConfigs()) {
-        thread_pool.Schedule([=] {
+    if (thread_pool_) {
+      tsl::BlockingCounter counter(configurations.size());
+      for (const AutotuneResult::TritonGemmKey& conf : configurations) {
+        thread_pool_->Schedule([&] {
           StatusOr<CompilationResult*> res =
               Compile(fusion, device_config, conf);
           if (!res.ok()) {
             LOG(ERROR) << "Failure: " << res.status().ToString();
           }
+          counter.DecrementCount();
         });
       }
+      counter.Wait();
     }
 
     // Output buffer size is different for split-K configurations;
@@ -322,8 +327,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                                        ShapeUtil::ByteSizeOf(root->shape()));
     args.push_back(output_buffer);
 
-    for (AutotuneResult::TritonGemmKey& conf :
-         GetPossibleMatmulAutotuneConfigs()) {
+    for (const AutotuneResult::TritonGemmKey& conf : configurations) {
       VLOG(1) << "Trying triton tiling: " << conf.DebugString();
 
       AutotuneResult res;
@@ -515,9 +519,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       }
     }
 
+    mlir::MLIRContext mlir_context;
     StatusOr<LaunchDimensions> launch_dimensions =
         TritonWrapper(triton_fn_name_, to_compile, cc, dev_info,
-                      autotune_config, &module, &MatMul);
+                      autotune_config, &module, &MatMul, mlir_context);
     // Emission of individual variants is allowed to fail - shared memory limit
     // is often exceeded. If all variants fail for some other reason this is
     // caught later by having no results in the autotuner's output.
@@ -615,7 +620,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   }
 
   AutotuningConfig config_;
-  int num_extra_threads_;
+  tsl::thread::ThreadPool* thread_pool_;
 
   std::string triton_fn_name_ = "matmul_autotune";
 };
@@ -625,7 +630,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 StatusOr<bool> TritonAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return TritonAutotunerVisitor{config_, num_extra_threads_}.RunOnModule(
+  return TritonAutotunerVisitor{config_, thread_pool_}.RunOnModule(
       module, execution_threads);
 }
 

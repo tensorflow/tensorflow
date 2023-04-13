@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 struct TfLiteXNNPackDelegateWeightsCache;
@@ -513,6 +514,11 @@ class Delegate {
   bool support_any_8bit_quantization() const {
     return (options_.flags & (TFLITE_XNNPACK_DELEGATE_FLAG_QU8 |
                               TFLITE_XNNPACK_DELEGATE_FLAG_QS8)) != 0;
+  }
+
+  bool support_dynamic_fully_connected_operator() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED) != 0;
   }
 
   bool force_fp16() const {
@@ -2009,14 +2015,16 @@ class Subgraph {
 
   static TfLiteStatus CheckShapeTensorShape(TfLiteContext* context,
                                             const TfLiteTensor& tensor,
-                                            int tensor_index, int node_index) {
+                                            int tensor_index,
+                                            BuiltinOperator op_type,
+                                            int node_index) {
     if (NumDimensions(&tensor) != 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
-                               "shape tensor #%d in node #%d: "
+                               "shape tensor #%d in %s node #%d: "
                                "expected a 1D tensor",
                                NumDimensions(&tensor), tensor_index,
-                               node_index);
+                               EnumNameBuiltinOperator(op_type), node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -2040,14 +2048,15 @@ class Subgraph {
   static TfLiteStatus CheckTensorStaticAllocation(TfLiteContext* context,
                                                   const TfLiteTensor& tensor,
                                                   int tensor_index,
+                                                  BuiltinOperator op_type,
                                                   int node_index) {
     if (tensor.allocation_type != kTfLiteMmapRo ||
         tensor.data.raw_const == nullptr) {
       TF_LITE_MAYBE_KERNEL_LOG(
           context,
-          "invalid allocation type in tensor #%d in node #%d: "
+          "invalid allocation type in tensor #%d in %s node #%d: "
           "expected static read-only tensor",
-          tensor_index, node_index);
+          tensor_index, EnumNameBuiltinOperator(op_type), node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -2505,7 +2514,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ABS node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_ABS),
                            node_index);
         return kTfLiteError;
       }
@@ -2567,7 +2577,8 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ADD node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_ADD),
                            node_index);
         return kTfLiteError;
       }
@@ -2593,9 +2604,10 @@ class Subgraph {
           subgraph, xnnpack_tensors[node->inputs->data[1]],
           xnnpack_tensors[node->inputs->data[0]], 0 /* flags */);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate ASSIGN_VARIABLE node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_ASSIGN_VARIABLE),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -2658,9 +2670,10 @@ class Subgraph {
             /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       }
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate AVERAGE_POOL_2D node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_AVERAGE_POOL_2D),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -2693,120 +2706,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate CEIL node #%d",
-                           node_index);
-        return kTfLiteError;
-      }
-    }
-
-    return kTfLiteOk;
-  }
-
-  static TfLiteStatus VisitSplitNode(
-      xnn_subgraph_t subgraph, const Delegate& delegate,
-      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
-      const TfLiteTensor* tensors, const TfLiteSplitParams* split_params,
-      const std::vector<uint32_t>& xnnpack_tensors) {
-    const int num_outputs = NumOutputs(node);
-    TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits, num_outputs);
-    TF_LITE_ENSURE_STATUS(CheckNumInputs(logging_context, node, 2, node_index));
-    TF_LITE_ENSURE_STATUS(
-        CheckNumOutputs(logging_context, node, 2, 4, node_index));
-
-    const int split_dim_idx = node->inputs->data[0];
-    const TfLiteTensor& split_dim_tensor = tensors[split_dim_idx];
-    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, split_dim_tensor,
-                                          kTfLiteInt32, split_dim_idx,
-                                          node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, split_dim_tensor, split_dim_idx, node_index));
-
-    const int input_idx = node->inputs->data[1];
-    const TfLiteTensor& input_tensor = tensors[input_idx];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
-        delegate, logging_context, input_tensor, input_idx, node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, input_tensor, input_idx, node_index));
-
-    int32_t split_dim = GetTensorData<int32_t>(&split_dim_tensor)[0];
-    if (split_dim < 0) split_dim += NumDimensions(&input_tensor);
-    TF_LITE_ENSURE(logging_context, split_dim >= 0);
-    TF_LITE_ENSURE(logging_context, split_dim < NumDimensions(&input_tensor));
-
-    const int input_split_dim_size = SizeOfDimension(&input_tensor, split_dim);
-    if (input_split_dim_size % num_outputs != 0) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "Cannot evenly split dimension %d, which is %d, into %d", split_dim,
-          input_split_dim_size, num_outputs);
-      return kTfLiteError;
-    }
-
-    const int32_t expected_output_split_dim_size =
-        input_split_dim_size / num_outputs;
-
-    for (int i = 0; i < NumOutputs(node); i++) {
-      const int output_idx = node->outputs->data[i];
-      const TfLiteTensor& output_tensor = tensors[output_idx];
-
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
-          delegate, logging_context, output_tensor, output_idx, node_index));
-      TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-          logging_context, output_tensor, output_idx, node_index));
-      TF_LITE_ENSURE_EQ(logging_context, NumDimensions(&input_tensor),
-                        NumDimensions(&output_tensor));
-
-      for (int d = 0; d < NumDimensions(&input_tensor); d++) {
-        if (d == split_dim) {
-          if (SizeOfDimension(&output_tensor, split_dim) !=
-              expected_output_split_dim_size) {
-            TF_LITE_MAYBE_KERNEL_LOG(
-                logging_context,
-                "mismatch in split dimension %d (%d != %d) "
-                "in output %d and input"
-                "tensors of SPLIT operator #%d",
-                split_dim, SizeOfDimension(&output_tensor, split_dim),
-                expected_output_split_dim_size, d, node_index);
-            return kTfLiteError;
-          }
-        } else {
-          TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
-              logging_context, input_tensor, output_tensor, d, node_index,
-              "SPLIT"));
-        }
-      }
-    }
-
-    if (subgraph != nullptr) {
-      xnn_status status = xnn_status_invalid_parameter;
-      if (num_outputs == 2) {
-        status = xnn_define_even_split2(
-            subgraph, split_dim,
-            /*input_id=*/xnnpack_tensors[input_idx],
-            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
-            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
-            /*flags=*/0);
-      } else if (num_outputs == 3) {
-        status = xnn_define_even_split3(
-            subgraph, split_dim,
-            /*input_id=*/xnnpack_tensors[input_idx],
-            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
-            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
-            /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
-            /*flags=*/0);
-      } else if (num_outputs == 4) {
-        status = xnn_define_even_split4(
-            subgraph, split_dim,
-            /*input_id=*/xnnpack_tensors[input_idx],
-            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
-            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
-            /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
-            /*output4_id=*/xnnpack_tensors[node->outputs->data[3]],
-            /*flags=*/0);
-      }
-
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate SPLIT node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_CEIL),
                            node_index);
         return kTfLiteError;
       }
@@ -2925,9 +2826,9 @@ class Subgraph {
             /*flags=*/0);
       }
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate CONCATENATION node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_CONCATENATION), node_index);
         return kTfLiteError;
       }
     }
@@ -2963,7 +2864,8 @@ class Subgraph {
                                            node->inputs->data[1]));
     if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, filter_tensor, node->inputs->data[1], node_index));
+          logging_context, filter_tensor, node->inputs->data[1],
+          BuiltinOperator_CONV_2D, node_index));
     }
 
     const int bias_tensor_id = node->inputs->data[2];
@@ -2981,7 +2883,8 @@ class Subgraph {
                                            node->inputs->data[2]));
     if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, bias_tensor, node->inputs->data[2], node_index));
+          logging_context, bias_tensor, node->inputs->data[2],
+          BuiltinOperator_CONV_2D, node_index));
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -3036,8 +2939,9 @@ class Subgraph {
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate CONV_2D node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_CONV_2D),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -3072,7 +2976,8 @@ class Subgraph {
                                            node->inputs->data[1]));
     if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, filter_tensor, node->inputs->data[1], node_index));
+          logging_context, filter_tensor, node->inputs->data[1],
+          BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
     }
 
     const int bias_tensor_id = node->inputs->data[2];
@@ -3090,7 +2995,8 @@ class Subgraph {
                                            node->inputs->data[2]));
     if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, bias_tensor, node->inputs->data[2], node_index));
+          logging_context, bias_tensor, node->inputs->data[2],
+          BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -3150,9 +3056,10 @@ class Subgraph {
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate DEPTHWISE_CONV_2D node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_DEPTHWISE_CONV_2D),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -3199,9 +3106,10 @@ class Subgraph {
           static_cast<uint32_t>(depth_to_space_params->block_size),
           /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate DEPTH_TO_SPACE node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_DEPTH_TO_SPACE),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -3235,8 +3143,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate DEQUANTIZE node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_DEQUANTIZE),
                            node_index);
         return kTfLiteError;
       }
@@ -3286,7 +3194,8 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate DIV node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_DIV),
                            node_index);
         return kTfLiteError;
       }
@@ -3324,7 +3233,8 @@ class Subgraph {
                          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
                          /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ELU node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_ELU),
                            node_index);
         return kTfLiteError;
       }
@@ -3353,14 +3263,22 @@ class Subgraph {
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, filter_tensor,
-                                       node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, filter_tensor, 2,
                                            node->inputs->data[1]));
-    if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+    // Dynamic filter is supported, but only for FP32.
+    if (delegate.support_dynamic_fully_connected_operator() &&
+        filter_tensor.type == kTfLiteFloat32) {
+      TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
           logging_context, filter_tensor, node->inputs->data[1], node_index));
+    } else {
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+          delegate, logging_context, filter_tensor, node->inputs->data[1],
+          node_index));
+      if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
+        TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+            logging_context, filter_tensor, node->inputs->data[1],
+            BuiltinOperator_FULLY_CONNECTED, node_index));
+      }
     }
 
     int bias_tensor_id = -1;
@@ -3368,14 +3286,22 @@ class Subgraph {
       bias_tensor_id = node->inputs->data[2];
       if (bias_tensor_id >= 0) {
         const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
-        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
-            delegate, logging_context, bias_tensor, node->inputs->data[2],
-            node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
                                                node->inputs->data[2]));
-        if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
-          TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        // Dynamic bias is supported, but only for FP32.
+        if (delegate.support_dynamic_fully_connected_operator() &&
+            bias_tensor.type == kTfLiteFloat32) {
+          TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
               logging_context, bias_tensor, node->inputs->data[2], node_index));
+        } else {
+          TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
+              delegate, logging_context, bias_tensor, node->inputs->data[2],
+              node_index));
+          if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
+            TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+                logging_context, bias_tensor, node->inputs->data[2],
+                BuiltinOperator_FULLY_CONNECTED, node_index));
+          }
         }
       }
     }
@@ -3488,9 +3414,10 @@ class Subgraph {
           /*flags=*/fc_params->keep_num_dims ? 0
                                              : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate FULLY_CONNECTED node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -3523,7 +3450,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate FLOOR node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_FLOOR),
                            node_index);
         return kTfLiteError;
       }
@@ -3557,8 +3485,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate HARD_SWISH node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_HARD_SWISH),
                            node_index);
         return kTfLiteError;
       }
@@ -3629,8 +3557,8 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate LEAKY_RELU node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_LEAKY_RELU),
                            node_index);
         return kTfLiteError;
       }
@@ -3666,8 +3594,9 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate LOGISTIC node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_LOGISTIC),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -3733,8 +3662,8 @@ class Subgraph {
             /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       }
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate MAX_POOL_2D node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_MAX_POOL_2D),
                            node_index);
         return kTfLiteError;
       }
@@ -3775,8 +3704,9 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate MAXIMUM node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_MAXIMUM),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -3808,7 +3738,8 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
         logging_context, axes_tensor, node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, axes_tensor, node->inputs->data[1], node_index));
+        logging_context, axes_tensor, node->inputs->data[1],
+        BuiltinOperator_MEAN, node_index));
 
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
@@ -3883,7 +3814,8 @@ class Subgraph {
           break;
       }
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MEAN node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_MEAN),
                            node_index);
         return kTfLiteError;
       }
@@ -3917,7 +3849,8 @@ class Subgraph {
                                            node->inputs->data[1]));
     if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, filter_tensor, node->inputs->data[1], node_index));
+          logging_context, filter_tensor, node->inputs->data[1],
+          BuiltinOperator_CUSTOM, node_index));
     }
 
     const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
@@ -3927,7 +3860,8 @@ class Subgraph {
                                            node->inputs->data[2]));
     if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, bias_tensor, node->inputs->data[2], node_index));
+          logging_context, bias_tensor, node->inputs->data[2],
+          BuiltinOperator_CUSTOM, node_index));
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -3994,10 +3928,9 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
           /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(
-            logging_context,
-            "failed to delegate Convolution2DTransposeBias node #%d",
-            node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate CUSTOM(%s) node #%d",
+                           "Convolution2DTransposeBias", node_index);
         return kTfLiteError;
       }
     }
@@ -4058,10 +3991,9 @@ class Subgraph {
           /*output_value_id=*/xnnpack_tensors[node->outputs->data[0]],
           /*output_index_id=*/xnnpack_tensors[node->outputs->data[1]], flags);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(
-            logging_context,
-            "failed to delegate CUSTOM(MaxPoolingWithArgmax2D) node #%d",
-            node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate CUSTOM(%s) node #%d",
+                           "MaxPoolingWithArgmax2D", node_index);
         return kTfLiteError;
       }
     }
@@ -4128,8 +4060,8 @@ class Subgraph {
           /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate CUSTOM(MaxUnpooling2D) node #%d",
-                           node_index);
+                           "failed to delegate CUSTOM(%s) node #%d",
+                           "MaxUnpooling2D", node_index);
         return kTfLiteError;
       }
     }
@@ -4169,8 +4101,9 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate MINIMUM node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_MINIMUM),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -4228,7 +4161,8 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MUL node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_MUL),
                            node_index);
         return kTfLiteError;
       }
@@ -4262,7 +4196,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate NEG node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_NEG),
                            node_index);
         return kTfLiteError;
       }
@@ -4297,7 +4232,8 @@ class Subgraph {
         logging_context, paddings_tensor, NumDimensions(&input_tensor),
         node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, paddings_tensor, node->inputs->data[1], node_index));
+        logging_context, paddings_tensor, node->inputs->data[1],
+        BuiltinOperator_PAD, node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -4345,7 +4281,8 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate PAD node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_PAD),
                            node_index);
         return kTfLiteError;
       }
@@ -4379,7 +4316,8 @@ class Subgraph {
         logging_context, slope_tensor, node->inputs->data[1], node_index));
     if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, slope_tensor, node->inputs->data[1], node_index));
+          logging_context, slope_tensor, node->inputs->data[1],
+          BuiltinOperator_PRELU, node_index));
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -4397,7 +4335,8 @@ class Subgraph {
           /*slope_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate PRELU node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_PRELU),
                            node_index);
         return kTfLiteError;
       }
@@ -4474,8 +4413,9 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate QUANTIZE node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_QUANTIZE),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -4513,9 +4453,9 @@ class Subgraph {
           xnn_define_copy(subgraph, xnnpack_tensors[resource_tensor_id],
                           xnnpack_tensors[output_tensor_id], 0 /* flags */);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate READ_VARIABLE node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_READ_VARIABLE), node_index);
         return kTfLiteError;
       }
     }
@@ -4548,7 +4488,8 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate RELU node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_RELU),
                            node_index);
         return kTfLiteError;
       }
@@ -4598,7 +4539,8 @@ class Subgraph {
                                             kTfLiteInt32, node->inputs->data[1],
                                             node_index));
       TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-          logging_context, shape_tensor, node->inputs->data[1], node_index));
+          logging_context, shape_tensor, node->inputs->data[1],
+          BuiltinOperator_RESHAPE, node_index));
       TF_LITE_ENSURE_STATUS(CheckTensorStaticOrPersistentRoAllocation(
           logging_context, shape_tensor, node->inputs->data[1], node_index));
     }
@@ -4624,8 +4566,9 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate RESHAPE node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_RESHAPE),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -4656,7 +4599,8 @@ class Subgraph {
                                           kTfLiteInt32, node->inputs->data[1],
                                           node_index));
     TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, shape_tensor, node->inputs->data[1], node_index));
+        logging_context, shape_tensor, node->inputs->data[1],
+        BuiltinOperator_RESIZE_BILINEAR, node_index));
     if (SizeOfDimension(&shape_tensor, 0) != 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -4664,7 +4608,8 @@ class Subgraph {
           SizeOfDimension(&shape_tensor, 0), node_index);
     }
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, shape_tensor, node->inputs->data[1], node_index));
+        logging_context, shape_tensor, node->inputs->data[1],
+        BuiltinOperator_RESIZE_BILINEAR, node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -4700,9 +4645,10 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate RESIZE_BILINEAR node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_RESIZE_BILINEAR),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -4735,7 +4681,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ROUND node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_ROUND),
                            node_index);
         return kTfLiteError;
       }
@@ -4758,17 +4705,21 @@ class Subgraph {
     const TfLiteTensor& size_tensor = tensors[size_tensor_index];
     const TfLiteTensor& output_tensor = tensors[output_tensor_index];
 
-    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, begin_tensor, begin_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckShapeTensorShape(logging_context, begin_tensor, begin_tensor_index,
+                              BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, begin_tensor, begin_tensor_index, node_index));
+        logging_context, begin_tensor, begin_tensor_index,
+        BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorInt32OrInt64Type(
         logging_context, begin_tensor, begin_tensor_index, node_index));
 
-    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(logging_context, size_tensor,
-                                                size_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckShapeTensorShape(logging_context, size_tensor, size_tensor_index,
+                              BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, size_tensor, size_tensor_index, node_index));
+        logging_context, size_tensor, size_tensor_index, BuiltinOperator_SLICE,
+        node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorInt32OrInt64Type(
         logging_context, size_tensor, size_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
@@ -4867,8 +4818,9 @@ class Subgraph {
           xnnpack_tensors[node->inputs->data[0]],
           xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context, "failed to delegate SLICE node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SLICE),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -4909,8 +4861,9 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate SOFTMAX node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SOFTMAX),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -4975,8 +4928,124 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
           /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate SPACE_TO_DEPTH node #%d",
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_SPACE_TO_DEPTH),
+            node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitSplitNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors, const TfLiteSplitParams* split_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    const int num_outputs = NumOutputs(node);
+    TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits, num_outputs);
+    TF_LITE_ENSURE_STATUS(CheckNumInputs(logging_context, node, 2, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckNumOutputs(logging_context, node, 2, 4, node_index));
+
+    const int split_dim_idx = node->inputs->data[0];
+    const TfLiteTensor& split_dim_tensor = tensors[split_dim_idx];
+    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, split_dim_tensor,
+                                          kTfLiteInt32, split_dim_idx,
+                                          node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, split_dim_tensor, split_dim_idx, BuiltinOperator_SPLIT,
+        node_index));
+
+    const int input_idx = node->inputs->data[1];
+    const TfLiteTensor& input_tensor = tensors[input_idx];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+        delegate, logging_context, input_tensor, input_idx, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, input_idx, node_index));
+
+    int32_t split_dim = GetTensorData<int32_t>(&split_dim_tensor)[0];
+    if (split_dim < 0) split_dim += NumDimensions(&input_tensor);
+    TF_LITE_ENSURE(logging_context, split_dim >= 0);
+    TF_LITE_ENSURE(logging_context, split_dim < NumDimensions(&input_tensor));
+
+    const int input_split_dim_size = SizeOfDimension(&input_tensor, split_dim);
+    if (input_split_dim_size % num_outputs != 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "Cannot evenly split dimension %d, which is %d, into %d", split_dim,
+          input_split_dim_size, num_outputs);
+      return kTfLiteError;
+    }
+
+    const int32_t expected_output_split_dim_size =
+        input_split_dim_size / num_outputs;
+
+    for (int i = 0; i < NumOutputs(node); i++) {
+      const int output_idx = node->outputs->data[i];
+      const TfLiteTensor& output_tensor = tensors[output_idx];
+
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+          delegate, logging_context, output_tensor, output_idx, node_index));
+      TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+          logging_context, output_tensor, output_idx, node_index));
+      TF_LITE_ENSURE_EQ(logging_context, NumDimensions(&input_tensor),
+                        NumDimensions(&output_tensor));
+
+      for (int d = 0; d < NumDimensions(&input_tensor); d++) {
+        if (d == split_dim) {
+          if (SizeOfDimension(&output_tensor, split_dim) !=
+              expected_output_split_dim_size) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "mismatch in split dimension %d (%d != %d) "
+                "in output %d and input"
+                "tensors of SPLIT operator #%d",
+                split_dim, SizeOfDimension(&output_tensor, split_dim),
+                expected_output_split_dim_size, d, node_index);
+            return kTfLiteError;
+          }
+        } else {
+          TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
+              logging_context, input_tensor, output_tensor, d, node_index,
+              "SPLIT"));
+        }
+      }
+    }
+
+    if (subgraph != nullptr) {
+      xnn_status status = xnn_status_invalid_parameter;
+      if (num_outputs == 2) {
+        status = xnn_define_even_split2(
+            subgraph, split_dim,
+            /*input_id=*/xnnpack_tensors[input_idx],
+            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+            /*flags=*/0);
+      } else if (num_outputs == 3) {
+        status = xnn_define_even_split3(
+            subgraph, split_dim,
+            /*input_id=*/xnnpack_tensors[input_idx],
+            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+            /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
+            /*flags=*/0);
+      } else if (num_outputs == 4) {
+        status = xnn_define_even_split4(
+            subgraph, split_dim,
+            /*input_id=*/xnnpack_tensors[input_idx],
+            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+            /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
+            /*output4_id=*/xnnpack_tensors[node->outputs->data[3]],
+            /*flags=*/0);
+      }
+
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SPLIT),
                            node_index);
         return kTfLiteError;
       }
@@ -5010,8 +5079,9 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate SQUARE node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SQUARE),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -5046,7 +5116,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate TANH node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_TANH),
                            node_index);
         return kTfLiteError;
       }
@@ -5069,7 +5140,8 @@ class Subgraph {
 
     const TfLiteTensor& perm_tensor = tensors[node->inputs->data[1]];
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, perm_tensor, node->inputs->data[1], node_index));
+        logging_context, perm_tensor, node->inputs->data[1],
+        BuiltinOperator_TRANSPOSE, node_index));
 
     const int* perm_data = GetTensorData<int32_t>(&perm_tensor);
 
@@ -5086,8 +5158,9 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
           /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate TRANSPOSE node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_TRANSPOSE),
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -5120,7 +5193,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate SQRT node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SQRT),
                            node_index);
         return kTfLiteError;
       }
@@ -5161,9 +5235,10 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate SQUARED_DIFFERENCE node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_SQUARED_DIFFERENCE),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -5187,9 +5262,11 @@ class Subgraph {
     const TfLiteTensor& stride_tensor = tensors[stride_tensor_index];
 
     TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, stride_tensor, stride_tensor_index, node_index));
+        logging_context, stride_tensor, stride_tensor_index,
+        BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, stride_tensor, stride_tensor_index, node_index));
+        logging_context, stride_tensor, stride_tensor_index,
+        BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(
         logging_context, stride_tensor, stride_tensor_index, node_index));
 
@@ -5222,19 +5299,23 @@ class Subgraph {
     const TfLiteTensor& end_tensor = tensors[end_tensor_index];
     const TfLiteTensor& output_tensor = tensors[output_tensor_index];
 
-    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
-        logging_context, begin_tensor, begin_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckShapeTensorShape(logging_context, begin_tensor, begin_tensor_index,
+                              BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, begin_tensor, begin_tensor_index, node_index));
+        logging_context, begin_tensor, begin_tensor_index,
+        BuiltinOperator_STRIDED_SLICE, node_index));
     // TODO(b/246969669): TFLite only supports int32 begin ends and strides,
     // support int64 too when TFLite supports it as well.
     TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(logging_context, begin_tensor,
                                                begin_tensor_index, node_index));
 
-    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(logging_context, end_tensor,
-                                                end_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckShapeTensorShape(logging_context, end_tensor, end_tensor_index,
+                              BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, end_tensor, end_tensor_index, node_index));
+        logging_context, end_tensor, end_tensor_index,
+        BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(logging_context, end_tensor,
                                                end_tensor_index, node_index));
 
@@ -5314,9 +5395,9 @@ class Subgraph {
           xnnpack_tensors[input_tensor_index],
           xnnpack_tensors[output_tensor_index], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "failed to delegate STRIDED_SLICE node #%d",
-                                 node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_STRIDED_SLICE), node_index);
         return kTfLiteError;
       }
     }
@@ -5376,7 +5457,8 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate SUB node #%d",
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                           EnumNameBuiltinOperator(BuiltinOperator_SUB),
                            node_index);
         return kTfLiteError;
       }
@@ -5404,12 +5486,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorType(logging_context, output_shape_tensor, kTfLiteInt32,
                         output_shape_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(
-        CheckShapeTensorShape(logging_context, output_shape_tensor,
-                              output_shape_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorStaticAllocation(logging_context, output_shape_tensor,
-                                    output_shape_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, output_shape_tensor, output_shape_tensor_index,
+        BuiltinOperator_TRANSPOSE, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, output_shape_tensor, output_shape_tensor_index,
+        BuiltinOperator_TRANSPOSE_CONV, node_index));
     const int output_shape_dims = SizeOfDimension(&output_shape_tensor, 0);
     if (output_shape_dims != 4) {
       TF_LITE_MAYBE_KERNEL_LOG(
@@ -5429,7 +5511,8 @@ class Subgraph {
                                            filter_tensor_index));
     if (quasi_static_tensors.count(filter_tensor_index) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, filter_tensor, filter_tensor_index, node_index));
+          logging_context, filter_tensor, filter_tensor_index,
+          BuiltinOperator_TRANSPOSE_CONV, node_index));
     }
 
     const int input_tensor_index = node->inputs->data[2];
@@ -5454,7 +5537,8 @@ class Subgraph {
                                                bias_tensor_index));
         if (quasi_static_tensors.count(bias_tensor_index) == 0) {
           TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-              logging_context, bias_tensor, bias_tensor_index, node_index));
+              logging_context, bias_tensor, bias_tensor_index,
+              BuiltinOperator_TRANSPOSE_CONV, node_index));
         }
         if (subgraph != nullptr) {
           xnnpack_tensor_bias = xnnpack_tensors[bias_tensor_index];
@@ -5550,9 +5634,10 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[output_tensor_index],
           /*flags=*/0);
       if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate TransposeConv node #%d",
-                           node_index);
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_TRANSPOSE_CONV),
+            node_index);
         return kTfLiteError;
       }
     }
@@ -6098,11 +6183,17 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 #ifdef XNNPACK_DELEGATE_ENABLE_QU8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
 #endif
+#ifdef XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
+#endif
 
   // Enable quantized inference for the delegate build used in unit tests.
+  // Enable FULLY_CONNECTED operator with dynamic weights for the delegate build
+  // used in unit tests.
 #ifdef XNNPACK_DELEGATE_TEST_MODE
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
 #endif  // XNNPACK_DELEGATE_TEST_MODE
 
   options.handle_variable_ops = false;

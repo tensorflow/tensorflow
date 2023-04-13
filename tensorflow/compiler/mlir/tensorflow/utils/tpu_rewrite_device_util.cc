@@ -49,6 +49,7 @@ constexpr int kTPUTopologyRank = 4;
 constexpr char kDeviceTPUSystem[] = "TPU_SYSTEM";
 constexpr char kDeviceTPU[] = "TPU";
 constexpr char kTPUReplicatedCore[] = "TPU_REPLICATED_CORE";
+constexpr char kTPUReplicatedHost[] = "TPU_REPLICATED_HOST";
 constexpr char kBadIntArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not an int";
 
@@ -447,7 +448,7 @@ mlir::LogicalResult GetHostDeviceOCInTPUPipeline(
     std::string* host_device) {
   auto replicate = cluster->getParentOfType<mlir::tf_device::ReplicateOp>();
   if (replicate) {
-    *host_device = tensorflow::kTPUReplicatedHost;
+    *host_device = GetDeviceAliasForHostOfLogicalCore(0);
     return mlir::success();
   }
 
@@ -554,8 +555,12 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
                              std::move(devices_and_ids.second));
 }
 
-std::string GetDeviceAliasForLogicalCore(int core_index) {
+std::string GetDeviceAliasForLogicalCore(const int core_index) {
   return llvm::formatv("{0}_{1}", kTPUReplicatedCore, core_index).str();
+}
+
+std::string GetDeviceAliasForHostOfLogicalCore(const int core_index) {
+  return llvm::formatv("{0}_{1}", kTPUReplicatedHost, core_index).str();
 }
 
 bool HasModelParallelism(mlir::tf_device::ClusterOp cluster) {

@@ -28,6 +28,7 @@ include_directories(BEFORE
 
 add_mlir_library(GmlStPasses
   add_debug_info/add_debug_info.cc
+  canonicalization/optimize_linalg_ops.cc
   collapse_shape/collapse_shape.cc
   collect_stats/collect_stats.cc
   compose_extract_insert_slice/compose_extract_insert_slice.cc
@@ -37,9 +38,6 @@ add_mlir_library(GmlStPasses
   cpu_tiling/fusion_planning_for_cpu.cc
   cpu_tiling/pack_matmul.cc
   cpu_tiling/remove_label.cc
-  cpu_tiling/rewrite_dot_as_reduce.cc
-  cpu_tiling/transform_batch_matmul_for_cpu.cc
-  cpu_tiling/transform_conv_for_cpu.cc
   cpu_tiling/transform_dot_for_cpu.cc
   cpu_tiling/transform_elementwise_for_cpu.cc
   cpu_tiling/transform_mmt4d_for_cpu.cc

@@ -128,6 +128,12 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
   for (auto& [async_start, async_done] : async_pairs) {
     TF_ASSIGN_OR_RETURN(HloInstruction * sync,
                         CreateSyncVariant(async_start, async_done));
+    // Remember name of async instruction for profile usability.
+    FrontendAttributes attributes;
+    auto& map = *attributes.mutable_map();
+    map[kAsyncCollectiveNameAttributeName] = async_start->name();
+    sync->add_frontend_attributes(std::move(attributes));
+
     replaced_ops[async_start] = nullptr;
     replaced_ops[async_done] = sync;
   }

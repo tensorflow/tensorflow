@@ -90,16 +90,16 @@ struct SnapshotWriterParams {
 // Responsible for writing one snapshot stream, which is organized as following:
 //
 // - snapshot
-//   - LEASE
 //   - DONE
+//   - ERROR
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - chunks
 //     - chunk_<stream_index>_<chunk_index>_<num_elements>
 //   - streams
 //     - stream_0
-//       - LEASE
 //       - DONE
+//       - ERROR
 //       - splits
 //         - split_<local_split_index>_<global_split_index>
 //       - uncommitted chunks

@@ -28,6 +28,29 @@ func.func @matvec(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
 
 // -----
 
+func.func @large_matvec(%lhs: tensor<33x1024xf32>, %rhs: tensor<1024xf32>,
+                        %output: tensor<33xf32>) -> tensor<33xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %fill = linalg.fill ins(%cst : f32)
+                      outs(%output : tensor<33xf32>) -> tensor<33xf32>
+  %matvec = linalg.matvec ins(%lhs, %rhs : tensor<33x1024xf32>, tensor<1024xf32>)
+                     outs(%fill : tensor<33xf32>) -> tensor<33xf32>
+  return %matvec : tensor<33xf32>
+}
+// CHECK-LABEL: @large_matvec
+
+// CHECK:   scf.for
+// CHECK:      tensor.collapse_shape
+// CHECK-SAME:   : tensor<1x1024xf32> into tensor<1024xf32>
+// CHECK:     scf.for
+// CHECK:       arith.mulf %{{.*}} : vector<32xf32>
+// CHECK:       vector.multi_reduction <add>
+// CHECK:       scf.yield %{{.*}} : vector<8xf32>
+// CHECK:     vector.multi_reduction <add>
+// CHECK:     scf.yield %{{.*}} : tensor<33xf32>
+
+// -----
+
 func.func @vecmat(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
                   %output: tensor<33xf32>) -> tensor<33xf32> {
   %2 = linalg.vecmat ins(%lhs, %rhs : tensor<17xf32>, tensor<17x33xf32>)

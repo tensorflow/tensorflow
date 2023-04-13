@@ -126,7 +126,7 @@ tf_py_test(
     deps = [
         ":pywrap_quantize_model",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -175,7 +175,7 @@ pytype_strict_library(
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -201,6 +201,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -267,7 +268,7 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:session",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types",
     ],
 )

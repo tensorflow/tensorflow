@@ -308,9 +308,6 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Periodically maintains the snapshot workers to handle failed or missing
-  // workers.
-  void MaintainSnapshotWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks for workers that haven't heartbeated recently and alerts the
   // snapshot managers.
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

@@ -36,8 +36,10 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/summary/writer:writer_cache",
         "//tensorflow/python/training:training_util",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -84,6 +86,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/summary/writer:writer_cache",
         "//tensorflow/python/training:training_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",

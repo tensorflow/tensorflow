@@ -33,6 +33,7 @@ namespace {
 
 constexpr const char kDoneFileName[] = "DONE";
 constexpr const char kErrorFileName[] = "ERROR";
+constexpr const char kWorkerFileName[] = "owner_worker";
 constexpr const char kSnapshotMetadataFileName[] = "snapshot.metadata";
 constexpr const char kDatasetDefFileName[] = "dataset_def.proto";
 constexpr const char kDatasetSpecFileName[] = "dataset_spec.pb";
@@ -147,6 +148,12 @@ std::string StreamDoneFilePath(absl::string_view snapshot_path,
                                int64_t stream_index) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
                            kDoneFileName);
+}
+
+std::string StreamWorkerFilePath(absl::string_view snapshot_path,
+                                 int64_t stream_index) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
+                           kWorkerFileName);
 }
 
 std::string SnapshotDoneFilePath(absl::string_view snapshot_path) {

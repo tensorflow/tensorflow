@@ -140,34 +140,6 @@ def TransformMmt4DForCpuPass :
   let constructor = "createTransformMmt4DForCpuPass()";
 }
 
-def TransformConvForCpuPass :
-    Pass<"xla-cpu-transform-conv", "mlir::func::FuncOp"> {
-  let summary = "Transform conv ops for running on CPU";
-  let constructor = "createTransformConvForCpuPass()";
-}
-
-def RewriteDotAsReducePass
-    : Pass<"gml-st-rewrite-dot-as-reduce", "mlir::func::FuncOp"> {
-  let summary = "Pass to rewrite linalg.dot as linalg.reduce(linalg.map).";
-  let dependentDialects = [
-    "::mlir::arith::ArithDialect",
-    "::mlir::linalg::LinalgDialect",
-    "::mlir::tensor::TensorDialect"
-  ];
-  let constructor = "createRewriteDotAsReducePass()";
-}
-
-def TransformBatchMatmulForCpuPass :
-    Pass<"xla-cpu-transform-batch-matmul", "mlir::func::FuncOp"> {
-  let summary = "Transform batch_matmul ops for running on CPU";
-  let dependentDialects = [
-    "arith::ArithDialect",
-    "scf::SCFDialect",
-    "tensor::TensorDialect"
-  ];
-  let constructor = "createTransformBatchMatmulForCpuPass()";
-}
-
 def TransformElementwiseForCpuPass :
     Pass <"xla-cpu-tranform-elementwise", "mlir::func::FuncOp"> {
   let summary = "Transform elementwise ops for running on CPU";
@@ -230,8 +202,8 @@ def FusionPlanningForCpuPass :
   let summary = "Create fusion clusters.";
   let constructor = "createFusionPlanningForCpuPass()";
   let dependentDialects = [
-    "::mlir::gml_st::GmlStDialect",
     "::mlir::arith::ArithDialect",
+    "::mlir::gml_st::GmlStDialect",
     "::mlir::linalg::LinalgDialect",
     "::mlir::tensor::TensorDialect"
   ];
@@ -265,5 +237,17 @@ def InlineFusionClustersPass :
   let constructor = "createInlineFusionClustersPass()";
   let dependentDialects = [
     "::mlir::gml_st::GmlStDialect",
+  ];
+}
+
+def OptimizeLinalgOpsPass
+    : Pass<"gml-st-optimize-linalg-ops-pass", "mlir::func::FuncOp"> {
+  let summary = "Canonicalization patterns for linalg ops.";
+  let constructor = "createOptimizeLinalgOpsPass()";
+
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+    "::mlir::linalg::LinalgDialect",
+    "::mlir::tensor::TensorDialect"
   ];
 }
