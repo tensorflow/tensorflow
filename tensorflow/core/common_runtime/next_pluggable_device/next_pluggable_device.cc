@@ -32,6 +32,9 @@ ABSL_FLAG(bool, next_pluggable_device_use_pjrt, true,
           "Use PjRtClient for data transfer and compile on demand op in next "
           "pluggable device.");
 
+ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
+          "Use PjRtAllocator in next pluggable device.");
+
 namespace tensorflow {
 
 // TODO(chuanhao): implement an API to query device memory, and make
@@ -52,9 +55,15 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
                                                      options.device_ordinal)),
       device_ordinal_(options.device_ordinal),
       compilation_device_type_(options.compilation_device_name) {
-  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
+  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt_allocator)) {
     pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
     allocator_ = pjrt_allocator_.get();
+  } else {
+    tfnpd_allocator_ =
+        std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
+    allocator_ = tfnpd_allocator_.get();
+  }
+  if (absl::GetFlag(FLAGS_next_pluggable_device_use_pjrt)) {
     // TODO(b/262472386) Support shape_determination_fns through
     // TFNPD_XlaShapeToDeviceShapeRepresentation.
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
@@ -62,9 +71,6 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
     device_context_ = core::RefCountPtr<DeviceContext>(
         new PjRtDeviceContext(shape_representation_fns));
   } else {
-    tfnpd_allocator_ =
-        std::make_unique<NextPluggableDeviceAllocator>(device_ordinal_);
-    allocator_ = tfnpd_allocator_.get();
     device_context_ = core::RefCountPtr<DeviceContext>(
         new NextPluggableDeviceContext(device_ordinal_));
   }
