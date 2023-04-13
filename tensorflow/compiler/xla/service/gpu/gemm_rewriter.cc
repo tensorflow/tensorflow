@@ -1191,14 +1191,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return true;
     }
 
-    // cuBLASLt doesn't support F32 vector bias, thus convert to BF16.
-    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
-      if (bias->shape().element_type() == F32) {
-        Shape bf16_shape = bias->shape();
-        bf16_shape.set_element_type(BF16);
-        bias = instr->AddInstruction(
-            HloInstruction::CreateConvert(bf16_shape, bias));
-      }
+    // cuBLASLt does not support F32 vector biases on F8 matmuls, so convert
+    // the bias to BF16.
+    if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
+        bias->shape().element_type() == F32) {
+      Shape bf16_shape = bias->shape();
+      bf16_shape.set_element_type(BF16);
+      bias = instr->AddInstruction(
+          HloInstruction::CreateConvert(bf16_shape, bias));
     }
 
     // Replace add(gemm, broadcast) with fused new_gemm.
