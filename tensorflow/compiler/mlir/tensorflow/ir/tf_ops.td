@@ -1868,7 +1868,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [Pure, ResultsBroadcastableShape]> {
   ];
 }
 
-def TF_TPUCopyWithDynamicShapeOp : TF_Op<"TPUCopyWithDynamicShape", [AttrSizedOperandSegments]> {
+def TF_TPUCopyWithDynamicShapeOp : TF_Op<"TPUCopyWithDynamicShape", [Pure, AttrSizedOperandSegments]> {
   let summary = [{
 Op that copies host tensors to device with bounded dynamic shape support.
   }];
@@ -1917,5 +1917,33 @@ removed during the bridge rewrite.
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
+
+
+def TF_ConvertToCooTensorOp : TF_Op<"ConvertToCooTensor", [Pure]> {
+  let summary = [{
+Op that converts tensors into coo format.
+  }];
+
+  let description = [{
+This op coverts the dense, sparse and ragged tensor into standard coo tensor
+format which contains three 1D tensors.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices_or_row_splits,
+    TF_Int32Tensor:$values,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    StrAttr:$combiner
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$row_ids,
+    TF_Int32Tensor:$col_ids,
+    TF_Float32Tensor:$gains
+  );
+}
+
 
 #endif // TF_OPS
