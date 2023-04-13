@@ -130,7 +130,7 @@ using tfrt::TensorShape;
 
 #define TFD_REPORT_AND_RETURN_IF_ERROR(handler, status) \
   if (!status.ok()) {                                   \
-    handler.ReportError(status.error_message());        \
+    handler.ReportError(status.message());              \
     return;                                             \
   }
 
@@ -143,7 +143,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
   tensorflow::Status status = th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
-        "error getting rank from TF tensor handle: ", status.error_message()));
+        "error getting rank from TF tensor handle: ", status.message()));
 
   llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
@@ -152,7 +152,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
     if (!status.ok())
       return tfrt::MakeErrorAsyncValueRef(
           tfrt::StrCat("error getting dimension from TFE tensor handle: ",
-                       status.error_message()));
+                       status.message()));
     dims.push_back(dim);
   }
 
@@ -1035,7 +1035,7 @@ static void RuntimeFallbackExecuteOp(
   Status s = eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
   if (!s.ok()) {
     // The device name can be invalid in certain cases. Use default CPU device.
-    VLOG(1) << s.error_message() << " using default CPU device.";
+    VLOG(1) << s.message() << " using default CPU device.";
   }
 
   // First we convert tensorflow::Tensor to RuntimeFallbackTensors.
@@ -1142,7 +1142,7 @@ static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
       tensor_handle->Resolve(&status)};
   if (!status.ok()) {
     return tfrt::MakeStringError("error resolving TensorHandle: ",
-                                 status.error_message());
+                                 status.message());
   }
   auto tf_dtype = tensor_interface->Type();
   if (tf_dtype == DT_STRING) {

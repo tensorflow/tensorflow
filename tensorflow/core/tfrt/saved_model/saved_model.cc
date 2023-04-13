@@ -456,10 +456,9 @@ tensorflow::Status CheckInputSpecs(
         ->GetCell(
             absl::StrCat(model_metadata.name(), ":", model_metadata.version()))
         ->Set(true);
-    const auto error_string =
-        absl::StrCat("model: ", model_metadata.name(),
-                     ", version: ", model_metadata.version(),
-                     ", error: ", status.error_message());
+    const auto error_string = absl::StrCat(
+        "model: ", model_metadata.name(),
+        ", version: ", model_metadata.version(), ", error: ", status.message());
     if (!run_options.validate_input_specs_dry_run) {
       return tensorflow::errors::InvalidArgument(error_string);
     }

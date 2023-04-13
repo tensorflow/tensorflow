@@ -706,8 +706,7 @@ TEST(SavedModelTest, WrongShape) {
   auto status = test.GetSavedModel()->Run(run_options, "serving_default",
                                           inputs, &outputs);
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("input shape is wrong"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("input shape is wrong"));
 }
 
 TEST(SavedModelTest, RefTypeTensorInput) {
@@ -877,7 +876,7 @@ TEST(SavedModelTest, Error) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(), "You must feed a value for placeholder tensor"));
+      status.message(), "You must feed a value for placeholder tensor"));
 }
 
 struct PowTestParam {
@@ -1044,8 +1043,7 @@ TEST(SavedModelTest, DeadlineExceeded) {
   auto status = (*saved_model)->Run(run_options, "toy", inputs, &outputs);
 
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("Deadline exceeded"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Deadline exceeded"));
 }
 
 TEST(SavedModelTest, DisableCompilation) {
@@ -1079,7 +1077,7 @@ TEST(SavedModelTest, DisableCompilation) {
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("GraphExecutor: compilation is disabled in "
                            "execution but the compiled graph is not found"));
 
