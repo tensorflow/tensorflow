@@ -530,6 +530,21 @@ REGISTER_GPU_int32(int64_t);
 
 #undef REGISTER_GPU_int32
 
+#define REGISTER_DEFAULT_KERNEL(len_type)                       \
+  REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
+                              .Device(DEVICE_DEFAULT)           \
+                              .TypeConstraint<int32>("T")       \
+                              .TypeConstraint<len_type>("Tlen") \
+                              .HostMemory("size_splits")        \
+                              .HostMemory("split_dim")          \
+                              .HostMemory("value")              \
+                              .HostMemory("output"),            \
+                          SplitVOpCPU<int32, len_type>);
+
+TF_CALL_int32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_int64(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

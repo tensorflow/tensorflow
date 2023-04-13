@@ -163,4 +163,13 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#define REGISTER_DEFAULT_PACK(type)                             \
+REGISTER_KERNEL_BUILDER(Name("Pack")                            \
+                            .Device(DEVICE_DEFAULT)             \
+                            .HostMemory("values")               \
+                            .HostMemory("output")               \
+                            .TypeConstraint<type>("T"),         \
+                        PackOp<CPUDevice, type>);
+TF_CALL_ALL_TYPES(REGISTER_DEFAULT_PACK)
+#undef REGISTER_DEFAULT_PACK
 }  // namespace tensorflow

@@ -405,4 +405,36 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                         ReverseV2Op<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#define REGISTER_DEFAULT_KERNELS(T)                         \
+REGISTER_KERNEL_BUILDER(Name("Reverse")                     \
+                            .Device(DEVICE_DEFAULT)         \
+                            .TypeConstraint<T>("T")         \
+                            .HostMemory("tensor")           \
+                            .HostMemory("dims")             \
+                            .HostMemory("output"),          \
+                        ReverseOp<CPUDevice, T>)            \
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")                   \
+                            .Device(DEVICE_DEFAULT)         \
+                            .TypeConstraint<T>("T")         \
+                            .TypeConstraint<int32>("Tidx")  \
+                            .HostMemory("tensor")           \
+                            .HostMemory("axis")             \
+                            .HostMemory("output"),          \
+                        ReverseV2Op<CPUDevice, T, int32>)   \
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")                   \
+                            .Device(DEVICE_DEFAULT)         \
+                            .TypeConstraint<T>("T")         \
+                            .TypeConstraint<int64>("Tidx")  \
+                            .HostMemory("tensor")           \
+                            .HostMemory("axis")             \
+                            .HostMemory("output"),          \
+                        ReverseV2Op<CPUDevice, T, int64>)
+TF_CALL_uint8(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int8(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int16(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int32(REGISTER_DEFAULT_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+#undef REGISTER_DEFAULT_KERNELS
+
 }  // namespace tensorflow

@@ -56,6 +56,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNELS);
 #endif
 #undef REGISTER_GPU_KERNELS
+#endif
 
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -78,7 +79,5 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("output")
         .HostMemory("reduction_indices"),
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::SumReducer<int32>>);
-
-#endif
 
 }  // namespace tensorflow

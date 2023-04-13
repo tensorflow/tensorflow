@@ -357,7 +357,14 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_DYNAMIC_STITCH);
                               .HostMemory("indices")     \
                               .HostMemory("data")        \
                               .HostMemory("merged"),     \
-                          ParallelDynamicStitchOpCPU<type>)
+                          ParallelDynamicStitchOpCPU<type>) \
+  REGISTER_KERNEL_BUILDER(Name("DynamicStitch")  \
+                              .Device(DEVICE_DEFAULT)    \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          DynamicStitchOpCPU<type>)
 
 TF_CALL_int32(REGISTER_PARALLEL_DYNAMIC_STITCH);
 TF_CALL_int64(REGISTER_PARALLEL_DYNAMIC_STITCH);
