@@ -502,6 +502,27 @@ bool IsLastDimensionEqualOne(Value val) {
   return last_element == 1;
 }
 
+// Returns true if the supplied value-
+// 1) Has only one use or
+// 2) Is only used by binary op like AddOp, SubOp, MulOp or DivOp.
+bool HasOneUseOrUsedByOnlyBinaryOps(Value out_value) {
+  if (out_value.hasOneUse()) {
+    return true;
+  }
+
+  for (auto &use : out_value.getUses()) {
+    mlir::Operation *owner = use.getOwner();
+    if (!llvm::isa<mlir::TFL::AddOp>(owner) &&
+        !llvm::isa<mlir::TFL::SubOp>(owner) &&
+        !llvm::isa<mlir::TFL::DivOp>(owner) &&
+        !llvm::isa<mlir::TFL::MulOp>(owner)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
 // incrementing sequence from 0 to N-1.
 //
