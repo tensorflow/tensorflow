@@ -328,6 +328,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/types",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/logging",
