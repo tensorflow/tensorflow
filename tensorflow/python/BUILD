@@ -3228,9 +3228,11 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":array_ops",
-        ":cond",
+        ":array_ops_stack",
         ":control_flow_ops",
         ":math_ops",
+        ":math_ops_gen",
+        ":pywrap_tensorflow",
         ":state_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -3240,7 +3242,6 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:_pywrap_utils",
-        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
@@ -3254,7 +3255,23 @@ py_library(
     srcs = ["ops/ref_variable.py"],
     srcs_version = "PY3",
     deps = [
+        ":array_ops",
+        ":array_ops_gen",
+        ":state_ops",
+        ":state_ops_gen",
+        ":variable_v1",
         ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -3263,7 +3280,12 @@ py_library(
     srcs = ["ops/variable_v1.py"],
     srcs_version = "PY3",
     deps = [
+        ":cond",
+        ":state_ops",
         ":variables",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_should_use",
     ],
 )
 
