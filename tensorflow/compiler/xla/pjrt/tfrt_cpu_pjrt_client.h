@@ -52,9 +52,39 @@ limitations under the License.
 
 namespace xla {
 
+class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
+ public:
+  explicit TfrtCpuDeviceDescription(int id);
+
+  int id() const override { return id_; }
+
+  int process_index() const override { return 0; }
+
+  absl::string_view device_kind() const override;
+
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  int id_;
+  std::string debug_string_;
+  std::string to_string_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
+};
+
 class TfrtCpuDevice final : public PjRtDevice {
  public:
   TfrtCpuDevice(int id, bool asynchronous);
+
+  const TfrtCpuDeviceDescription& description() const override {
+    return description_;
+  }
 
   void SetClient(PjRtClient* client) {
     CHECK(client_ == nullptr);
@@ -67,18 +97,8 @@ class TfrtCpuDevice final : public PjRtDevice {
     return process_index() == client()->process_index();
   }
 
-  int id() const override { return id_; }
-
-  int process_index() const override { return 0; }
-
   // Used as `device_ordinal`.
-  int local_hardware_id() const override { return id_; }
-
-  absl::string_view device_kind() const override;
-
-  absl::string_view DebugString() const override;
-
-  absl::string_view ToString() const override;
+  int local_hardware_id() const override { return id(); }
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -94,22 +114,14 @@ class TfrtCpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
  private:
-  int id_;
   PjRtClient* client_ = nullptr;
-  std::string debug_string_;
-  std::string to_string_;
+  TfrtCpuDeviceDescription description_;
 
   // TODO(zhangqiaorjc): Optimize semaphore related overhead.
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
 };
 
 class TfrtCpuExecutable;
