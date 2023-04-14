@@ -718,8 +718,8 @@ PreprocessAndPartitionGraph(
 
   // Dump graph before the partition starts.
   DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
-                                 "before_partition", graph.get(), lib_def,
-                                 VLOG_IS_ON(4));
+                                 "before_partition", graph.get(),
+                                 &input_optimized_graph.lib_def, VLOG_IS_ON(4));
 
   // Partition the graph.
   auto device_name_to_subgraphs =
@@ -732,9 +732,9 @@ PreprocessAndPartitionGraph(
     std::string partitioned_func_name =
         absl::StrCat(function_name, "_partition_" + pair.first);
     const auto* optimized_subgraph = pair.second.get();
-    DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
-                                   "before_partition_passes",
-                                   optimized_subgraph, lib_def, false);
+    DEBUG_DATA_DUMPER()->DumpGraph(
+        partitioned_func_name, kDebugGroupMain, "before_partition_passes",
+        optimized_subgraph, &input_optimized_graph.lib_def, false);
   }
 
   // Doing post-partitioning passes.
@@ -762,7 +762,7 @@ PreprocessAndPartitionGraph(
     const auto* optimized_subgraph = pair.second.get();
     DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
                                    "after_partition_passes", optimized_subgraph,
-                                   lib_def, false);
+                                   &input_optimized_graph.lib_def, false);
   }
 
   return std::move(device_name_to_subgraphs);
