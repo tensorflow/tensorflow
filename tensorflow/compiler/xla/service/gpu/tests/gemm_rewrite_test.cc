@@ -5264,7 +5264,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDVectorBiasF8) {
 #endif
   const char* hlo_text = R"(
     HloModule test
-
     ENTRY test {
       x = f8e4m3fn[4,16,16] parameter(0)
       y = f8e4m3fn[16,32] parameter(1)
@@ -5284,15 +5283,24 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDVectorBiasF8) {
       dot_a_bitcast = f16[4,16,32]{2,1,0} bitcast(dot_a)
       ROOT out = f16[4,16,32] add(dot_a_bitcast, b_bcast)
           }
-
 )";
 
-  CheckFp8IfOnHopper(hlo_text, ErrorSpec{0.1, 0.1});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(
+      se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::CustomCall({"__cublas$lt$matmul$f8"})
+                                        .WithShape(F16, {64, 32}))
+                             .WithShape(F16, {4, 16, 32})));
+
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
                             R"(
-
 ; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[4,16,16], y: f8e4m3fn[16,32], b: f32[32], x_scale: f16[], y_scale: f16[]) -> f16[4,16,32] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[4,16,16]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f8e4m3fn[64,16]{1,0} bitcast([[P0]])
